@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 260" width="900" height="260" role="img" aria-label="Symbolizer: a text editor for the terminal, in the Emberistal theme">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="58%" r="60%">
+      <stop offset="0" stop-color="#5a2214" stop-opacity="0.95"/>
+      <stop offset="0.45" stop-color="#2a130c" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#161616"/>
+    </radialGradient>
+    <linearGradient id="title" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#ff3704"/>
+      <stop offset="0.5" stop-color="#ffb400"/>
+      <stop offset="1" stop-color="#ff3704"/>
+    </linearGradient>
+    <linearGradient id="rule" x1="0" x2="1">
+      <stop offset="0" stop-color="#ff6600" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#ff6600"/>
+      <stop offset="1" stop-color="#ff6600" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-50%" width="140%" height="200%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+    <style>
+      .t { font-family: "JetBrains Mono", "Fira Code", "DejaVu Sans Mono", Consolas, monospace; }
+      .breathe { animation: breathe 4s ease-in-out infinite; }
+      @keyframes breathe { 0%, 100% { opacity: .55 } 50% { opacity: 1 } }
+      .spark { animation: rise linear infinite; opacity: 0; }
+      @keyframes rise {
+        0% { transform: translateY(0); opacity: 0 }
+        12% { opacity: 1 }
+        100% { transform: translateY(-190px); opacity: 0 }
+      }
+      .emblem { animation: flicker 2.6s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+      @keyframes flicker { 0%, 100% { opacity: .8 } 40% { opacity: 1 } 70% { opacity: .65 } }
+    </style>
+  </defs>
+
+  <rect width="900" height="260" rx="18" fill="#161616"/>
+  <rect width="900" height="260" rx="18" fill="url(#glow)" class="breathe"/>
+  <rect x="1" y="1" width="898" height="258" rx="17" fill="none" stroke="#5a2214" stroke-width="2"/>
+
+  <!-- sparks drifting up from the coals -->
+  <g fill="#ffb400">
+    <circle class="spark" cx="140" cy="250" r="2.2" style="animation-duration:5.5s;animation-delay:0s"/>
+    <circle class="spark" cx="230" cy="255" r="1.6" style="animation-duration:6.8s;animation-delay:1.4s"/>
+    <circle class="spark" cx="330" cy="252" r="2.4" style="animation-duration:5.0s;animation-delay:2.6s"/>
+    <circle class="spark" cx="455" cy="256" r="1.8" style="animation-duration:6.2s;animation-delay:.7s"/>
+    <circle class="spark" cx="560" cy="250" r="2.6" style="animation-duration:5.8s;animation-delay:3.3s"/>
+    <circle class="spark" cx="655" cy="254" r="1.6" style="animation-duration:7.0s;animation-delay:2.0s"/>
+    <circle class="spark" cx="760" cy="252" r="2.2" style="animation-duration:5.3s;animation-delay:4.1s"/>
+  </g>
+  <g fill="#ff6600">
+    <circle class="spark" cx="185" cy="256" r="1.4" style="animation-duration:7.4s;animation-delay:3.0s"/>
+    <circle class="spark" cx="395" cy="256" r="1.3" style="animation-duration:6.6s;animation-delay:4.6s"/>
+    <circle class="spark" cx="515" cy="256" r="1.5" style="animation-duration:7.8s;animation-delay:1.1s"/>
+    <circle class="spark" cx="715" cy="256" r="1.4" style="animation-duration:6.0s;animation-delay:5.2s"/>
+  </g>
+
+  <!-- emblems either side, as in the top panel -->
+  <g class="t emblem" font-size="34" fill="#ffb400" text-anchor="middle">
+    <text x="118" y="122">›◆‹</text>
+    <text x="782" y="122">›◆‹</text>
+  </g>
+
+  <!-- title with a soft glow under it -->
+  <text x="450" y="128" text-anchor="middle" class="t breathe" font-size="58" font-weight="700"
+        letter-spacing="14" fill="#ff6600" filter="url(#soft)">SYMBOLIZER</text>
+  <text x="450" y="128" text-anchor="middle" class="t" font-size="58" font-weight="700"
+        letter-spacing="14" fill="url(#title)">SYMBOLIZER</text>
+
+  <rect x="220" y="150" width="460" height="2" fill="url(#rule)"/>
+  <text x="450" y="185" text-anchor="middle" class="t" font-size="19" fill="#ffc14d">a text editor for the terminal</text>
+  <text x="450" y="214" text-anchor="middle" class="t" font-size="15" fill="#d86a3a">embers on charcoal · saves by itself · made for the keyboard</text>
+</svg>

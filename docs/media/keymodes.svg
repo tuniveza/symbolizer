@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 250" width="900" height="250" role="img" aria-label="Key modes: no key held is text, Shift is highlighter, Ctrl is position, Alt is movement">
+  <defs>
+    <style>
+      .t { font-family: "JetBrains Mono", "Fira Code", "DejaVu Sans Mono", Consolas, monospace; }
+      .card { fill: #1e1612; stroke: #5a2214; stroke-width: 1.5; }
+      .lit { animation: lit 8s infinite; }
+      @keyframes lit {
+        0%, 24% { stroke: #ff6600; stroke-width: 2.5; fill: #2c1a12 }
+        26%, 100% { stroke: #5a2214; stroke-width: 1.5; fill: #1e1612 }
+      }
+      .cap { fill: #2a1d16; stroke: #ff8a1a; stroke-width: 1.5; }
+      .word { fill: #ffb400; animation: word 8s infinite; }
+      @keyframes word { 0%, 24% { fill: #161616 } 26%, 100% { fill: #ffb400 } }
+      .pill { fill: #2c1a12; animation: pill 8s infinite; }
+      @keyframes pill { 0%, 24% { fill: #ff6600 } 26%, 100% { fill: #2c1a12 } }
+      /* last, so the animation shorthands above do not reset the delays */
+      .c1 { animation-delay: 0s } .c2 { animation-delay: -6s } .c3 { animation-delay: -4s } .c4 { animation-delay: -2s }
+    </style>
+  </defs>
+  <rect width="900" height="250" rx="16" fill="#161616"/>
+  <text x="450" y="36" text-anchor="middle" class="t" font-size="16" fill="#ffc14d">hold a key · the status bar says what the arrows do</text>
+
+  <!-- 1: text -->
+  <g transform="translate(20,56)">
+    <rect class="card lit c1" width="200" height="170" rx="12"/>
+    <rect x="44" y="18" width="112" height="34" rx="7" fill="none" stroke="#5a2214" stroke-dasharray="4 4"/>
+    <text x="100" y="41" text-anchor="middle" class="t" font-size="14" fill="#a0583a">no key</text>
+    <rect class="pill c1" x="34" y="70" width="132" height="30" rx="15"/>
+    <text class="t word c1" x="100" y="91" text-anchor="middle" font-size="16" font-weight="700">✎ text</text>
+    <text x="100" y="128" text-anchor="middle" class="t" font-size="13" fill="#ff8a1a">typing, and the</text>
+    <text x="100" y="147" text-anchor="middle" class="t" font-size="13" fill="#ff8a1a">arrows step by word</text>
+  </g>
+
+  <!-- 2: highlighter -->
+  <g transform="translate(240,56)">
+    <rect class="card lit c2" width="200" height="170" rx="12"/>
+    <rect class="cap" x="44" y="18" width="112" height="34" rx="7"/>
+    <text x="100" y="41" text-anchor="middle" class="t" font-size="15" fill="#ffb400">⇧ Shift</text>
+    <rect class="pill c2" x="24" y="70" width="152" height="30" rx="15"/>
+    <text class="t word c2" x="100" y="91" text-anchor="middle" font-size="16" font-weight="700">▍highlighter</text>
+    <text x="100" y="128" text-anchor="middle" class="t" font-size="13" fill="#ff8a1a">the arrows</text>
+    <text x="100" y="147" text-anchor="middle" class="t" font-size="13" fill="#ff8a1a">highlight text</text>
+  </g>
+
+  <!-- 3: position -->
+  <g transform="translate(460,56)">
+    <rect class="card lit c3" width="200" height="170" rx="12"/>
+    <rect class="cap" x="44" y="18" width="112" height="34" rx="7"/>
+    <text x="100" y="41" text-anchor="middle" class="t" font-size="15" fill="#ffb400">Ctrl</text>
+    <rect class="pill c3" x="30" y="70" width="140" height="30" rx="15"/>
+    <text class="t word c3" x="100" y="91" text-anchor="middle" font-size="16" font-weight="700">⌶ position</text>
+    <text x="100" y="128" text-anchor="middle" class="t" font-size="13" fill="#ff8a1a">the cursor moves</text>
+    <text x="100" y="147" text-anchor="middle" class="t" font-size="13" fill="#ff8a1a">one character</text>
+  </g>
+
+  <!-- 4: movement -->
+  <g transform="translate(680,56)">
+    <rect class="card lit c4" width="200" height="170" rx="12"/>
+    <rect class="cap" x="44" y="18" width="112" height="34" rx="7"/>
+    <text x="100" y="41" text-anchor="middle" class="t" font-size="15" fill="#ffb400">Alt</text>
+    <rect class="pill c4" x="26" y="70" width="148" height="30" rx="15"/>
+    <text class="t word c4" x="100" y="91" text-anchor="middle" font-size="16" font-weight="700">✥ movement</text>
+    <text x="100" y="128" text-anchor="middle" class="t" font-size="13" fill="#ff8a1a">the highlight (or</text>
+    <text x="100" y="147" text-anchor="middle" class="t" font-size="13" fill="#ff8a1a">the word) moves</text>
+  </g>
+</svg>

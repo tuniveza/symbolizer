@@ -1,0 +1,10 @@
+# built programs
+/sy
+/symbolizer.test
+*.test
+
+# made by tools/mirror_font.py from Agave Nerd Font
+/fonts/
+
+__pycache__/
+*.pyc
