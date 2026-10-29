@@ -821,8 +821,9 @@ func TestOpenFolderAsTabs(t *testing.T) {
 	for i := range m.tabs {
 		names = append(names, m.tabName(i))
 	}
-	// Own files first, then subfolders; one name twice shows its folder.
-	want := "A.md b.go " + filepath.Base(dir) + "/notes.txt deep.txt inner/notes.txt"
+	// Code before notes; within a kind, own files first, then subfolders.
+	// One name twice shows its folder.
+	want := "b.go A.md " + filepath.Base(dir) + "/notes.txt deep.txt inner/notes.txt"
 	if strings.Join(names, " ") != want {
 		t.Fatalf("tabs = %v, want %s", names, want)
 	}
@@ -865,6 +866,59 @@ func TestAltGrPMakesProject(t *testing.T) {
 	m.altGr.down = false
 	if m.tree.query != "" {
 		t.Fatalf("AltGr held + p typed %q into find", m.tree.query)
+	}
+}
+
+func TestOpenFolderCodeFirst(t *testing.T) {
+	dir := t.TempDir()
+	files := []string{"data.json", "go.sum", "notes.md", "app.ts", "Makefile", "main.go", "style.css",
+		"index.html", "config.yaml", "run.sh", "util.js", "package-lock.json", "weird.xyz"}
+	for _, f := range files {
+		os.WriteFile(filepath.Join(dir, f), []byte("x\n"), 0o644)
+	}
+	os.MkdirAll(filepath.Join(dir, "web"), 0o755)
+	os.WriteFile(filepath.Join(dir, "web", "about.html"), []byte("x\n"), 0o644)
+	m, err := NewModel(dir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.openFolder(dir)
+	var names []string
+	for i := range m.tabs {
+		names = append(names, m.tabName(i))
+	}
+	want := "index.html about.html app.ts util.js style.css main.go run.sh Makefile weird.xyz " +
+		"notes.md config.yaml data.json go.sum package-lock.json"
+	if strings.Join(names, " ") != want {
+		t.Fatalf("order:\n got %s\nwant %s", strings.Join(names, " "), want)
+	}
+}
+
+func TestCodeKinds(t *testing.T) {
+	// Each ending and name is in one kind only.
+	seen := map[string]int{}
+	for rank, k := range codeKinds {
+		for _, w := range append(strings.Fields(k.endings), strings.Fields(k.names)...) {
+			if was, ok := seen[w]; ok && was != rank {
+				t.Errorf("%q is in kind %d and kind %d", w, was, rank)
+			}
+			seen[w] = rank
+		}
+	}
+	// One file of each kind, in order.
+	order := []string{"index.html", "App.tsx", "theme.scss", "main.rs", "build.sh", "Dockerfile",
+		"thing.unknown", "notes.md", "app.yaml", "icon.svg", "people.csv", "tsconfig.json", "Cargo.lock"}
+	for i := 1; i < len(order); i++ {
+		if codeRank(order[i-1]) >= codeRank(order[i]) {
+			t.Errorf("%s (%d) should come before %s (%d)", order[i-1], codeRank(order[i-1]), order[i], codeRank(order[i]))
+		}
+	}
+	// These go with the first of the pair.
+	for _, pair := range [][2]string{{"index.html", "page.svelte"}, {"main.rs", "Main.java"},
+		{"Dockerfile", "Cargo.toml"}, {"notes.md", "README"}, {"Cargo.lock", "package-lock.json"}} {
+		if codeRank(pair[0]) != codeRank(pair[1]) {
+			t.Errorf("%s and %s should be the same kind", pair[0], pair[1])
+		}
 	}
 }
 

@@ -174,12 +174,15 @@ func (m *Model) openPath(path string) tea.Cmd {
 	return nil
 }
 
-// maxFolderTabs is the most files one folder opens as tabs.
+// maxFolderTabs is the most files one folder opens as tabs; folderScan is
+// how many it looks at to choose them.
 const maxFolderTabs = 50
+const folderScan = 2000
 
-// openFolder opens the text files in dir and its subfolders as tabs: each
-// folder's own files first, then its subfolders, A to Z. It shows the first
-// one and says whether any opened.
+// openFolder opens the text files in dir and its subfolders as tabs, the
+// most code-like kinds first (codeRank). Within a kind, each folder's own
+// files come first, then its subfolders, A to Z. It shows the first one and
+// says whether any opened.
 func (m *Model) openFolder(dir string) bool {
 	hidden := m.tree != nil && m.tree.showHidden
 	var paths []string
@@ -210,7 +213,7 @@ func (m *Model) openFolder(dir string) bool {
 				}
 			case !textFile(p, info.Size()):
 				skipped++
-			case len(paths) == maxFolderTabs:
+			case len(paths) == folderScan:
 				full = true
 				return nil
 			default:
@@ -233,6 +236,12 @@ func (m *Model) openFolder(dir string) bool {
 		m.say("No text files in " + shortPath(dir) + ", so no tabs were opened.")
 		return false
 	}
+	sort.SliceStable(paths, func(i, j int) bool {
+		return codeRank(filepath.Base(paths[i])) < codeRank(filepath.Base(paths[j]))
+	})
+	if len(paths) > maxFolderTabs {
+		paths, full = paths[:maxFolderTabs], true
+	}
 	for _, p := range paths {
 		m.openPath(p)
 	}
@@ -242,13 +251,90 @@ func (m *Model) openFolder(dir string) bool {
 		msg = "Opened 1 file from " + filepath.Base(dir) + " as a tab."
 	}
 	if full {
-		msg += fmt.Sprintf(" Stopped at %d, the most at once.", maxFolderTabs)
+		msg += fmt.Sprintf(" Stopped at %d, the most at once (code first).", maxFolderTabs)
 	}
 	if skipped > 0 {
 		msg += fmt.Sprintf(" Skipped %d that are not text or too big.", skipped)
 	}
 	m.say(msg)
 	return true
+}
+
+// codeKinds lists file kinds by how much they matter when writing code, most
+// first: endings, then whole file names (a name wins over its ending). The
+// empty kind is where files of a kind not listed go.
+var codeKinds = []struct{ endings, names string }{
+	// web pages and page templates
+	{"html htm xhtml shtml vue svelte astro marko ejs hbs handlebars mustache pug jade njk jinja jinja2 j2 " +
+		"twig erb liquid haml slim cshtml razor eex heex leex mjml", ""},
+	// scripts for the web
+	{"js mjs cjs jsx ts tsx mts cts es6 coffee litcoffee elm res resi purs ls", ""},
+	// styles
+	{"css scss sass less styl stylus pcss postcss", ""},
+	// other code
+	{"go py pyw pyi pyx pxd rs c h cpp cc cxx c++ hpp hh hxx ipp inl tpp m mm java kt kts scala sc groovy gvy " +
+		"swift rb rake php phtml cs csx fs fsi fsx vb lua luau dart zig ex exs erl hrl gleam hs lhs ml mli " +
+		"re rei clj cljs cljc nim nims cr jl r rmd pl pm raku rakumod sql psql plsql glsl vert frag comp geom " +
+		"hlsl wgsl metal cu cuh vim el lisp lsp scm ss rkt fnl janet gd gdshader asm s nasm v sv svh vhd vhdl " +
+		"ada adb ads f f90 f95 f03 for pas pp lpr d odin hx sol move cairo vy mojo vala qml ino pde tcl awk " +
+		"proto graphql gql thrift prisma smithy wat applescript ahk au3 bas", ""},
+	// shell scripts
+	{"sh bash zsh fish ksh csh tcsh nu xsh ps1 psm1 psd1 bat cmd", ""},
+	// building, packaging and running
+	{"mk mak mod work gradle cmake nix bzl bazel ebuild spec tf tfvars hcl dockerfile",
+		"makefile gnumakefile dockerfile containerfile justfile cmakelists.txt meson.build meson_options.txt " +
+			"build build.bazel workspace module.bazel vagrantfile procfile gemfile rakefile pipfile brewfile " +
+			"podfile cargo.toml pyproject.toml setup.cfg setup.py requirements.txt requirements-dev.txt go.mod " +
+			"go.work pom.xml build.gradle settings.gradle build.sbt pkgbuild jenkinsfile tiltfile earthfile " +
+			"docker-compose.yml docker-compose.yaml compose.yml compose.yaml flake.nix default.nix shell.nix"},
+	// kinds not listed
+	{"", ""},
+	// notes and writing
+	{"md markdown mdx mdown rst txt text adoc asciidoc org tex ltx sty cls bib typ pod rdoc textile wiki",
+		"readme license licence copying changelog changes authors contributors notice todo news history " +
+			"contributing code_of_conduct security"},
+	// settings
+	{"toml yaml yml ini cfg conf config env properties desktop service socket timer mount rasi kdl ron " +
+		"cue dhall xresources gitignore gitattributes gitmodules dockerignore editorconfig prettierrc " +
+		"eslintrc stylelintrc babelrc npmrc nvmrc envrc tool-versions", ""},
+	// XML and SVG
+	{"xml svg plist xsd xsl xslt wsdl rss atom kml gpx csproj fsproj vbproj props targets resx xaml sln", ""},
+	// data, logs and patches
+	{"csv tsv psv log out dat srt vtt ass ics vcf diff patch po pot", ""},
+	// JSON
+	{"json jsonc json5 jsonl ndjson geojson webmanifest har map ipynb", ""},
+	// lock files, last
+	{"lock sum", "go.sum cargo.lock yarn.lock pnpm-lock.yaml poetry.lock uv.lock flake.lock gemfile.lock " +
+		"composer.lock pipfile.lock package-lock.json bun.lockb mix.lock"},
+}
+
+var codeEndingRank, codeNameRank = map[string]int{}, map[string]int{}
+var codeUnknownRank int
+
+func init() {
+	for rank, k := range codeKinds {
+		if k.endings == "" && k.names == "" {
+			codeUnknownRank = rank
+		}
+		for _, e := range strings.Fields(k.endings) {
+			codeEndingRank[e] = rank
+		}
+		for _, n := range strings.Fields(k.names) {
+			codeNameRank[n] = rank
+		}
+	}
+}
+
+// codeRank is where a file's kind comes in codeKinds.
+func codeRank(name string) int {
+	lower := strings.ToLower(name)
+	if r, ok := codeNameRank[lower]; ok {
+		return r
+	}
+	if r, ok := codeEndingRank[strings.TrimPrefix(filepath.Ext(lower), ".")]; ok {
+		return r
+	}
+	return codeUnknownRank
 }
 
 // textFile says whether a file looks like text worth a tab: not too big,
