@@ -433,6 +433,11 @@ def main():
     check("Enter keeps the file and leaves tab mode", "b.txt" in on() and "tabs" not in on(), on())
     k2.send(altgr_tab + "\x1b[D\x1b[27u", 0.8)       # AltGr+Tab, Left, Esc
     check("Esc goes back to where tab mode started", "b.txt" in on(), on())
+    k2.send("\x1b[9;17u", 0.5)                       # Hyper+Tab, as the Hyprland helper sends it
+    check("Hyper+Tab opens tab mode too", "tabs" in on(), on())
+    k2.send("\x1b[C\r", 0.5)                         # Right, Enter
+    check("and its arrows switch tabs", "c.txt" in on() and "tabs" not in on(), on())
+    k2.send("\x1b[9;17u\x1b[D\r", 0.5)               # back to b.txt for the checks below
     k2.send("\x1b[9;3u", 0.3)                        # Alt+Tab
     time.sleep(0.3)
     check("Alt+Tab types a real Tab (indent)", open(os.path.join(proj2, "b.txt")).read() == "    b.txt\n",

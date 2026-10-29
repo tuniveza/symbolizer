@@ -532,6 +532,7 @@ func init() {
 		"alt+c":       func(m *Model) tea.Cmd { return m.closeTab() },
 		"alt+n":       func(m *Model) tea.Cmd { return m.newFile() },
 		"altgr+tab":   func(m *Model) tea.Cmd { return m.openTabMode() },
+		"hyper+tab":   func(m *Model) tea.Cmd { return m.openTabMode() }, // AltGr+Tab sent on by Hyprland (tabmode.go)
 		"ctrl+pgup":   func(m *Model) tea.Cmd { return m.nextTab(-1) },
 		"ctrl+pgdown": func(m *Model) tea.Cmd { return m.nextTab(1) },
 		"ctrl+n":      func(m *Model) tea.Cmd { return m.newFile() },

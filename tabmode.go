@@ -19,6 +19,10 @@ import (
 //
 // The file on screen changes as the arrows move. Any other key leaves the
 // mode and does what it always does. Clicking a tab chooses it.
+//
+// Hyprland may take AltGr+Tab for kitty's own tabs mode. Its helper
+// (emberline-kitty-tabs) then sends Hyper+Tab to a window running
+// Symbolizer instead, and that counts as AltGr+Tab here.
 
 type tabCell struct {
 	i, x, w int
@@ -97,7 +101,7 @@ func (m *Model) tabModeKey(k tea.Key) (tea.Cmd, bool) {
 			}
 		}
 		return m.switchTab(best.i), true
-	case "enter", "altgr+tab":
+	case "enter", "altgr+tab", "hyper+tab":
 		m.tabMode = false
 		m.say("On " + m.tabName(m.cur) + ".")
 		return nil, true

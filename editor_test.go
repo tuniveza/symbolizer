@@ -1084,6 +1084,15 @@ func TestTabMode(t *testing.T) {
 	if m.tabMode || !strings.HasPrefix(m.buf.Text(), "x") || m.cur != 1 {
 		t.Fatalf("typing in tab mode: mode %v, text %q, tab %d", m.tabMode, m.buf.Text(), m.cur+1)
 	}
+	// Hyper+Tab (sent by the Hyprland helper) works like AltGr+Tab.
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModHyper}))
+	if !m.tabMode {
+		t.Fatal("Hyper+Tab did not open tab mode")
+	}
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModHyper}))
+	if m.tabMode {
+		t.Fatal("Hyper+Tab again did not close tab mode")
+	}
 	// AltGr+Tab with one file open says so.
 	m2 := newTest(t, "x")
 	altGr := func() { m2.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyIsoLevel3Shift})) }
