@@ -537,6 +537,7 @@ func init() {
 		"alt+c":       func(m *Model) tea.Cmd { return m.closeTab() },
 		"alt+n":       func(m *Model) tea.Cmd { return m.newFile() },
 		"tab":         func(m *Model) tea.Cmd { return m.tabSwitch() },
+		"altgr+tab":   func(m *Model) tea.Cmd { return m.tabSwitchBack() },
 		"ctrl+tab":    func(m *Model) tea.Cmd { return m.ctrlTab() },
 		"ctrl+pgup":   func(m *Model) tea.Cmd { return m.nextTab(-1) },
 		"ctrl+pgdown": func(m *Model) tea.Cmd { return m.nextTab(1) },
@@ -578,7 +579,7 @@ func init() {
 }
 
 func (m *Model) editKey(k tea.Key) tea.Cmd {
-	name := keyName(k)
+	name := m.altGrName(k)
 	if cmd, ok := m.tabChordKey(name); ok {
 		return cmd
 	}

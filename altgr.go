@@ -41,6 +41,15 @@ func isModifierOnly(k tea.Key) bool {
 	return false
 }
 
+// altGrName is keyName, except that Tab with AltGr held is "altgr+tab"
+// (kitty says when AltGr is held; Tab itself comes with no modifier).
+func (m *Model) altGrName(k tea.Key) string {
+	if m.altGr.down && k.Code == tea.KeyTab && k.Mod == 0 {
+		return "altgr+tab"
+	}
+	return keyName(k)
+}
+
 // altGrPress watches every key press. It returns true when the key was
 // AltGr itself (nothing else should happen for it).
 func (m *Model) altGrPress(k tea.Key) bool {

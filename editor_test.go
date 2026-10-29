@@ -496,6 +496,31 @@ func TestIndentSelection(t *testing.T) {
 	want(t, m, "a\nb", Pos{1, 1})
 }
 
+func TestAltGrTabGoesTheOtherWay(t *testing.T) {
+	m := newTest(t, "one")
+	m.addTab(newDraft())
+	m.addTab(newDraft()) // three tabs, the third on screen
+	m.altGr.down = true  // kitty: AltGr held, then Tab
+	m.tabDir = 1
+	press(m, "tab")
+	if m.cur != 1 {
+		t.Fatalf("AltGr+Tab with Tab going right: tab %d, want 1", m.cur)
+	}
+	m.tabDir = -1
+	press(m, "tab")
+	if m.cur != 2 {
+		t.Fatalf("AltGr+Tab with Tab going left: tab %d, want 2", m.cur)
+	}
+	press(m, "tab") // wraps round
+	if m.cur != 0 {
+		t.Fatalf("AltGr+Tab did not wrap: tab %d, want 0", m.cur)
+	}
+	m.altGr.down = false
+	if m.buf.Text() != "one" {
+		t.Fatal("AltGr+Tab changed the text")
+	}
+}
+
 func TestHighlightRuns(t *testing.T) {
 	h := NewHighlighter("x.py", "")
 	lines := tokenise(h.lexer, "def f(x):\n    return 'hi'  # note")

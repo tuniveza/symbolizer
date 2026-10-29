@@ -105,6 +105,7 @@ var helpGroups = []helpGroup{
 		{"Alt + N", "new file in a new tab"},
 		{"Alt + C", "close this file (it is already saved)"},
 		{"Tab", "next file tab in the common direction"},
+		{"AltGr + Tab", "next file tab the other way (kitty)"},
 		{"Tab, then Left / Right", "hold Tab: switch file tabs that way"},
 		{"Alt + Tab", "a real Tab: indent the line or the highlighted lines"},
 		{"Shift + Alt + Tab", "un-indent (Shift + Tab does too)"},
