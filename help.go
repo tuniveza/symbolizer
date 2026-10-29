@@ -66,7 +66,7 @@ var helpGroups = []helpGroup{
 		{"Alt + O  or AltGr + O (ø)", "open it"},
 		{"Alt + E  or AltGr + E", "exit it (Esc and Ctrl + B do too)"},
 		{"sy FOLDER", "open a folder as a project"},
-		{"Alt + P", "make the chosen folder the project"},
+		{"AltGr + P  or Alt + P", "make the chosen folder the project"},
 		{"type letters", "find a file anywhere in the project"},
 		{"Enter / Right", "open a file, or open / close a folder"},
 		{"Shift + Enter", "open every text file in this folder and its folders as tabs"},

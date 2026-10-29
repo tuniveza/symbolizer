@@ -233,6 +233,9 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 		// On a UK keyboard AltGr+E types a plain "e"; kitty says AltGr is held.
 		name = map[rune]string{'e': "altgr+e", 'o': "ø"}[k.Code]
 	}
+	if k.Text == "þ" || m.altGr.down && k.Code == 'p' {
+		name = "altgr+p" // AltGr+P types þ on a UK keyboard
+	}
 	finding := t.query != ""
 	count := len(t.rows)
 	if finding {
@@ -329,7 +332,7 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 		}
 	case "ctrl+s", "ß":
 		return m.save()
-	case "alt+p":
+	case "altgr+p", "alt+p":
 		if p := m.treeSelected(); p != "" {
 			if info, err := os.Stat(p); err == nil && !info.IsDir() {
 				p = filepath.Dir(p)

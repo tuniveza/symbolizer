@@ -847,6 +847,27 @@ func TestOpenFolderAsTabs(t *testing.T) {
 	}
 }
 
+func TestAltGrPMakesProject(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "sub"), 0o755)
+	m, err := NewModel(dir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.tree.reveal(filepath.Join(dir, "sub"))
+	m.Update(tea.KeyPressMsg(tea.Key{Code: 'þ', Text: "þ"})) // AltGr+P on a UK keyboard
+	if m.tree.root != filepath.Join(dir, "sub") || m.tree.query != "" {
+		t.Fatalf("AltGr+P: project %s, find %q", m.tree.root, m.tree.query)
+	}
+	m.altGr.down = true // kitty says AltGr is held and sends a plain p
+	m.tree.reveal(filepath.Join(dir, "sub"))
+	press(m, "p")
+	m.altGr.down = false
+	if m.tree.query != "" {
+		t.Fatalf("AltGr held + p typed %q into find", m.tree.query)
+	}
+}
+
 func TestOpenFolderStopsAtLimit(t *testing.T) {
 	dir := t.TempDir()
 	for i := range maxFolderTabs + 5 {
