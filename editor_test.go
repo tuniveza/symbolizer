@@ -888,9 +888,37 @@ func TestOpenFolderCodeFirst(t *testing.T) {
 		names = append(names, m.tabName(i))
 	}
 	want := "index.html about.html app.ts util.js style.css main.go run.sh Makefile weird.xyz " +
-		"notes.md config.yaml data.json package-lock.json go.sum"
+		"notes.md config.yaml data.json go.sum package-lock.json"
 	if strings.Join(names, " ") != want {
 		t.Fatalf("order:\n got %s\nwant %s", strings.Join(names, " "), want)
+	}
+}
+
+func TestCodeKinds(t *testing.T) {
+	// Each ending and name is in one kind only.
+	seen := map[string]int{}
+	for rank, k := range codeKinds {
+		for _, w := range append(strings.Fields(k.endings), strings.Fields(k.names)...) {
+			if was, ok := seen[w]; ok && was != rank {
+				t.Errorf("%q is in kind %d and kind %d", w, was, rank)
+			}
+			seen[w] = rank
+		}
+	}
+	// One file of each kind, in order.
+	order := []string{"index.html", "App.tsx", "theme.scss", "main.rs", "build.sh", "Dockerfile",
+		"thing.unknown", "notes.md", "app.yaml", "icon.svg", "people.csv", "tsconfig.json", "Cargo.lock"}
+	for i := 1; i < len(order); i++ {
+		if codeRank(order[i-1]) >= codeRank(order[i]) {
+			t.Errorf("%s (%d) should come before %s (%d)", order[i-1], codeRank(order[i-1]), order[i], codeRank(order[i]))
+		}
+	}
+	// These go with the first of the pair.
+	for _, pair := range [][2]string{{"index.html", "page.svelte"}, {"main.rs", "Main.java"},
+		{"Dockerfile", "Cargo.toml"}, {"notes.md", "README"}, {"Cargo.lock", "package-lock.json"}} {
+		if codeRank(pair[0]) != codeRank(pair[1]) {
+			t.Errorf("%s and %s should be the same kind", pair[0], pair[1])
+		}
 	}
 }
 

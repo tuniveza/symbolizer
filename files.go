@@ -260,48 +260,81 @@ func (m *Model) openFolder(dir string) bool {
 	return true
 }
 
-// codeRank orders file kinds by how much they matter when writing code:
-// web pages first, then scripts and styles, other code, build files, notes,
-// settings, data, and JSON and lock files last.
+// codeKinds lists file kinds by how much they matter when writing code, most
+// first: endings, then whole file names (a name wins over its ending). The
+// empty kind is where files of a kind not listed go.
+var codeKinds = []struct{ endings, names string }{
+	// web pages and page templates
+	{"html htm xhtml shtml vue svelte astro marko ejs hbs handlebars mustache pug jade njk jinja jinja2 j2 " +
+		"twig erb liquid haml slim cshtml razor eex heex leex mjml", ""},
+	// scripts for the web
+	{"js mjs cjs jsx ts tsx mts cts es6 coffee litcoffee elm res resi purs ls", ""},
+	// styles
+	{"css scss sass less styl stylus pcss postcss", ""},
+	// other code
+	{"go py pyw pyi pyx pxd rs c h cpp cc cxx c++ hpp hh hxx ipp inl tpp m mm java kt kts scala sc groovy gvy " +
+		"swift rb rake php phtml cs csx fs fsi fsx vb lua luau dart zig ex exs erl hrl gleam hs lhs ml mli " +
+		"re rei clj cljs cljc nim nims cr jl r rmd pl pm raku rakumod sql psql plsql glsl vert frag comp geom " +
+		"hlsl wgsl metal cu cuh vim el lisp lsp scm ss rkt fnl janet gd gdshader asm s nasm v sv svh vhd vhdl " +
+		"ada adb ads f f90 f95 f03 for pas pp lpr d odin hx sol move cairo vy mojo vala qml ino pde tcl awk " +
+		"proto graphql gql thrift prisma smithy wat applescript ahk au3 bas", ""},
+	// shell scripts
+	{"sh bash zsh fish ksh csh tcsh nu xsh ps1 psm1 psd1 bat cmd", ""},
+	// building, packaging and running
+	{"mk mak mod work gradle cmake nix bzl bazel ebuild spec tf tfvars hcl dockerfile",
+		"makefile gnumakefile dockerfile containerfile justfile cmakelists.txt meson.build meson_options.txt " +
+			"build build.bazel workspace module.bazel vagrantfile procfile gemfile rakefile pipfile brewfile " +
+			"podfile cargo.toml pyproject.toml setup.cfg setup.py requirements.txt requirements-dev.txt go.mod " +
+			"go.work pom.xml build.gradle settings.gradle build.sbt pkgbuild jenkinsfile tiltfile earthfile " +
+			"docker-compose.yml docker-compose.yaml compose.yml compose.yaml flake.nix default.nix shell.nix"},
+	// kinds not listed
+	{"", ""},
+	// notes and writing
+	{"md markdown mdx mdown rst txt text adoc asciidoc org tex ltx sty cls bib typ pod rdoc textile wiki",
+		"readme license licence copying changelog changes authors contributors notice todo news history " +
+			"contributing code_of_conduct security"},
+	// settings
+	{"toml yaml yml ini cfg conf config env properties desktop service socket timer mount rasi kdl ron " +
+		"cue dhall xresources gitignore gitattributes gitmodules dockerignore editorconfig prettierrc " +
+		"eslintrc stylelintrc babelrc npmrc nvmrc envrc tool-versions", ""},
+	// XML and SVG
+	{"xml svg plist xsd xsl xslt wsdl rss atom kml gpx csproj fsproj vbproj props targets resx xaml sln", ""},
+	// data, logs and patches
+	{"csv tsv psv log out dat srt vtt ass ics vcf diff patch po pot", ""},
+	// JSON
+	{"json jsonc json5 jsonl ndjson geojson webmanifest har map ipynb", ""},
+	// lock files, last
+	{"lock sum", "go.sum cargo.lock yarn.lock pnpm-lock.yaml poetry.lock uv.lock flake.lock gemfile.lock " +
+		"composer.lock pipfile.lock package-lock.json bun.lockb mix.lock"},
+}
+
+var codeEndingRank, codeNameRank = map[string]int{}, map[string]int{}
+var codeUnknownRank int
+
+func init() {
+	for rank, k := range codeKinds {
+		if k.endings == "" && k.names == "" {
+			codeUnknownRank = rank
+		}
+		for _, e := range strings.Fields(k.endings) {
+			codeEndingRank[e] = rank
+		}
+		for _, n := range strings.Fields(k.names) {
+			codeNameRank[n] = rank
+		}
+	}
+}
+
+// codeRank is where a file's kind comes in codeKinds.
 func codeRank(name string) int {
 	lower := strings.ToLower(name)
-	switch lower {
-	case "makefile", "gnumakefile", "dockerfile", "containerfile", "justfile", "cmakelists.txt", "meson.build":
-		return 5
-	case "readme", "license", "licence", "copying", "changelog", "authors":
-		return 7
-	case "go.sum", "cargo.lock", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "uv.lock", "flake.lock":
-		return 12
+	if r, ok := codeNameRank[lower]; ok {
+		return r
 	}
-	switch strings.TrimPrefix(filepath.Ext(lower), ".") {
-	case "html", "htm", "xhtml", "vue", "svelte", "astro":
-		return 0
-	case "js", "mjs", "cjs", "jsx", "ts", "tsx", "mts", "cts":
-		return 1
-	case "css", "scss", "sass", "less", "styl":
-		return 2
-	case "go", "py", "pyw", "pyi", "rs", "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "java", "kt", "kts",
-		"swift", "rb", "php", "cs", "lua", "dart", "zig", "ex", "exs", "scala", "hs", "ml", "clj", "nim",
-		"jl", "r", "pl", "sql", "glsl", "wgsl", "vim", "el", "gd":
-		return 3
-	case "sh", "bash", "zsh", "fish", "ps1", "bat", "cmd":
-		return 4
-	case "mod", "gradle", "cmake", "mk", "nix":
-		return 5
-	case "md", "markdown", "mdx", "rst", "txt", "adoc", "org", "tex":
-		return 7
-	case "toml", "yaml", "yml", "ini", "cfg", "conf", "env", "properties", "desktop", "service", "rasi":
-		return 8
-	case "xml", "svg", "plist":
-		return 9
-	case "csv", "tsv", "log":
-		return 10
-	case "json", "jsonc", "json5", "jsonl", "ndjson", "map":
-		return 11
-	case "lock", "sum":
-		return 12
+	if r, ok := codeEndingRank[strings.TrimPrefix(filepath.Ext(lower), ".")]; ok {
+		return r
 	}
-	return 6 // a kind not listed: after the code, before the notes
+	return codeUnknownRank
 }
 
 // textFile says whether a file looks like text worth a tab: not too big,
