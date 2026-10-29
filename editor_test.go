@@ -793,6 +793,95 @@ func TestFileManager(t *testing.T) {
 	}
 }
 
+func TestOpenFolderAsTabs(t *testing.T) {
+	dir := t.TempDir()
+	write := func(rel, text string) {
+		p := filepath.Join(dir, rel)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		os.WriteFile(p, []byte(text), 0o644)
+	}
+	write("sub/deep.txt", "deep\n")
+	write("sub/inner/notes.txt", "inner\n")
+	write("notes.txt", "top\n")
+	write("b.go", "package b\n")
+	write("A.md", "# a\n")
+	write(".hidden", "x\n")
+	write(".git/config", "x\n")
+	write("node_modules/x.js", "x\n")
+	write("pic.png", "\x89PNG\r\n\x1a\n\x00\x00")
+	write("latin1.txt", "caf\xe9\n")
+	os.Symlink(dir, filepath.Join(dir, "sub", "loop"))
+	m, err := NewModel(dir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	press(m, "shift+enter") // on the top row: the project folder itself
+	var names []string
+	for i := range m.tabs {
+		names = append(names, m.tabName(i))
+	}
+	// Own files first, then subfolders; one name twice shows its folder.
+	want := "A.md b.go " + filepath.Base(dir) + "/notes.txt deep.txt inner/notes.txt"
+	if strings.Join(names, " ") != want {
+		t.Fatalf("tabs = %v, want %s", names, want)
+	}
+	if m.cur != 0 || m.showTree {
+		t.Fatalf("should show the first tab with the file manager closed (cur %d, tree %v)", m.cur, m.showTree)
+	}
+	if !strings.Contains(m.msg, "Opened 5 files") || !strings.Contains(m.msg, "Skipped 2") {
+		t.Fatalf("message = %q", m.msg)
+	}
+	// Again on a file inside sub: its files are open already, so it shows them.
+	press(m, "alt+o")
+	m.tree.reveal(filepath.Join(dir, "sub", "deep.txt"))
+	press(m, "ctrl+enter")
+	if len(m.tabs) != 5 || filepath.Base(m.buf.Path) != "deep.txt" {
+		t.Fatalf("second folder: %d tabs, showing %s", len(m.tabs), m.buf.Path)
+	}
+	// A folder with nothing to open says so and leaves the tabs alone.
+	empty := filepath.Join(dir, "sub", "empty")
+	os.MkdirAll(empty, 0o755)
+	if m.openFolder(empty) || len(m.tabs) != 5 {
+		t.Fatal("an empty folder should open no tabs")
+	}
+}
+
+func TestAltGrPMakesProject(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "sub"), 0o755)
+	m, err := NewModel(dir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.tree.reveal(filepath.Join(dir, "sub"))
+	m.Update(tea.KeyPressMsg(tea.Key{Code: 'þ', Text: "þ"})) // AltGr+P on a UK keyboard
+	if m.tree.root != filepath.Join(dir, "sub") || m.tree.query != "" {
+		t.Fatalf("AltGr+P: project %s, find %q", m.tree.root, m.tree.query)
+	}
+	m.altGr.down = true // kitty says AltGr is held and sends a plain p
+	m.tree.reveal(filepath.Join(dir, "sub"))
+	press(m, "p")
+	m.altGr.down = false
+	if m.tree.query != "" {
+		t.Fatalf("AltGr held + p typed %q into find", m.tree.query)
+	}
+}
+
+func TestOpenFolderStopsAtLimit(t *testing.T) {
+	dir := t.TempDir()
+	for i := range maxFolderTabs + 5 {
+		os.WriteFile(filepath.Join(dir, "f"+strconv.Itoa(100+i)+".txt"), []byte("x\n"), 0o644)
+	}
+	m, err := NewModel(dir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.openFolder(dir) || len(m.tabs) != maxFolderTabs || !strings.Contains(m.msg, "Stopped at") {
+		t.Fatalf("%d tabs, message %q", len(m.tabs), m.msg)
+	}
+}
+
 func TestCtrlSSavesAltSStartAltQQuits(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "keys.txt")
 	m, _ := NewModel(path, 0)
