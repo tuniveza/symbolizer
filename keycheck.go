@@ -31,7 +31,7 @@ var keyMeaning = map[string]string{
 	"ctrl+z": "undo", "ctrl+y": "redo", "ctrl+x": "cut", "ctrl+a": "highlight all",
 	"ctrl+d": "duplicate", "ctrl+k": "delete line", "ctrl+/": "comment", "ctrl+g": "go to line",
 	"alt+m": "switch modes", "alt+j": "centre lines (or back to the left)", "ŧ": "colour themes (Right Alt+T on a UK keyboard)", "”": "diary: new page (Right Alt+N on a UK keyboard)", "æ": "diary: all pages (Right Alt+A on a UK keyboard)", "alt+t": "colour themes", "alt+n": "new file in a new tab", "alt+c": "close this file",
-	"alt+tab": "a real Tab (indent)", "alt+shift+tab": "un-indent", "shift+tab": "un-indent",
+	"alt+tab": "a real Tab (indent)", "alt+shift+tab": "un-indent", "shift+tab": "file tab the other way",
 	"ctrl+tab": "then Ctrl+Left/Right: set the Tab direction",
 	"ctrl+r":   "replace", "ctrl+n": "new session in a new tab", "alt+a": "save as", "f1": "help", "f3": "next match",
 	"up": "cursor up", "down": "cursor down", "left": "cursor left one step (word, number, bracket or operator)", "right": "cursor right one step (word, number, bracket or operator)",

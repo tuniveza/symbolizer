@@ -491,9 +491,29 @@ func TestIndentSelection(t *testing.T) {
 	want(t, m, "    a\n    b", Pos{1, 5})
 	press(m, "alt+shift+tab")
 	want(t, m, "a\nb", Pos{1, 1})
-	press(m, "alt+tab")
+}
+
+func TestShiftTabGoesTheOtherWay(t *testing.T) {
+	m := newTest(t, "one")
+	m.addTab(newDraft())
+	m.addTab(newDraft()) // three tabs, the third on screen
+	m.tabDir = 1
 	press(m, "shift+tab")
-	want(t, m, "a\nb", Pos{1, 1})
+	if m.cur != 1 {
+		t.Fatalf("Shift+Tab with Tab going right: tab %d, want 1", m.cur)
+	}
+	m.tabDir = -1
+	press(m, "shift+tab")
+	if m.cur != 2 {
+		t.Fatalf("Shift+Tab with Tab going left: tab %d, want 2", m.cur)
+	}
+	press(m, "shift+tab") // wraps round
+	if m.cur != 0 {
+		t.Fatalf("Shift+Tab did not wrap: tab %d, want 0", m.cur)
+	}
+	if m.buf.Text() != "one" {
+		t.Fatal("Shift+Tab changed the text")
+	}
 }
 
 func TestHighlightRuns(t *testing.T) {
