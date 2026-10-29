@@ -179,7 +179,7 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 | Alt + N / Alt + C | new file in a new tab / close this file |
 | Alt + 1 … 9 · Ctrl + PgUp / PgDn | go to open file 1 … 9 · previous / next |
 | Tab | next file tab in the common direction. Hold Tab and press Left / Right to go that way |
-| Shift + Tab | next file tab the other way |
+| AltGr + Tab | next file tab the other way (in kitty) |
 | Ctrl + Tab, then Ctrl + Left / Right | set the common Tab direction (remembered) |
 | Alt + Tab · Shift + Alt + Tab | a real Tab (indent) · un-indent |
 | Alt + J | centre the lines of this file, or put them back on the left |

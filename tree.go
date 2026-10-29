@@ -228,7 +228,7 @@ func fuzzy(rel, base, q string) int {
 
 func (m *Model) treeKey(k tea.Key) tea.Cmd {
 	t := m.tree
-	name := keyName(k)
+	name := m.altGrName(k)
 	if m.altGr.down && (k.Code == 'e' || k.Code == 'o') {
 		// On a UK keyboard AltGr+E types a plain "e"; kitty says AltGr is held.
 		name = map[rune]string{'e': "altgr+e", 'o': "ø"}[k.Code]
@@ -242,7 +242,7 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 		count = len(t.found)
 	}
 	switch name {
-	case "alt+n", "alt+c", "tab", "shift+tab", "ctrl+tab", "ctrl+w", "ctrl+pgup", "ctrl+pgdown":
+	case "alt+n", "alt+c", "tab", "altgr+tab", "ctrl+tab", "ctrl+w", "ctrl+pgup", "ctrl+pgdown":
 		return bindings[name](m)
 	case "esc":
 		if finding {

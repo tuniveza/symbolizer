@@ -537,7 +537,7 @@ func init() {
 		"alt+c":       func(m *Model) tea.Cmd { return m.closeTab() },
 		"alt+n":       func(m *Model) tea.Cmd { return m.newFile() },
 		"tab":         func(m *Model) tea.Cmd { return m.tabSwitch() },
-		"shift+tab":   func(m *Model) tea.Cmd { return m.tabSwitchBack() },
+		"altgr+tab":   func(m *Model) tea.Cmd { return m.tabSwitchBack() },
 		"ctrl+tab":    func(m *Model) tea.Cmd { return m.ctrlTab() },
 		"ctrl+pgup":   func(m *Model) tea.Cmd { return m.nextTab(-1) },
 		"ctrl+pgdown": func(m *Model) tea.Cmd { return m.nextTab(1) },
@@ -549,6 +549,7 @@ func init() {
 		"ctrl+j":         func(m *Model) tea.Cmd { m.newline(); return nil }, // some terminals send Enter as this
 		"alt+tab":        func(m *Model) tea.Cmd { m.tab(); return nil },     // a real Tab: indent
 		"alt+shift+tab":  func(m *Model) tea.Cmd { m.outdent(); return nil },
+		"shift+tab":      func(m *Model) tea.Cmd { m.outdent(); return nil },
 		"backspace":      func(m *Model) tea.Cmd { m.buf.Backspace(); m.ensureVisible(); return nil },
 		"delete":         func(m *Model) tea.Cmd { m.buf.DeleteForward(); m.ensureVisible(); return nil },
 		"alt+backspace":  func(m *Model) tea.Cmd { m.deleteWord(-1); return nil },
@@ -578,7 +579,7 @@ func init() {
 }
 
 func (m *Model) editKey(k tea.Key) tea.Cmd {
-	name := keyName(k)
+	name := m.altGrName(k)
 	if cmd, ok := m.tabChordKey(name); ok {
 		return cmd
 	}

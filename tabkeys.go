@@ -40,7 +40,7 @@ func (m *Model) tabSwitch() tea.Cmd {
 	return cmd
 }
 
-// tabSwitchBack is Shift+Tab: one file tab against the common direction.
+// tabSwitchBack is AltGr+Tab: one file tab against the common direction.
 func (m *Model) tabSwitchBack() tea.Cmd {
 	if len(m.tabs) < 2 {
 		m.say("Only one file is open. Alt+N opens a new tab, Alt+O opens a file.")
@@ -48,7 +48,7 @@ func (m *Model) tabSwitchBack() tea.Cmd {
 	}
 	m.tabChord = ""
 	cmd := m.nextTab(-m.tabDir)
-	m.say("Shift+Tab goes " + dirWord(-m.tabDir) + ", Tab goes " + dirWord(m.tabDir) + ".")
+	m.say("AltGr+Tab goes " + dirWord(-m.tabDir) + ", Tab goes " + dirWord(m.tabDir) + ".")
 	return cmd
 }
 

@@ -491,28 +491,33 @@ func TestIndentSelection(t *testing.T) {
 	want(t, m, "    a\n    b", Pos{1, 5})
 	press(m, "alt+shift+tab")
 	want(t, m, "a\nb", Pos{1, 1})
+	press(m, "alt+tab")
+	press(m, "shift+tab")
+	want(t, m, "a\nb", Pos{1, 1})
 }
 
-func TestShiftTabGoesTheOtherWay(t *testing.T) {
+func TestAltGrTabGoesTheOtherWay(t *testing.T) {
 	m := newTest(t, "one")
 	m.addTab(newDraft())
 	m.addTab(newDraft()) // three tabs, the third on screen
+	m.altGr.down = true  // kitty: AltGr held, then Tab
 	m.tabDir = 1
-	press(m, "shift+tab")
+	press(m, "tab")
 	if m.cur != 1 {
-		t.Fatalf("Shift+Tab with Tab going right: tab %d, want 1", m.cur)
+		t.Fatalf("AltGr+Tab with Tab going right: tab %d, want 1", m.cur)
 	}
 	m.tabDir = -1
-	press(m, "shift+tab")
+	press(m, "tab")
 	if m.cur != 2 {
-		t.Fatalf("Shift+Tab with Tab going left: tab %d, want 2", m.cur)
+		t.Fatalf("AltGr+Tab with Tab going left: tab %d, want 2", m.cur)
 	}
-	press(m, "shift+tab") // wraps round
+	press(m, "tab") // wraps round
 	if m.cur != 0 {
-		t.Fatalf("Shift+Tab did not wrap: tab %d, want 0", m.cur)
+		t.Fatalf("AltGr+Tab did not wrap: tab %d, want 0", m.cur)
 	}
+	m.altGr.down = false
 	if m.buf.Text() != "one" {
-		t.Fatal("Shift+Tab changed the text")
+		t.Fatal("AltGr+Tab changed the text")
 	}
 }
 
