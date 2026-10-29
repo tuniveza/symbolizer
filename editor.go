@@ -99,6 +99,12 @@ type Model struct {
 	tabMode     bool
 	tabModeFrom int
 
+	// what was last written to the last-open file (lastopen.go)
+	lastOpen struct {
+		text, files string
+		at          time.Time
+	}
+
 	// Modes (modes.go)
 	mode      int
 	modesOpen bool
@@ -241,6 +247,7 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	if save := m.wantSave(); save != nil {
 		cmd = tea.Batch(cmd, save)
 	}
+	m.noteLastOpen()
 	return m, cmd
 }
 

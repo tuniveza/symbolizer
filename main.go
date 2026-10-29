@@ -1,6 +1,7 @@
 // Symbolizer: a text editor for any terminal, in the Emberistal theme.
 //
-//	sy                 start with a new file
+//	sy                 open again what was open when sy last closed
+//	sy --new           start with today's session instead
 //	sy notes.txt       open (or create) notes.txt
 //	sy notes.txt +42   open notes.txt at line 42
 //	sy -t FOLDER       open the text files in a folder and its folders as tabs
@@ -20,7 +21,7 @@ import (
 const version = "0.1.0"
 
 func main() {
-	path, line, startMode, tabs := "", 0, 0, false
+	path, line, startMode, tabs, fresh := "", 0, 0, false, false
 	for i, a := range os.Args[1:] {
 		// The first word can be a mode: sy design, sy slide, sy diary.
 		// (A file with one of these names opens with ./design.)
@@ -31,7 +32,8 @@ func main() {
 		switch {
 		case a == "-h" || a == "--help":
 			fmt.Println("Symbolizer " + version + ", a text editor in the Emberistal theme.\n\n" +
-				"  sy                 Text mode: carry on with today's session (a draft with no name)\n" +
+				"  sy                 open again what was open when sy last closed\n" +
+				"  sy --new           Text mode: carry on with today's session (a draft with no name)\n" +
 				"  sy design          Design mode   (zsh: de)\n" +
 				"  sy slide           Slides mode   (zsh: sli)\n" +
 				"  sy diary           Diary mode    (zsh: syd, di)\n" +
@@ -50,6 +52,8 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case a == "-n" || a == "--new":
+			fresh = true
 		case a == "-t" || a == "--tabs":
 			tabs = true
 		case a == "-v" || a == "--version":
@@ -72,6 +76,9 @@ func main() {
 	if tabs && m.tree != nil && m.openFolder(m.tree.root) {
 		m.closeTree()
 	}
+	if path == "" && startMode == 0 && !fresh {
+		m.reopenLast()
+	}
 	if startMode != 0 {
 		m.mode = startMode
 		m.say(modes[startMode].Icon() + "  " + modes[startMode].name + " mode. Alt+M switches modes.")
@@ -84,7 +91,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "sy: closed with unsaved changes. They are in "+saved)
 		}
 	}
-	m.storeTab()
+	m.saveLastOpen()
 	for _, t := range m.tabs {
 		if t.buf.Draft && fileExists(t.buf.Path) {
 			fmt.Println("Session kept: " + shortPath(t.buf.Path) + "   (sy carries on with it for 24 hours; Alt+L lists all sessions)")

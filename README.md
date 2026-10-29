@@ -47,7 +47,8 @@ It runs in any terminal. It looks its best in **[kitty](https://sw.kovidgoyal.ne
 ## ✦ Start
 
 ```text
-sy                 carry on with today's session (a draft with no name)
+sy                 open again what was open last time: the files, the project, where you were
+sy --new           carry on with today's session (a draft with no name)
 sy notes.txt       open (or create) notes.txt
 sy notes.txt +42   open notes.txt at line 42
 sy ~/projects/web  open a folder as a project, with the file manager

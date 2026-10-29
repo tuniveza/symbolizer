@@ -1103,6 +1103,58 @@ func TestTabMode(t *testing.T) {
 	}
 }
 
+func TestReopenLast(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", filepath.Join(dir, "data"))
+	var paths []string
+	for _, n := range []string{"a.txt", "b go.txt", "c.txt"} {
+		p := filepath.Join(dir, n)
+		os.WriteFile(p, []byte("one\ntwo\nthree\n"), 0o644)
+		paths = append(paths, p)
+	}
+	// Nothing saved yet: sy starts as it always has.
+	m0 := newTest(t, "")
+	if m0.reopenLast() {
+		t.Fatal("reopened with nothing saved")
+	}
+	m, _ := NewModel(dir, 0) // a project
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	for _, p := range paths {
+		m.openPath(p)
+	}
+	m.switchTab(1)
+	m.buf.Cursor = Pos{2, 3}
+	m.saveLastOpen()
+	saved, _ := os.ReadFile(lastOpenPath())
+	if want := "project " + dir + "\nfile 0 0 0 " + paths[0] + "\nfile 2 3 0 " + paths[1] + "\nfile 0 0 0 " + paths[2] +
+		"\ncurrent " + paths[1] + "\n"; string(saved) != want {
+		t.Fatalf("last-open file:\n%s\nwant:\n%s", saved, want)
+	}
+	os.Remove(paths[2]) // gone by next time
+
+	m2, _ := NewModel("", 0)
+	m2.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	if !m2.reopenLast() {
+		t.Fatal("did not reopen")
+	}
+	var names []string
+	for i := range m2.tabs {
+		names = append(names, m2.tabName(i))
+	}
+	if strings.Join(names, ",") != "a.txt,b go.txt" {
+		t.Fatalf("tabs = %v, want a.txt and b go.txt (c.txt is gone, no blank tab)", names)
+	}
+	if m2.buf.Path != paths[1] || m2.buf.Cursor != (Pos{2, 3}) {
+		t.Fatalf("on %s at %v, want b go.txt at line 3 col 4", m2.buf.Path, m2.buf.Cursor)
+	}
+	if m2.tree == nil || m2.tree.root != dir || m2.showTree {
+		t.Fatal("the project should be set again, with the file manager closed")
+	}
+	if !strings.Contains(m2.msg, "Opened again") {
+		t.Fatalf("message = %q", m2.msg)
+	}
+}
+
 func TestTabModeRows(t *testing.T) {
 	m := newTest(t, "x")
 	m.Update(tea.WindowSizeMsg{Width: 60, Height: 24})

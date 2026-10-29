@@ -320,8 +320,8 @@ def main():
     t.close()
 
     # ---- sessions: sy with no file ----
-    s1 = Term([])
-    check("sy alone starts a new session (status bar), with a made-up name on its tab",
+    s1 = Term(["--new"])
+    check("sy --new starts a new session (status bar), with a made-up name on its tab",
           "new session" in s1.row(ROWS - 2) and ".txt" in s1.row(1), (s1.row(1), s1.row(ROWS - 2)))
     s1.type("#include <stdio.h>\nint main(void) {\nprintf(\"hi\");\n}")
     time.sleep(0.4)
@@ -331,7 +331,7 @@ def main():
     sessions = os.listdir(os.path.join(FAKE_HOME, "data", "symbolizer", "sessions"))
     check("the session was kept on disk", len(sessions) == 1, sessions)
     s2 = Term([], cwd=FAKE_HOME)
-    check("sy again carries on with today's session", "printf" in s2.text(), s2.text()[:200])
+    check("sy again opens today's session again (it was open last)", "printf" in s2.text(), s2.text()[:200])
     # Ctrl+S names it; .c is added because it looks like C
     s2.key("ctrl+s")
     check("Ctrl+S asks for a name and says .c", "Name it (C, .c is added)" in s2.row(ROWS - 1), s2.row(ROWS - 1))
@@ -361,7 +361,13 @@ def main():
     p.send("\x1b1", 0.3)                            # Alt+1
     check("Alt+1 goes to the first tab", "Go" in p.row(ROWS - 2), p.row(ROWS - 2))
     p.send("\x1b[<0;30;2M\x1b[<0;30;2m", 0.3)       # mouse click on the tab bar
-    p.close()
+    p.close()                                         # closed without Alt+Q, like closing the window
+    r = Term([], cwd=FAKE_HOME)
+    check("sy alone opens again what was open last: both files, and the project",
+          "main.go" in r.row(1) and "README.md" in r.row(1) and "Project proj" in r.row(ROWS - 1),
+          (r.row(1), r.row(ROWS - 1)))
+    r.send("\x1bq", 0.3)
+    r.close()
     check("tabs and file manager worked on a copy only", open(os.path.join(proj, "README.md")).read() == "# Project\n")
 
     # ---- kitty: real held keys ----
@@ -472,8 +478,8 @@ def main():
         check(f"sy {word} starts in {name} mode", f"{name} mode" in w.text() and name in w.row(0), w.row(0))
         w.send("\x1bq", 0.2)
         w.close()
-    w = Term([])
-    check("sy alone starts in Text mode", "Text" in w.row(0) and "mode" not in w.row(ROWS // 2), w.row(0))
+    w = Term(["--new"])
+    check("sy --new starts in Text mode", "Text" in w.row(0) and "mode" not in w.row(ROWS // 2), w.row(0))
     w.close()
 
     # ---- the line from the screenshot: Left / Right steps ----

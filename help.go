@@ -57,7 +57,8 @@ var helpGroups = []helpGroup{
 		{"ø  or Alt + O", "open a file: the file manager"},
 	}},
 	{"Sessions (drafts with no name)", false, []helpLine{
-		{"sy", "carry on with today's session, or start a new one"},
+		{"sy", "open again what was open when sy last closed (files, project, places)"},
+		{"sy --new", "carry on with today's session, or start a new one"},
 		{"24 hours", "a session with no change for 24 hours is concluded:"},
 		{"", "  sy starts a new one; the old one stays in Alt+L"},
 	}},
