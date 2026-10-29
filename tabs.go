@@ -132,7 +132,14 @@ func (m *Model) tabName(i int) string {
 	case b.Path == "":
 		return "new file"
 	}
-	return filepath.Base(b.Path)
+	// Two open files with one name (a README in each folder) show their folder.
+	name := filepath.Base(b.Path)
+	for j := range m.tabs {
+		if o := m.tabBuf(j); j != i && !o.Draft && filepath.Base(o.Path) == name {
+			return filepath.Join(filepath.Base(filepath.Dir(b.Path)), name)
+		}
+	}
+	return name
 }
 
 // tabBar draws the open files along the top. tabHits remembers where each

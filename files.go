@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -174,41 +175,59 @@ func (m *Model) openPath(path string) tea.Cmd {
 }
 
 // maxFolderTabs is the most files one folder opens as tabs.
-const maxFolderTabs = 40
+const maxFolderTabs = 50
 
-// openFolder opens the text files in dir (not its subfolders) as tabs,
-// in the file manager's order, and shows the first one. It says whether
-// any opened.
+// openFolder opens the text files in dir and its subfolders as tabs: each
+// folder's own files first, then its subfolders, A to Z. It shows the first
+// one and says whether any opened.
 func (m *Model) openFolder(dir string) bool {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		m.sayErr("Could not read the folder: " + err.Error())
-		return false
-	}
-	sort.Slice(entries, func(i, j int) bool {
-		return strings.ToLower(entries[i].Name()) < strings.ToLower(entries[j].Name())
-	})
 	hidden := m.tree != nil && m.tree.showHidden
 	var paths []string
-	skipped, over := 0, 0
-	for _, e := range entries {
-		name := e.Name()
-		if !hidden && strings.HasPrefix(name, ".") {
-			continue
+	skipped, full := 0, false
+	var walk func(d string) error
+	walk = func(d string) error {
+		entries, err := os.ReadDir(d)
+		if err != nil {
+			return err
 		}
-		p := filepath.Join(dir, name)
-		info, err := os.Stat(p) // follows links
-		if err != nil || info.IsDir() {
-			continue
+		sort.Slice(entries, func(i, j int) bool {
+			return strings.ToLower(entries[i].Name()) < strings.ToLower(entries[j].Name())
+		})
+		var subs []string
+		for _, e := range entries {
+			name := e.Name()
+			if !hidden && strings.HasPrefix(name, ".") {
+				continue
+			}
+			p := filepath.Join(d, name)
+			info, err := os.Stat(p) // follows links
+			switch {
+			case err != nil:
+			case info.IsDir():
+				// Linked folders are left out, so a link to a parent cannot loop.
+				if !skipDirs[name] && e.Type()&fs.ModeSymlink == 0 {
+					subs = append(subs, p)
+				}
+			case !textFile(p, info.Size()):
+				skipped++
+			case len(paths) == maxFolderTabs:
+				full = true
+				return nil
+			default:
+				paths = append(paths, p)
+			}
 		}
-		switch {
-		case !textFile(p, info.Size()):
-			skipped++
-		case len(paths) == maxFolderTabs:
-			over++
-		default:
-			paths = append(paths, p)
+		for _, sub := range subs {
+			if full {
+				break
+			}
+			walk(sub) // an unreadable subfolder is left out
 		}
+		return nil
+	}
+	if err := walk(dir); err != nil {
+		m.sayErr("Could not read the folder: " + err.Error())
+		return false
 	}
 	if len(paths) == 0 {
 		m.say("No text files in " + shortPath(dir) + ", so no tabs were opened.")
@@ -222,8 +241,8 @@ func (m *Model) openFolder(dir string) bool {
 	if len(paths) == 1 {
 		msg = "Opened 1 file from " + filepath.Base(dir) + " as a tab."
 	}
-	if over > 0 {
-		msg += fmt.Sprintf(" %d more not opened (%d at most).", over, maxFolderTabs)
+	if full {
+		msg += fmt.Sprintf(" Stopped at %d, the most at once.", maxFolderTabs)
 	}
 	if skipped > 0 {
 		msg += fmt.Sprintf(" Skipped %d that are not text or too big.", skipped)

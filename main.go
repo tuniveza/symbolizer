@@ -3,7 +3,7 @@
 //	sy                 start with a new file
 //	sy notes.txt       open (or create) notes.txt
 //	sy notes.txt +42   open notes.txt at line 42
-//	sy -t FOLDER       open the folder's text files as tabs
+//	sy -t FOLDER       open the text files in a folder and its folders as tabs
 //
 // Press F1 inside for every key.
 package main
@@ -39,7 +39,7 @@ func main() {
 				"  sy draw           Draw mode     (zsh: dr)\n" +
 				"  sy FILE            open (or create) FILE\n" +
 				"  sy FOLDER          open FOLDER as a project, with the file manager\n" +
-				"  sy -t [FOLDER]     open the text files in FOLDER (or here) as tabs\n" +
+				"  sy -t [FOLDER]     open the text files in FOLDER (or here), subfolders too, as tabs\n" +
 				"  sy FILE +LINE      open FILE at line LINE\n" +
 				"  sy --keys          check which keys reach Symbolizer\n\n" +
 				"Inside, press F1 to see every key. Alt+Q quits.")

@@ -795,13 +795,22 @@ func TestFileManager(t *testing.T) {
 
 func TestOpenFolderAsTabs(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "sub"), 0o755)
-	os.WriteFile(filepath.Join(dir, "sub", "deep.txt"), []byte("deep\n"), 0o644)
-	os.WriteFile(filepath.Join(dir, "b.go"), []byte("package b\n"), 0o644)
-	os.WriteFile(filepath.Join(dir, "A.md"), []byte("# a\n"), 0o644)
-	os.WriteFile(filepath.Join(dir, ".hidden"), []byte("x\n"), 0o644)
-	os.WriteFile(filepath.Join(dir, "pic.png"), []byte("\x89PNG\r\n\x1a\n\x00\x00"), 0o644)
-	os.WriteFile(filepath.Join(dir, "latin1.txt"), []byte("caf\xe9\n"), 0o644)
+	write := func(rel, text string) {
+		p := filepath.Join(dir, rel)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		os.WriteFile(p, []byte(text), 0o644)
+	}
+	write("sub/deep.txt", "deep\n")
+	write("sub/inner/notes.txt", "inner\n")
+	write("notes.txt", "top\n")
+	write("b.go", "package b\n")
+	write("A.md", "# a\n")
+	write(".hidden", "x\n")
+	write(".git/config", "x\n")
+	write("node_modules/x.js", "x\n")
+	write("pic.png", "\x89PNG\r\n\x1a\n\x00\x00")
+	write("latin1.txt", "caf\xe9\n")
+	os.Symlink(dir, filepath.Join(dir, "sub", "loop"))
 	m, err := NewModel(dir, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -810,29 +819,45 @@ func TestOpenFolderAsTabs(t *testing.T) {
 	press(m, "shift+enter") // on the top row: the project folder itself
 	var names []string
 	for i := range m.tabs {
-		names = append(names, filepath.Base(m.tabBuf(i).Path))
+		names = append(names, m.tabName(i))
 	}
-	if strings.Join(names, " ") != "A.md b.go" {
-		t.Fatalf("tabs = %v, want A.md b.go (no subfolder, hidden, binary or non-UTF-8 files)", names)
+	// Own files first, then subfolders; one name twice shows its folder.
+	want := "A.md b.go " + filepath.Base(dir) + "/notes.txt deep.txt inner/notes.txt"
+	if strings.Join(names, " ") != want {
+		t.Fatalf("tabs = %v, want %s", names, want)
 	}
 	if m.cur != 0 || m.showTree {
 		t.Fatalf("should show the first tab with the file manager closed (cur %d, tree %v)", m.cur, m.showTree)
 	}
-	if !strings.Contains(m.msg, "Opened 2 files") || !strings.Contains(m.msg, "Skipped 2") {
+	if !strings.Contains(m.msg, "Opened 5 files") || !strings.Contains(m.msg, "Skipped 2") {
 		t.Fatalf("message = %q", m.msg)
 	}
-	// Again on a file inside sub: opens sub's files, keeps the open ones.
+	// Again on a file inside sub: its files are open already, so it shows them.
 	press(m, "alt+o")
 	m.tree.reveal(filepath.Join(dir, "sub", "deep.txt"))
 	press(m, "ctrl+enter")
-	if len(m.tabs) != 3 || filepath.Base(m.buf.Path) != "deep.txt" {
+	if len(m.tabs) != 5 || filepath.Base(m.buf.Path) != "deep.txt" {
 		t.Fatalf("second folder: %d tabs, showing %s", len(m.tabs), m.buf.Path)
 	}
 	// A folder with nothing to open says so and leaves the tabs alone.
 	empty := filepath.Join(dir, "sub", "empty")
 	os.MkdirAll(empty, 0o755)
-	if m.openFolder(empty) || len(m.tabs) != 3 {
+	if m.openFolder(empty) || len(m.tabs) != 5 {
 		t.Fatal("an empty folder should open no tabs")
+	}
+}
+
+func TestOpenFolderStopsAtLimit(t *testing.T) {
+	dir := t.TempDir()
+	for i := range maxFolderTabs + 5 {
+		os.WriteFile(filepath.Join(dir, "f"+strconv.Itoa(100+i)+".txt"), []byte("x\n"), 0o644)
+	}
+	m, err := NewModel(dir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.openFolder(dir) || len(m.tabs) != maxFolderTabs || !strings.Contains(m.msg, "Stopped at") {
+		t.Fatalf("%d tabs, message %q", len(m.tabs), m.msg)
 	}
 }
 
