@@ -296,6 +296,12 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 			return nil
 		}
 		return m.treeOpen(n.path)
+	case "shift+enter", "ctrl+enter":
+		// Every text file in the chosen folder (or the chosen file's folder) as tabs.
+		if m.openFolder(m.treeFolder()) {
+			m.closeTree()
+		}
+		return nil
 	case "left":
 		if finding {
 			return nil

@@ -68,6 +68,8 @@ var helpGroups = []helpGroup{
 		{"sy FOLDER", "open a folder as a project"},
 		{"type letters", "find a file anywhere in the project"},
 		{"Enter / Right", "open a file, or open / close a folder"},
+		{"Shift + Enter", "open every text file in this folder as tabs"},
+		{"sy -t FOLDER", "the same from the terminal (sy -t alone: this folder)"},
 		{"Left", "close a folder (on the top row: go up a folder)"},
 		{"Ctrl + N / F7", "new file / new folder here"},
 		{"F2 / Delete", "rename / move to the Trash (asks first)"},

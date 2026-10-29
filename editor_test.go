@@ -793,6 +793,49 @@ func TestFileManager(t *testing.T) {
 	}
 }
 
+func TestOpenFolderAsTabs(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "sub"), 0o755)
+	os.WriteFile(filepath.Join(dir, "sub", "deep.txt"), []byte("deep\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "b.go"), []byte("package b\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "A.md"), []byte("# a\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, ".hidden"), []byte("x\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "pic.png"), []byte("\x89PNG\r\n\x1a\n\x00\x00"), 0o644)
+	os.WriteFile(filepath.Join(dir, "latin1.txt"), []byte("caf\xe9\n"), 0o644)
+	m, err := NewModel(dir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	press(m, "shift+enter") // on the top row: the project folder itself
+	var names []string
+	for i := range m.tabs {
+		names = append(names, filepath.Base(m.tabBuf(i).Path))
+	}
+	if strings.Join(names, " ") != "A.md b.go" {
+		t.Fatalf("tabs = %v, want A.md b.go (no subfolder, hidden, binary or non-UTF-8 files)", names)
+	}
+	if m.cur != 0 || m.showTree {
+		t.Fatalf("should show the first tab with the file manager closed (cur %d, tree %v)", m.cur, m.showTree)
+	}
+	if !strings.Contains(m.msg, "Opened 2 files") || !strings.Contains(m.msg, "Skipped 2") {
+		t.Fatalf("message = %q", m.msg)
+	}
+	// Again on a file inside sub: opens sub's files, keeps the open ones.
+	press(m, "alt+o")
+	m.tree.reveal(filepath.Join(dir, "sub", "deep.txt"))
+	press(m, "ctrl+enter")
+	if len(m.tabs) != 3 || filepath.Base(m.buf.Path) != "deep.txt" {
+		t.Fatalf("second folder: %d tabs, showing %s", len(m.tabs), m.buf.Path)
+	}
+	// A folder with nothing to open says so and leaves the tabs alone.
+	empty := filepath.Join(dir, "sub", "empty")
+	os.MkdirAll(empty, 0o755)
+	if m.openFolder(empty) || len(m.tabs) != 3 {
+		t.Fatal("an empty folder should open no tabs")
+	}
+}
+
 func TestCtrlSSavesAltSStartAltQQuits(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "keys.txt")
 	m, _ := NewModel(path, 0)

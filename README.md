@@ -51,6 +51,7 @@ sy                 carry on with today's session (a draft with no name)
 sy notes.txt       open (or create) notes.txt
 sy notes.txt +42   open notes.txt at line 42
 sy ~/projects/web  open a folder as a project, with the file manager
+sy -t ~/notes      open every text file in a folder as tabs
 sy diary           Diary mode
 sy design          Design mode   (also: slide, book, draw)
 sy --keys          show what each key does
@@ -93,6 +94,7 @@ A box that floats over the text, with an icon for each kind of file.
 | **Alt + O**, **AltGr + O** (ø), or tap **AltGr** twice | open the file manager |
 | **Alt + E**, **AltGr + E**, or **Esc** | close it |
 | **Enter** / **Right** | open a file, or open a folder |
+| **Shift + Enter** | open every text file in that folder as tabs |
 | **Ctrl + N** · **F7** · **F2** · **Del** | new file · new folder · rename · move to the Trash |
 
 <div align="center">

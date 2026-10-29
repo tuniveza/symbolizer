@@ -3,6 +3,7 @@
 //	sy                 start with a new file
 //	sy notes.txt       open (or create) notes.txt
 //	sy notes.txt +42   open notes.txt at line 42
+//	sy -t FOLDER       open the folder's text files as tabs
 //
 // Press F1 inside for every key.
 package main
@@ -19,7 +20,7 @@ import (
 const version = "0.1.0"
 
 func main() {
-	path, line, startMode := "", 0, 0
+	path, line, startMode, tabs := "", 0, 0, false
 	for i, a := range os.Args[1:] {
 		// The first word can be a mode: sy design, sy slide, sy diary.
 		// (A file with one of these names opens with ./design.)
@@ -38,6 +39,7 @@ func main() {
 				"  sy draw           Draw mode     (zsh: dr)\n" +
 				"  sy FILE            open (or create) FILE\n" +
 				"  sy FOLDER          open FOLDER as a project, with the file manager\n" +
+				"  sy -t [FOLDER]     open the text files in FOLDER (or here) as tabs\n" +
 				"  sy FILE +LINE      open FILE at line LINE\n" +
 				"  sy --keys          check which keys reach Symbolizer\n\n" +
 				"Inside, press F1 to see every key. Alt+Q quits.")
@@ -48,6 +50,8 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case a == "-t" || a == "--tabs":
+			tabs = true
 		case a == "-v" || a == "--version":
 			fmt.Println("Symbolizer " + version)
 			return
@@ -57,10 +61,16 @@ func main() {
 			path = a
 		}
 	}
+	if tabs && path == "" {
+		path = "."
+	}
 	m, err := NewModel(path, line)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "sy: "+err.Error())
 		os.Exit(1)
+	}
+	if tabs && m.tree != nil && m.openFolder(m.tree.root) {
+		m.closeTree()
 	}
 	if startMode != 0 {
 		m.mode = startMode
