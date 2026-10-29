@@ -174,12 +174,15 @@ func (m *Model) openPath(path string) tea.Cmd {
 	return nil
 }
 
-// maxFolderTabs is the most files one folder opens as tabs.
+// maxFolderTabs is the most files one folder opens as tabs; folderScan is
+// how many it looks at to choose them.
 const maxFolderTabs = 50
+const folderScan = 2000
 
-// openFolder opens the text files in dir and its subfolders as tabs: each
-// folder's own files first, then its subfolders, A to Z. It shows the first
-// one and says whether any opened.
+// openFolder opens the text files in dir and its subfolders as tabs, the
+// most code-like kinds first (codeRank). Within a kind, each folder's own
+// files come first, then its subfolders, A to Z. It shows the first one and
+// says whether any opened.
 func (m *Model) openFolder(dir string) bool {
 	hidden := m.tree != nil && m.tree.showHidden
 	var paths []string
@@ -210,7 +213,7 @@ func (m *Model) openFolder(dir string) bool {
 				}
 			case !textFile(p, info.Size()):
 				skipped++
-			case len(paths) == maxFolderTabs:
+			case len(paths) == folderScan:
 				full = true
 				return nil
 			default:
@@ -233,6 +236,12 @@ func (m *Model) openFolder(dir string) bool {
 		m.say("No text files in " + shortPath(dir) + ", so no tabs were opened.")
 		return false
 	}
+	sort.SliceStable(paths, func(i, j int) bool {
+		return codeRank(filepath.Base(paths[i])) < codeRank(filepath.Base(paths[j]))
+	})
+	if len(paths) > maxFolderTabs {
+		paths, full = paths[:maxFolderTabs], true
+	}
 	for _, p := range paths {
 		m.openPath(p)
 	}
@@ -242,13 +251,57 @@ func (m *Model) openFolder(dir string) bool {
 		msg = "Opened 1 file from " + filepath.Base(dir) + " as a tab."
 	}
 	if full {
-		msg += fmt.Sprintf(" Stopped at %d, the most at once.", maxFolderTabs)
+		msg += fmt.Sprintf(" Stopped at %d, the most at once (code first).", maxFolderTabs)
 	}
 	if skipped > 0 {
 		msg += fmt.Sprintf(" Skipped %d that are not text or too big.", skipped)
 	}
 	m.say(msg)
 	return true
+}
+
+// codeRank orders file kinds by how much they matter when writing code:
+// web pages first, then scripts and styles, other code, build files, notes,
+// settings, data, and JSON and lock files last.
+func codeRank(name string) int {
+	lower := strings.ToLower(name)
+	switch lower {
+	case "makefile", "gnumakefile", "dockerfile", "containerfile", "justfile", "cmakelists.txt", "meson.build":
+		return 5
+	case "readme", "license", "licence", "copying", "changelog", "authors":
+		return 7
+	case "go.sum", "cargo.lock", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "uv.lock", "flake.lock":
+		return 12
+	}
+	switch strings.TrimPrefix(filepath.Ext(lower), ".") {
+	case "html", "htm", "xhtml", "vue", "svelte", "astro":
+		return 0
+	case "js", "mjs", "cjs", "jsx", "ts", "tsx", "mts", "cts":
+		return 1
+	case "css", "scss", "sass", "less", "styl":
+		return 2
+	case "go", "py", "pyw", "pyi", "rs", "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "java", "kt", "kts",
+		"swift", "rb", "php", "cs", "lua", "dart", "zig", "ex", "exs", "scala", "hs", "ml", "clj", "nim",
+		"jl", "r", "pl", "sql", "glsl", "wgsl", "vim", "el", "gd":
+		return 3
+	case "sh", "bash", "zsh", "fish", "ps1", "bat", "cmd":
+		return 4
+	case "mod", "gradle", "cmake", "mk", "nix":
+		return 5
+	case "md", "markdown", "mdx", "rst", "txt", "adoc", "org", "tex":
+		return 7
+	case "toml", "yaml", "yml", "ini", "cfg", "conf", "env", "properties", "desktop", "service", "rasi":
+		return 8
+	case "xml", "svg", "plist":
+		return 9
+	case "csv", "tsv", "log":
+		return 10
+	case "json", "jsonc", "json5", "jsonl", "ndjson", "map":
+		return 11
+	case "lock", "sum":
+		return 12
+	}
+	return 6 // a kind not listed: after the code, before the notes
 }
 
 // textFile says whether a file looks like text worth a tab: not too big,

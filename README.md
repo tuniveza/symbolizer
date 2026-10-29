@@ -94,7 +94,7 @@ A box that floats over the text, with an icon for each kind of file.
 | **Alt + O**, **AltGr + O** (ø), or tap **AltGr** twice | open the file manager |
 | **Alt + E**, **AltGr + E**, or **Esc** | close it |
 | **Enter** / **Right** | open a file, or open a folder |
-| **Shift + Enter** | open every text file in that folder and its folders as tabs |
+| **Shift + Enter** | open every text file in that folder and its folders as tabs: web pages, scripts and other code first, JSON and lock files last |
 | **AltGr + P** (þ) or **Alt + P** | make the chosen folder the project |
 | **Ctrl + N** · **F7** · **F2** · **Del** | new file · new folder · rename · move to the Trash |
 
