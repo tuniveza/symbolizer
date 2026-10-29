@@ -73,6 +73,9 @@ func (m *Model) View() tea.View {
 		sb.WriteString(m.bottomLine())
 	}
 	content := sb.String()
+	if m.tabMode {
+		content = m.overlayTabRows(content)
+	}
 	if m.modesOpen {
 		content = m.overlay(content, m.modesBox())
 	}
@@ -95,7 +98,7 @@ func (m *Model) View() tea.View {
 	v.ForegroundColor = hex(cText)
 	name := m.tabName(m.cur) + " — Symbolizer"
 	v.WindowTitle = name
-	if !m.help && m.picker == nil && !m.modesOpen && !m.themeOpen && modes[m.mode].ready && !m.diaryViewer() && !(m.treeFocus && m.showTree && m.prompt == pNone) {
+	if !m.help && m.picker == nil && !m.modesOpen && !m.themeOpen && !m.tabMode && modes[m.mode].ready && !m.diaryViewer() && !(m.treeFocus && m.showTree && m.prompt == pNone) {
 		v.Cursor = m.cursor()
 	}
 	return v
@@ -187,12 +190,12 @@ func (m *Model) statusBar() string {
 	}
 	for _, t := range tries {
 		l := left + t.state
-		right := t.sign + m.lampSign() + m.tabSign() + stStatus.Render("  ") + stStatusDim.Render(strings.Join(t.parts, "  ·  ")) + syRight
+		right := t.sign + m.lampSign() + stStatus.Render("  ") + stStatusDim.Render(strings.Join(t.parts, "  ·  ")) + syRight
 		if gap := m.width - lipgloss.Width(l) - lipgloss.Width(right); gap >= 1 {
 			return l + stStatus.Render(strings.Repeat(" ", gap)) + right
 		}
 	}
-	signs := small + m.tabSign()
+	signs := small
 	return fit(left+short, m.width-lipgloss.Width(signs)-lipgloss.Width(syRight), stStatus) + signs + syRight
 }
 

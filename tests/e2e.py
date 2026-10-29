@@ -409,7 +409,7 @@ def main():
           and "ø" not in u.text(), u.text()[:300])
     u.close()
 
-    # ---- tabs: Alt+Tab, Ctrl+Tab, Alt+N, Alt+C (kitty's codes) ----
+    # ---- tabs: tab mode (AltGr+Tab), Alt+N, Alt+C (kitty's codes) ----
     proj2 = os.path.join(tmp, "proj2")
     os.makedirs(proj2)
     for n in ("a.txt", "b.txt", "c.txt"):
@@ -422,14 +422,17 @@ def main():
         k2.key("enter", wait=0.3)
     on = lambda: k2.row(ROWS - 2)
     check("three files open in three tabs", "c.txt" in on() and "3 c.txt" in k2.row(1), k2.row(1))
-    k2.send("\t", 0.6)                               # Tab
-    check("Tab goes right (wraps to the first tab)", "a.txt" in on(), on())
-    k2.send("\t\x1b[D", 0.6)                         # Tab, then Left
-    check("Tab then Left goes left instead", "c.txt" in on(), on())
-    k2.send("\x1b[9;5u\x1b[1;5D", 0.6)               # Ctrl+Tab, then Ctrl+Left
-    check("Ctrl+Tab then Ctrl+Left sets the direction", "now goes left" in k2.row(ROWS - 1), k2.row(ROWS - 1))
-    k2.send("\t", 0.6)                               # Tab
-    check("Tab now goes left", "b.txt" in on(), on())
+    altgr_tab = "\x1b[57453u\t\x1b[57453;1:3u"         # AltGr down, Tab, AltGr up
+    k2.send(altgr_tab, 0.5)
+    check("AltGr+Tab opens tab mode", "tabs" in on(), on())
+    k2.send("\x1b[C", 0.5)                           # Right
+    check("tab mode: Right goes round to the first tab", "a.txt" in on(), on())
+    k2.send("\x1b[D\x1b[D", 0.5)                     # Left, Left
+    check("tab mode: Left goes back", "b.txt" in on(), on())
+    k2.send("\r", 0.5)                               # Enter
+    check("Enter keeps the file and leaves tab mode", "b.txt" in on() and "tabs" not in on(), on())
+    k2.send(altgr_tab + "\x1b[D\x1b[27u", 0.8)       # AltGr+Tab, Left, Esc
+    check("Esc goes back to where tab mode started", "b.txt" in on(), on())
     k2.send("\x1b[9;3u", 0.3)                        # Alt+Tab
     time.sleep(0.3)
     check("Alt+Tab types a real Tab (indent)", open(os.path.join(proj2, "b.txt")).read() == "    b.txt\n",
@@ -443,10 +446,9 @@ def main():
     check("Alt+N opens a new tab with a made-up ember name", re.search(r"3 [a-z]+-[a-z]+\.txt", k2.row(1)) is not None, k2.row(1))
     k2.close()
 
-    # ---- modes (Alt+M) and the Tab sign ----
+    # ---- modes (Alt+M) ----
     md = Term([shot_file := os.path.join(tmp, "modes.txt")])
     md.type("keep me")
-    check("status bar shows the Tab sign (left was remembered from earlier)", "⇤ Tab ←" in md.row(ROWS - 2), md.row(ROWS - 2))
     md.send("\x1bm", 0.4)                             # Alt+M
     check("Alt+M shows the modes box", "M O D E S" in md.text() and "Design" in md.text() and "Draw" in md.text())
     md.send("2", 0.4)

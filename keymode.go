@@ -77,6 +77,9 @@ func (k keyMode) name() string {
 // alone, for a narrow window.
 func (m *Model) keyModeSign(short bool) string {
 	name := m.keys.name()
+	if m.tabMode {
+		name = "tabs"
+	}
 	var mark string
 	switch name {
 	case "movement":
@@ -85,6 +88,8 @@ func (m *Model) keyModeSign(short bool) string {
 		mark = icon("\U000f0652", "▍")
 	case "position":
 		mark = icon("\U000f05e7", "⌶")
+	case "tabs":
+		mark = icon("\U000f04e9", "⇆")
 	default:
 		mark = icon("\U000f03eb", "✎")
 	}

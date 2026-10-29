@@ -496,31 +496,6 @@ func TestIndentSelection(t *testing.T) {
 	want(t, m, "a\nb", Pos{1, 1})
 }
 
-func TestAltGrTabGoesTheOtherWay(t *testing.T) {
-	m := newTest(t, "one")
-	m.addTab(newDraft())
-	m.addTab(newDraft()) // three tabs, the third on screen
-	m.altGr.down = true  // kitty: AltGr held, then Tab
-	m.tabDir = 1
-	press(m, "tab")
-	if m.cur != 1 {
-		t.Fatalf("AltGr+Tab with Tab going right: tab %d, want 1", m.cur)
-	}
-	m.tabDir = -1
-	press(m, "tab")
-	if m.cur != 2 {
-		t.Fatalf("AltGr+Tab with Tab going left: tab %d, want 2", m.cur)
-	}
-	press(m, "tab") // wraps round
-	if m.cur != 0 {
-		t.Fatalf("AltGr+Tab did not wrap: tab %d, want 0", m.cur)
-	}
-	m.altGr.down = false
-	if m.buf.Text() != "one" {
-		t.Fatal("AltGr+Tab changed the text")
-	}
-}
-
 func TestHighlightRuns(t *testing.T) {
 	h := NewHighlighter("x.py", "")
 	lines := tokenise(h.lexer, "def f(x):\n    return 'hi'  # note")
@@ -1047,9 +1022,8 @@ func TestEszettSavesOSlashOpens(t *testing.T) {
 	want(t, m, "abc", Pos{0, 3})
 }
 
-func TestTabKeys(t *testing.T) {
+func TestTabMode(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
 	var paths []string
 	for _, n := range []string{"a.txt", "b.txt", "c.txt"} {
 		p := filepath.Join(dir, n)
@@ -1066,52 +1040,100 @@ func TestTabKeys(t *testing.T) {
 			t.Fatalf("on tab %d, want %d", m.cur+1, want+1)
 		}
 	}
-	m.switchTab(1) // on b
-	press(m, "tab")
-	at(2) // common direction: right
-	time.Sleep(tabArrowGap)
-	press(m, "tab")
-	at(0) // wraps round
-	// Tab then Left: the arrow decides, from where we started
+	altGrTab := func() {
+		m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyIsoLevel3Shift}))
+		press(m, "tab")
+		m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyIsoLevel3Shift}))
+	}
+	// Tab is a real Tab now.
 	m.switchTab(1)
+	press(m, "home")
 	press(m, "tab")
-	press(m, "left")
+	if m.buf.Text() != "    b.txt" || m.cur != 1 {
+		t.Fatalf("Tab should indent: %q on tab %d", m.buf.Text(), m.cur+1)
+	}
+	press(m, "shift+tab")
+	// AltGr+Tab, then arrows: the file on screen follows; Enter keeps it.
+	altGrTab()
+	if !m.tabMode || !strings.Contains(ansi.Strip(m.View().Content), "tabs") {
+		t.Fatal("AltGr+Tab did not open tab mode (or the status bar does not say tabs)")
+	}
+	press(m, "right")
+	at(2)
+	press(m, "right") // round the end
 	at(0)
-	press(m, "right") // still in the chord
-	at(1)
-	// Ctrl+Tab then Ctrl+Left: Tab now goes left, and it is remembered
-	press(m, "ctrl+tab")
-	press(m, "ctrl+left")
-	time.Sleep(tabArrowGap)
+	press(m, "left")
+	at(2)
+	press(m, "enter")
+	if m.tabMode {
+		t.Fatal("Enter did not leave tab mode")
+	}
+	at(2)
+	press(m, "left") // the cursor again, not tabs
+	at(2)
+	// Esc goes back to where it started.
+	altGrTab()
+	press(m, "home")
+	at(0)
+	press(m, "esc")
+	at(2)
+	// Any other key leaves the mode and does its job.
+	altGrTab()
+	press(m, "left")
+	typeStr(m, "x")
+	if m.tabMode || !strings.HasPrefix(m.buf.Text(), "x") || m.cur != 1 {
+		t.Fatalf("typing in tab mode: mode %v, text %q, tab %d", m.tabMode, m.buf.Text(), m.cur+1)
+	}
+	// AltGr+Tab with one file open says so.
+	m2 := newTest(t, "x")
+	altGr := func() { m2.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyIsoLevel3Shift})) }
+	altGr()
+	press(m2, "tab")
+	if m2.tabMode || !strings.Contains(m2.msg, "Only one file") {
+		t.Fatalf("one file: mode %v, message %q", m2.tabMode, m2.msg)
+	}
+}
+
+func TestTabModeRows(t *testing.T) {
+	m := newTest(t, "x")
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 24})
+	for range 11 {
+		m.addTab(newDraft())
+	}
+	rows := m.tabLayout()
+	if len(rows) < 2 {
+		t.Fatalf("12 tabs at 60 columns should need more than one row, got %d", len(rows))
+	}
+	for _, row := range rows {
+		last := row[len(row)-1]
+		if last.x+last.w > 60 {
+			t.Fatalf("a tab row is wider than the window: ends at %d", last.x+last.w)
+		}
+	}
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyIsoLevel3Shift}))
 	press(m, "tab")
-	at(0)
-	if loadSettings()["tab-direction"] != "left" {
-		t.Fatal("the direction was not remembered")
+	m.switchTab(0)
+	press(m, "down")
+	if r, _ := tabCellAt(rows, m.cur); r != 1 {
+		t.Fatalf("Down went to row %d, want 1", r)
 	}
-	m2, _ := NewModel(paths[0], 0)
-	if m2.tabDir != -1 {
-		t.Fatal("a new sy did not read the remembered direction")
+	press(m, "up")
+	if m.cur != 0 {
+		t.Fatalf("Up came back to tab %d, want 1", m.cur+1)
 	}
-	// after the chord ends, Left moves the cursor again
-	time.Sleep(tabArrowGap + 50*time.Millisecond)
-	m.buf.Cursor = Pos{0, 5}
-	press(m, "left")
-	want(t, m, m.buf.Text(), Pos{0, 2})
-	// Alt+Tab is a real Tab
-	m.buf.Cursor = Pos{0, 0}
-	press(m, "alt+tab")
-	if !strings.HasPrefix(m.buf.Text(), "    ") {
-		t.Fatalf("Alt+Tab did not indent: %q", m.buf.Text())
+	press(m, "up") // no row above: stays
+	if m.cur != 0 || !m.tabMode {
+		t.Fatal("Up on the first row should stay put in tab mode")
 	}
-	// Alt+N new tab, Alt+C closes it
-	n := len(m.tabs)
-	press(m, "alt+n")
-	if len(m.tabs) != n+1 || !m.buf.Draft {
-		t.Fatal("Alt+N did not open a new tab")
+	screen := strings.Split(ansi.Strip(m.View().Content), "\n")
+	if !strings.Contains(screen[1], " 1 ") || !strings.Contains(screen[2], strconv.Itoa(rows[1][0].i+1)+" ") {
+		t.Fatalf("the tab rows are not drawn:\n%s\n%s", screen[1], screen[2])
 	}
-	press(m, "alt+c")
-	if len(m.tabs) != n {
-		t.Fatal("Alt+C did not close the tab")
+	// A click on a tab in the second row chooses it and leaves the mode.
+	cell := rows[1][0]
+	m.Update(tea.MouseClickMsg(tea.Mouse{X: cell.x + 1, Y: 2, Button: tea.MouseLeft}))
+	if m.cur != cell.i || m.tabMode {
+		t.Fatalf("click: tab %d, mode %v", m.cur+1, m.tabMode)
 	}
 }
 
@@ -1146,26 +1168,6 @@ func TestModes(t *testing.T) {
 	press(m, "esc")
 	if m.modesOpen {
 		t.Fatal("Esc did not close the modes box")
-	}
-}
-
-func TestTabSign(t *testing.T) {
-	m := newTest(t, "x")
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	status := func() string {
-		lines := strings.Split(ansi.Strip(m.View().Content), "\n")
-		return lines[len(lines)-2]
-	}
-	if s := status(); !strings.Contains(s, "Tab") || !(strings.Contains(s, "→") || strings.Contains(s, "")) {
-		t.Fatalf("status bar has no Tab → sign: %q", s)
-	}
-	press(m, "ctrl+tab")
-	press(m, "ctrl+left")
-	if s := status(); !(strings.Contains(s, "←") || strings.Contains(s, "")) {
-		t.Fatalf("sign did not turn left: %q", s)
-	}
-	if !time.Now().Before(m.tabFlashUntil) {
-		t.Fatal("the sign should glow after changing direction")
 	}
 }
 

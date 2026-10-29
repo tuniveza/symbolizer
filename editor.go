@@ -95,19 +95,15 @@ type Model struct {
 
 	picker *picker // the Alt+L list
 
-	// Tab chords (tabkeys.go)
-	tabDir          int // the common direction for Alt+Tab: 1 right, -1 left
-	tabChord        string
-	tabChordUntil   time.Time
-	tabChordFrom    int
-	tabChordArrowed bool
+	// tab switch mode (tabmode.go)
+	tabMode     bool
+	tabModeFrom int
 
 	// Modes (modes.go)
-	mode          int
-	modesOpen     bool
-	modeSel       int
-	tabFlashUntil time.Time
-	weather       *weatherData // the info line's weather (statusinfo.go)
+	mode      int
+	modesOpen bool
+	modeSel   int
+	weather   *weatherData // the info line's weather (statusinfo.go)
 
 	// Colour switcher (themes.go)
 	themeOpen   bool
@@ -138,10 +134,6 @@ func NewModel(path string, line int) (*Model, error) {
 	m.input = newInput()
 	m.startDir, _ = os.Getwd()
 	m.emblem = newEmblem()
-	m.tabDir = 1
-	if loadSettings()["tab-direction"] == "left" {
-		m.tabDir = -1
-	}
 	buf := newDraft()
 	switch {
 	case path == "":
@@ -269,8 +261,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return nil
 	case saveTick:
 		return m.startSave()
-	case flashOver:
-		return nil // just draw again, so the Tab sign stops glowing
 	case lampsMsg:
 		return m.gotLamps(string(msg))
 	case plateMsg:
@@ -319,6 +309,11 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.keys.press(msg.Key(), m.altGr.down)
 		if m.altGrPress(msg.Key()) || isModifierOnly(msg.Key()) {
 			return nil // a modifier on its own does nothing (and keeps the message line)
+		}
+		if m.tabMode {
+			if cmd, done := m.tabModeKey(msg.Key()); done {
+				return cmd
+			}
 		}
 		if keyName(msg.Key()) == "alt+q" {
 			m.help = false
@@ -536,9 +531,7 @@ func init() {
 		"ctrl+w":      func(m *Model) tea.Cmd { return m.closeTab() },
 		"alt+c":       func(m *Model) tea.Cmd { return m.closeTab() },
 		"alt+n":       func(m *Model) tea.Cmd { return m.newFile() },
-		"tab":         func(m *Model) tea.Cmd { return m.tabSwitch() },
-		"altgr+tab":   func(m *Model) tea.Cmd { return m.tabSwitchBack() },
-		"ctrl+tab":    func(m *Model) tea.Cmd { return m.ctrlTab() },
+		"altgr+tab":   func(m *Model) tea.Cmd { return m.openTabMode() },
 		"ctrl+pgup":   func(m *Model) tea.Cmd { return m.nextTab(-1) },
 		"ctrl+pgdown": func(m *Model) tea.Cmd { return m.nextTab(1) },
 		"ctrl+n":      func(m *Model) tea.Cmd { return m.newFile() },
@@ -547,7 +540,8 @@ func init() {
 		// editing
 		"enter":          func(m *Model) tea.Cmd { m.newline(); return nil },
 		"ctrl+j":         func(m *Model) tea.Cmd { m.newline(); return nil }, // some terminals send Enter as this
-		"alt+tab":        func(m *Model) tea.Cmd { m.tab(); return nil },     // a real Tab: indent
+		"tab":            func(m *Model) tea.Cmd { m.tab(); return nil },     // indent
+		"alt+tab":        func(m *Model) tea.Cmd { m.tab(); return nil },     // the same
 		"alt+shift+tab":  func(m *Model) tea.Cmd { m.outdent(); return nil },
 		"shift+tab":      func(m *Model) tea.Cmd { m.outdent(); return nil },
 		"backspace":      func(m *Model) tea.Cmd { m.buf.Backspace(); m.ensureVisible(); return nil },
@@ -580,9 +574,6 @@ func init() {
 
 func (m *Model) editKey(k tea.Key) tea.Cmd {
 	name := m.altGrName(k)
-	if cmd, ok := m.tabChordKey(name); ok {
-		return cmd
-	}
 	if dir := ctrlArrow(name); dir != "" {
 		m.ctrlArrow(dir, k)
 		return nil
@@ -1378,6 +1369,9 @@ func (m *Model) mouseClick(ms tea.Mouse) tea.Cmd {
 	}
 	if ms.Button != tea.MouseLeft || m.prompt != pNone {
 		return nil
+	}
+	if m.tabMode {
+		return m.tabModeClick(ms.X, ms.Y)
 	}
 	if m.picker != nil {
 		m.picker = nil

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -348,29 +347,6 @@ func (m *Model) emptyModeRows(sb *strings.Builder) {
 		lipgloss.WithWhitespaceStyle(lipgloss.NewStyle().Background(hex(cBG))))
 	sb.WriteString(lipgloss.NewStyle().Background(hex(cBG)).Render(block))
 	sb.WriteByte('\n')
-}
-
-// ---- the Tab direction sign in the status bar --------------------------------------------
-
-type flashOver struct{}
-
-// tabSign shows which way Tab switches files: a tab icon and an arrow. It
-// glows for a few seconds after Ctrl+Tab changes it.
-func (m *Model) tabSign() string {
-	tabIcon, arrow := icon("\U000f0312", "⇥"), icon("", "→")
-	if m.tabDir < 0 {
-		tabIcon, arrow = icon("\U000f0325", "⇤"), icon("", "←")
-	}
-	text := " " + tabIcon + " Tab " + arrow + " "
-	if time.Now().Before(m.tabFlashUntil) {
-		return lipgloss.NewStyle().Background(hex(cEmber)).Foreground(hex(cBG)).Bold(true).Render(text)
-	}
-	return lipgloss.NewStyle().Background(hex(cStatusBG)).Foreground(hex(cAccent)).Render(text)
-}
-
-func (m *Model) flashTabSign() tea.Cmd {
-	m.tabFlashUntil = time.Now().Add(3 * time.Second)
-	return tea.Tick(3*time.Second+50*time.Millisecond, func(time.Time) tea.Msg { return flashOver{} })
 }
 
 // topPanel is the first row: the title in the middle and the mode at both

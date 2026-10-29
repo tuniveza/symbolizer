@@ -242,7 +242,7 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 		count = len(t.found)
 	}
 	switch name {
-	case "alt+n", "alt+c", "tab", "altgr+tab", "ctrl+tab", "ctrl+w", "ctrl+pgup", "ctrl+pgdown":
+	case "alt+n", "alt+c", "altgr+tab", "ctrl+w", "ctrl+pgup", "ctrl+pgdown":
 		return bindings[name](m)
 	case "esc":
 		if finding {

@@ -178,10 +178,8 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 | Alt + L | load: sessions, or this file again from disk |
 | Alt + N / Alt + C | new file in a new tab / close this file |
 | Alt + 1 … 9 · Ctrl + PgUp / PgDn | go to open file 1 … 9 · previous / next |
-| Tab | next file tab in the common direction. Hold Tab and press Left / Right to go that way |
-| AltGr + Tab | next file tab the other way (in kitty) |
-| Ctrl + Tab, then Ctrl + Left / Right | set the common Tab direction (remembered) |
-| Alt + Tab · Shift + Alt + Tab | a real Tab (indent) · un-indent |
+| AltGr + Tab | tab mode (in kitty): the tabs open out into rows. Left / Right = the file before / after, Up / Down = the row above / below, Enter keeps it, Esc goes back |
+| Tab or Alt + Tab · Shift + Tab | a real Tab (indent) · un-indent |
 | Alt + J | centre the lines of this file, or put them back on the left |
 | Alt + T or ŧ | colour themes |
 | Alt + M | switch modes: Text, Design, Slides, Diary, Book, Draw |
@@ -200,7 +198,7 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 - **Tab row:** the open files.
 - **Central zone:** the text in a centred column; code stays left-aligned inside it. Drag the thin line on either side to make it wider or narrower. The width is remembered.
 - **Info line:** the time and date in words (“TWENTY-SIX past FOUR in the afternoon”) and the weather, from [Open-Meteo](https://open-meteo.com/).
-- **Status bar:** the file, saving, the key mode, the Tab direction, the language and the cursor position.
+- **Status bar:** the file, saving, the key mode, the language and the cursor position.
 - **Lock plate** (Hyprland, fullscreen): press Caps / Num / Scroll / Fn Lock and a small resin plate of glowing keycaps flashes up, then fades.
 
 </details>
@@ -210,14 +208,13 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 
 <br>
 
-**kitty** keeps Ctrl + Shift + arrows and Ctrl + Tab for itself. These lines in `kitty.conf` hand them to Symbolizer, only while a Symbolizer window has focus:
+**kitty** keeps Ctrl + Shift + arrows for itself. These lines in `kitty.conf` hand them to Symbolizer, only while a Symbolizer window has focus:
 
 ```conf
 map --when-focus-on title:Symbolizer kitty_mod+left
 map --when-focus-on title:Symbolizer kitty_mod+right
 map --when-focus-on title:Symbolizer kitty_mod+up
 map --when-focus-on title:Symbolizer kitty_mod+down
-map --when-focus-on title:Symbolizer ctrl+tab
 ```
 
 **Hyprland** uses Alt + Tab to switch windows. To give it to Symbolizer, make the Alt + Tab bind check the active window first: if its title ends in “— Symbolizer”, pass the key on; otherwise switch windows as usual.
