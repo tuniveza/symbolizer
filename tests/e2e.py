@@ -618,6 +618,44 @@ def main():
     pl.close()
     hypr.close()
 
+    # ---- web files: Emmet and auto-correct ----
+    web = os.path.join(tmp, "web")
+    os.makedirs(os.path.join(web, "images"))
+    open(os.path.join(web, "images", "logo.png"), "wb").write(
+        bytes.fromhex("89504e470d0a1a0a0000000d49484452000000030000000208020000001216f14d"))
+    open(os.path.join(web, "page.html"), "w").write("")
+    t = Term([os.path.join(web, "page.html")])
+    t.type("ul>li.item$*2")
+    t.key("tab", wait=0.3)
+    check("Tab expands ul>li.item$*2", '<ul>' in t.row(2) and '<li class="item1"></li>' in t.row(3)
+          and '<li class="item2"></li>' in t.row(4) and '</ul>' in t.row(5), t.text())
+    t.type("one")
+    t.key("tab")
+    t.type("two")
+    check("Tab jumps to the next empty place", "item1\">one</li>" in t.row(3) and "item2\">two</li>" in t.row(4),
+          (t.row(3), t.row(4)))
+    t.key("alt+e", "enter")
+    t.type("<section>")
+    check("typing <section> closes it", "<section></section>" in t.row(6), t.row(6))
+    t.key("enter")
+    t.type('<img src="Images/Logo.PNG"')
+    check("path auto-correct fixes Images/Logo.PNG", '<img src="images/logo.png"' in t.row(7), t.row(7))
+    check("the message says what was fixed", "images/logo.png" in t.row(ROWS - 1), t.row(ROWS - 1))
+    t.close()
+
+    open(os.path.join(web, "style.css"), "w").write("a {\n    \n}\n")
+    t = Term([os.path.join(web, "style.css")])
+    t.key("down", "end")
+    t.type("m10-20")
+    t.key("tab", wait=0.3)
+    check("CSS: Tab expands m10-20", "margin: 10px 20px;" in t.row(3), t.row(3))
+    t.key("enter")
+    t.type("colour: red;")
+    check("CSS auto-correct: colour → color", "color: red;" in t.row(4) and "colour" not in t.row(4), t.row(4))
+    t.key("ctrl+z", wait=0.3)
+    check("Ctrl+Z puts the slip back", "colour: red;" in t.row(4), t.row(4))
+    t.close()
+
     # ---- info line, weather and colours (at the end: themes are remembered) ----
     os.makedirs(os.path.join(FAKE_HOME, ".cache", "emberline"), exist_ok=True)
     open(os.path.join(FAKE_HOME, ".cache", "emberline", "weather.json"), "w").write(
