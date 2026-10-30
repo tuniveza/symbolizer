@@ -71,7 +71,7 @@ func TestEmmetCSS(t *testing.T) {
 	m.buf.Cursor = Pos{1, 2}
 	typeStr(m, "m10-20")
 	press(m, "tab")
-	want(t, m, lines("a {", "  margin: 10px 20px;", "}"), Pos{1, 21})
+	want(t, m, lines("a {", "  margin: 10px 20px;", "}"), Pos{1, 20})
 
 	// a selector is not a property: Tab indents
 	m = newWebTest(t, "b.css", "")
@@ -93,15 +93,20 @@ func TestEmmetStyleBlockInHTML(t *testing.T) {
 func TestCSSAutoCorrect(t *testing.T) {
 	m := newWebTest(t, "a.css", "a {\n  \n}")
 	m.buf.Cursor = Pos{1, 2}
-	typeStr(m, "colour: red;")
-	want(t, m, lines("a {", "  color: red;", "}"), Pos{1, 13})
+	typeStr(m, "colour:")
 	if !strings.Contains(m.msg, "color") {
 		t.Fatalf("message = %q", m.msg)
 	}
+	typeStr(m, " red;")
+	want(t, m, lines("a {", "  color: red;", "}"), Pos{1, 13})
+
+	// Ctrl+Z straight after a fix takes back just the fix
+	m = newWebTest(t, "b.css", "a {\n  \n}")
+	m.buf.Cursor = Pos{1, 2}
+	typeStr(m, "dispaly:")
+	want(t, m, lines("a {", "  display:", "}"), Pos{1, 10})
 	press(m, "ctrl+z")
-	if got := m.buf.Text(); got != lines("a {", "  colour: red;", "}") {
-		t.Fatalf("undo gave %q", got)
-	}
+	want(t, m, lines("a {", "  dispaly:", "}"), Pos{1, 10})
 }
 
 func TestTagClosesItself(t *testing.T) {
