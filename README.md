@@ -137,6 +137,17 @@ Pages are plain text files: `~/.local/share/symbolizer/diary/2026-10-28/001.txt`
 
 <br>
 
+## ✦ Web files: Emmet and auto-correct
+
+In HTML, CSS, SCSS, Sass, Stylus, LESS, JSX / TSX and XML files, Symbolizer speaks [Emmet](https://emmet.io).
+
+- **Tab** expands the abbreviation before the cursor: `ul>li.item$*3`, `!` (a whole page), `a:link`, `p*2>lorem10`; in CSS `m10-20`, `d:f`, `c#f`, `m10+p5`. Tab again jumps to the next empty place. A plain word that is not an abbreviation still gets a real Tab.
+- **Ctrl + E** expands any word. With text highlighted, it **wraps** it: `ul>li*` puts each line in its own `li`.
+- **Alt + W** lists every Emmet action: highlight the tag around or inside, go to the matching tag, remove, split / join and update tags, next empty place, select item, work out a sum, number up / down, image size, comments.
+- **Tags close themselves:** type `<div>` and `</div>` appears after the cursor. Rename one tag and its partner follows.
+- **CSS auto-correct:** typing `;` or `:` fixes slips: `colour` → `color`, `dispaly: flx` → `display: flex`, `10xp` → `10px`.
+- **Path auto-correct:** finish a path in `src`, `href`, `url()`, `@import` or a JS `import` and a path to no file is fixed to the one it meant (`Images/Logo.PNG` → `images/logo.png`). **Alt + P** lists the files that fit. **Ctrl + Z** takes back any auto-correct.
+
 ## ✦ Saving and sessions
 
 - Everything saves by itself a moment after each change.
@@ -180,7 +191,10 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 | Alt + N / Alt + C | new file in a new tab / close this file |
 | Alt + 1 … 9 · Ctrl + PgUp / PgDn | go to open file 1 … 9 · previous / next |
 | AltGr + Tab | tab mode (in kitty): the tabs open out into rows. Left / Right = the file before / after, Up / Down = the row above / below, Enter keeps it, Esc goes back |
-| Tab or Alt + Tab · Shift + Tab | a real Tab (indent) · un-indent |
+| Tab or Alt + Tab · Shift + Tab | a real Tab (indent) · un-indent (web files: Tab expands an Emmet abbreviation first) |
+| Ctrl + E · Alt + W | Emmet: expand (highlighted: wrap) · every web action |
+| Alt + U / D · Alt + G · Alt + R · Alt + K · Alt + Y | tag around / inside · matching tag · remove · split / join · update |
+| Alt + . / , · Alt + ] / [ · Alt + X · Alt + = / - · Alt + I · Alt + P | next / previous empty place · next / previous item · sum · number up / down · image size · file paths |
 | Alt + J | centre the lines of this file, or put them back on the left |
 | Alt + T or ŧ | colour themes |
 | Alt + M | switch modes: Text, Design, Slides, Diary, Book, Draw |
@@ -241,6 +255,7 @@ map --when-focus-on title:Symbolizer kitty_mod+down
 | `autosave.go` · `sessions.go` · `files.go` | saving, sessions and naming |
 | `diary.go` · `modes.go` | Diary mode and the modes box |
 | `help.go` · `keycheck.go` | the F1 page and `sy --keys` |
+| `web.go` · `emmet/` | Emmet, closing tags and auto-correct in web files |
 | `lamps.go` · `lockplate.go` | lock keys and the lock plate |
 
 </details>

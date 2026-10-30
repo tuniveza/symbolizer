@@ -11,6 +11,8 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+
+	"symbolizer/emmet"
 )
 
 const tabWidth = 4
@@ -31,6 +33,8 @@ const (
 	pRename    // file manager
 	pNewFile   // file manager
 	pNewFolder // file manager
+	pWrap      // Emmet: wrap with an abbreviation (web.go)
+	pUpdateTag // Emmet: update the tag at the cursor
 )
 
 // Model is the whole editor, as Bubble Tea wants it.
@@ -122,13 +126,14 @@ type Model struct {
 	fmBox      [4]int // the floating file manager: x, y, width, height (fileview.go)
 	fmListTop  int
 	fmListH    int
-	altGr      altGrState  // AltGr tapped twice opens the file manager (altgr.go)
-	emblem     emblem      // made fresh each start (emblem.go)
-	lamps      string      // lock-key state (lamps.go)
-	plate      *lockPlate  // the lock plate while it shows (lockplate.go)
-	blurred    bool        // the terminal says another window has the keyboard
-	diary      *diaryState // diary mode: chapters, pages, the page in focus (diary.go)
-	startDir   string      // folder sy was started in
+	altGr      altGrState   // AltGr tapped twice opens the file manager (altgr.go)
+	emblem     emblem       // made fresh each start (emblem.go)
+	lamps      string       // lock-key state (lamps.go)
+	plate      *lockPlate   // the lock plate while it shows (lockplate.go)
+	blurred    bool         // the terminal says another window has the keyboard
+	diary      *diaryState  // diary mode: chapters, pages, the page in focus (diary.go)
+	startDir   string       // folder sy was started in
+	snip       snippetStops // Tab's stops after an Emmet expansion (web.go)
 }
 
 func NewModel(path string, line int) (*Model, error) {
@@ -546,14 +551,26 @@ func init() {
 		"alt+q":       func(m *Model) tea.Cmd { return m.quit() },
 
 		// editing
-		"enter":          func(m *Model) tea.Cmd { m.newline(); return nil },
-		"ctrl+j":         func(m *Model) tea.Cmd { m.newline(); return nil }, // some terminals send Enter as this
-		"tab":            func(m *Model) tea.Cmd { m.tab(); return nil },     // indent
-		"alt+tab":        func(m *Model) tea.Cmd { m.tab(); return nil },     // the same
-		"alt+shift+tab":  func(m *Model) tea.Cmd { m.outdent(); return nil },
-		"shift+tab":      func(m *Model) tea.Cmd { m.outdent(); return nil },
-		"backspace":      func(m *Model) tea.Cmd { m.buf.Backspace(); m.ensureVisible(); return nil },
-		"delete":         func(m *Model) tea.Cmd { m.buf.DeleteForward(); m.ensureVisible(); return nil },
+		"enter":         func(m *Model) tea.Cmd { m.newline(); return nil },
+		"ctrl+j":        func(m *Model) tea.Cmd { m.newline(); return nil }, // some terminals send Enter as this
+		"tab":           func(m *Model) tea.Cmd { m.tabKey(); return nil },  // Emmet, else indent (web.go)
+		"alt+tab":       func(m *Model) tea.Cmd { m.tab(); return nil },     // the same
+		"alt+shift+tab": func(m *Model) tea.Cmd { m.outdent(); return nil },
+		"shift+tab":     func(m *Model) tea.Cmd { m.outdent(); return nil },
+		"backspace": func(m *Model) tea.Cmd {
+			tp := m.pairBefore()
+			m.buf.Backspace()
+			m.mirrorTag(tp)
+			m.ensureVisible()
+			return nil
+		},
+		"delete": func(m *Model) tea.Cmd {
+			tp := m.pairBefore()
+			m.buf.DeleteForward()
+			m.mirrorTag(tp)
+			m.ensureVisible()
+			return nil
+		},
 		"alt+backspace":  func(m *Model) tea.Cmd { m.deleteWord(-1); return nil },
 		"ctrl+backspace": func(m *Model) tea.Cmd { m.deleteWord(-1); return nil },
 		"ctrl+delete":    func(m *Model) tea.Cmd { m.deleteWord(1); return nil },
@@ -563,12 +580,40 @@ func init() {
 		"ctrl+shift+z":   func(m *Model) tea.Cmd { m.redo(); return nil },
 		"ctrl+d":         func(m *Model) tea.Cmd { m.duplicate(); return nil },
 		"ctrl+k":         func(m *Model) tea.Cmd { m.deleteLines(); return nil },
-		"ctrl+/":         func(m *Model) tea.Cmd { m.toggleComment(); return nil },
+		"ctrl+/": func(m *Model) tea.Cmd {
+			if !m.blockComment() {
+				m.toggleComment()
+			}
+			return nil
+		},
 		"esc": func(m *Model) tea.Cmd {
 			m.buf.ClearSelect()
 			m.showMatches = false
 			return nil
 		},
+
+		// web files: Emmet (web.go)
+		"ctrl+e":      func(m *Model) tea.Cmd { return m.ctrlE() },
+		"alt+w":       func(m *Model) tea.Cmd { return m.webMenu() },
+		"alt+u":       func(m *Model) tea.Cmd { m.balance(true); return nil },
+		"alt+d":       func(m *Model) tea.Cmd { m.balance(false); return nil },
+		"alt+g":       func(m *Model) tea.Cmd { m.matchingPair(); return nil },
+		"alt+r":       func(m *Model) tea.Cmd { m.tagChange("Remove tag", emmet.RemoveTag); return nil },
+		"alt+k":       func(m *Model) tea.Cmd { m.tagChange("Split / join tag", emmet.SplitJoinTag); return nil },
+		"alt+y":       func(m *Model) tea.Cmd { return m.askUpdateTag() },
+		"alt+.":       func(m *Model) tea.Cmd { m.editPoint(1); return nil },
+		"alt+,":       func(m *Model) tea.Cmd { m.editPoint(-1); return nil },
+		"alt+]":       func(m *Model) tea.Cmd { m.selectItem(1); return nil },
+		"alt+[":       func(m *Model) tea.Cmd { m.selectItem(-1); return nil },
+		"alt+x":       func(m *Model) tea.Cmd { m.evalMath(); return nil },
+		"alt+=":       func(m *Model) tea.Cmd { m.incNumber(1); return nil },
+		"alt+-":       func(m *Model) tea.Cmd { m.incNumber(-1); return nil },
+		"alt++":       func(m *Model) tea.Cmd { m.incNumber(10); return nil },
+		"alt+shift+=": func(m *Model) tea.Cmd { m.incNumber(10); return nil },
+		"alt+_":       func(m *Model) tea.Cmd { m.incNumber(-10); return nil },
+		"alt+shift+-": func(m *Model) tea.Cmd { m.incNumber(-10); return nil },
+		"alt+i":       func(m *Model) tea.Cmd { m.imageSize(); return nil },
+		"alt+p":       func(m *Model) tea.Cmd { return m.pathList() },
 
 		// help
 		"f1":    func(m *Model) tea.Cmd { m.help, m.helpTop = true, 0; return nil },
@@ -834,11 +879,23 @@ func (m *Model) typeText(s string) {
 		m.buf.BreakUndo()
 	}
 	m.afterSpace = s == " "
+	tp := tagPair{}
+	if len([]rune(s)) == 1 && (isWord([]rune(s)[0]) || s == "-" || s == ":" || s == ".") {
+		tp = m.pairBefore()
+	}
 	m.buf.Insert(s, "type")
+	m.mirrorTag(tp)
+	if len([]rune(s)) == 1 {
+		m.afterTyped(s) // Emmet: close tags, fix CSS and paths (web.go)
+	}
 	m.ensureVisible()
 }
 
 func (m *Model) newline() {
+	m.beforeNewline()
+	if m.splitPair() {
+		return
+	}
 	l := m.line(m.buf.Cursor.Row)
 	indent := leadingSpace(l)
 	if s, _, ok := m.buf.Selection(); ok {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -131,6 +132,7 @@ type pickItem struct {
 
 type picker struct {
 	title string
+	note  string // the line under the title ("" = the one about sessions)
 	items []pickItem
 	sel   int
 	top   int
@@ -209,7 +211,7 @@ func (m *Model) drawPicker(sb *strings.Builder) {
 	}
 	lines := []string{
 		glowText("◆ "+p.title, cBG),
-		stHelpNew.Render("Sessions are your unnamed drafts. Open ones were changed in the last 24 hours."),
+		stHelpNew.Render(cmp.Or(p.note, "Sessions are your unnamed drafts. Open ones were changed in the last 24 hours.")),
 		"",
 	}
 	for i := p.top; i < min(len(p.items), p.top+room); i++ {

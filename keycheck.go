@@ -34,7 +34,12 @@ var keyMeaning = map[string]string{
 	"alt+tab": "a real Tab (indent)", "alt+shift+tab": "un-indent", "shift+tab": "un-indent",
 	"ctrl+r": "replace", "ctrl+n": "new session in a new tab", "alt+a": "save as", "f1": "help", "f3": "next match",
 	"up": "cursor up", "down": "cursor down", "left": "cursor left one step (word, number, bracket or operator)", "right": "cursor right one step (word, number, bracket or operator)",
-	"enter": "new line", "tab": "a real Tab (indent); AltGr+Tab: tab mode", "backspace": "delete left", "delete": "delete right",
+	"ctrl+e": "Emmet: expand the abbreviation (highlighted: wrap it)", "alt+w": "Emmet: web actions list",
+	"alt+u": "Emmet: highlight the tag around", "alt+d": "Emmet: highlight inside the tag", "alt+g": "Emmet: matching tag",
+	"alt+r": "Emmet: remove tag", "alt+k": "Emmet: split / join tag", "alt+y": "Emmet: update tag",
+	"alt+.": "Emmet: next empty place", "alt+,": "Emmet: previous empty place", "alt+]": "Emmet: next item", "alt+[": "Emmet: previous item",
+	"alt+x": "Emmet: work out the sum", "alt+=": "number up 1", "alt+-": "number down 1", "alt+i": "Emmet: image width and height", "alt+p": "list files that fit the path",
+	"enter": "new line", "tab": "web files: expand an Emmet abbreviation; else a real Tab (indent); AltGr+Tab: tab mode", "backspace": "delete left", "delete": "delete right",
 	"home": "start of line", "end": "end of line", "esc": "clear highlight",
 }
 
