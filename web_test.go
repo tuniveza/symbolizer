@@ -207,3 +207,35 @@ func TestEmmetOffInOtherFiles(t *testing.T) {
 		t.Fatal("tags closed in a Go file")
 	}
 }
+
+// On an empty file, ! / html / html: / html:5 give the HTML5 page, also in a
+// file with no language yet; with other text, html is just the tag.
+func TestPageTemplate(t *testing.T) {
+	for _, c := range []struct{ name, word string }{{"a.html", "html"}, {"b.html", "html:"}, {"c.txt", "!"}, {"d.txt", "html:5"}} {
+		m := newWebTest(t, c.name, "")
+		typeStr(m, c.word)
+		press(m, "tab")
+		if got := m.buf.Text(); !strings.HasPrefix(got, "<!DOCTYPE html>") || !strings.Contains(got, "<title>Document</title>") {
+			t.Fatalf("%s %q gave %q", c.name, c.word, got)
+		}
+		if m.webSyntax() != "html" {
+			t.Fatalf("%s: not HTML after the page (%s)", c.name, m.hl.Name)
+		}
+		typeStr(m, "Home")
+		if !strings.Contains(m.buf.Text(), "<title>Home</title>") {
+			t.Fatalf("%s: typing did not replace the title: %q", c.name, m.buf.Text())
+		}
+	}
+	m := newWebTest(t, "e.html", "<p>x</p>\n")
+	typeStr(m, "html")
+	press(m, "tab")
+	if got := m.buf.Text(); !strings.HasSuffix(got, "<html></html>") || strings.Contains(got, "DOCTYPE") {
+		t.Fatalf("html after other text gave %q", got)
+	}
+	m = newWebTest(t, "f.txt", "")
+	typeStr(m, "hello")
+	press(m, "tab")
+	if strings.Contains(m.buf.Text(), "<") {
+		t.Fatalf("a plain word in a .txt expanded: %q", m.buf.Text())
+	}
+}

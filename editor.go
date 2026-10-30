@@ -102,6 +102,7 @@ type Model struct {
 	// tab switch mode (tabmode.go)
 	tabMode     bool
 	tabModeFrom int
+	altTap      bool // Left Alt is down with no other key yet (a tap ends tab mode)
 
 	// what was last written to the last-open file (lastopen.go)
 	lastOpen struct {
@@ -303,6 +304,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	case clipErrMsg:
 		m.sayErr(string(msg))
 		return nil
+	case syTermMsg:
+		m.sayErr(string(msg))
+		return nil
 	case tea.PasteMsg:
 		if m.prompt != pNone && m.prompt != pConfirm && m.prompt != pReplaceAsk {
 			var c tea.Cmd
@@ -314,11 +318,13 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if cmd, done := m.altGrRelease(msg.Key()); done {
 			return cmd
 		}
+		m.altTapRelease(msg.Key())
 		m.arrowRelease(msg.Key())
 		m.keys.release(msg.Key(), m.altGr.down)
 		return nil
 	case tea.KeyPressMsg:
 		m.keys.press(msg.Key(), m.altGr.down)
+		m.altTap = msg.Key().Code == tea.KeyLeftAlt && !msg.Key().IsRepeat || m.altTap && msg.Key().IsRepeat
 		if m.altGrPress(msg.Key()) || isModifierOnly(msg.Key()) {
 			return nil // a modifier on its own does nothing (and keeps the message line)
 		}
@@ -336,8 +342,11 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			m.themeOpen = false
 			return m.openModes()
 		}
-		if n := keyName(msg.Key()); n == "ŧ" || n == "alt+t" {
+		switch m.altGrName(msg.Key()) {
+		case "µ", "altgr+m", "alt+t":
 			return m.openThemes()
+		case "ŧ", "altgr+t":
+			return m.syTerm()
 		}
 		if m.themeOpen {
 			return m.themeKey(keyName(msg.Key()))
@@ -429,8 +438,8 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 
 // keyName gives one stable name per key: "ctrl+alt+shift+x".
 func keyName(k tea.Key) string {
-	if (k.Text == "ß" || k.Text == "ø" || k.Text == "”" || k.Text == "æ") && !k.Mod.Contains(tea.ModCtrl) {
-		return k.Text // Right Alt+S / O / N / A on a UK keyboard
+	if (k.Text == "ß" || k.Text == "ø" || k.Text == "”" || k.Text == "æ" || k.Text == "¢") && !k.Mod.Contains(tea.ModCtrl) {
+		return k.Text // Right Alt+S / O / N / A / C on a UK keyboard
 	}
 	s := k.Keystroke()
 	// Some terminals report Alt+Shift+L as "alt+L".
@@ -473,6 +482,8 @@ func init() {
 		},
 		"pgup":      func(m *Model) tea.Cmd { m.page(-1, false); return nil },
 		"pgdown":    func(m *Model) tea.Cmd { m.page(1, false); return nil },
+		"alt+up":    func(m *Model) tea.Cmd { m.block(-1); return nil },
+		"alt+down":  func(m *Model) tea.Cmd { m.block(1); return nil },
 		"ctrl+home": func(m *Model) tea.Cmd { m.moveTo(Pos{}, false); return nil },
 		"ctrl+end":  func(m *Model) tea.Cmd { m.moveTo(m.endOfFile(), false); return nil },
 		"alt+l":     func(m *Model) tea.Cmd { return m.openLoadList() },
@@ -482,7 +493,7 @@ func init() {
 		// these letters are commands, not text.
 		"ß":      func(m *Model) tea.Cmd { return m.save() },
 		"ø":      func(m *Model) tea.Cmd { return m.openTree(false) },
-		"alt+b":  func(m *Model) tea.Cmd { m.moveTo(Pos{m.buf.Cursor.Row, 0}, false); return nil },
+		"alt+b":  func(m *Model) tea.Cmd { m.deleteBlock(); return nil },
 		"alt+e":  func(m *Model) tea.Cmd { m.moveTo(m.endOfFile(), false); return nil },
 		"alt+s":  func(m *Model) tea.Cmd { m.moveTo(Pos{}, false); return nil },
 		"ctrl+s": func(m *Model) tea.Cmd { return m.save() },
@@ -494,8 +505,8 @@ func init() {
 		"shift+down":  func(m *Model) tea.Cmd { m.moveVert(1, true); return nil },
 		// Ctrl + arrows (cursor one character) are ctrlArrow, below.
 		// highlight one character (Up / Down: one line)
-		"ctrl+shift+left":  func(m *Model) tea.Cmd { m.moveTo(m.buf.LetterLeft(m.buf.Cursor), true); return nil },
-		"ctrl+shift+right": func(m *Model) tea.Cmd { m.moveTo(m.buf.LetterRight(m.buf.Cursor), true); return nil },
+		"ctrl+shift+left":  func(m *Model) tea.Cmd { m.moveTo(m.buf.NumberLeft(m.buf.Cursor), true); return nil },
+		"ctrl+shift+right": func(m *Model) tea.Cmd { m.moveTo(m.buf.NumberRight(m.buf.Cursor), true); return nil },
 		"ctrl+shift+up":    func(m *Model) tea.Cmd { m.moveVert(-1, true); return nil },
 		"ctrl+shift+down":  func(m *Model) tea.Cmd { m.moveVert(1, true); return nil },
 		"shift+home":       func(m *Model) tea.Cmd { m.smartHome(true); return nil },
@@ -508,12 +519,17 @@ func init() {
 		"ctrl+a":       func(m *Model) tea.Cmd { m.selectAll(); return nil },
 
 		// moving text: the highlighted text, else the word at the cursor
-		"alt+left":        func(m *Model) tea.Cmd { m.moveSideways(-1); return nil },
-		"alt+right":       func(m *Model) tea.Cmd { m.moveSideways(1); return nil },
-		"alt+up":          func(m *Model) tea.Cmd { m.moveUpDown(-1); return nil },
-		"alt+down":        func(m *Model) tea.Cmd { m.moveUpDown(1); return nil },
-		"alt+shift+left":  func(m *Model) tea.Cmd { m.moveTextSideways(-1); return nil },
-		"alt+shift+right": func(m *Model) tea.Cmd { m.moveTextSideways(1); return nil },
+		"alt+shift+left":  func(m *Model) tea.Cmd { m.moveSideways(-1); return nil },
+		"alt+shift+right": func(m *Model) tea.Cmd { m.moveSideways(1); return nil },
+		"alt+shift+up":    func(m *Model) tea.Cmd { m.moveUpDown(-1); return nil },
+		"alt+shift+down":  func(m *Model) tea.Cmd { m.moveUpDown(1); return nil },
+
+		// start / end of the line
+		"alt+left": func(m *Model) tea.Cmd { m.moveTo(Pos{m.buf.Cursor.Row, 0}, false); return nil },
+		"alt+right": func(m *Model) tea.Cmd {
+			m.moveTo(Pos{m.buf.Cursor.Row, len(m.line(m.buf.Cursor.Row))}, false)
+			return nil
+		},
 
 		// copy and paste
 		"ctrl+c": func(m *Model) tea.Cmd { return m.copy(false) },
@@ -541,10 +557,10 @@ func init() {
 
 		// tabs
 		"ctrl+w":      func(m *Model) tea.Cmd { return m.closeTab() },
-		"alt+c":       func(m *Model) tea.Cmd { return m.closeTab() },
+		"¢":           func(m *Model) tea.Cmd { return m.closeTab() }, // AltGr+C on a UK keyboard
+		"altgr+c":     func(m *Model) tea.Cmd { return m.closeTab() },
 		"alt+n":       func(m *Model) tea.Cmd { return m.newFile() },
-		"altgr+tab":   func(m *Model) tea.Cmd { return m.openTabMode() },
-		"hyper+tab":   func(m *Model) tea.Cmd { return m.openTabMode() }, // AltGr+Tab sent on by Hyprland (tabmode.go)
+		"alt+tab":     func(m *Model) tea.Cmd { return m.openTabMode() },
 		"ctrl+pgup":   func(m *Model) tea.Cmd { return m.nextTab(-1) },
 		"ctrl+pgdown": func(m *Model) tea.Cmd { return m.nextTab(1) },
 		"ctrl+n":      func(m *Model) tea.Cmd { return m.newFile() },
@@ -554,7 +570,6 @@ func init() {
 		"enter":         func(m *Model) tea.Cmd { m.newline(); return nil },
 		"ctrl+j":        func(m *Model) tea.Cmd { m.newline(); return nil }, // some terminals send Enter as this
 		"tab":           func(m *Model) tea.Cmd { m.tabKey(); return nil },  // Emmet, else indent (web.go)
-		"alt+tab":       func(m *Model) tea.Cmd { m.tab(); return nil },     // the same
 		"alt+shift+tab": func(m *Model) tea.Cmd { m.outdent(); return nil },
 		"shift+tab":     func(m *Model) tea.Cmd { m.outdent(); return nil },
 		"backspace": func(m *Model) tea.Cmd {
@@ -580,6 +595,7 @@ func init() {
 		"ctrl+shift+z":   func(m *Model) tea.Cmd { m.redo(); return nil },
 		"ctrl+d":         func(m *Model) tea.Cmd { m.duplicate(); return nil },
 		"ctrl+k":         func(m *Model) tea.Cmd { m.deleteLines(); return nil },
+		"alt+d":          func(m *Model) tea.Cmd { m.deleteLines(); return nil },
 		"ctrl+/": func(m *Model) tea.Cmd {
 			if !m.blockComment() {
 				m.toggleComment()
@@ -596,7 +612,6 @@ func init() {
 		"ctrl+e":      func(m *Model) tea.Cmd { return m.ctrlE() },
 		"alt+w":       func(m *Model) tea.Cmd { return m.webMenu() },
 		"alt+u":       func(m *Model) tea.Cmd { m.balance(true); return nil },
-		"alt+d":       func(m *Model) tea.Cmd { m.balance(false); return nil },
 		"alt+g":       func(m *Model) tea.Cmd { m.matchingPair(); return nil },
 		"alt+r":       func(m *Model) tea.Cmd { m.tagChange("Remove tag", emmet.RemoveTag); return nil },
 		"alt+k":       func(m *Model) tea.Cmd { m.tagChange("Split / join tag", emmet.SplitJoinTag); return nil },
@@ -714,6 +729,43 @@ func (m *Model) page(d int, sel bool) {
 	m.ensureVisible()
 }
 
+// block is Alt+Up / Alt+Down: to the start of the block before / after
+// (blocks.go says where blocks start in each language). Up goes first to
+// the start of the block the cursor is in.
+func (m *Model) block(d int) {
+	lang := ""
+	if m.hl != nil {
+		lang = m.hl.Name
+	}
+	starts := blockStarts(m.buf.Lines, lang)
+	first := func(r int) Pos {
+		l := m.line(r)
+		c := 0
+		for c < len(l) && (l[c] == ' ' || l[c] == '\t') {
+			c++
+		}
+		return Pos{r, c}
+	}
+	cur := m.buf.Cursor
+	if d > 0 {
+		for r := cur.Row + 1; r < len(starts); r++ {
+			if starts[r] {
+				m.moveTo(first(r), false)
+				return
+			}
+		}
+		m.moveTo(m.endOfFile(), false)
+		return
+	}
+	for r := cur.Row; r >= 0; r-- {
+		if p := first(r); starts[r] && (p.Row < cur.Row || p.Col < cur.Col) {
+			m.moveTo(p, false)
+			return
+		}
+	}
+	m.moveTo(Pos{}, false)
+}
+
 func (m *Model) smartHome(sel bool) {
 	l := m.line(m.buf.Cursor.Row)
 	first := 0
@@ -828,9 +880,9 @@ func (m *Model) ctrlArrow(dir string, k tea.Key) {
 		a.before = m.buf.Cursor
 		switch dir {
 		case "left":
-			m.moveTo(m.buf.LetterLeft(m.buf.Cursor), false)
+			m.moveTo(m.buf.NumberLeft(m.buf.Cursor), false)
 		case "right":
-			m.moveTo(m.buf.LetterRight(m.buf.Cursor), false)
+			m.moveTo(m.buf.NumberRight(m.buf.Cursor), false)
 		case "up":
 			m.moveVert(-1, false)
 		case "down":
@@ -1035,8 +1087,67 @@ func (m *Model) duplicate() {
 }
 
 func (m *Model) deleteLines() {
-	b := m.buf
 	r1, r2, _ := m.selectedRows()
+	m.deleteRows(r1, r2)
+}
+
+// deleteBlock is Alt+B: delete the block the cursor is in (blockAround in
+// blocks.go; in HTML and XML the element around the cursor that spans
+// lines), as one step for Ctrl+Z.
+func (m *Model) deleteBlock() {
+	lang := ""
+	if m.hl != nil {
+		lang = m.hl.Name
+	}
+	row := m.buf.Cursor.Row
+	sp, ok := blockSpan{}, false
+	if blockFamilyOf(lang) == famMarkup && emmet.IsMarkup(m.webSyntax()) {
+		text := m.allRunes()
+		at := m.posToOff(m.buf.Cursor)
+		for r, more := (emmet.Range{Start: at, End: at}), true; more; {
+			if r, more = emmet.BalanceOut(text, r); more && text[r.Start] == '<' {
+				a, b := m.offToPos(r.Start), m.offToPos(r.End)
+				if b.Col == 0 && b.Row > a.Row {
+					b.Row--
+				}
+				if b.Row > a.Row {
+					sp, ok = blockSpan{a.Row, b.Row}, true
+					break
+				}
+			}
+		}
+	}
+	if !ok {
+		sp, ok = blockAround(m.buf.Lines, lang, row)
+	}
+	if !ok {
+		m.say("No block here. Alt+B deletes the block the cursor is in.")
+		return
+	}
+	m.buf.ClearSelect()
+	// Do not leave two empty lines where the block was.
+	blank := func(r int) bool { return r < 0 || r >= len(m.buf.Lines) || strings.TrimSpace(string(m.line(r))) == "" }
+	bottom := sp.bottom
+	if blank(sp.top-1) && blank(bottom+1) && bottom+1 < len(m.buf.Lines) {
+		bottom++
+	}
+	m.deleteRows(sp.top, bottom)
+	l := m.line(m.buf.Cursor.Row)
+	c := 0
+	for c < len(l) && (l[c] == ' ' || l[c] == '\t') {
+		c++
+	}
+	m.buf.Cursor.Col = c
+	if sp.top == sp.bottom {
+		m.say(fmt.Sprintf("Deleted the block: line %d. Ctrl+Z brings it back.", sp.top+1))
+	} else {
+		m.say(fmt.Sprintf("Deleted the block: lines %d–%d. Ctrl+Z brings it back.", sp.top+1, sp.bottom+1))
+	}
+}
+
+// deleteRows deletes whole lines r1 to r2 as one change.
+func (m *Model) deleteRows(r1, r2 int) {
+	b := m.buf
 	last := len(b.Lines) - 1
 	switch {
 	case r2 < last:

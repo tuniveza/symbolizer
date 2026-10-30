@@ -4,6 +4,8 @@
 // All positions are rune offsets (letters, not bytes). Text is []rune.
 package emmet
 
+import "strings"
+
 // Options say how the output should look.
 type Options struct {
 	Syntax     string // "html", "xhtml", "xml", "jsx", "css", "scss", "sass", "less", "stylus"
@@ -58,7 +60,25 @@ func Expand(abbr string, opt Options) (Expansion, error) {
 	if IsStylesheet(opt.Syntax) {
 		return expandCSS(abbr, opt)
 	}
-	return expandMarkup(abbr, opt)
+	return expandMarkup(colonDefault(abbr, opt.Syntax), opt)
+}
+
+// colonDefault reads a snippet name with nothing after its colon as its
+// usual form: "html:" is the HTML5 page (html:5), "link:" a link, "input:" a
+// text input. Real Emmet only lists the choices there.
+func colonDefault(abbr, syntax string) string {
+	a := strings.TrimSpace(abbr)
+	if len(a) < 2 || !strings.HasSuffix(a, ":") {
+		return abbr
+	}
+	base := strings.TrimSuffix(a, ":")
+	if base == "html" && syntax != "xml" {
+		return "!"
+	}
+	if mkPlainWordRe.MatchString(base) && mkKnownWord(base, syntax) {
+		return base
+	}
+	return abbr
 }
 
 // Extract finds the abbreviation that ends at col on line.
@@ -81,7 +101,7 @@ func TabExpand(line []rune, col int, opt Options) (start int, exp Expansion, ok 
 		if !cssTabWorthy(abbr) {
 			return 0, Expansion{}, false
 		}
-	} else if !markupTabWorthy(abbr, opt.Syntax) {
+	} else if !markupTabWorthy(colonDefault(abbr, opt.Syntax), opt.Syntax) {
 		return 0, Expansion{}, false
 	}
 	exp, err := Expand(abbr, opt)

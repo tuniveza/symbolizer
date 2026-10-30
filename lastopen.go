@@ -10,10 +10,12 @@ import (
 )
 
 // What was open when Symbolizer last closed, so plain `sy` opens it all
-// again: the project folder, every file tab at its place, and the file that
-// was on screen. It lives in ~/.local/share/symbolizer/last-open:
+// again: the project folder (with the file manager, if it was showing),
+// every file tab at its place, and the file that was on screen. It lives in
+// ~/.local/share/symbolizer/last-open:
 //
 //	project /home/me/web
+//	tree                                  (the file manager was showing)
 //	file 12 4 0 /home/me/web/index.html   (row, column, top row, path)
 //	current /home/me/web/index.html
 
@@ -27,6 +29,10 @@ func (m *Model) lastOpenText() (text, files string) {
 	if m.tree != nil {
 		sb.WriteString("project " + m.tree.root + "\n")
 		fb.WriteString(m.tree.root + "\n")
+		if m.showTree {
+			sb.WriteString("tree\n")
+			fb.WriteString("tree\n")
+		}
 	}
 	for _, t := range m.tabs {
 		if b := t.buf; b.Path != "" && fileExists(b.Path) {
@@ -68,8 +74,9 @@ func (m *Model) writeLastOpen(text, files string) {
 }
 
 // reopenLast opens again what was open when sy last closed. Files that are
-// gone, and sessions that have been concluded, are left out. It says
-// whether any file opened; if none did, sy starts as it always has.
+// gone, and sessions that have been concluded, are left out. A project
+// opens again even with no files. It says whether anything opened; if
+// nothing did, sy starts as it always has.
 func (m *Model) reopenLast() bool {
 	data, err := os.ReadFile(lastOpenPath())
 	if err != nil {
@@ -81,7 +88,7 @@ func (m *Model) reopenLast() bool {
 		path string
 	}
 	var files []entry
-	project, current := "", ""
+	project, current, tree := "", "", false
 	live, _ := currentSession()
 	for _, line := range strings.Split(string(data), "\n") {
 		key, rest, _ := strings.Cut(line, " ")
@@ -90,6 +97,8 @@ func (m *Model) reopenLast() bool {
 			project = rest
 		case "current":
 			current = rest
+		case "tree":
+			tree = true
 		case "file":
 			f := strings.SplitN(rest, " ", 4)
 			if len(f) < 4 || !fileExists(f[3]) || isSession(f[3]) && f[3] != live.Path {
@@ -101,11 +110,20 @@ func (m *Model) reopenLast() bool {
 			files = append(files, entry{Pos{row, col}, top, f[3]})
 		}
 	}
-	if len(files) == 0 {
+	info, err := os.Stat(project)
+	hasProject := project != "" && err == nil && info.IsDir()
+	if len(files) == 0 && !hasProject {
 		return false
 	}
-	if info, err := os.Stat(project); err == nil && info.IsDir() {
+	if hasProject {
 		m.setRoot(project)
+	}
+	if len(files) == 0 {
+		// Only the project was open: show it the way `sy FOLDER` does.
+		m.showTree, m.treeFocus = true, true
+		m.say("Opened again what was open last time: project " + filepath.Base(project) +
+			". Choose a file on the left, or type to find one. sy --new starts fresh.")
+		return true
 	}
 	first := m.buf // today's session, or a blank one: it goes unless it was open last time
 	keepFirst := false
@@ -129,6 +147,9 @@ func (m *Model) reopenLast() bool {
 	if i := m.findTab(current); i >= 0 {
 		m.storeTab()
 		m.showTab(i)
+	}
+	if hasProject && tree {
+		m.showTree = true
 	}
 	msg := fmt.Sprintf("Opened again what was open last time: %d files.", len(m.tabs))
 	if len(m.tabs) == 1 {

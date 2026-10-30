@@ -32,11 +32,12 @@ KEYS = {
     "ctrl+right": "\x1b[1;5C", "ctrl+left": "\x1b[1;5D", "ctrl+up": "\x1b[1;5A", "ctrl+down": "\x1b[1;5B",
     "ctrl+shift+right": "\x1b[1;6C", "ctrl+shift+left": "\x1b[1;6D",
     "alt+shift+up": "\x1b[1;4A", "alt+shift+down": "\x1b[1;4B",
+    "alt+shift+right": "\x1b[1;4C", "alt+shift+left": "\x1b[1;4D",
     "enter": "\r", "esc": "\x1b", "backspace": "\x7f", "tab": "\t",
     "f1": "\x1bOP", "f3": "\x1bOR",
     "alt+l": "\x1bl", "alt+b": "\x1bb", "alt+e": "\x1be", "alt+s": "\x1bs",
     "ctrl+home": "\x1b[1;5H", "end": "\x1b[F",
-    "alt+a": "\x1ba",
+    "alt+a": "\x1ba", "alt+d": "\x1bd",
 }
 for letter in "acdefgklnopqrsvxyz":
     KEYS["ctrl+" + letter] = chr(ord(letter) - 96)
@@ -192,30 +193,38 @@ def main():
     # ---- your navigation keys ----
     t.send("\x1b[F")                                # End
     check("End = end of line", cursor(t) == (2, 5 + 16), cursor(t))
-    t.key("alt+b")
-    check("Alt+B = start of line", cursor(t) == (2, 5), cursor(t))
+    t.key("alt+left")
+    check("Alt+Left = start of line", cursor(t) == (2, 5), cursor(t))
     t.key("alt+e")
     check("Alt+E = end of file", cursor(t) == (5, 5 + 21), cursor(t))
+    t.key("alt+left")
+    check("Alt+Left = start of line", cursor(t) == (5, 5), cursor(t))
+    t.key("alt+right")
+    check("Alt+Right = end of line", cursor(t) == (5, 5 + 21), cursor(t))
     t.key("alt+e")
     t.key("alt+s")
     check("Alt+S = start of file", cursor(t) == (2, 5), cursor(t))
+    t.key("alt+down")
+    check("Alt+Down = down a block (past the empty line)", cursor(t) == (5, 5), cursor(t))
+    t.key("alt+up")
+    check("Alt+Up = up a block", cursor(t) == (2, 5), cursor(t))
     t.key("ctrl+e")
     check("Ctrl+E does nothing", cursor(t) == (2, 5), cursor(t))
     t.key("ctrl+home")
     check("Ctrl+Home = start of file", cursor(t) == (2, 5), cursor(t))
-    t.key("alt+right")
-    check("Alt+Right moves the word right", "greet def(name):" in t.row(2) and cursor(t) == (2, 5 + 6),
+    t.key("alt+shift+right")
+    check("Alt+Shift+Right moves the word right", "greet def(name):" in t.row(2) and cursor(t) == (2, 5 + 6),
           (t.row(2), cursor(t)))
-    t.key("alt+left")
-    check("Alt+Left moves it back", "def greet(name):" in t.row(2) and cursor(t) == (2, 5), (t.row(2), cursor(t)))
-    check("status bar: an Alt key shows movement", "movement" in t.row(ROWS - 2), t.row(ROWS - 2))
+    t.key("alt+shift+left")
+    check("Alt+Shift+Left moves it back", "def greet(name):" in t.row(2) and cursor(t) == (2, 5), (t.row(2), cursor(t)))
+    check("status bar: Alt + Shift shows movement", "movement" in t.row(ROWS - 2), t.row(ROWS - 2))
     time.sleep(0.2)
-    t.key("alt+down")
-    check("Alt+Down moves the line down", "def greet" in t.row(3) and "return" in t.row(2)
+    t.key("alt+shift+down")
+    check("Alt+Shift+Down moves the line down", "def greet" in t.row(3) and "return" in t.row(2)
           and cursor(t) == (3, 5), (t.row(2), t.row(3), cursor(t)))
     time.sleep(0.2)
-    t.key("alt+up")
-    check("Alt+Up moves the line back up", "def greet" in t.row(2) and "return" in t.row(3)
+    t.key("alt+shift+up")
+    check("Alt+Shift+Up moves the line back up", "def greet" in t.row(2) and "return" in t.row(3)
           and cursor(t) == (2, 5), (t.row(2), t.row(3), cursor(t)))
     t.key("down")
     check("Down = cursor down a line", cursor(t) == (3, 5), cursor(t))
@@ -223,11 +232,11 @@ def main():
     t.key("up")
     check("Up = cursor up a line", cursor(t) == (2, 5), cursor(t))
     t.key("right", "shift+right")                 # " greet" highlighted
-    t.key("alt+down")
-    check("Alt+Down moves only the highlighted text down", "def(name):" in t.row(2)
+    t.key("alt+shift+down")
+    check("Alt+Shift+Down moves only the highlighted text down", "def(name):" in t.row(2)
           and "    greet return" in t.row(3), (t.row(2), t.row(3)))
-    t.key("alt+up")
-    check("Alt+Up moves it back", "def greet(name):" in t.row(2) and "    return 'hi '" in t.row(3),
+    t.key("alt+shift+up")
+    check("Alt+Shift+Up moves it back", "def greet(name):" in t.row(2) and "    return 'hi '" in t.row(3),
           (t.row(2), t.row(3)))
     t.key("esc", "ctrl+home")
 
@@ -271,10 +280,10 @@ def main():
     check("save message shown", "Saved demo.py" in t.row(ROWS - 1), t.row(ROWS - 1))
 
     # ---- moving text ----
-    t.key("alt+up")
+    t.key("alt+shift+up")
     t.key("ctrl+s", wait=0.3)
     lines = open(path).read().splitlines()
-    check("Alt+Up moves the line up (saved to the file)", lines[-2] == "x = 1# pasted" and lines[-1] == "x = 1", lines[-2:])
+    check("Alt+Shift+Up moves the line up (saved to the file)", lines[-2] == "x = 1# pasted" and lines[-1] == "x = 1", lines[-2:])
 
     # ---- find ----
     t.key("ctrl+home", "ctrl+f")
@@ -391,12 +400,18 @@ def main():
     check("kitty: after letting go, Ctrl+Up alone moves up a line",
           cursor(k) == (2, 5 + 4) and "a0cdef" in k.row(2), (cursor(k), k.row(2)))
     k.send("\x1b[1;5:3A")
-    for code, mod, word in ((57441, 2, "highlighter"), (57442, 5, "position"), (57443, 3, "movement")):
+    for code, mod, word in ((57441, 2, "highlighter"), (57442, 5, "position"), (57443, 3, "line")):
         k.send(f"\x1b[{code};{mod}u", 0.2)           # Left Shift / Ctrl / Alt pressed on its own
         check(f"kitty: holding the key shows {word}", word in k.row(ROWS - 2), k.row(ROWS - 2))
         k.send(f"\x1b[{code};1:3u", 0.2)             # let go
-        check(f"kitty: letting go shows text again", word not in k.row(ROWS - 2) and "text" in k.row(ROWS - 2),
+        check(f"kitty: letting go shows text again", f" {word} " not in k.row(ROWS - 2).replace(" lines ", " ") and " text " in k.row(ROWS - 2),
               k.row(ROWS - 2))
+    k.send("\x1b[57443;3u", 0.2)                    # Left Alt held
+    k.send("\x1b[57441;4u", 0.2)                    # then Left Shift with it
+    check("kitty: holding Alt + Shift shows movement", "movement" in k.row(ROWS - 2), k.row(ROWS - 2))
+    k.send("\x1b[57441;3:3u", 0.2)
+    k.send("\x1b[57443;1:3u", 0.2)
+    check("kitty: letting go of both shows text again", "text" in k.row(ROWS - 2), k.row(ROWS - 2))
     k.send("\x1b[99;5u")                            # Ctrl+C (kitty's code) must not quit
     check("Ctrl+C does not close the editor", not k.exited(0.3))
     k.send("\x1b[113;3u")                           # Alt+Q (kitty's code)
@@ -415,7 +430,7 @@ def main():
           and "ø" not in u.text(), u.text()[:300])
     u.close()
 
-    # ---- tabs: tab mode (AltGr+Tab), Alt+N, Alt+C (kitty's codes) ----
+    # ---- tabs: tab mode (Alt+Tab), Alt+N, AltGr+C (kitty's codes) ----
     proj2 = os.path.join(tmp, "proj2")
     os.makedirs(proj2)
     for n in ("a.txt", "b.txt", "c.txt"):
@@ -428,31 +443,42 @@ def main():
         k2.key("enter", wait=0.3)
     on = lambda: k2.row(ROWS - 2)
     check("three files open in three tabs", "c.txt" in on() and "3 c.txt" in k2.row(1), k2.row(1))
-    altgr_tab = "\x1b[57453u\t\x1b[57453;1:3u"         # AltGr down, Tab, AltGr up
-    k2.send(altgr_tab, 0.5)
-    check("AltGr+Tab opens tab mode", "tabs" in on(), on())
+    alt_tab = "\x1b[57443;3u\x1b[9;3u\x1b[57443;1:3u"   # Alt down, Tab, Alt up
+    k2.send(alt_tab, 0.5)
+    check("Alt+Tab opens tab mode", "tabs" in on(), on())
     k2.send("\x1b[C", 0.5)                           # Right
     check("tab mode: Right goes round to the first tab", "a.txt" in on(), on())
     k2.send("\x1b[D\x1b[D", 0.5)                     # Left, Left
     check("tab mode: Left goes back", "b.txt" in on(), on())
     k2.send("\r", 0.5)                               # Enter
     check("Enter keeps the file and leaves tab mode", "b.txt" in on() and "tabs" not in on(), on())
-    k2.send(altgr_tab + "\x1b[D\x1b[27u", 0.8)       # AltGr+Tab, Left, Esc
+    k2.send(alt_tab + "\x1b[D\x1b[27u", 0.8)         # Alt+Tab, Left, Esc
     check("Esc goes back to where tab mode started", "b.txt" in on(), on())
-    k2.send("\x1b[9;17u", 0.5)                       # Hyper+Tab, as the Hyprland helper sends it
-    check("Hyper+Tab opens tab mode too", "tabs" in on(), on())
+    k2.send("\x1b[9;3u", 0.5)                        # Alt+Tab as one key, as Hyprland passes it on
+    check("Alt+Tab on its own opens tab mode too", "tabs" in on(), on())
     k2.send("\x1b[C\r", 0.5)                         # Right, Enter
     check("and its arrows switch tabs", "c.txt" in on() and "tabs" not in on(), on())
-    k2.send("\x1b[9;17u\x1b[D\r", 0.5)               # back to b.txt for the checks below
-    k2.send("\x1b[9;3u", 0.3)                        # Alt+Tab
+    k2.send(alt_tab + "\x1b[D\r", 0.5)               # back to b.txt for the checks below
+    k2.send("\t", 0.3)                               # Tab
     time.sleep(0.3)
-    check("Alt+Tab types a real Tab (indent)", open(os.path.join(proj2, "b.txt")).read() == "    b.txt\n",
+    check("Tab types a real Tab (indent)", open(os.path.join(proj2, "b.txt")).read() == "    b.txt\n",
           repr(open(os.path.join(proj2, "b.txt")).read()))
     k2.send("\x1b[9;4u", 0.5)                        # Shift+Alt+Tab
     check("Shift+Alt+Tab un-indents", open(os.path.join(proj2, "b.txt")).read() == "b.txt\n",
           repr(open(os.path.join(proj2, "b.txt")).read()))
-    k2.send("\x1b[99;3u", 0.3)                       # Alt+C
-    check("Alt+C closes the file", "3 " not in k2.row(1) and "b.txt" not in k2.row(1), k2.row(1))
+    k2.send(alt_tab, 0.5)                            # tab mode again
+    k2.send("d", 0.4)                                # D = right
+    check("tab mode: D goes to the next tab", "c.txt" in on() and "tabs" in on(), on())
+    k2.send("a", 0.4)                                # A = left
+    check("tab mode: A goes back", "b.txt" in on() and "tabs" in on(), on())
+    k2.send("\x1b[57443;3u\x1b[57443;1:3u", 0.5)    # Left Alt tapped on its own
+    check("a tap of Alt keeps the file and leaves tab mode", "b.txt" in on() and "tabs" not in on()
+          and "ad" not in open(os.path.join(proj2, "b.txt")).read(), on())
+    k2.send(alt_tab, 0.5)                            # tab mode again
+    k2.send("\x1b[B", 0.5)                           # Down
+    check("tab mode: Down keeps the file and leaves tab mode", "b.txt" in on() and "tabs" not in on(), on())
+    k2.send("\x1b[57453u\x1b[99;1;162u\x1b[57453;1:3u", 0.3)   # AltGr+C (¢), kitty's codes
+    check("AltGr+C closes the file", "3 " not in k2.row(1) and "b.txt" not in k2.row(1), k2.row(1))
     k2.send("\x1b[110;3u", 0.3)                      # Alt+N
     check("Alt+N opens a new tab with a made-up ember name", re.search(r"3 [a-z]+-[a-z]+\.txt", k2.row(1)) is not None, k2.row(1))
     k2.close()
@@ -660,6 +686,22 @@ def main():
     check("CSS auto-correct: dispaly: flx → display: flex", "display: flex;" in t.row(5), t.row(5))
     t.close()
 
+    # ---- Alt+D deletes a line, Alt+B a block (bracket to bracket) ----
+    open(os.path.join(tmp, "blocks.go"), "w").write(
+        "package main\n\nfunc f() {\n\tif x {\n\t\ty()\n\t}\n\tz()\n}\n\nfunc g() {}\n")
+    t = Term([os.path.join(tmp, "blocks.go")])
+    t.key("down", "down", "down", "down", "down", "down")   # on z()
+    t.key("alt+d")
+    check("Alt+D deletes the line", "z()" not in t.text() and "}" in t.row(8), t.text())
+    t.key("up", "up")                                       # on y()
+    t.key("alt+b")
+    check("Alt+B deletes the if block, bracket to bracket", "if x" not in t.text() and "y()" not in t.text()
+          and "func f() {" in t.row(4) and "}" in t.row(5), t.text())
+    check("Alt+B says what it deleted", "Deleted the block" in t.row(ROWS - 1), t.row(ROWS - 1))
+    t.key("ctrl+z", wait=0.3)
+    check("one Ctrl+Z brings the block back", "if x {" in t.row(5) and "y()" in t.row(6), t.text())
+    t.close()
+
     # ---- info line, weather and colours (at the end: themes are remembered) ----
     os.makedirs(os.path.join(FAKE_HOME, ".cache", "emberline"), exist_ok=True)
     open(os.path.join(FAKE_HOME, ".cache", "emberline", "weather.json"), "w").write(
@@ -674,8 +716,8 @@ def main():
     check("info line: time and date in words (the mode is in the top panel)", "Text mode" not in info and any(
         w in info for w in ("past", "to", "o'clock", "MIDNIGHT", "NOON")), info)
     check("info line: weather from the shared cache", "Light drizzle 12°" in info and "feels 8°" in info, info)
-    e2e_wide.send("ŧ".encode(), 0.4)
-    check("ŧ opens the colour switcher", "C O L O U R S" in e2e_wide.text())
+    e2e_wide.send("µ".encode(), 0.4)
+    check("µ opens the colour switcher", "C O L O U R S" in e2e_wide.text())
     e2e_wide.send("\x1b[C", 0.4)
     check("moving shows the colours at once", near(e2e_wide.screen.buffer[4][2].bg, "1c1c1c"),
           e2e_wide.screen.buffer[4][2].bg)

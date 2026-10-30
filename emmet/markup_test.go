@@ -467,3 +467,22 @@ func TestMarkupNoPanic(t *testing.T) {
 		}
 	}
 }
+
+// A snippet name with nothing after its colon expands to its usual form.
+func TestColonDefault(t *testing.T) {
+	for abbr, want := range map[string]string{
+		"html:":  "<!DOCTYPE html>",
+		"link:":  `<link rel="stylesheet" href="">`,
+		"input:": `<input type="text">`,
+	} {
+		l := []rune(abbr)
+		_, e, ok := TabExpand(l, len(l), Options{Syntax: "html", Indent: "  "})
+		if !ok || !strings.HasPrefix(e.Text, want) {
+			t.Errorf("%q: ok %v, got %q, want it to start %q", abbr, ok, e.Text, want)
+		}
+	}
+	l := []rune("foo:")
+	if _, _, ok := TabExpand(l, len(l), Options{Syntax: "html"}); ok {
+		t.Error("foo: should stay as typed")
+	}
+}

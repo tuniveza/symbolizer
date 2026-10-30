@@ -8,21 +8,22 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// Tab switch mode (AltGr+Tab). The tab row opens out into as many rows as
+// Tab switch mode (Alt+Tab). The tab row opens out into as many rows as
 // the open files need, over the top of the text:
 //
-//	Left / Right       the file tab before / after (round the ends)
-//	Up / Down          the tab in the row above / below
-//	Home / End         the first / last tab
-//	Enter or AltGr+Tab stay on this file
+//	Left / Right, A / D  the file tab before / after (round the ends)
+//	W / S                the tab in the row above / below
+//	Up / Down            stay on this file, and move the cursor
+//	Home / End           the first / last tab
+//	Enter, Alt+Tab       stay on this file
+//	or Alt on its own
 //	Esc                back to the file it started from
 //
 // The file on screen changes as the arrows move. Any other key leaves the
 // mode and does what it always does. Clicking a tab chooses it.
 //
-// Hyprland may take AltGr+Tab for kitty's own tabs mode. Its helper
-// (emberline-kitty-tabs) then sends Hyper+Tab to a window running
-// Symbolizer instead, and that counts as AltGr+Tab here.
+// Hyprland takes Alt+Tab to switch windows; its bind sends Alt+Tab on to a
+// window whose title ends "— Symbolizer" (keybinds.lua).
 
 type tabCell struct {
 	i, x, w int
@@ -36,7 +37,7 @@ func (m *Model) openTabMode() tea.Cmd {
 	}
 	m.closeTree()
 	m.tabMode, m.tabModeFrom = true, m.cur
-	m.say("Tab mode: arrows choose a file · Enter keeps it · Esc goes back")
+	m.say("Tab mode: Left / Right or W A S D choose a file · Enter, Alt, Up or Down keeps it · Esc goes back")
 	return nil
 }
 
@@ -73,7 +74,15 @@ func tabCellAt(rows [][]tabCell, i int) (int, int) {
 // leaves the mode and should then do its usual job.
 func (m *Model) tabModeKey(k tea.Key) (tea.Cmd, bool) {
 	n := len(m.tabs)
-	switch m.altGrName(k) {
+	name := m.altGrName(k)
+	if name == "up" || name == "down" {
+		m.endTabMode()
+		return nil, false
+	}
+	if dir, ok := map[string]string{"w": "up", "a": "left", "s": "down", "d": "right"}[name]; ok {
+		name = dir
+	}
+	switch name {
 	case "left":
 		return m.switchTab((m.cur - 1 + n) % n), true
 	case "right":
@@ -86,7 +95,7 @@ func (m *Model) tabModeKey(k tea.Key) (tea.Cmd, bool) {
 		rows := m.tabLayout()
 		r, c := tabCellAt(rows, m.cur)
 		to := r - 1
-		if m.altGrName(k) == "down" {
+		if name == "down" {
 			to = r + 1
 		}
 		if to < 0 || to >= len(rows) {
@@ -101,9 +110,8 @@ func (m *Model) tabModeKey(k tea.Key) (tea.Cmd, bool) {
 			}
 		}
 		return m.switchTab(best.i), true
-	case "enter", "altgr+tab", "hyper+tab":
-		m.tabMode = false
-		m.say("On " + m.tabName(m.cur) + ".")
+	case "enter", "alt+tab":
+		m.endTabMode()
 		return nil, true
 	case "esc":
 		m.tabMode = false
@@ -113,6 +121,21 @@ func (m *Model) tabModeKey(k tea.Key) (tea.Cmd, bool) {
 	}
 	m.tabMode = false
 	return nil, false
+}
+
+// altTapRelease ends tab mode when Alt (the left one) is pressed and let go
+// with no other key in between. Only kitty reports Alt on its own.
+func (m *Model) altTapRelease(k tea.Key) {
+	if k.Code == tea.KeyLeftAlt && m.altTap && m.tabMode {
+		m.endTabMode()
+	}
+	m.altTap = false
+}
+
+// endTabMode leaves tab mode on the file now chosen.
+func (m *Model) endTabMode() {
+	m.tabMode = false
+	m.say("On " + m.tabName(m.cur) + ".")
 }
 
 func abs(n int) int {

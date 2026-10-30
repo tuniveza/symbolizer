@@ -210,6 +210,9 @@ func (m *Model) tabKey() {
 // expands any word; Tab only what is clearly an abbreviation.
 func (m *Model) expand(force bool) bool {
 	syn := m.webSyntax()
+	if (syn == "" && m.hl.Name == "Text" || syn == "html") && m.pageTemplate() {
+		return true
+	}
 	if syn == "" {
 		if force {
 			m.say("Emmet works in HTML, CSS, JSX and XML files. This is " + m.hl.Name + ".")
@@ -248,6 +251,45 @@ func (m *Model) expand(force bool) bool {
 	m.putExpansion(from, b.Cursor, exp)
 	if exp.Note != "" {
 		m.say(sentence(exp.Note))
+	}
+	return true
+}
+
+// templateWords, typed alone in an empty file, give the HTML5 page: Emmet's
+// "!" and "html:5", and the "html" / "html:" people reach for first.
+var templateWords = map[string]bool{"!": true, "html:5": true, "html": true, "html:": true, "doc": true}
+
+// pageTemplate is Tab on a template word that is all the file holds, in an
+// HTML file or one with no language yet (a new tab, a .txt). A file with no
+// language is coloured as HTML from then on.
+func (m *Model) pageTemplate() bool {
+	b := m.buf
+	row, col := b.Cursor.Row, b.Cursor.Col
+	word := strings.TrimSpace(string(m.line(row)))
+	if !templateWords[word] || col != len(strings.TrimRight(string(m.line(row)), " \t")) {
+		return false
+	}
+	for r := range b.Lines {
+		if r != row && strings.TrimSpace(string(b.Lines[r])) != "" {
+			return false
+		}
+	}
+	exp, err := emmet.Expand("!", m.emmetOpts("html"))
+	if err != nil {
+		return false
+	}
+	wasText := m.webSyntax() == ""
+	m.putExpansion(Pos{row, 0}, b.Cursor, exp)
+	if wasText {
+		m.resetHighlighter()
+		if m.webSyntax() == "" { // a .txt keeps its name's colours: use HTML's
+			m.hl = NewHighlighter("page.html", "")
+			m.buf.OnSplice = m.hl.Splice
+			m.tabs[m.cur].hl = m.hl
+		}
+		m.say("HTML5 page. Tab goes to the title, then the body. Save it with a .html name to keep it HTML.")
+	} else {
+		m.say("HTML5 page. Tab goes to the title, then the body.")
 	}
 	return true
 }
@@ -584,7 +626,7 @@ func (m *Model) webMenu() tea.Cmd {
 		{"Tab / Ctrl+E", "expand the abbreviation", func(m *Model) tea.Cmd { m.expand(true); return nil }},
 		{"Ctrl+E on highlight", "wrap it in an abbreviation", func(m *Model) tea.Cmd { return m.askWrap() }},
 		{"Alt+U", "highlight the tag around", func(m *Model) tea.Cmd { m.balance(true); return nil }},
-		{"Alt+D", "highlight inside the tag", func(m *Model) tea.Cmd { m.balance(false); return nil }},
+		{"", "highlight inside the tag", func(m *Model) tea.Cmd { m.balance(false); return nil }},
 		{"Alt+G", "go to the matching tag", func(m *Model) tea.Cmd { m.matchingPair(); return nil }},
 		{"Alt+R", "remove the tag, keep its inside", func(m *Model) tea.Cmd {
 			m.tagChange("Remove tag", emmet.RemoveTag)

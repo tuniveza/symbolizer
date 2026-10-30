@@ -25,12 +25,15 @@ func TestSteps(t *testing.T) {
 		"std::vector<int> v;":            {"std", "::", "vector", "<", "int", ">", "v", ";"},
 		"p->next = q;":                   {"p", "->", "next", "=", "q", ";"},
 		"if (a == b && c != d) {":        {"if", "(", "a", "==", "b", "&&", "c", "!=", "d", ")", "{"},
-		"x = 3.14 + 0xFF - 1e-5;":        {"x", "=", "3.14", "+", "0xFF", "-", "1e-5", ";"},
+		"x = 3.14 + 0xFF - 1e-5;":        {"x", "=", "3", ".", "14", "+", "0x", "FF", "-", "1", "e-5", ";"},
+		"n = 1234567 + 0xDEADBEEF;":      {"n", "=", "1", "234", "567", "+", "0x", "DEAD", "BEEF", ";"},
+		"x = 1_000_000 + 3.14159;":       {"x", "=", "1", "_000", "_000", "+", "3", ".", "141", "59", ";"},
+		"t = 250ms + 1.5e10;":            {"t", "=", "250", "ms", "+", "1", ".", "5", "e10", ";"},
 		"cout << \"hi\" << endl;":        {"cout", "<<", "\"", "hi", "\"", "<<", "endl", ";"},
 		"obj.method(a, b)":               {"obj", ".", "method", "(", "a", ",", "b", ")"},
 		"// don't stop here":             {"//", "don't", "stop", "here"},
 		"const f = (x) => x * 2;":        {"const", "f", "=", "(", "x", ")", "=>", "x", "*", "2", ";"},
-		"width: 10px;":                   {"width", ":", "10px", ";"},
+		"width: 10px;":                   {"width", ":", "10", "px", ";"},
 		"    return arr[i][j];":          {"return", "arr", "[", "i", "]", "[", "j", "]", ";"},
 		"x := <-ch":                      {"x", ":=", "<-", "ch"},
 		"I'm writing plain words, too.":  {"I'm", "writing", "plain", "words", ",", "too", "."},
@@ -53,4 +56,33 @@ func TestStepsOnScreenshotLine(t *testing.T) {
 		press(m, "left")
 		want(t, m, m.buf.Text(), Pos{0, c})
 	}
+}
+
+// Ctrl+Left / Right jump a whole number, else one character.
+func TestCtrlArrowNumbers(t *testing.T) {
+	m := newTest(t, "x = 1234567.5 + y")
+	m.buf.Cursor = Pos{0, 4}
+	m.buf.Cursor = m.buf.NumberRight(m.buf.Cursor)
+	want(t, m, m.buf.Text(), Pos{0, 13})
+	m.buf.Cursor = m.buf.NumberRight(m.buf.Cursor)
+	want(t, m, m.buf.Text(), Pos{0, 14})
+	m.buf.Cursor = m.buf.NumberLeft(m.buf.Cursor)
+	want(t, m, m.buf.Text(), Pos{0, 13})
+	m.buf.Cursor = m.buf.NumberLeft(m.buf.Cursor)
+	want(t, m, m.buf.Text(), Pos{0, 4})
+	m.buf.Cursor = m.buf.NumberLeft(m.buf.Cursor)
+	want(t, m, m.buf.Text(), Pos{0, 3})
+	m.buf.Cursor = Pos{0, 7}
+	m.buf.Cursor = m.buf.NumberRight(m.buf.Cursor)
+	want(t, m, m.buf.Text(), Pos{0, 13})
+}
+
+// Alt+Left / Right go to the start / end of the line.
+func TestAltShiftLineEnds(t *testing.T) {
+	m := newTest(t, "  hello world\nnext")
+	m.buf.Cursor = Pos{0, 6}
+	press(m, "alt+right")
+	want(t, m, m.buf.Text(), Pos{0, 13})
+	press(m, "alt+left")
+	want(t, m, m.buf.Text(), Pos{0, 0})
 }
