@@ -11,7 +11,7 @@ import (
 
 type textinputStyles = textinput.Styles
 
-// The colour switcher: ŧ (Right Alt+T on a UK keyboard) or Alt+T. Each theme
+// The colour switcher: µ (Right Alt+M on a UK keyboard) or Alt+T. Each theme
 // is a tile drawn in its own colours. Moving to a tile shows the whole
 // editor in it at once; Enter keeps it (remembered next time), Esc puts the
 // old one back. Only Symbolizer changes.
@@ -32,7 +32,7 @@ func (m *Model) themeKey(name string) tea.Cmd {
 	cols := m.modeCols()
 	sel := m.themeSel
 	switch name {
-	case "esc", "ŧ", "alt+t":
+	case "esc", "µ", "altgr+m", "alt+t":
 		m.useTheme(m.themeBefore)
 		m.themeOpen = false
 		return nil

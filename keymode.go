@@ -11,7 +11,8 @@ import (
 //	nothing   text          typing and moving by word
 //	Shift     highlighter   the arrows highlight
 //	Ctrl      position      the arrows move the cursor one character
-//	Alt       movement      the arrows move the highlighted text, or the word
+//	Alt       line          Left / Right: the line's start / end; Up / Down: a block
+//	Alt+Shift movement      the arrows move the highlighted text, or the word
 //
 // kitty reports Shift, Ctrl and Alt going down and up on their own (see
 // altgr.go), so the word changes the moment the key is pressed. Other
@@ -59,12 +60,14 @@ func (k *keyMode) fromMods(key tea.Key, altGr bool) {
 	k.alt = key.Mod.Contains(tea.ModAlt) && !altGr
 }
 
-// name is the mode word. Alt wins, then Shift, then Ctrl: Alt+Shift+arrows
-// move text, and Ctrl+Shift+arrows highlight.
+// name is the mode word. Alt+Shift together is movement; otherwise Alt
+// wins, then Shift, then Ctrl, so Ctrl+Shift+arrows highlight.
 func (k keyMode) name() string {
 	switch {
-	case k.alt:
+	case k.alt && k.shift:
 		return "movement"
+	case k.alt:
+		return "line"
 	case k.shift:
 		return "highlighter"
 	case k.ctrl:
@@ -77,14 +80,21 @@ func (k keyMode) name() string {
 // alone, for a narrow window.
 func (m *Model) keyModeSign(short bool) string {
 	name := m.keys.name()
+	if m.tabMode {
+		name = "tabs"
+	}
 	var mark string
 	switch name {
 	case "movement":
 		mark = icon("\U000f0041", "✥")
+	case "line":
+		mark = icon("\U000f084e", "↔")
 	case "highlighter":
 		mark = icon("\U000f0652", "▍")
 	case "position":
 		mark = icon("\U000f05e7", "⌶")
+	case "tabs":
+		mark = icon("\U000f04e9", "⇆")
 	default:
 		mark = icon("\U000f03eb", "✎")
 	}

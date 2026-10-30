@@ -181,6 +181,10 @@ func (m *Model) promptEnter(_ bool) tea.Cmd {
 		return m.nameEntered(value)
 	case pRename, pNewFile, pNewFolder:
 		return m.treeAnswer(kind, value)
+	case pWrap:
+		return m.wrapWith(value)
+	case pUpdateTag:
+		return m.updateTag(value)
 	}
 	return nil
 }

@@ -142,7 +142,7 @@ func (m *Model) tabName(i int) string {
 	return name
 }
 
-// tabBar draws the open files along the top. tabHits remembers where each
+// tabBar draws the open files along the top, centred. tabHits remembers where each
 // tab is, so a mouse click can choose it.
 func (m *Model) tabBar() string {
 	left := stBar.Render(" ")
@@ -180,10 +180,15 @@ func (m *Model) tabBar() string {
 			to--
 		}
 	}
-	m.tabHits = m.tabHits[:0]
+	// Centre the tabs on the whole width, keeping clear of "F1 help".
 	x := lipgloss.Width(left)
+	if w := width() - 1; w < room {
+		x = max(x, min((m.width-w)/2, m.width-lipgloss.Width(right)-w))
+	}
+	m.tabHits = m.tabHits[:0]
 	var sb strings.Builder
 	sb.WriteString(left)
+	sb.WriteString(stBar.Render(strings.Repeat(" ", x-lipgloss.Width(left))))
 	for _, p := range parts[from:to] {
 		w := lipgloss.Width(p.text)
 		m.tabHits = append(m.tabHits, [3]int{x, x + w, p.i})

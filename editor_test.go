@@ -126,7 +126,7 @@ func TestNavigationKeys(t *testing.T) {
 	m.buf.Cursor = Pos{0, 3}
 	press(m, "end")
 	want(t, m, m.buf.Text(), Pos{0, 7})
-	press(m, "alt+b")
+	press(m, "alt+left")
 	want(t, m, m.buf.Text(), Pos{0, 0})
 	press(m, "alt+e")
 	want(t, m, m.buf.Text(), Pos{2, 13})
@@ -143,13 +143,13 @@ func TestNavigationKeys(t *testing.T) {
 func TestAltArrowsMoveText(t *testing.T) {
 	m := newTest(t, "one two three\nfour\nfive")
 	m.buf.Cursor = Pos{0, 1} // in "one"
-	press(m, "alt+right")
+	press(m, "alt+shift+right")
 	want(t, m, "two one three\nfour\nfive", Pos{0, 5})
-	press(m, "alt+right")
+	press(m, "alt+shift+right")
 	want(t, m, "two three one\nfour\nfive", Pos{0, 11})
-	press(m, "alt+right") // last on the line: stays
+	press(m, "alt+shift+right") // last on the line: stays
 	want(t, m, "two three one\nfour\nfive", Pos{0, 11})
-	press(m, "alt+left")
+	press(m, "alt+shift+left")
 	want(t, m, "two one three\nfour\nfive", Pos{0, 5})
 	press(m, "ctrl+z")
 	want(t, m, "two three one\nfour\nfive", Pos{0, 11})
@@ -159,28 +159,28 @@ func TestAltArrowsMoveText(t *testing.T) {
 	m.buf.Cursor = Pos{0, 1}
 	press(m, "ctrl+shift+right")
 	press(m, "ctrl+shift+right") // "bc" highlighted
-	press(m, "alt+right")
+	press(m, "alt+shift+right")
 	want(t, m, "adbcef", Pos{0, 4})
 	if got := m.buf.SelectedText(); got != "bc" {
 		t.Fatalf("still highlighted: %q", got)
 	}
-	press(m, "alt+left")
-	press(m, "alt+left")
+	press(m, "alt+shift+left")
+	press(m, "alt+shift+left")
 	want(t, m, "bcadef", Pos{0, 2})
 
 	// whole words: a name with _ moves as one, and so does an operator
 	m = newTest(t, "x = MAX_PARTS + 1")
 	m.buf.Cursor = Pos{0, 13} // just after MAX_PARTS
-	press(m, "alt+left")
+	press(m, "alt+shift+left")
 	want(t, m, "x MAX_PARTS = + 1", Pos{0, 11})
 
 	// Alt + Up / Down still move the line
 	m = newTest(t, "one\ntwo\nthree")
 	m.buf.Cursor = Pos{1, 1}
-	press(m, "alt+down")
+	press(m, "alt+shift+down")
 	want(t, m, "one\nthree\ntwo", Pos{2, 1})
-	press(m, "alt+up")
-	press(m, "alt+up")
+	press(m, "alt+shift+up")
+	press(m, "alt+shift+up")
 	want(t, m, "two\none\nthree", Pos{0, 1})
 }
 
@@ -189,12 +189,12 @@ func TestAltUpDownMovesHighlight(t *testing.T) {
 	m := newTest(t, "aaaa bbbb\ncccc dddd eeee")
 	m.buf.Cursor = Pos{1, 5}
 	press(m, "shift+right") // "dddd"
-	press(m, "alt+up")
+	press(m, "alt+shift+up")
 	want(t, m, "aaaa ddddbbbb\ncccc  eeee", Pos{0, 9})
 	if got := m.buf.SelectedText(); got != "dddd" {
 		t.Fatalf("still highlighted: %q", got)
 	}
-	press(m, "alt+down")
+	press(m, "alt+shift+down")
 	want(t, m, "aaaa bbbb\ncccc dddd eeee", Pos{1, 9})
 	press(m, "ctrl+z") // one undo per move
 	want(t, m, "aaaa ddddbbbb\ncccc  eeee", Pos{0, 9})
@@ -205,35 +205,35 @@ func TestAltUpDownMovesHighlight(t *testing.T) {
 	m = newTest(t, "ab\none two three\nx")
 	m.buf.Cursor = Pos{1, 8}
 	press(m, "shift+right") // "three"
-	press(m, "alt+up")
+	press(m, "alt+shift+up")
 	want(t, m, "ab      three\none two\nx", Pos{0, 13})
-	press(m, "alt+down")
-	press(m, "alt+down")
+	press(m, "alt+shift+down")
+	press(m, "alt+shift+down")
 	want(t, m, "ab\none two\nx       three", Pos{2, 13})
-	press(m, "alt+down") // last line: stays
+	press(m, "alt+shift+down") // last line: stays
 	want(t, m, "ab\none two\nx       three", Pos{2, 13})
 
 	// moved onto a blank line and back: the padding is not an indent
 	m = newTest(t, "one two\n\nend")
 	m.buf.Cursor = Pos{0, 4}
 	press(m, "shift+right") // "two"
-	press(m, "alt+down")
+	press(m, "alt+shift+down")
 	want(t, m, "one\n    two\nend", Pos{1, 7})
-	press(m, "alt+up")
+	press(m, "alt+shift+up")
 	want(t, m, "one two\n\nend", Pos{0, 7})
 
 	// whole line highlighted: the line moves
 	m = newTest(t, "one\n  two\nthree")
 	m.buf.Cursor = Pos{1, 0}
 	press(m, "shift+end")
-	press(m, "alt+up")
+	press(m, "alt+shift+up")
 	want(t, m, "  two\none\nthree", Pos{0, 5})
 	// several lines from their indent: the lines move
 	m = newTest(t, "one\n  two\n  three\nfour")
 	m.buf.Cursor = Pos{1, 2}
 	press(m, "shift+down")
 	press(m, "shift+end")
-	press(m, "alt+down")
+	press(m, "alt+shift+down")
 	want(t, m, "one\nfour\n  two\n  three", Pos{3, 7})
 }
 
@@ -300,16 +300,28 @@ func TestKeyModeWord(t *testing.T) {
 	for _, c := range []struct {
 		code rune
 		word string
-	}{{tea.KeyLeftShift, "highlighter"}, {tea.KeyLeftCtrl, "position"}, {tea.KeyLeftAlt, "movement"}} {
+	}{{tea.KeyLeftShift, "highlighter"}, {tea.KeyLeftCtrl, "position"}, {tea.KeyLeftAlt, "line"}} {
 		m.Update(tea.KeyPressMsg(tea.Key{Code: c.code}))
 		if !strings.Contains(bar(), c.word) {
 			t.Fatalf("holding the key did not show %q: %q", c.word, bar())
 		}
 		m.Update(tea.KeyReleaseMsg(tea.Key{Code: c.code}))
-		if strings.Contains(bar(), c.word) {
+		// The bar may say "line" elsewhere (1 line), so the sign itself.
+		if strings.Contains(ansi.Strip(m.keyModeSign(false)), c.word) {
 			t.Fatalf("%q stayed after the key was let go", c.word)
 		}
 	}
+	// Alt and Shift held together: movement
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyLeftAlt}))
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyLeftShift, Mod: tea.ModAlt}))
+	if !strings.Contains(bar(), "movement") {
+		t.Fatalf("Alt+Shift did not show movement: %q", bar())
+	}
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyLeftShift, Mod: tea.ModAlt}))
+	if !strings.Contains(bar(), "line") {
+		t.Fatalf("letting go of Shift did not go back to line: %q", bar())
+	}
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyLeftAlt}))
 	// Right Alt is AltGr: it types letters, so it is not movement
 	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyRightAlt}))
 	if strings.Contains(bar(), "movement") {
@@ -421,11 +433,11 @@ func TestCut(t *testing.T) {
 
 func TestMoveLines(t *testing.T) {
 	m := newTest(t, "1\n2\n3")
-	press(m, "alt+down")
+	press(m, "alt+shift+down")
 	want(t, m, "2\n1\n3", Pos{1, 0})
-	press(m, "alt+down")
+	press(m, "alt+shift+down")
 	want(t, m, "2\n3\n1", Pos{2, 0})
-	press(m, "alt+up")
+	press(m, "alt+shift+up")
 	want(t, m, "2\n1\n3", Pos{1, 0})
 	press(m, "ctrl+z")
 	press(m, "ctrl+z")
@@ -487,38 +499,13 @@ func TestIndentSelection(t *testing.T) {
 	m := newTest(t, "a\nb")
 	press(m, "shift+down")
 	press(m, "shift+right")
-	press(m, "alt+tab")
+	press(m, "tab")
 	want(t, m, "    a\n    b", Pos{1, 5})
 	press(m, "alt+shift+tab")
 	want(t, m, "a\nb", Pos{1, 1})
-	press(m, "alt+tab")
+	press(m, "tab")
 	press(m, "shift+tab")
 	want(t, m, "a\nb", Pos{1, 1})
-}
-
-func TestAltGrTabGoesTheOtherWay(t *testing.T) {
-	m := newTest(t, "one")
-	m.addTab(newDraft())
-	m.addTab(newDraft()) // three tabs, the third on screen
-	m.altGr.down = true  // kitty: AltGr held, then Tab
-	m.tabDir = 1
-	press(m, "tab")
-	if m.cur != 1 {
-		t.Fatalf("AltGr+Tab with Tab going right: tab %d, want 1", m.cur)
-	}
-	m.tabDir = -1
-	press(m, "tab")
-	if m.cur != 2 {
-		t.Fatalf("AltGr+Tab with Tab going left: tab %d, want 2", m.cur)
-	}
-	press(m, "tab") // wraps round
-	if m.cur != 0 {
-		t.Fatalf("AltGr+Tab did not wrap: tab %d, want 0", m.cur)
-	}
-	m.altGr.down = false
-	if m.buf.Text() != "one" {
-		t.Fatal("AltGr+Tab changed the text")
-	}
 }
 
 func TestHighlightRuns(t *testing.T) {
@@ -1047,9 +1034,8 @@ func TestEszettSavesOSlashOpens(t *testing.T) {
 	want(t, m, "abc", Pos{0, 3})
 }
 
-func TestTabKeys(t *testing.T) {
+func TestTabMode(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
 	var paths []string
 	for _, n := range []string{"a.txt", "b.txt", "c.txt"} {
 		p := filepath.Join(dir, n)
@@ -1066,52 +1052,221 @@ func TestTabKeys(t *testing.T) {
 			t.Fatalf("on tab %d, want %d", m.cur+1, want+1)
 		}
 	}
-	m.switchTab(1) // on b
-	press(m, "tab")
-	at(2) // common direction: right
-	time.Sleep(tabArrowGap)
-	press(m, "tab")
-	at(0) // wraps round
-	// Tab then Left: the arrow decides, from where we started
+	altTab := func() { press(m, "alt+tab") }
+	// Tab is a real Tab now.
 	m.switchTab(1)
+	press(m, "home")
 	press(m, "tab")
-	press(m, "left")
+	if m.buf.Text() != "    b.txt" || m.cur != 1 {
+		t.Fatalf("Tab should indent: %q on tab %d", m.buf.Text(), m.cur+1)
+	}
+	press(m, "shift+tab")
+	// Alt+Tab, then arrows: the file on screen follows; Enter keeps it.
+	altTab()
+	if !m.tabMode || !strings.Contains(ansi.Strip(m.View().Content), "tabs") {
+		t.Fatal("Alt+Tab did not open tab mode (or the status bar does not say tabs)")
+	}
+	press(m, "right")
+	at(2)
+	press(m, "right") // round the end
 	at(0)
-	press(m, "right") // still in the chord
+	press(m, "left")
+	at(2)
+	// W A S D move like the arrows; a tap of Alt on its own keeps the file.
+	press(m, "d")
+	at(0)
+	press(m, "a")
+	at(2)
+	press(m, "s") // one row only: stays
+	press(m, "w")
+	at(2)
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyIsoLevel3Shift}))
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyIsoLevel3Shift}))
+	if !m.tabMode {
+		t.Fatal("an AltGr tap should not end tab mode now")
+	}
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyLeftAlt}))
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyLeftAlt}))
+	if m.tabMode || strings.ContainsAny(m.buf.Text(), "wasd") || m.showTree {
+		t.Fatalf("Alt tap: mode %v, text %q, file manager %v", m.tabMode, m.buf.Text(), m.showTree)
+	}
+	// Up / Down keep the file and move the cursor as usual.
+	altTab()
+	press(m, "left")
 	at(1)
-	// Ctrl+Tab then Ctrl+Left: Tab now goes left, and it is remembered
-	press(m, "ctrl+tab")
-	press(m, "ctrl+left")
-	time.Sleep(tabArrowGap)
-	press(m, "tab")
+	press(m, "right")
+	press(m, "down")
+	if m.tabMode {
+		t.Fatal("Down did not leave tab mode")
+	}
+	at(2)
+	// Alt held with another key is not a tap.
+	altTab()
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyLeftAlt}))
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyLeftAlt}))
+	if !m.tabMode {
+		t.Fatal("Alt with another key ended tab mode")
+	}
+	press(m, "esc")
+	at(2)
+	altTab()
+	press(m, "enter")
+	if m.tabMode {
+		t.Fatal("Enter did not leave tab mode")
+	}
+	at(2)
+	press(m, "left") // the cursor again, not tabs
+	at(2)
+	// Esc goes back to where it started.
+	altTab()
+	press(m, "home")
 	at(0)
-	if loadSettings()["tab-direction"] != "left" {
-		t.Fatal("the direction was not remembered")
-	}
-	m2, _ := NewModel(paths[0], 0)
-	if m2.tabDir != -1 {
-		t.Fatal("a new sy did not read the remembered direction")
-	}
-	// after the chord ends, Left moves the cursor again
-	time.Sleep(tabArrowGap + 50*time.Millisecond)
-	m.buf.Cursor = Pos{0, 5}
+	press(m, "esc")
+	at(2)
+	// Any other key leaves the mode and does its job.
+	altTab()
 	press(m, "left")
-	want(t, m, m.buf.Text(), Pos{0, 2})
-	// Alt+Tab is a real Tab
-	m.buf.Cursor = Pos{0, 0}
+	typeStr(m, "x")
+	if m.tabMode || !strings.HasPrefix(m.buf.Text(), "x") || m.cur != 1 {
+		t.Fatalf("typing in tab mode: mode %v, text %q, tab %d", m.tabMode, m.buf.Text(), m.cur+1)
+	}
+	// Alt+Tab again keeps the file; AltGr+Tab is kitty's, not tab mode.
+	altTab()
+	altTab()
+	if m.tabMode {
+		t.Fatal("Alt+Tab again did not close tab mode")
+	}
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyIsoLevel3Shift}))
+	press(m, "tab")
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyIsoLevel3Shift}))
+	if m.tabMode {
+		t.Fatal("AltGr+Tab opened tab mode")
+	}
+	// Alt+Tab with one file open says so.
+	m2 := newTest(t, "x")
+	press(m2, "alt+tab")
+	if m2.tabMode || !strings.Contains(m2.msg, "Only one file") {
+		t.Fatalf("one file: mode %v, message %q", m2.tabMode, m2.msg)
+	}
+}
+
+func TestReopenLast(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", filepath.Join(dir, "data"))
+	var paths []string
+	for _, n := range []string{"a.txt", "b go.txt", "c.txt"} {
+		p := filepath.Join(dir, n)
+		os.WriteFile(p, []byte("one\ntwo\nthree\n"), 0o644)
+		paths = append(paths, p)
+	}
+	// Nothing saved yet: sy starts as it always has.
+	m0 := newTest(t, "")
+	if m0.reopenLast() {
+		t.Fatal("reopened with nothing saved")
+	}
+	m, _ := NewModel(dir, 0) // a project
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	for _, p := range paths {
+		m.openPath(p)
+	}
+	m.switchTab(1)
+	m.buf.Cursor = Pos{2, 3}
+	m.closeTree()
+	m.saveLastOpen()
+	saved, _ := os.ReadFile(lastOpenPath())
+	if want := "project " + dir + "\nfile 0 0 0 " + paths[0] + "\nfile 2 3 0 " + paths[1] + "\nfile 0 0 0 " + paths[2] +
+		"\ncurrent " + paths[1] + "\n"; string(saved) != want {
+		t.Fatalf("last-open file:\n%s\nwant:\n%s", saved, want)
+	}
+	os.Remove(paths[2]) // gone by next time
+
+	m2, _ := NewModel("", 0)
+	m2.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	if !m2.reopenLast() {
+		t.Fatal("did not reopen")
+	}
+	var names []string
+	for i := range m2.tabs {
+		names = append(names, m2.tabName(i))
+	}
+	if strings.Join(names, ",") != "a.txt,b go.txt" {
+		t.Fatalf("tabs = %v, want a.txt and b go.txt (c.txt is gone, no blank tab)", names)
+	}
+	if m2.buf.Path != paths[1] || m2.buf.Cursor != (Pos{2, 3}) {
+		t.Fatalf("on %s at %v, want b go.txt at line 3 col 4", m2.buf.Path, m2.buf.Cursor)
+	}
+	if m2.tree == nil || m2.tree.root != dir || m2.showTree {
+		t.Fatal("the project should be set again, with the file manager closed")
+	}
+	if !strings.Contains(m2.msg, "Opened again") {
+		t.Fatalf("message = %q", m2.msg)
+	}
+}
+
+// A project with no file tabs still opens again, with the file manager.
+func TestReopenLastProjectOnly(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", filepath.Join(dir, "data"))
+	m, _ := NewModel(dir, 0)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m.saveLastOpen()
+	saved, _ := os.ReadFile(lastOpenPath())
+	if want := "project " + dir + "\ntree\n"; string(saved) != want {
+		t.Fatalf("last-open file:\n%s\nwant:\n%s", saved, want)
+	}
+	m2, _ := NewModel("", 0)
+	m2.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	if !m2.reopenLast() {
+		t.Fatal("did not reopen the project")
+	}
+	if m2.tree == nil || m2.tree.root != dir || !m2.showTree || !m2.treeFocus {
+		t.Fatal("the project should be open again in the file manager")
+	}
+	if !strings.Contains(m2.msg, "project") {
+		t.Fatalf("message = %q", m2.msg)
+	}
+}
+
+func TestTabModeRows(t *testing.T) {
+	m := newTest(t, "x")
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 24})
+	for range 11 {
+		m.addTab(newDraft())
+	}
+	rows := m.tabLayout()
+	if len(rows) < 2 {
+		t.Fatalf("12 tabs at 60 columns should need more than one row, got %d", len(rows))
+	}
+	for _, row := range rows {
+		last := row[len(row)-1]
+		if last.x+last.w > 60 {
+			t.Fatalf("a tab row is wider than the window: ends at %d", last.x+last.w)
+		}
+	}
 	press(m, "alt+tab")
-	if !strings.HasPrefix(m.buf.Text(), "    ") {
-		t.Fatalf("Alt+Tab did not indent: %q", m.buf.Text())
+	m.switchTab(0)
+	press(m, "s")
+	if r, _ := tabCellAt(rows, m.cur); r != 1 {
+		t.Fatalf("S went to row %d, want 1", r)
 	}
-	// Alt+N new tab, Alt+C closes it
-	n := len(m.tabs)
-	press(m, "alt+n")
-	if len(m.tabs) != n+1 || !m.buf.Draft {
-		t.Fatal("Alt+N did not open a new tab")
+	press(m, "w")
+	if m.cur != 0 {
+		t.Fatalf("W came back to tab %d, want 1", m.cur+1)
 	}
-	press(m, "alt+c")
-	if len(m.tabs) != n {
-		t.Fatal("Alt+C did not close the tab")
+	press(m, "w") // no row above: stays
+	if m.cur != 0 || !m.tabMode {
+		t.Fatal("W on the first row should stay put in tab mode")
+	}
+	screen := strings.Split(ansi.Strip(m.View().Content), "\n")
+	if !strings.Contains(screen[1], " 1 ") || !strings.Contains(screen[2], strconv.Itoa(rows[1][0].i+1)+" ") {
+		t.Fatalf("the tab rows are not drawn:\n%s\n%s", screen[1], screen[2])
+	}
+	// A click on a tab in the second row chooses it and leaves the mode.
+	cell := rows[1][0]
+	m.Update(tea.MouseClickMsg(tea.Mouse{X: cell.x + 1, Y: 2, Button: tea.MouseLeft}))
+	if m.cur != cell.i || m.tabMode {
+		t.Fatalf("click: tab %d, mode %v", m.cur+1, m.tabMode)
 	}
 }
 
@@ -1146,26 +1301,6 @@ func TestModes(t *testing.T) {
 	press(m, "esc")
 	if m.modesOpen {
 		t.Fatal("Esc did not close the modes box")
-	}
-}
-
-func TestTabSign(t *testing.T) {
-	m := newTest(t, "x")
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	status := func() string {
-		lines := strings.Split(ansi.Strip(m.View().Content), "\n")
-		return lines[len(lines)-2]
-	}
-	if s := status(); !strings.Contains(s, "Tab") || !(strings.Contains(s, "→") || strings.Contains(s, "")) {
-		t.Fatalf("status bar has no Tab → sign: %q", s)
-	}
-	press(m, "ctrl+tab")
-	press(m, "ctrl+left")
-	if s := status(); !(strings.Contains(s, "←") || strings.Contains(s, "")) {
-		t.Fatalf("sign did not turn left: %q", s)
-	}
-	if !time.Now().Before(m.tabFlashUntil) {
-		t.Fatal("the sign should glow after changing direction")
 	}
 }
 
@@ -1209,9 +1344,9 @@ func TestThemeSwitcher(t *testing.T) {
 	if currentTheme != 0 || cBG != themes[0].BG || m.themeOpen {
 		t.Fatal("Esc did not put the old colours back")
 	}
-	typeStr(m, "ŧ") // Right Alt+T on a UK keyboard arrives as the letter ŧ
+	typeStr(m, "µ") // Right Alt+M on a UK keyboard arrives as the letter µ
 	if !m.themeOpen {
-		t.Fatal("ŧ did not open the colour switcher")
+		t.Fatal("µ did not open the colour switcher")
 	}
 	screen := ansi.Strip(m.View().Content)
 	for _, n := range []string{"C O L O U R S", "Emberistal", "Molten", "Ash", "Cinder", "Daybreak"} {
@@ -1442,4 +1577,110 @@ func TestAltGrDoubleTap(t *testing.T) {
 	if m.msg != "hello" {
 		t.Fatal("pressing Shift alone cleared the message")
 	}
+}
+
+// AltGr+C (¢ on a UK keyboard, or c with AltGr held in kitty) closes the file.
+func TestAltGrCCloses(t *testing.T) {
+	dir := t.TempDir()
+	a, b := filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")
+	os.WriteFile(a, []byte("a\n"), 0o644)
+	os.WriteFile(b, []byte("b\n"), 0o644)
+	m, _ := NewModel(a, 0)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m.openPath(b)
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyIsoLevel3Shift}))
+	m.Update(tea.KeyPressMsg(tea.Key{Code: 'c', Text: "¢"}))
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyIsoLevel3Shift}))
+	if len(m.tabs) != 1 || m.buf.Path != a {
+		t.Fatalf("AltGr+C: %d tabs, on %s", len(m.tabs), m.buf.Path)
+	}
+	m.openPath(b)
+	m.Update(tea.KeyPressMsg(tea.Key{Code: 'c', Text: "¢"})) // ¢ typed, no AltGr seen
+	if len(m.tabs) != 1 {
+		t.Fatalf("¢: %d tabs", len(m.tabs))
+	}
+	press(m, "alt+c")
+	if len(m.tabs) != 1 || m.buf.Text() != "a" {
+		t.Fatalf("Alt+C should no longer close: %d tabs, text %q", len(m.tabs), m.buf.Text())
+	}
+}
+
+// Alt+Up / Down go by blocks of lines, split by empty lines.
+func TestBlockJumps(t *testing.T) {
+	m := newTest(t, "one\ntwo\n\n\n  three\n  four\n\nfive")
+	m.buf.Cursor = Pos{0, 1}
+	press(m, "alt+down")
+	want(t, m, m.buf.Text(), Pos{4, 2})
+	press(m, "alt+down")
+	want(t, m, m.buf.Text(), Pos{7, 0})
+	press(m, "alt+down") // last block: end of file
+	want(t, m, m.buf.Text(), Pos{7, 4})
+	press(m, "alt+up") // start of this block first
+	want(t, m, m.buf.Text(), Pos{7, 0})
+	press(m, "alt+up")
+	want(t, m, m.buf.Text(), Pos{4, 2})
+	m.buf.Cursor = Pos{5, 3}
+	press(m, "alt+up")
+	want(t, m, m.buf.Text(), Pos{4, 2})
+	m.buf.Cursor = Pos{3, 0} // on an empty line
+	press(m, "alt+up")
+	want(t, m, m.buf.Text(), Pos{0, 0})
+	press(m, "alt+up") // first block: stays
+	want(t, m, m.buf.Text(), Pos{0, 0})
+}
+
+// Alt+D deletes the line; Alt+B deletes the block, bracket to bracket, as
+// one step for Ctrl+Z.
+func TestDeleteLineAndBlock(t *testing.T) {
+	text := "package main\n\nfunc f() {\n\tif x {\n\t\ty()\n\t}\n\tz()\n}\n\nfunc g() {}"
+	m := newTest(t, text)
+	m.hl = NewHighlighter("x.go", "")
+	m.buf.Cursor = Pos{6, 1}
+	press(m, "alt+d")
+	want(t, m, "package main\n\nfunc f() {\n\tif x {\n\t\ty()\n\t}\n}\n\nfunc g() {}", Pos{6, 0})
+	press(m, "ctrl+z")
+	m.buf.Cursor = Pos{4, 2}
+	press(m, "alt+b")
+	want(t, m, "package main\n\nfunc f() {\n\tz()\n}\n\nfunc g() {}", Pos{3, 1})
+	m.buf.Cursor = Pos{3, 1}
+	press(m, "alt+b") // the whole function, and one of the empty lines round it
+	want(t, m, "package main\n\nfunc g() {}", Pos{2, 0})
+	press(m, "ctrl+z")
+	if m.buf.Text() != "package main\n\nfunc f() {\n\tz()\n}\n\nfunc g() {}" {
+		t.Fatalf("one Ctrl+Z should bring the block back: %q", m.buf.Text())
+	}
+}
+
+// In HTML, Alt+B deletes the element around the cursor that spans lines.
+func TestDeleteBlockHTML(t *testing.T) {
+	m := newTest(t, "<body>\n  <ul>\n    <li>a</li>\n  </ul>\n  <p>x</p>\n</body>")
+	m.hl = NewHighlighter("page.html", "")
+	m.buf.Cursor = Pos{2, 6}
+	press(m, "alt+b")
+	want(t, m, "<body>\n  <p>x</p>\n</body>", Pos{1, 2})
+}
+
+// On a line that opens a block over several lines, Alt+Down goes to the
+// line that closes it, and Alt+Up from there goes back.
+func TestBlockJumpsPairs(t *testing.T) {
+	m := newTest(t, "func main() {\n\tx := 1\n\n\tif x {\n\t\ty()\n\t}\n}\n\nfunc g() {}")
+	m.hl = NewHighlighter("x.go", "")
+	press(m, "alt+down")
+	want(t, m, m.buf.Text(), Pos{6, 0})
+	press(m, "alt+down") // from the closing line: the next block
+	want(t, m, m.buf.Text(), Pos{8, 0})
+	m.buf.Cursor = Pos{6, 0}
+	press(m, "alt+up")
+	want(t, m, m.buf.Text(), Pos{0, 0})
+	m.buf.Cursor = Pos{3, 1}
+	press(m, "alt+down")
+	want(t, m, m.buf.Text(), Pos{5, 1})
+
+	m = newTest(t, "<body>\n  <main class=\"a\">\n    <p>x</p>\n\n    <p>y</p>\n  </main>\n</body>")
+	m.hl = NewHighlighter("page.html", "")
+	m.buf.Cursor = Pos{1, 2}
+	press(m, "alt+down")
+	want(t, m, m.buf.Text(), Pos{5, 2})
+	press(m, "alt+up")
+	want(t, m, m.buf.Text(), Pos{1, 2})
 }

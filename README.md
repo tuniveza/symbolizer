@@ -47,7 +47,8 @@ It runs in any terminal. It looks its best in **[kitty](https://sw.kovidgoyal.ne
 ## ✦ Start
 
 ```text
-sy                 carry on with today's session (a draft with no name)
+sy                 open again what was open last time: the files, the project, where you were
+sy --new           carry on with today's session (a draft with no name)
 sy notes.txt       open (or create) notes.txt
 sy notes.txt +42   open notes.txt at line 42
 sy ~/projects/web  open a folder as a project, with the file manager
@@ -64,17 +65,18 @@ Inside, press **F1** for every key. **Alt + Q** quits. Everything is already sav
 ## ✦ Key modes
 
 <div align="center">
-<img src="docs/media/keymodes.svg" alt="Key modes: no key is text, Shift is highlighter, Ctrl is position, Alt is movement" width="880">
+<img src="docs/media/keymodes.svg" alt="Key modes: no key is text, Shift is highlighter, Ctrl is position, Alt is line, Alt + Shift is movement" width="880">
 </div>
 
 <br>
 
 | Hold | Mode | The arrows… |
 |:---:|:---|:---|
-| nothing | ✎ **text** | step by word: a word, part of a name (`MAX` `_` `PARTS`), a number, a bracket, an operator like `+=` |
+| nothing | ✎ **text** | step by word: a word, part of a name (`MAX` `_` `PARTS`), part of a number (`1` `234` `567`, `3` `.` `14`), a bracket, an operator like `+=` |
 | **Shift** | ▍ **highlighter** | highlight, one step at a time (Ctrl + Shift: one character) |
-| **Ctrl** | ⌶ **position** | move the cursor one character. Hold two arrows at once to go diagonally |
-| **Alt** | ✥ **movement** | move the highlighted text. Nothing highlighted: the word swaps places with its neighbour, and Up / Down move the whole line |
+| **Ctrl** | ⌶ **position** | move the cursor one character, or past a whole number. Hold two arrows at once to go diagonally |
+| **Alt** | ↔ **line** | Left / Right go to the start / end of the line; Up / Down go a block up / down |
+| **Alt + Shift** | ✥ **movement** | move the highlighted text. Nothing highlighted: the word swaps places with its neighbour, and Up / Down move the whole line |
 
 <div align="center">
 <img src="docs/media/moving.gif" alt="Holding Ctrl steps one letter; holding Alt moves the word 'fire' along the line; Shift highlights 'sparks rise'; Alt moves it down a line and back; then the whole line moves" width="880">
@@ -104,9 +106,17 @@ A box that floats over the text, with an icon for each kind of file.
 
 <br>
 
+## ✦ sy term
+
+**ŧ** (Right Alt + T) opens a real kitty terminal in a pane under the editor, in the same folder.
+Press it again, in the editor or in the terminal, to hide it. Hidden only means out of sight: whatever runs there keeps going, and it comes back at the same size.
+**¢** (Right Alt + C) in the terminal closes just that pane. It needs kitty with `sy_term.py` and its keys in `panes.conf`.
+
+<br>
+
 ## ✦ Colour themes
 
-**Alt + T** (or **ŧ**, Right Alt + T) shows six themes. The arrows show each one on the real text right away.
+**Alt + T** (or **µ**, Right Alt + M) shows six themes. The arrows show each one on the real text right away.
 **Enter** keeps it. **Esc** puts the old one back. Only Symbolizer changes, never the rest of the desktop.
 
 <div align="center">
@@ -136,6 +146,17 @@ Pages are plain text files: `~/.local/share/symbolizer/diary/2026-10-28/001.txt`
 
 <br>
 
+## ✦ Web files: Emmet and auto-correct
+
+In HTML, CSS, SCSS, Sass, Stylus, LESS, JSX / TSX and XML files, Symbolizer speaks [Emmet](https://emmet.io).
+
+- **Tab** expands the abbreviation before the cursor: `ul>li.item$*3`, `!` (a whole page: on an empty file `html`, `html:` and `html:5` give it too, even in a new tab or a `.txt`), `a:link`, `p*2>lorem10`; in CSS `m10-20`, `d:f`, `c#f`, `m10+p5`. Tab again jumps to the next empty place. A plain word that is not an abbreviation still gets a real Tab.
+- **Ctrl + E** expands any word. With text highlighted, it **wraps** it: `ul>li*` puts each line in its own `li`.
+- **Alt + W** lists every Emmet action: highlight the tag around or inside, go to the matching tag, remove, split / join and update tags, next empty place, select item, work out a sum, number up / down, image size, comments.
+- **Tags close themselves:** type `<div>` and `</div>` appears after the cursor. Rename one tag and its partner follows.
+- **CSS auto-correct:** typing `;` or `:` fixes slips: `colour` → `color`, `dispaly: flx` → `display: flex`, `10xp` → `10px`.
+- **Path auto-correct:** finish a path in `src`, `href`, `url()`, `@import` or a JS `import` and a path to no file is fixed to the one it meant (`Images/Logo.PNG` → `images/logo.png`). **Alt + P** lists the files that fit. **Ctrl + Z** takes back any auto-correct.
+
 ## ✦ Saving and sessions
 
 - Everything saves by itself a moment after each change.
@@ -159,31 +180,36 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 
 | Keys | What it does |
 |:---|:---|
-| Left / Right | cursor one step: a word, part of a name, number, bracket, or operator |
+| Left / Right | cursor one step: a word, part of a name, part of a number (1 234 567, 3 . 14), bracket, or operator |
 | Up / Down | up / down a line |
+| Alt + Up / Down | up / down a block, by the file's language: Markdown headings, lists and code fences; HTML elements; Python blocks; code from a { ( [ to the bracket that closes it; plain paragraphs. On a line that opens a bracket or tag, Down goes to its closing line and Up goes back |
 | Home / Alt + B · End | start / end of the line |
+| Alt + Left / Right | start / end of the line |
 | Alt + S / Alt + E | start / end of the file (also Ctrl + Home / End) |
-| Ctrl + arrows | cursor one character (Up / Down: one line) |
+| Ctrl + arrows | cursor one character, or past a whole number (Up / Down: one line) |
 | Ctrl + Left + Up (hold both), and the other 3 pairs | one line and one letter at once |
 | Shift + Left / Right | highlight one step |
-| Ctrl + Shift + arrows | highlight one character (Up / Down: one line) |
-| Alt + Left / Right | move the highlighted text one letter, or swap the word with the next one |
-| Alt + Up / Down | move the highlighted text a line, in its column; whole lines or nothing highlighted: the line moves |
+| Ctrl + Shift + arrows | highlight one character, or a whole number (Up / Down: one line) |
+| Alt + Shift + Left / Right | move the highlighted text one letter, or swap the word with the next one |
+| Alt + Shift + Up / Down | move the highlighted text a line, in its column; whole lines or nothing highlighted: the line moves |
 | Ctrl + C · Ctrl + X · Ctrl + V / Ctrl + P | copy · cut · paste |
 | Ctrl + Z · Ctrl + Y | undo · redo |
 | Ctrl + F · Ctrl + R · Ctrl + G | find · replace · go to line |
-| Ctrl + D · Ctrl + K · Ctrl + / | duplicate · delete line · comment |
+| Ctrl + D · Ctrl + K or Alt + D · Ctrl + / | duplicate · delete line · comment |
+| Alt + B | delete the block the cursor is in: from a { ( [ to the bracket that closes it (or an HTML element, a Python block, a paragraph) |
 | Ctrl + S or ß (Right Alt + S) | save now (a session is asked for a name) |
 | Alt + A | save under a new name |
 | Alt + L | load: sessions, or this file again from disk |
-| Alt + N / Alt + C | new file in a new tab / close this file |
+| Alt + N / AltGr + C | new file in a new tab / close this file |
 | Alt + 1 … 9 · Ctrl + PgUp / PgDn | go to open file 1 … 9 · previous / next |
-| Tab | next file tab in the common direction. Hold Tab and press Left / Right to go that way |
-| AltGr + Tab | next file tab the other way (in kitty) |
-| Ctrl + Tab, then Ctrl + Left / Right | set the common Tab direction (remembered) |
-| Alt + Tab · Shift + Alt + Tab | a real Tab (indent) · un-indent |
+| Alt + Tab | tab mode: the tabs open out into rows. Left / Right or A / D = the file before / after, W / S = the row above / below, Up / Down = keep it and move the cursor, Enter or a tap of Alt keeps it, Esc goes back |
+| Tab · Shift + Tab | a real Tab (indent) · un-indent (web files: Tab expands an Emmet abbreviation first) |
+| Ctrl + E · Alt + W | Emmet: expand (highlighted: wrap) · every web action |
+| Alt + U / D · Alt + G · Alt + R · Alt + K · Alt + Y | tag around / inside · matching tag · remove · split / join · update |
+| Alt + . / , · Alt + ] / [ · Alt + X · Alt + = / - · Alt + I · Alt + P | next / previous empty place · next / previous item · sum · number up / down · image size · file paths |
 | Alt + J | centre the lines of this file, or put them back on the left |
-| Alt + T or ŧ | colour themes |
+| Alt + T or µ | colour themes |
+| ŧ (Right Alt + T) | sy term: show or hide a kitty terminal under the editor |
 | Alt + M | switch modes: Text, Design, Slides, Diary, Book, Draw |
 | F1 or Alt + H | every key |
 | Alt + Q | quit (everything is already saved) |
@@ -200,7 +226,7 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 - **Tab row:** the open files.
 - **Central zone:** the text in a centred column; code stays left-aligned inside it. Drag the thin line on either side to make it wider or narrower. The width is remembered.
 - **Info line:** the time and date in words (“TWENTY-SIX past FOUR in the afternoon”) and the weather, from [Open-Meteo](https://open-meteo.com/).
-- **Status bar:** the file, saving, the key mode, the Tab direction, the language and the cursor position.
+- **Status bar:** the file, saving, the key mode, the language and the cursor position.
 - **Lock plate** (Hyprland, fullscreen): press Caps / Num / Scroll / Fn Lock and a small resin plate of glowing keycaps flashes up, then fades.
 
 </details>
@@ -210,14 +236,13 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 
 <br>
 
-**kitty** keeps Ctrl + Shift + arrows and Ctrl + Tab for itself. These lines in `kitty.conf` hand them to Symbolizer, only while a Symbolizer window has focus:
+**kitty** keeps Ctrl + Shift + arrows for itself. These lines in `kitty.conf` hand them to Symbolizer, only while a Symbolizer window has focus:
 
 ```conf
 map --when-focus-on title:Symbolizer kitty_mod+left
 map --when-focus-on title:Symbolizer kitty_mod+right
 map --when-focus-on title:Symbolizer kitty_mod+up
 map --when-focus-on title:Symbolizer kitty_mod+down
-map --when-focus-on title:Symbolizer ctrl+tab
 ```
 
 **Hyprland** uses Alt + Tab to switch windows. To give it to Symbolizer, make the Alt + Tab bind check the active window first: if its title ends in “— Symbolizer”, pass the key on; otherwise switch windows as usual.
@@ -243,6 +268,7 @@ map --when-focus-on title:Symbolizer ctrl+tab
 | `autosave.go` · `sessions.go` · `files.go` | saving, sessions and naming |
 | `diary.go` · `modes.go` | Diary mode and the modes box |
 | `help.go` · `keycheck.go` | the F1 page and `sy --keys` |
+| `web.go` · `emmet/` | Emmet, closing tags and auto-correct in web files |
 | `lamps.go` · `lockplate.go` | lock keys and the lock plate |
 
 </details>
