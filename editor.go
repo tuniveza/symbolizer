@@ -731,7 +731,9 @@ func (m *Model) page(d int, sel bool) {
 
 // block is Alt+Up / Alt+Down: to the start of the block before / after
 // (blocks.go says where blocks start in each language). Up goes first to
-// the start of the block the cursor is in.
+// the start of the block the cursor is in. On a line that opens a block
+// over several lines ({ ( [, a tag, a Python header), Down goes to the line
+// that closes it; on the closing line, Up goes back to the opening one.
 func (m *Model) block(d int) {
 	lang := ""
 	if m.hl != nil {
@@ -747,6 +749,10 @@ func (m *Model) block(d int) {
 		return Pos{r, c}
 	}
 	cur := m.buf.Cursor
+	if p, ok := m.pairedLine(lang, d); ok && (d > 0 || p.Row < cur.Row) {
+		m.moveTo(p, false)
+		return
+	}
 	if d > 0 {
 		for r := cur.Row + 1; r < len(starts); r++ {
 			if starts[r] {
@@ -764,6 +770,36 @@ func (m *Model) block(d int) {
 		}
 	}
 	m.moveTo(Pos{}, false)
+}
+
+// pairedLine is block's jump from an opening line to its closing line (or
+// back): in HTML, XML and JSX the tag that starts the line and its partner;
+// otherwise the bracket pairs and Python blocks of blocks.go.
+func (m *Model) pairedLine(lang string, d int) (Pos, bool) {
+	row := m.buf.Cursor.Row
+	l := m.line(row)
+	c := 0
+	for c < len(l) && (l[c] == ' ' || l[c] == '\t') {
+		c++
+	}
+	if m.hl != nil && emmet.IsMarkup(m.webSyntax()) && c+1 < len(l) && l[c] == '<' && (l[c+1] == '/') == (d < 0) {
+		text := m.allRunes()
+		if o, ok := emmet.MatchingPair(text, m.posToOff(Pos{row, c + 1})); ok {
+			if p := m.offToPos(o); p.Row != row {
+				return p, true
+			}
+		}
+	}
+	r, ok := pairedRow(blockPairs(m.buf.Lines, lang), row, d)
+	if !ok {
+		return Pos{}, false
+	}
+	l = m.line(r)
+	c = 0
+	for c < len(l) && (l[c] == ' ' || l[c] == '\t') {
+		c++
+	}
+	return Pos{r, c}, true
 }
 
 func (m *Model) smartHome(sel bool) {

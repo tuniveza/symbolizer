@@ -21,7 +21,7 @@ var helpGroups = []helpGroup{
 		{"Alt + Left / Right", "start / end of the line"},
 		{"Left / Right", "one step: a word, part of a name (MAX _ PARTS), part of a number (1 234 567, 3 . 14), bracket, operator"},
 		{"Up / Down", "up or down one line"},
-		{"Alt + Up / Down", "up / down a block: a paragraph, heading, list, element, function or if / for (follows the language)"},
+		{"Alt + Up / Down", "up / down a block: a paragraph, heading, list, element, function or if / for (follows the language). On a line that opens { ( [ or a tag, Down goes to its closing line; Up goes back"},
 		{"Ctrl + arrows", "one character, or a whole number (Up / Down: one line)"},
 		{"Ctrl + Left + Up", "up a line and left a letter (hold both)"},
 		{"Ctrl + Right + Up", "up a line and right a letter"},

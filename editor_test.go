@@ -1659,3 +1659,28 @@ func TestDeleteBlockHTML(t *testing.T) {
 	press(m, "alt+b")
 	want(t, m, "<body>\n  <p>x</p>\n</body>", Pos{1, 2})
 }
+
+// On a line that opens a block over several lines, Alt+Down goes to the
+// line that closes it, and Alt+Up from there goes back.
+func TestBlockJumpsPairs(t *testing.T) {
+	m := newTest(t, "func main() {\n\tx := 1\n\n\tif x {\n\t\ty()\n\t}\n}\n\nfunc g() {}")
+	m.hl = NewHighlighter("x.go", "")
+	press(m, "alt+down")
+	want(t, m, m.buf.Text(), Pos{6, 0})
+	press(m, "alt+down") // from the closing line: the next block
+	want(t, m, m.buf.Text(), Pos{8, 0})
+	m.buf.Cursor = Pos{6, 0}
+	press(m, "alt+up")
+	want(t, m, m.buf.Text(), Pos{0, 0})
+	m.buf.Cursor = Pos{3, 1}
+	press(m, "alt+down")
+	want(t, m, m.buf.Text(), Pos{5, 1})
+
+	m = newTest(t, "<body>\n  <main class=\"a\">\n    <p>x</p>\n\n    <p>y</p>\n  </main>\n</body>")
+	m.hl = NewHighlighter("page.html", "")
+	m.buf.Cursor = Pos{1, 2}
+	press(m, "alt+down")
+	want(t, m, m.buf.Text(), Pos{5, 2})
+	press(m, "alt+up")
+	want(t, m, m.buf.Text(), Pos{1, 2})
+}

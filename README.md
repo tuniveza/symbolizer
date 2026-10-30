@@ -182,7 +182,7 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 |:---|:---|
 | Left / Right | cursor one step: a word, part of a name, part of a number (1 234 567, 3 . 14), bracket, or operator |
 | Up / Down | up / down a line |
-| Alt + Up / Down | up / down a block, by the file's language: Markdown headings, lists and code fences; HTML elements; Python blocks; code from a { ( [ to the bracket that closes it; plain paragraphs |
+| Alt + Up / Down | up / down a block, by the file's language: Markdown headings, lists and code fences; HTML elements; Python blocks; code from a { ( [ to the bracket that closes it; plain paragraphs. On a line that opens a bracket or tag, Down goes to its closing line and Up goes back |
 | Home / Alt + B · End | start / end of the line |
 | Alt + Left / Right | start / end of the line |
 | Alt + S / Alt + E | start / end of the file (also Ctrl + Home / End) |

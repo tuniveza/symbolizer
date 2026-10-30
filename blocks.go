@@ -361,6 +361,37 @@ func indentSpans(lines [][]rune) []blockSpan {
 	return out
 }
 
+// blockPairs gives the precise blocks of a file: bracket pairs in code;
+// headers with their indented bodies, and bracket pairs, in Python and
+// YAML; none in Markdown, plain text and markup (tags are paired by Emmet).
+func blockPairs(lines [][]rune, lang string) []blockSpan {
+	switch blockFamilyOf(lang) {
+	case famCode:
+		return bracketSpans(lines, lang)
+	case famIndent:
+		return append(indentSpans(lines), bracketSpans(lines, lang)...)
+	}
+	return nil
+}
+
+// pairedRow is where Alt+Down / Alt+Up jump from a line that opens / closes
+// a block over several lines: down from the opening line to the line of the
+// bracket that closes it (the outermost, when several open there), up from
+// the closing line to the opening one. ok is false when the row does
+// neither.
+func pairedRow(spans []blockSpan, row, d int) (int, bool) {
+	to, ok := row, false
+	for _, s := range spans {
+		if d > 0 && s.top == row && s.bottom > to {
+			to, ok = s.bottom, true
+		}
+		if d < 0 && s.bottom == row && s.top < to {
+			to, ok = s.top, true
+		}
+	}
+	return to, ok
+}
+
 // blockAround is the block Alt+B deletes: the smallest bracket pair (or,
 // in Python and YAML, header and indented body) that holds the row, from
 // the line of its opening bracket to the line of its closing one. Pairs
@@ -369,13 +400,7 @@ func indentSpans(lines [][]rune) []blockSpan {
 // pair, or in Markdown and plain text, it is the Alt+Up / Alt+Down block
 // the row is in. ok is false on an empty line outside any pair.
 func blockAround(lines [][]rune, lang string, row int) (sp blockSpan, ok bool) {
-	var spans []blockSpan
-	switch blockFamilyOf(lang) {
-	case famCode:
-		spans = bracketSpans(lines, lang)
-	case famIndent:
-		spans = append(indentSpans(lines), bracketSpans(lines, lang)...)
-	}
+	spans := blockPairs(lines, lang)
 	blank := func(r int) bool { return strings.TrimSpace(string(lines[r])) == "" }
 	best := -1
 	for i, s := range spans {

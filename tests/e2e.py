@@ -205,6 +205,8 @@ def main():
     t.key("alt+s")
     check("Alt+S = start of file", cursor(t) == (2, 5), cursor(t))
     t.key("alt+down")
+    check("Alt+Down on def = end of its body", cursor(t) == (3, 9), cursor(t))
+    t.key("alt+down")
     check("Alt+Down = down a block (past the empty line)", cursor(t) == (5, 5), cursor(t))
     t.key("alt+up")
     check("Alt+Up = up a block", cursor(t) == (2, 5), cursor(t))
@@ -690,7 +692,13 @@ def main():
     open(os.path.join(tmp, "blocks.go"), "w").write(
         "package main\n\nfunc f() {\n\tif x {\n\t\ty()\n\t}\n\tz()\n}\n\nfunc g() {}\n")
     t = Term([os.path.join(tmp, "blocks.go")])
-    t.key("down", "down", "down", "down", "down", "down")   # on z()
+    t.key("down", "down")                                   # on func f() {
+    col = cursor(t)[1]
+    t.key("alt+down")
+    check("Alt+Down on func f() { = its closing }", cursor(t) == (9, col), cursor(t))
+    t.key("alt+up")
+    check("Alt+Up on the closing } = back to func f() {", cursor(t) == (4, col), cursor(t))
+    t.key("down", "down", "down", "down")                   # on z()
     t.key("alt+d")
     check("Alt+D deletes the line", "z()" not in t.text() and "}" in t.row(8), t.text())
     t.key("up", "up")                                       # on y()
@@ -700,6 +708,17 @@ def main():
     check("Alt+B says what it deleted", "Deleted the block" in t.row(ROWS - 1), t.row(ROWS - 1))
     t.key("ctrl+z", wait=0.3)
     check("one Ctrl+Z brings the block back", "if x {" in t.row(5) and "y()" in t.row(6), t.text())
+    t.close()
+
+    open(os.path.join(tmp, "blocks.html"), "w").write(
+        "<body>\n<main>\n  <p>a</p>\n\n  <p>b</p>\n</main>\n</body>\n")
+    t = Term([os.path.join(tmp, "blocks.html")])
+    t.key("down")                                           # on <main>
+    col = cursor(t)[1]
+    t.key("alt+down")
+    check("Alt+Down on <main> = its </main>", cursor(t) == (7, col), cursor(t))
+    t.key("alt+up")
+    check("Alt+Up on </main> = back to <main>", cursor(t) == (3, col), cursor(t))
     t.close()
 
     # ---- info line, weather and colours (at the end: themes are remembered) ----
