@@ -35,7 +35,7 @@ KEYS = {
     "enter": "\r", "esc": "\x1b", "backspace": "\x7f", "tab": "\t",
     "f1": "\x1bOP", "f3": "\x1bOR",
     "alt+l": "\x1bl", "alt+b": "\x1bb", "alt+e": "\x1be", "alt+s": "\x1bs",
-    "ctrl+home": "\x1b[1;5H",
+    "ctrl+home": "\x1b[1;5H", "end": "\x1b[F",
     "alt+a": "\x1ba",
 }
 for letter in "acdefgklnopqrsvxyz":
@@ -650,10 +650,14 @@ def main():
     t.key("tab", wait=0.3)
     check("CSS: Tab expands m10-20", "margin: 10px 20px;" in t.row(3), t.row(3))
     t.key("enter")
-    t.type("colour: red;")
-    check("CSS auto-correct: colour → color", "color: red;" in t.row(4) and "colour" not in t.row(4), t.row(4))
+    t.type("colour:")
+    check("CSS auto-correct: colour → color", "color:" in t.row(4) and "colour" not in t.row(4), t.row(4))
     t.key("ctrl+z", wait=0.3)
-    check("Ctrl+Z puts the slip back", "colour: red;" in t.row(4), t.row(4))
+    check("Ctrl+Z puts the slip back", "colour:" in t.row(4), t.row(4))
+    t.type(" red;")
+    t.key("enter")
+    t.type("dispaly: flx;")
+    check("CSS auto-correct: dispaly: flx → display: flex", "display: flex;" in t.row(5), t.row(5))
     t.close()
 
     # ---- info line, weather and colours (at the end: themes are remembered) ----

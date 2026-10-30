@@ -575,7 +575,7 @@ func init() {
 		"ctrl+backspace": func(m *Model) tea.Cmd { m.deleteWord(-1); return nil },
 		"ctrl+delete":    func(m *Model) tea.Cmd { m.deleteWord(1); return nil },
 		"alt+delete":     func(m *Model) tea.Cmd { m.deleteWord(1); return nil },
-		"ctrl+z":         func(m *Model) tea.Cmd { m.undo(); return nil },
+		"ctrl+z":         func(m *Model) tea.Cmd { m.fixTakenBack(); m.undo(); return nil },
 		"ctrl+y":         func(m *Model) tea.Cmd { m.redo(); return nil },
 		"ctrl+shift+z":   func(m *Model) tea.Cmd { m.redo(); return nil },
 		"ctrl+d":         func(m *Model) tea.Cmd { m.duplicate(); return nil },

@@ -25,6 +25,11 @@ type snippetStops struct {
 	stops    [][2]int
 	lastWrap string // the last abbreviation used to wrap
 	lastTag  string // the last Update tag answer
+
+	// auto-correct: what the last fix changed, and fixes taken back with Ctrl+Z
+	fixVersion int
+	fixedFrom  []string
+	noFix      map[string]bool
 }
 
 // webSyntax gives the Emmet syntax at the cursor, or "" where Emmet is off.
@@ -576,37 +581,37 @@ func (m *Model) webMenu() tea.Cmd {
 		fn         command
 	}
 	acts := []act{
-		{"Tab / Ctrl+E", "expand the abbreviation before the cursor", func(m *Model) tea.Cmd { m.expand(true); return nil }},
-		{"Ctrl+E (highlighted)", "wrap with an abbreviation", func(m *Model) tea.Cmd { return m.askWrap() }},
-		{"Alt+U", "highlight the tag around (out)", func(m *Model) tea.Cmd { m.balance(true); return nil }},
-		{"Alt+D", "highlight inside the tag (in)", func(m *Model) tea.Cmd { m.balance(false); return nil }},
+		{"Tab / Ctrl+E", "expand the abbreviation", func(m *Model) tea.Cmd { m.expand(true); return nil }},
+		{"Ctrl+E on highlight", "wrap it in an abbreviation", func(m *Model) tea.Cmd { return m.askWrap() }},
+		{"Alt+U", "highlight the tag around", func(m *Model) tea.Cmd { m.balance(true); return nil }},
+		{"Alt+D", "highlight inside the tag", func(m *Model) tea.Cmd { m.balance(false); return nil }},
 		{"Alt+G", "go to the matching tag", func(m *Model) tea.Cmd { m.matchingPair(); return nil }},
-		{"Alt+R", "remove the tag, keep what is inside", func(m *Model) tea.Cmd {
+		{"Alt+R", "remove the tag, keep its inside", func(m *Model) tea.Cmd {
 			m.tagChange("Remove tag", emmet.RemoveTag)
 			return nil
 		}},
-		{"Alt+K", "split or join a tag (<div></div> ↔ <div />)", func(m *Model) tea.Cmd {
+		{"Alt+K", "split or join: <p></p> ↔ <p/>", func(m *Model) tea.Cmd {
 			m.tagChange("Split / join tag", emmet.SplitJoinTag)
 			return nil
 		}},
-		{"Alt+Y", "update the tag: name, .class, #id, [attr]", func(m *Model) tea.Cmd { return m.askUpdateTag() }},
+		{"Alt+Y", "update: name .class #id [a=b]", func(m *Model) tea.Cmd { return m.askUpdateTag() }},
 		{"Alt+. / Alt+,", "next / previous empty place", func(m *Model) tea.Cmd { m.editPoint(1); return nil }},
-		{"Alt+] / Alt+[", "highlight next / previous item", func(m *Model) tea.Cmd { m.selectItem(1); return nil }},
-		{"Alt+X", "work out the sum before the cursor", func(m *Model) tea.Cmd { m.evalMath(); return nil }},
-		{"Alt+= / Alt+-", "number up / down 1 (with Shift: 10)", func(m *Model) tea.Cmd { m.incNumber(1); return nil }},
-		{"Alt+I", "set the image's width and height", func(m *Model) tea.Cmd { m.imageSize(); return nil }},
-		{"Alt+P", "list the files that fit the path", func(m *Model) tea.Cmd { return m.pathList() }},
-		{"Ctrl+/", "comment out (<!-- --> or /* */)", func(m *Model) tea.Cmd {
+		{"Alt+] / Alt+[", "next / previous item", func(m *Model) tea.Cmd { m.selectItem(1); return nil }},
+		{"Alt+X", "work out the sum", func(m *Model) tea.Cmd { m.evalMath(); return nil }},
+		{"Alt+= / Alt+-", "number ±1 (Shift: ±10)", func(m *Model) tea.Cmd { m.incNumber(1); return nil }},
+		{"Alt+I", "image width and height", func(m *Model) tea.Cmd { m.imageSize(); return nil }},
+		{"Alt+P", "files that fit the path", func(m *Model) tea.Cmd { return m.pathList() }},
+		{"Ctrl+/", "comment: <!-- --> or /* */", func(m *Model) tea.Cmd {
 			if !m.blockComment() {
 				m.toggleComment()
 			}
 			return nil
 		}},
 	}
-	p := &picker{title: "Web (Emmet)", note: "Enter does it here. The key on the left does it straight from the text."}
+	p := &picker{title: "Web (Emmet)", note: "Enter does it. Or press the key in the text."}
 	for _, a := range acts {
 		p.items = append(p.items, pickItem{
-			label: stHelpKey.Render(padRight(a.keys, 22)) + stHelpText.Render(a.what),
+			label: stHelpKey.Render(padRight(a.keys, 20)) + stHelpText.Render(a.what),
 			open:  a.fn,
 		})
 	}
@@ -732,6 +737,19 @@ func (m *Model) correctCSS() {
 	if len(edits) == 0 {
 		return
 	}
+	l := m.line(row)
+	kept := edits[:0]
+	var from []string
+	for _, e := range edits {
+		if old := string(l[e.Start:e.End]); !m.snip.noFix[old] {
+			kept = append(kept, e)
+			from = append(from, old)
+		}
+	}
+	edits = kept
+	if len(edits) == 0 {
+		return
+	}
 	sort.Slice(edits, func(i, j int) bool { return edits[i].Start > edits[j].Start })
 	col := b.Cursor.Col
 	shift := 0
@@ -748,10 +766,16 @@ func (m *Model) correctCSS() {
 	})
 	b.BreakUndo()
 	b.Cursor = b.Clamp(Pos{row, col + shift})
+	m.rememberFix(from)
 	if note == "" {
 		note = "fixed a typing slip"
 	}
-	m.say(sentence(note) + " (Ctrl+Z puts it back.)")
+	m.say(fixNote(note))
+}
+
+// fixNote is the message after an auto-correct.
+func fixNote(note string) string {
+	return strings.TrimSuffix(sentence(note), ".") + " · Ctrl+Z undoes"
 }
 
 // correctPath fixes a file path that was just finished, if it points nowhere.
@@ -759,17 +783,27 @@ func (m *Model) correctPath() {
 	if !m.webCode() || len(m.buf.Lines) > 20000 {
 		return
 	}
-	ch, ok := emmet.CorrectPathAt(m.allRunes(), m.posToOff(m.buf.Cursor), m.fileDir())
+	text := m.allRunes()
+	ch, ok := emmet.CorrectPathAt(text, m.posToOff(m.buf.Cursor), m.fileDir())
 	if !ok || len(ch.Edits) == 0 {
 		return
+	}
+	var from []string
+	for _, e := range ch.Edits {
+		old := string(text[e.Start:e.End])
+		if m.snip.noFix[old] {
+			return
+		}
+		from = append(from, old)
 	}
 	note := ch.Note
 	ch.Note = ""
 	m.applyChange(ch)
+	m.rememberFix(from)
 	if note == "" {
 		note = "path fixed"
 	}
-	m.say(sentence(note) + " (Ctrl+Z puts it back.)")
+	m.say(fixNote(note))
 }
 
 // beforeNewline runs on Enter before the new line: the same fixes as typing.
@@ -807,4 +841,27 @@ func (m *Model) splitPair() bool {
 	b.Cursor = Pos{b.Cursor.Row - 1, len([]rune(indent + b.Indent))}
 	m.ensureVisible()
 	return true
+}
+
+// rememberFix notes what an auto-correct changed, so Ctrl+Z straight after
+// it can tell sy to leave those words alone from now on.
+func (m *Model) rememberFix(from []string) {
+	m.snip.fixVersion, m.snip.fixedFrom = m.buf.Version(), from
+}
+
+// fixTakenBack runs before Ctrl+Z: undoing a fix means "I meant that".
+func (m *Model) fixTakenBack() {
+	if m.snip.fixedFrom == nil || m.buf.Version() != m.snip.fixVersion {
+		return
+	}
+	if m.snip.noFix == nil {
+		m.snip.noFix = map[string]bool{}
+	}
+	for _, w := range m.snip.fixedFrom {
+		if strings.TrimSpace(w) == "" {
+			continue // an added letter or space: nothing to remember
+		}
+		m.snip.noFix[w] = true
+	}
+	m.snip.fixedFrom = nil
 }

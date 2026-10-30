@@ -107,6 +107,8 @@ func TestCSSAutoCorrect(t *testing.T) {
 	want(t, m, lines("a {", "  display:", "}"), Pos{1, 10})
 	press(m, "ctrl+z")
 	want(t, m, lines("a {", "  dispaly:", "}"), Pos{1, 10})
+	typeStr(m, " x;") // taken back once: not fixed again
+	want(t, m, lines("a {", "  dispaly: x;", "}"), Pos{1, 13})
 }
 
 func TestTagClosesItself(t *testing.T) {
