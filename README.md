@@ -56,6 +56,7 @@ sy -t ~/notes      open every text file in a folder and its folders as tabs
 sy diary           Diary mode
 sy design          Design mode   (also: slide, book, draw)
 sy --keys          show what each key does
+sy --version       show the version and build number (the status bar shows the build too)
 ```
 
 Inside, press **F1** for every key. **Alt + Q** quits. Everything is already saved.
@@ -72,7 +73,7 @@ Inside, press **F1** for every key. **Alt + Q** quits. Everything is already sav
 
 | Hold | Mode | The arrows… |
 |:---:|:---|:---|
-| nothing | ✎ **text** | step by word: a word, part of a name (`MAX` `_` `PARTS`), part of a number (`1` `234` `567`, `3` `.` `14`), a bracket, an operator like `+=` |
+| nothing | ✎ **text** | step by word: a word, part of a name (`MAX` `_` `PARTS`), one digit of a number (`1` `0`, `3` `.` `1` `4`), a bracket, an operator like `+=` |
 | **Shift** | ▍ **highlighter** | highlight, one step at a time (Ctrl + Shift: one character) |
 | **Ctrl** | ⌶ **position** | move the cursor one character, or past a whole number. Hold two arrows at once to go diagonally |
 | **Alt** | ↔ **line** | Left / Right go to the start / end of the line; Up / Down go a block up / down |
@@ -95,7 +96,9 @@ A box that floats over the text, with an icon for each kind of file.
 |:---|:---|
 | **Alt + O**, **AltGr + O** (ø), or tap **AltGr** twice | open the file manager |
 | **Alt + E**, **AltGr + E**, or **Esc** | close it |
-| **Enter** / **Right** | open a file, or open a folder |
+| **Enter** | open a file, or open / close a folder |
+| **Right** | open what is chosen. On a folder: every file in it and its folders as tabs (up to 50; files over 8 MB are left out) |
+| **Shift + Right** | the same, but only text with something in it: no pictures, sound, video, subtitles or empty files |
 | **Shift + Enter** | open every text file in that folder and its folders as tabs: web pages, scripts and other code first, JSON and lock files last |
 | **AltGr + P** (þ) or **Alt + P** | make the chosen folder the project |
 | **Ctrl + N** · **F7** · **F2** · **Del** | new file · new folder · rename · move to the Trash |
@@ -157,13 +160,34 @@ In HTML, CSS, SCSS, Sass, Stylus, LESS, JSX / TSX and XML files, Symbolizer spea
 - **CSS auto-correct:** typing `;` or `:` fixes slips: `colour` → `color`, `dispaly: flx` → `display: flex`, `10xp` → `10px`.
 - **Path auto-correct:** finish a path in `src`, `href`, `url()`, `@import` or a JS `import` and a path to no file is fixed to the one it meant (`Images/Logo.PNG` → `images/logo.png`). **Alt + P** lists the files that fit. **Ctrl + Z** takes back any auto-correct.
 
+## ✦ Brackets and suggestions
+
+In code files (not plain text or Markdown):
+
+- **Brackets and quotes close themselves.** Type `(` and `)` appears after the cursor. Type `)` in front of it and the cursor steps over it. Backspace in an empty `()` deletes both. Highlight text and type `(` to wrap it.
+- **A list of suggestions** shows while you type a word: CSS properties (3 letters or more), the values a property takes, pseudo-classes, HTML tags after `<`, and words already in the file. **Tab** takes the chosen one, **Up / Down** choose, **Esc** closes the list.
+- **CSS:** choosing a property gives `display: ;` and opens its values. Typing `color:` adds the `;` after the cursor.
+- Short Emmet words (`fl`, `ta`, `m10`) show no list, so Tab still expands them.
+- **Unit hints (CSS):** a dim shadow shows the recommended unit as you type. `font-size: 1` shows `rem`; `font-size: 16` shows `px → 1rem`; an empty `height:` shows `auto`. A value already there in a weaker unit shows one too: `16px → 1rem`, `100vh → 100dvh`. **Tab** takes it. The message line says why.
+
+## ✦ Learn
+
+Press **AltGr + L** (ł) for a card with the recommended way to write the file's language today.
+
+- **It opens at what the cursor is on.** On `16px` it opens the Units section at `px`. On `?.` in JavaScript it opens that line.
+- **The card follows the file's ending:** `.css` → CSS, `.go` → Go, `.md` → Markdown. **Tab** shows another language.
+- **Each line says three things:** what to use, what it is (from the specification), and what it is like in the real world.
+- **The layout never moves:** language, section, the list of lines, then the chosen line in full. **Up / Down** choose a line, **Left / Right** a section, **Esc** closes.
+- Cards: CSS, HTML, JavaScript, TypeScript, Markdown, JSON / YAML / TOML, XML / SVG, Go, Python, Rust, C / C++, Java, Kotlin, C#, PHP, SQL, Lua and Shell. Every fact was checked against the language's specification; each card names the ones it used.
+
 ## ✦ Saving and sessions
 
 - Everything saves by itself a moment after each change.
 - Text with no name is a **session**, kept in `~/.local/share/symbolizer/sessions`. Its tab gets a made-up file name from its text (first function, heading or words, like `tidy_room.py`), or an ember name like `molten-lantern.txt`.
 - `sy` carries on with the session changed in the last 24 hours. After 24 hours with no change, `sy` starts a new one. The old one waits in the **Alt + L** list.
 - **Ctrl + S** on a session asks for a name. The ending comes from what the text looks like: `hello` becomes `hello.py`, `hello.c` …
-- If another program changes an open file, saving pauses instead of writing over it.
+- If another program changes an open file (git, a formatter, another editor), the new text comes in by itself within a second. Only the changed lines change. **Ctrl + Z** takes it back.
+- If you have changes not saved yet at that moment, saving pauses instead of writing over either side.
 
 ## ✦ Every key
 
@@ -180,7 +204,7 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 
 | Keys | What it does |
 |:---|:---|
-| Left / Right | cursor one step: a word, part of a name, part of a number (1 234 567, 3 . 14), bracket, or operator |
+| Left / Right | cursor one step: a word, part of a name, one digit of a number (1 0, 3 . 1 4), bracket, or operator |
 | Up / Down | up / down a line |
 | Alt + Up / Down | up / down a block, by the file's language: Markdown headings, lists and code fences; HTML elements; Python blocks; code from a { ( [ to the bracket that closes it; plain paragraphs. On a line that opens a bracket or tag, Down goes to its closing line and Up goes back |
 | Home / Alt + B · End | start / end of the line |
@@ -200,7 +224,7 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 | Ctrl + S or ß (Right Alt + S) | save now (a session is asked for a name) |
 | Alt + A | save under a new name |
 | Alt + L | load: sessions, or this file again from disk |
-| Alt + N / AltGr + C | new file in a new tab / close this file |
+| Alt + N / Alt + C | new file in a new tab / close this file |
 | Alt + 1 … 9 · Ctrl + PgUp / PgDn | go to open file 1 … 9 · previous / next |
 | Alt + Tab | tab mode: the tabs open out into rows. Left / Right or A / D = the file before / after, W / S = the row above / below, Up / Down = keep it and move the cursor, Enter or a tap of Alt keeps it, Esc goes back |
 | Tab · Shift + Tab | a real Tab (indent) · un-indent (web files: Tab expands an Emmet abbreviation first) |
@@ -208,6 +232,7 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 | Alt + U / D · Alt + G · Alt + R · Alt + K · Alt + Y | tag around / inside · matching tag · remove · split / join · update |
 | Alt + . / , · Alt + ] / [ · Alt + X · Alt + = / - · Alt + I · Alt + P | next / previous empty place · next / previous item · sum · number up / down · image size · file paths |
 | Alt + J | centre the lines of this file, or put them back on the left |
+| Alt + Z | word wrap on / off: long lines carry on in the rows under them, broken between words and indented like their line. On to start with; remembered |
 | Alt + T or µ | colour themes |
 | ŧ (Right Alt + T) | sy term: show or hide a kitty terminal under the editor |
 | Alt + M | switch modes: Text, Design, Slides, Diary, Book, Draw |
@@ -269,6 +294,10 @@ map --when-focus-on title:Symbolizer kitty_mod+down
 | `diary.go` · `modes.go` | Diary mode and the modes box |
 | `help.go` · `keycheck.go` | the F1 page and `sy --keys` |
 | `web.go` · `emmet/` | Emmet, closing tags and auto-correct in web files |
+| `pairs.go` · `suggest.go` | brackets that close themselves and the suggestion list |
+| `reload.go` | files another program changed come in by themselves |
+| `ghost.go` · `emmet/units.go` | CSS unit hints: the dim shadow and its rules |
+| `learn.go` · `learn_*.go` | the Learn box (AltGr + L) and its cards |
 | `lamps.go` · `lockplate.go` | lock keys and the lock plate |
 
 </details>

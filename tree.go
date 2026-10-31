@@ -242,7 +242,7 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 		count = len(t.found)
 	}
 	switch name {
-	case "alt+n", "altgr+c", "¢", "alt+tab", "ctrl+w", "ctrl+pgup", "ctrl+pgdown":
+	case "alt+n", "alt+c", "alt+tab", "ctrl+w", "ctrl+pgup", "ctrl+pgdown":
 		return bindings[name](m)
 	case "esc":
 		if finding {
@@ -272,10 +272,14 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 		t.sel = 0
 	case "end":
 		t.sel = max(count-1, 0)
-	case "enter", "right":
+	case "enter", "right", "shift+right":
+		// Enter opens a file or opens / closes a folder. Right opens what is
+		// chosen: a folder opens every file in it (and its folders) as tabs.
+		// Shift+Right does the same with only text that has something in it.
+		words := name == "shift+right"
 		if finding {
 			if t.sel < len(t.found) {
-				return m.treeOpen(t.found[t.sel])
+				return m.treePick(t.found[t.sel], words)
 			}
 			if p := expandPath(t.query); strings.ContainsAny(t.query, "/~") && fileExists(p) {
 				return m.treeGo(p)
@@ -286,22 +290,28 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 		if n == t.top {
 			return m.treeKey(tea.Key{Code: tea.KeyLeft}) // the "up a folder" row
 		}
-		if n.dir {
-			if name == "right" && n.open && len(n.children) > 0 {
-				t.sel++
-				return nil
-			}
-			n.open = !n.open || name == "right"
+		if n.dir && name == "enter" {
+			n.open = !n.open
 			if n.open && !n.loaded {
 				t.load(n)
 			}
 			t.flatten()
 			return nil
 		}
-		return m.treeOpen(n.path)
+		if n.dir {
+			pick := pickAll
+			if words {
+				pick = pickWords
+			}
+			if m.openFolder(n.path, pick) {
+				m.closeTree()
+			}
+			return nil
+		}
+		return m.treePick(n.path, words)
 	case "shift+enter", "ctrl+enter":
 		// Every text file in the chosen folder (or the chosen file's folder) as tabs.
-		if m.openFolder(m.treeFolder()) {
+		if m.openFolder(m.treeFolder(), pickText) {
 			m.closeTree()
 		}
 		return nil
@@ -426,6 +436,19 @@ func (m *Model) treeOpen(path string) tea.Cmd {
 	m.tree.flatten()
 	m.tree.reveal(path)
 	return cmd
+}
+
+// treePick opens a file chosen with Right, or with Shift+Right when it is
+// text with something in it.
+func (m *Model) treePick(path string, words bool) tea.Cmd {
+	if words {
+		info, err := os.Stat(path)
+		if err != nil || !picked(path, info.Size(), pickWords) {
+			m.say(filepath.Base(path) + " is media, empty or not text, so Shift+Right leaves it. Right opens it.")
+			return nil
+		}
+	}
+	return m.treeOpen(path)
 }
 
 // treeGo goes to a typed path: a folder becomes the project, a file opens.

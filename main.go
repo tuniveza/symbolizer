@@ -57,7 +57,7 @@ func main() {
 		case a == "-t" || a == "--tabs":
 			tabs = true
 		case a == "-v" || a == "--version":
-			fmt.Println("Symbolizer " + version)
+			fmt.Println(strings.TrimSpace("Symbolizer " + version + " " + buildNumber))
 			return
 		case strings.HasPrefix(a, "+"):
 			line, _ = strconv.Atoi(a[1:])
@@ -73,7 +73,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "sy: "+err.Error())
 		os.Exit(1)
 	}
-	if tabs && m.tree != nil && m.openFolder(m.tree.root) {
+	if tabs && m.tree != nil && m.openFolder(m.tree.root, pickText) {
 		m.closeTree()
 	}
 	if path == "" && startMode == 0 && !fresh {

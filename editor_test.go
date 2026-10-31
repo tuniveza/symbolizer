@@ -855,7 +855,7 @@ func TestOpenFolderAsTabs(t *testing.T) {
 	// A folder with nothing to open says so and leaves the tabs alone.
 	empty := filepath.Join(dir, "sub", "empty")
 	os.MkdirAll(empty, 0o755)
-	if m.openFolder(empty) || len(m.tabs) != 5 {
+	if m.openFolder(empty, pickText) || len(m.tabs) != 5 {
 		t.Fatal("an empty folder should open no tabs")
 	}
 }
@@ -894,7 +894,7 @@ func TestOpenFolderCodeFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.openFolder(dir)
+	m.openFolder(dir, pickText)
 	var names []string
 	for i := range m.tabs {
 		names = append(names, m.tabName(i))
@@ -943,7 +943,7 @@ func TestOpenFolderStopsAtLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !m.openFolder(dir) || len(m.tabs) != maxFolderTabs || !strings.Contains(m.msg, "Stopped at") {
+	if !m.openFolder(dir, pickText) || len(m.tabs) != maxFolderTabs || !strings.Contains(m.msg, "Stopped at") {
 		t.Fatalf("%d tabs, message %q", len(m.tabs), m.msg)
 	}
 }
@@ -1579,8 +1579,8 @@ func TestAltGrDoubleTap(t *testing.T) {
 	}
 }
 
-// AltGr+C (¢ on a UK keyboard, or c with AltGr held in kitty) closes the file.
-func TestAltGrCCloses(t *testing.T) {
+// Alt+C closes the file. AltGr+C no longer does: it types ¢.
+func TestAltCCloses(t *testing.T) {
 	dir := t.TempDir()
 	a, b := filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")
 	os.WriteFile(a, []byte("a\n"), 0o644)
@@ -1588,20 +1588,16 @@ func TestAltGrCCloses(t *testing.T) {
 	m, _ := NewModel(a, 0)
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m.openPath(b)
+	press(m, "alt+c")
+	if len(m.tabs) != 1 || m.buf.Path != a {
+		t.Fatalf("Alt+C: %d tabs, on %s", len(m.tabs), m.buf.Path)
+	}
+	m.openPath(b)
 	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyIsoLevel3Shift}))
 	m.Update(tea.KeyPressMsg(tea.Key{Code: 'c', Text: "¢"}))
 	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyIsoLevel3Shift}))
-	if len(m.tabs) != 1 || m.buf.Path != a {
-		t.Fatalf("AltGr+C: %d tabs, on %s", len(m.tabs), m.buf.Path)
-	}
-	m.openPath(b)
-	m.Update(tea.KeyPressMsg(tea.Key{Code: 'c', Text: "¢"})) // ¢ typed, no AltGr seen
-	if len(m.tabs) != 1 {
-		t.Fatalf("¢: %d tabs", len(m.tabs))
-	}
-	press(m, "alt+c")
-	if len(m.tabs) != 1 || m.buf.Text() != "a" {
-		t.Fatalf("Alt+C should no longer close: %d tabs, text %q", len(m.tabs), m.buf.Text())
+	if len(m.tabs) != 2 || !strings.Contains(m.buf.Text(), "¢") {
+		t.Fatalf("AltGr+C should type ¢, not close: %d tabs, text %q", len(m.tabs), m.buf.Text())
 	}
 }
 

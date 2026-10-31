@@ -19,7 +19,7 @@ var helpGroups = []helpGroup{
 		{"Home / Alt + B", "start of the line"},
 		{"End", "end of the line"},
 		{"Alt + Left / Right", "start / end of the line"},
-		{"Left / Right", "one step: a word, part of a name (MAX _ PARTS), part of a number (1 234 567, 3 . 14), bracket, operator"},
+		{"Left / Right", "one step: a word, part of a name (MAX _ PARTS), one digit of a number (1 0, 3 . 1 4), bracket, operator"},
 		{"Up / Down", "up or down one line"},
 		{"Alt + Up / Down", "up / down a block: a paragraph, heading, list, element, function or if / for (follows the language). On a line that opens { ( [ or a tag, Down goes to its closing line; Up goes back"},
 		{"Ctrl + arrows", "one character, or a whole number (Up / Down: one line)"},
@@ -72,7 +72,9 @@ var helpGroups = []helpGroup{
 		{"sy FOLDER", "open a folder as a project"},
 		{"AltGr + P  or Alt + P", "make the chosen folder the project"},
 		{"type letters", "find a file anywhere in the project"},
-		{"Enter / Right", "open a file, or open / close a folder"},
+		{"Enter", "open a file, or open / close a folder"},
+		{"Right", "open what is chosen: on a folder, every file in it and its folders as tabs"},
+		{"Shift + Right", "the same, but only text with something in it: no pictures, sound, video or empty files"},
 		{"Shift + Enter", "open every text file in this folder and its folders as tabs, code first"},
 		{"sy -t FOLDER", "the same from the terminal (sy -t alone: this folder)"},
 		{"Left", "close a folder (on the top row: go up a folder)"},
@@ -87,6 +89,12 @@ var helpGroups = []helpGroup{
 	{"Centred lines", false, []helpLine{
 		{"(prose)", "plain text and Markdown lines sit in the middle, like a page"},
 		{"Alt + J", "centre the lines of this file, or put them back on the left"},
+		{"Alt + Z", "word wrap on / off: long lines carry on in the rows under them (on to start with; remembered)"},
+	}},
+	{"Learn", false, []helpLine{
+		{"AltGr + L  (ł)", "the recommended way to write this file's language, open at what the cursor is on (16px → px)"},
+		{"  Up / Down · Left / Right", "  the line before / after · the section before / after"},
+		{"  Tab · Esc", "  another language · close"},
 	}},
 	{"Colours", false, []helpLine{
 		{"µ  (Right Alt + M) or Alt + T", "colour themes: Emberistal, Emberline, Molten, Ash, Cinder, Daybreak"},
@@ -108,7 +116,7 @@ var helpGroups = []helpGroup{
 	}},
 	{"Open files (tabs)", false, []helpLine{
 		{"Alt + N", "new file in a new tab"},
-		{"AltGr + C", "close this file (it is already saved)"},
+		{"Alt + C", "close this file (it is already saved)"},
 		{"Alt + Tab", "tab mode: the tabs open out into rows"},
 		{"  Left / Right or A / D", "  the file before / after"},
 		{"  W / S", "  the file in the row above / below"},
@@ -119,6 +127,16 @@ var helpGroups = []helpGroup{
 		{"Alt + 1 … 9", "go to open file 1 … 9"},
 		{"Ctrl + PgUp / PgDn", "previous / next open file"},
 		{"Click a tab", "go to that file"},
+	}},
+	{"Brackets and suggestions (code files)", false, []helpLine{
+		{"Typing ( [ { \" ' `", "the closer appears after the cursor; with text highlighted: wraps it"},
+		{"Typing ) ] } \" ' `", "in front of the same closer: steps over it"},
+		{"Backspace in ( )", "deletes both halves of an empty pair"},
+		{"Enter in ( ) [ ] { }", "the inside gets its own line"},
+		{"Typing a word", "a list shows ways to finish it: CSS properties and values, HTML tags, words in the file"},
+		{"  Tab / Up, Down / Esc", "  take the chosen one / choose / close the list"},
+		{"Typing : (CSS)", "after a property, the ; appears after the cursor; typing ; steps over it"},
+		{"Dim shadow (CSS)", "the recommended unit: font-size: 16 shows px → 1rem; Tab takes it; the message says why"},
 	}},
 	{"Web files: Emmet and auto-correct (HTML, CSS, JSX, XML)", false, []helpLine{
 		{"Tab", "expand the abbreviation before the cursor (ul>li*3, m10, d:f); Tab again: the next empty place"},

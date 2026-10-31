@@ -41,7 +41,8 @@ func (m *Model) openTabMode() tea.Cmd {
 	return nil
 }
 
-// tabLayout puts every tab in rows that fit the window, in order.
+// tabLayout puts every tab in rows that fit the window, in order, each row
+// centred like the tab bar.
 func (m *Model) tabLayout() [][]tabCell {
 	var rows [][]tabCell
 	var row []tabCell
@@ -55,7 +56,15 @@ func (m *Model) tabLayout() [][]tabCell {
 		row = append(row, tabCell{i, x, w, text})
 		x += w + 1
 	}
-	return append(rows, row)
+	rows = append(rows, row)
+	for _, row := range rows {
+		last := row[len(row)-1]
+		shift := (m.width-(last.x+last.w-row[0].x))/2 - row[0].x
+		for c := range row {
+			row[c].x += shift
+		}
+	}
+	return rows
 }
 
 // tabCellAt finds tab i in the layout.
@@ -171,7 +180,7 @@ func (m *Model) overlayTabRows(content string) string {
 			break
 		}
 		var sb strings.Builder
-		sb.WriteString(stBar.Render(" "))
+		sb.WriteString(stBar.Render(strings.Repeat(" ", row[0].x)))
 		for _, cell := range row {
 			st := stBar
 			if cell.i == m.cur {

@@ -12,8 +12,9 @@ import (
 //	parts of names      MAX _ PARTS   max Parts     one step each
 //	                    parse HTTP Request   __ init __
 //	words               parts  don't               one step
-//	numbers             3 . 14   0x FF   1 e-5   10 px   one step each part
-//	big numbers         1 234 567   0x DEAD BEEF   1_000 _000   a group each
+//	numbers             1 0   3 . 1 4   0x F F   1 e- 5   1 0 px
+//	                    every digit is one step, however long the number
+//	                    (Ctrl + arrows jump the whole number)
 //	brackets, quotes    ( ) [ ] { } " ' `          one step each
 //	known operators     += -> :: == && << // /*    one step
 //	anything else       ; , . * < >                one step each
@@ -150,19 +151,14 @@ func steps(l []rune) [][2]int {
 }
 
 // numberParts splits the number l[i:e] into steps: a 0x / 0b / 0o prefix,
-// the digits in groups (3 from the right, 4 for hex and binary, or at each
-// _ when the number has them), the point, the fraction (groups of 3 from
-// the left), the exponent (e-5) and a unit (px, ms, f).
+// each digit (and each _), the point, each digit of the fraction, the
+// exponent's e- and each of its digits, and a unit (px, ms, f).
 func numberParts(l []rune, i, e int) [][2]int {
 	var out [][2]int
 	j := i
-	group := 3
 	if e-i > 2 && l[i] == '0' && strings.ContainsRune("xXbBoO", l[i+1]) {
 		out = append(out, [2]int{i, i + 2})
 		j = i + 2
-		if l[i+1] != 'o' && l[i+1] != 'O' {
-			group = 4
-		}
 	}
 	hex := j > i && (l[i+1] == 'x' || l[i+1] == 'X')
 	digit := func(c rune) bool {
@@ -172,14 +168,14 @@ func numberParts(l []rune, i, e int) [][2]int {
 	for k < e && digit(l[k]) {
 		k++
 	}
-	out = append(out, digitGroups(l, j, k, group, true)...)
+	out = append(out, eachRune(j, k)...)
 	if k+1 < e && l[k] == '.' && unicode.IsDigit(l[k+1]) {
 		out = append(out, [2]int{k, k + 1})
 		j, k = k+1, k+1
 		for k < e && (unicode.IsDigit(l[k]) || l[k] == '_') {
 			k++
 		}
-		out = append(out, digitGroups(l, j, k, 3, false)...)
+		out = append(out, eachRune(j, k)...)
 	}
 	if k < e && (l[k] == 'e' || l[k] == 'E') && !hex {
 		x := k + 1
@@ -187,10 +183,12 @@ func numberParts(l []rune, i, e int) [][2]int {
 			x++
 		}
 		if x < e && unicode.IsDigit(l[x]) {
+			out = append(out, [2]int{k, x})
+			k = x
 			for x < e && unicode.IsDigit(l[x]) {
 				x++
 			}
-			out = append(out, [2]int{k, x})
+			out = append(out, eachRune(k, x)...)
 			k = x
 		}
 	}
@@ -200,31 +198,11 @@ func numberParts(l []rune, i, e int) [][2]int {
 	return out
 }
 
-// digitGroups splits the digits l[i:e] at each _ (the _ starts the next
-// group) or, without any, into groups of n counted from the right (fromRight)
-// or the left.
-func digitGroups(l []rune, i, e, n int, fromRight bool) [][2]int {
-	if i >= e {
-		return nil
-	}
+// eachRune makes each of l[i:e] its own step.
+func eachRune(i, e int) [][2]int {
 	var out [][2]int
-	if strings.ContainsRune(string(l[i:e]), '_') {
-		s := i
-		for k := i + 1; k < e; k++ {
-			if l[k] == '_' && l[k-1] != '_' {
-				out = append(out, [2]int{s, k})
-				s = k
-			}
-		}
-		return append(out, [2]int{s, e})
-	}
-	s := i
-	if fromRight && (e-i)%n != 0 {
-		out = append(out, [2]int{i, i + (e-i)%n})
-		s = i + (e-i)%n
-	}
-	for ; s < e; s += n {
-		out = append(out, [2]int{s, min(s+n, e)})
+	for k := i; k < e; k++ {
+		out = append(out, [2]int{k, k + 1})
 	}
 	return out
 }

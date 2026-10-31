@@ -130,7 +130,7 @@ func (m *Model) reopenLast() bool {
 	for _, f := range files {
 		m.openPath(f.path)
 		m.buf.Cursor = m.buf.Clamp(f.pos)
-		m.top = max(0, min(f.top, len(m.buf.Lines)-1))
+		m.top, m.topSub = max(0, min(f.top, len(m.buf.Lines)-1)), 0
 		m.storeTab()
 		keepFirst = keepFirst || f.path == first.Path
 	}

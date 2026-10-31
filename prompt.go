@@ -206,7 +206,7 @@ func (m *Model) gotoLine(v string) tea.Cmd {
 		n = len(m.buf.Lines) + n + 1 // -1 = last line
 	}
 	m.moveTo(Pos{n - 1, col}, false)
-	m.top = max(0, m.buf.Cursor.Row-m.textHeight()/2)
+	m.top, m.topSub = max(0, m.buf.Cursor.Row-m.textHeight()/2), 0
 	return nil
 }
 
