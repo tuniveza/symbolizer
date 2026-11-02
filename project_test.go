@@ -39,8 +39,11 @@ func TestProjectRightTwiceLeftUndo(t *testing.T) {
 	m.tree.reveal(filepath.Join(dir, "one"))
 	sel := m.tree.sel
 
-	// Right once: nothing opens yet.
+	// Right once: the folder opens in the file manager, but no tabs.
 	press(m, "right")
+	if row := m.tree.rows[m.tree.sel]; !row.open || row.name != "one" || len(m.tree.rows) != 6 {
+		t.Fatalf("Right once should open the folder in the file manager (on %s, open %v, %d rows)", row.name, row.open, len(m.tree.rows))
+	}
 	if len(m.tabs) != 1 || !m.showTree || !strings.Contains(m.msg, "Right again opens one") {
 		t.Fatalf("Right once: %d tabs, tree %v, message %q", len(m.tabs), m.showTree, m.msg)
 	}
@@ -84,6 +87,9 @@ func TestProjectRightTwiceLeftUndo(t *testing.T) {
 	m.setRoot(dir) // look at the folder above, with the project still open
 	m.tree.reveal(filepath.Join(dir, "two"))
 	press(m, "right")
+	if row := m.tree.rows[m.tree.sel]; !row.open || !strings.Contains(m.msg, "cannot open as a project") {
+		t.Fatalf("Right once with a project open: folder open %v, message %q", row.open, m.msg)
+	}
 	press(m, "right")
 	if len(m.tabs) != 3 || !strings.Contains(m.msg, "One at a time") {
 		t.Fatalf("a second project: %d tabs, message %q", len(m.tabs), m.msg)

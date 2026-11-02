@@ -97,7 +97,7 @@ A box that floats over the text, with an icon for each kind of file.
 | **Alt + O**, **AltGr + O** (ø), or tap **AltGr** twice | open the file manager |
 | **Alt + E**, **AltGr + E**, or **Esc** | close it |
 | **Enter** | open a file, or open / close a folder |
-| **Right** | open a file. On a folder, **Right twice** opens it as a project: every file in it and its folders as tabs (up to 50; files over 8 MB are left out) |
+| **Right** | open a file. On a folder, **Right** once opens it here in the file manager; **Right twice** opens it as a project: every file in it and its folders as tabs (up to 50; files over 8 MB are left out) |
 | **Left** straight after | undo it: the project's tabs close and the file manager is back where it was |
 | **Left twice** on the project's folder | close the project. Only one project is open at a time, so close it before opening another |
 | **Shift + Right** twice | the same, but only text with something in it: no pictures, sound, video, subtitles or empty files |

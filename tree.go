@@ -283,10 +283,11 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 	case "end":
 		t.sel = max(count-1, 0)
 	case "enter", "right", "shift+right":
-		// Enter opens a file or opens / closes a folder. Right opens a file;
-		// Right twice opens a folder as a project, every file in it (and its
-		// folders) as tabs. Shift+Right does the same with only text that
-		// has something in it.
+		// Enter opens a file or opens / closes a folder. Right opens a file.
+		// On a folder, Right once opens it here in the file manager; Right
+		// twice opens it as a project, every file in it (and its folders) as
+		// tabs. Shift+Right does the same with only text that has something
+		// in it.
 		words := name == "shift+right"
 		if finding {
 			if t.sel < len(t.found) {
@@ -319,12 +320,24 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 			if words {
 				pick = pickWords
 			}
-			if m.project == nil && !twice(name, n.path) {
+			if !twice(name, n.path) {
+				// Right once only opens the folder here in the file manager.
+				if !n.open {
+					n.open = true
+					if !n.loaded {
+						t.load(n)
+					}
+					t.flatten()
+				}
 				key := "Right"
 				if words {
 					key = "Shift+Right"
 				}
-				m.say(key + " again opens " + n.name + " as a project, its files as tabs.")
+				if m.project != nil {
+					m.say("Opened " + n.name + " here. Project " + filepath.Base(m.project.dir) + " is open, so it cannot open as a project.")
+				} else {
+					m.say(key + " again opens " + n.name + " as a project, its files as tabs.")
+				}
 				return nil
 			}
 			if m.openProject(n.path, pick) {

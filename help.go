@@ -73,7 +73,7 @@ var helpGroups = []helpGroup{
 		{"AltGr + P  or Alt + P", "make the chosen folder the project"},
 		{"type letters", "find a file anywhere in the project"},
 		{"Enter", "open a file, or open / close a folder"},
-		{"Right", "open a file. On a folder, Right twice opens it as a project: every file in it and its folders as tabs"},
+		{"Right", "open a file. On a folder: Right once opens it here, Right twice opens it as a project (its files as tabs)"},
 		{"  Left straight after", "  undo it: its tabs close and you are back where you were"},
 		{"  Left twice on its folder", "  close the project. One project is open at a time"},
 		{"Shift + Right", "the same, but only text with something in it: no pictures, sound, video or empty files"},
