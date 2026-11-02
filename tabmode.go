@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -12,11 +13,10 @@ import (
 // the open files need, over the top of the text:
 //
 //	Left / Right, A / D  the file tab before / after (round the ends)
-//	W / S                the tab in the row above / below
-//	Up / Down            stay on this file, and move the cursor
+//	Up / Down, W / S     the tab in the row above / below
 //	Home / End           the first / last tab
-//	Enter, Alt+Tab       stay on this file
-//	or Alt on its own
+//	Enter (once or twice), Down twice quickly,
+//	Alt+Tab, or Alt on its own   stay on this file
 //	Esc                back to the file it started from
 //
 // The file on screen changes as the arrows move. Any other key leaves the
@@ -24,6 +24,9 @@ import (
 //
 // Hyprland takes Alt+Tab to switch windows; its bind sends Alt+Tab on to a
 // window whose title ends "— Symbolizer" (keybinds.lua).
+
+// tabTwice is how quick a second Down (or Enter) must be to count as twice.
+const tabTwice = 500 * time.Millisecond
 
 type tabCell struct {
 	i, x, w int
@@ -37,7 +40,8 @@ func (m *Model) openTabMode() tea.Cmd {
 	}
 	m.closeTree()
 	m.tabMode, m.tabModeFrom = true, m.cur
-	m.say("Tab mode: Left / Right or W A S D choose a file · Enter, Alt, Up or Down keeps it · Esc goes back")
+	m.tabDownAt = time.Time{}
+	m.say("Tab mode: arrows choose a file · Enter, or Down twice, keeps it · Esc goes back")
 	return nil
 }
 
@@ -84,9 +88,17 @@ func tabCellAt(rows [][]tabCell, i int) (int, int) {
 func (m *Model) tabModeKey(k tea.Key) (tea.Cmd, bool) {
 	n := len(m.tabs)
 	name := m.altGrName(k)
-	if name == "up" || name == "down" {
-		m.endTabMode()
-		return nil, false
+	if name == "down" {
+		// Down twice quickly keeps the tab chosen before the first Down.
+		if !m.tabDownAt.IsZero() && time.Since(m.tabDownAt) < tabTwice && !k.IsRepeat {
+			m.tabDownAt = time.Time{}
+			m.switchTab(m.tabDownFrom)
+			m.endTabMode()
+			return nil, true
+		}
+		m.tabDownAt, m.tabDownFrom = time.Now(), m.cur
+	} else {
+		m.tabDownAt = time.Time{}
 	}
 	if dir, ok := map[string]string{"w": "up", "a": "left", "s": "down", "d": "right"}[name]; ok {
 		name = dir
@@ -121,6 +133,9 @@ func (m *Model) tabModeKey(k tea.Key) (tea.Cmd, bool) {
 		return m.switchTab(best.i), true
 	case "enter", "alt+tab":
 		m.endTabMode()
+		if name == "enter" {
+			m.eatEnterAt = time.Now() // Enter twice chooses it too, with no new line
+		}
 		return nil, true
 	case "esc":
 		m.tabMode = false

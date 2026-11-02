@@ -236,6 +236,16 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 	if k.Text == "þ" || m.altGr.down && k.Code == 'p' {
 		name = "altgr+p" // AltGr+P types þ on a UK keyboard
 	}
+	// Some keys count only when pressed twice in a row on the same row.
+	prev := m.treeArm
+	m.treeArm = ""
+	twice := func(key, path string) bool {
+		if prev == key+" "+path {
+			return true
+		}
+		m.treeArm = key + " " + path
+		return false
+	}
 	finding := t.query != ""
 	count := len(t.rows)
 	if finding {
@@ -273,9 +283,10 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 	case "end":
 		t.sel = max(count-1, 0)
 	case "enter", "right", "shift+right":
-		// Enter opens a file or opens / closes a folder. Right opens what is
-		// chosen: a folder opens every file in it (and its folders) as tabs.
-		// Shift+Right does the same with only text that has something in it.
+		// Enter opens a file or opens / closes a folder. Right opens a file;
+		// Right twice opens a folder as a project, every file in it (and its
+		// folders) as tabs. Shift+Right does the same with only text that
+		// has something in it.
 		words := name == "shift+right"
 		if finding {
 			if t.sel < len(t.found) {
@@ -288,6 +299,11 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 		}
 		n := t.rows[t.sel]
 		if n == t.top {
+			if p := m.project; p != nil && p.dir == n.path && name != "enter" {
+				m.say("This is project " + n.name + ". Left twice closes it.")
+				return nil
+			}
+			m.treeArm = prev
 			return m.treeKey(tea.Key{Code: tea.KeyLeft}) // the "up a folder" row
 		}
 		if n.dir && name == "enter" {
@@ -303,7 +319,15 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 			if words {
 				pick = pickWords
 			}
-			if m.openFolder(n.path, pick) {
+			if m.project == nil && !twice(name, n.path) {
+				key := "Right"
+				if words {
+					key = "Shift+Right"
+				}
+				m.say(key + " again opens " + n.name + " as a project, its files as tabs.")
+				return nil
+			}
+			if m.openProject(n.path, pick) {
 				m.closeTree()
 			}
 			return nil
@@ -311,7 +335,7 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 		return m.treePick(n.path, words)
 	case "shift+enter", "ctrl+enter":
 		// Every text file in the chosen folder (or the chosen file's folder) as tabs.
-		if m.openFolder(m.treeFolder(), pickText) {
+		if m.openProject(m.treeFolder(), pickText) {
 			m.closeTree()
 		}
 		return nil
@@ -320,6 +344,19 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 			return nil
 		}
 		n := t.rows[t.sel]
+		if p := m.project; p != nil && n.path == p.dir {
+			// Left twice on the project's folder closes the project.
+			if twice("left", n.path) {
+				m.closeProject()
+				return nil
+			}
+			if n.dir && n.open && n != t.top {
+				n.open = false
+				t.flatten()
+			}
+			m.say("Left again closes project " + n.name + " and its tabs.")
+			return nil
+		}
 		if n.dir && n.open && n != t.top {
 			n.open = false
 			t.flatten()

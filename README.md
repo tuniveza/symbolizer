@@ -97,9 +97,11 @@ A box that floats over the text, with an icon for each kind of file.
 | **Alt + O**, **AltGr + O** (ø), or tap **AltGr** twice | open the file manager |
 | **Alt + E**, **AltGr + E**, or **Esc** | close it |
 | **Enter** | open a file, or open / close a folder |
-| **Right** | open what is chosen. On a folder: every file in it and its folders as tabs (up to 50; files over 8 MB are left out) |
-| **Shift + Right** | the same, but only text with something in it: no pictures, sound, video, subtitles or empty files |
-| **Shift + Enter** | open every text file in that folder and its folders as tabs: web pages, scripts and other code first, JSON and lock files last |
+| **Right** | open a file. On a folder, **Right twice** opens it as a project: every file in it and its folders as tabs (up to 50; files over 8 MB are left out) |
+| **Left** straight after | undo it: the project's tabs close and the file manager is back where it was |
+| **Left twice** on the project's folder | close the project. Only one project is open at a time, so close it before opening another |
+| **Shift + Right** twice | the same, but only text with something in it: no pictures, sound, video, subtitles or empty files |
+| **Shift + Enter** | open every text file in that folder and its folders as a project: web pages, scripts and other code first, JSON and lock files last |
 | **AltGr + P** (þ) or **Alt + P** | make the chosen folder the project |
 | **Ctrl + N** · **F7** · **F2** · **Del** | new file · new folder · rename · move to the Trash |
 
@@ -226,7 +228,7 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 | Alt + L | load: sessions, or this file again from disk |
 | Alt + N / Alt + C | new file in a new tab / close this file |
 | Alt + 1 … 9 · Ctrl + PgUp / PgDn | go to open file 1 … 9 · previous / next |
-| Alt + Tab | tab mode: the tabs open out into rows. Left / Right or A / D = the file before / after, W / S = the row above / below, Up / Down = keep it and move the cursor, Enter or a tap of Alt keeps it, Esc goes back |
+| Alt + Tab | tab mode: the tabs open out into rows. Left / Right or A / D = the file before / after, Up / Down or W / S = the row above / below, Enter (once or twice), Down twice quickly or a tap of Alt keeps it, Esc goes back |
 | Tab · Shift + Tab | a real Tab (indent) · un-indent (web files: Tab expands an Emmet abbreviation first) |
 | Ctrl + E · Alt + W | Emmet: expand (highlighted: wrap) · every web action |
 | Alt + U / D · Alt + G · Alt + R · Alt + K · Alt + Y | tag around / inside · matching tag · remove · split / join · update |

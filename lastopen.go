@@ -15,6 +15,7 @@ import (
 // ~/.local/share/symbolizer/last-open:
 //
 //	project /home/me/web
+//	opened /home/me/web/site              (the folder open as a project, project.go)
 //	tree                                  (the file manager was showing)
 //	file 12 4 0 /home/me/web/index.html   (row, column, top row, path)
 //	current /home/me/web/index.html
@@ -29,6 +30,10 @@ func (m *Model) lastOpenText() (text, files string) {
 	if m.tree != nil {
 		sb.WriteString("project " + m.tree.root + "\n")
 		fb.WriteString(m.tree.root + "\n")
+		if m.project != nil {
+			sb.WriteString("opened " + m.project.dir + "\n")
+			fb.WriteString("opened " + m.project.dir + "\n")
+		}
 		if m.showTree {
 			sb.WriteString("tree\n")
 			fb.WriteString("tree\n")
@@ -88,13 +93,15 @@ func (m *Model) reopenLast() bool {
 		path string
 	}
 	var files []entry
-	project, current, tree := "", "", false
+	project, opened, current, tree := "", "", "", false
 	live, _ := currentSession()
 	for _, line := range strings.Split(string(data), "\n") {
 		key, rest, _ := strings.Cut(line, " ")
 		switch key {
 		case "project":
 			project = rest
+		case "opened":
+			opened = rest
 		case "current":
 			current = rest
 		case "tree":
@@ -117,6 +124,9 @@ func (m *Model) reopenLast() bool {
 	}
 	if hasProject {
 		m.setRoot(project)
+		if info, err := os.Stat(opened); opened != "" && err == nil && info.IsDir() {
+			m.project = newProject(opened) // its tabs come back as files below
+		}
 	}
 	if len(files) == 0 {
 		// Only the project was open: show it the way `sy FOLDER` does.

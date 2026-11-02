@@ -100,13 +100,21 @@ type Model struct {
 	showTree   bool
 	treeFocus  bool
 	treeTarget string
+	treeArm    string // "right <path>" or "left <path>": the first of two presses (project.go)
+
+	// the folder open as a project, and how to undo opening it (project.go)
+	project  *project
+	projUndo *projectUndo
 
 	picker *picker // the Alt+L list
 
 	// tab switch mode (tabmode.go)
 	tabMode     bool
 	tabModeFrom int
-	altTap      bool // Left Alt is down with no other key yet (a tap ends tab mode)
+	altTap      bool      // Left Alt is down with no other key yet (a tap ends tab mode)
+	tabDownAt   time.Time // when Down was last pressed in tab mode (twice quickly chooses)
+	tabDownFrom int       // the tab chosen before that Down
+	eatEnterAt  time.Time // Enter chose a tab: a quick second Enter is not typed
 
 	// what was last written to the last-open file (lastopen.go)
 	lastOpen struct {
@@ -338,6 +346,17 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.altTap = msg.Key().Code == tea.KeyLeftAlt && !msg.Key().IsRepeat || m.altTap && msg.Key().IsRepeat
 		if m.altGrPress(msg.Key()) || isModifierOnly(msg.Key()) {
 			return nil // a modifier on its own does nothing (and keeps the message line)
+		}
+		if m.undoProjectKey(keyName(msg.Key())) {
+			return nil // Left straight after opening a project undoes it (project.go)
+		}
+		if !m.eatEnterAt.IsZero() {
+			// Enter chose a tab: a second Enter straight after is not typed.
+			quick := time.Since(m.eatEnterAt) < tabTwice && keyName(msg.Key()) == "enter"
+			m.eatEnterAt = time.Time{}
+			if quick {
+				return nil
+			}
 		}
 		if m.tabMode {
 			if cmd, done := m.tabModeKey(msg.Key()); done {

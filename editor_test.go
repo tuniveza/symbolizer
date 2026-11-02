@@ -845,12 +845,12 @@ func TestOpenFolderAsTabs(t *testing.T) {
 	if !strings.Contains(m.msg, "Opened 5 files") || !strings.Contains(m.msg, "Skipped 2") {
 		t.Fatalf("message = %q", m.msg)
 	}
-	// Again on a file inside sub: its files are open already, so it shows them.
+	// Again on a file inside sub: one project at a time, so nothing opens.
 	press(m, "alt+o")
 	m.tree.reveal(filepath.Join(dir, "sub", "deep.txt"))
 	press(m, "ctrl+enter")
-	if len(m.tabs) != 5 || filepath.Base(m.buf.Path) != "deep.txt" {
-		t.Fatalf("second folder: %d tabs, showing %s", len(m.tabs), m.buf.Path)
+	if len(m.tabs) != 5 || !m.showTree || !strings.Contains(m.msg, "One at a time") {
+		t.Fatalf("second folder: %d tabs, tree %v, message %q", len(m.tabs), m.showTree, m.msg)
 	}
 	// A folder with nothing to open says so and leaves the tabs alone.
 	empty := filepath.Join(dir, "sub", "empty")
@@ -1090,16 +1090,40 @@ func TestTabMode(t *testing.T) {
 	if m.tabMode || strings.ContainsAny(m.buf.Text(), "wasd") || m.showTree {
 		t.Fatalf("Alt tap: mode %v, text %q, file manager %v", m.tabMode, m.buf.Text(), m.showTree)
 	}
-	// Up / Down keep the file and move the cursor as usual.
+	// Up / Down move between rows (one row here: they stay); Down twice
+	// quickly keeps the file.
 	altTab()
 	press(m, "left")
 	at(1)
 	press(m, "right")
+	press(m, "up")
+	if !m.tabMode {
+		t.Fatal("Up should stay in tab mode")
+	}
 	press(m, "down")
-	if m.tabMode {
-		t.Fatal("Down did not leave tab mode")
+	if !m.tabMode {
+		t.Fatal("one Down should stay in tab mode")
+	}
+	m.tabDownAt = m.tabDownAt.Add(-time.Second) // a slow second Down is one Down again
+	press(m, "down")
+	if !m.tabMode {
+		t.Fatal("a slow second Down should stay in tab mode")
+	}
+	press(m, "down")
+	if m.tabMode || m.buf.Cursor.Row != 0 {
+		t.Fatalf("Down twice: mode %v, cursor row %d", m.tabMode, m.buf.Cursor.Row)
 	}
 	at(2)
+	// Enter twice chooses the tab and types no new line.
+	altTab()
+	press(m, "left")
+	press(m, "enter")
+	press(m, "enter")
+	if m.tabMode || strings.Contains(m.buf.Text(), "\n") {
+		t.Fatalf("Enter twice: mode %v, text %q (want no new line)", m.tabMode, m.buf.Text())
+	}
+	at(1)
+	m.switchTab(2)
 	// Alt held with another key is not a tap.
 	altTab()
 	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyLeftAlt}))

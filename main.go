@@ -73,7 +73,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "sy: "+err.Error())
 		os.Exit(1)
 	}
-	if tabs && m.tree != nil && m.openFolder(m.tree.root, pickText) {
+	if tabs && m.tree != nil && m.openProject(m.tree.root, pickText) {
 		m.closeTree()
 	}
 	if path == "" && startMode == 0 && !fresh {

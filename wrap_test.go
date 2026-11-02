@@ -153,6 +153,9 @@ func TestRightOpensFolder(t *testing.T) {
 		m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 		m.tree.reveal(filepath.Join(dir, "pics"))
 		press(m, key)
+		if strings.HasSuffix(key, "right") {
+			press(m, key) // a folder opens on the second press
+		}
 		return m
 	}
 
