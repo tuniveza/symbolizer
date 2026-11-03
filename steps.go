@@ -10,6 +10,7 @@ import (
 // A line is read the way a programmer reads it:
 //
 //	parts of names      MAX _ PARTS   max Parts     one step each
+//	                    he 0   x 8 6   letters and digits apart
 //	                    parse HTTP Request   __ init __
 //	words               parts  don't               one step
 //	numbers             1 0   3 . 1 4   0x F F   1 e- 5   1 0 px
@@ -83,7 +84,8 @@ func tokenEnd(l []rune, i int) int {
 }
 
 // namePartEnd is the end of one part of a name: MAX in MAX_PARTS, max and
-// Parts in maxParts, HTTP and Request in HTTPRequest. An apostrophe between
+// Parts in maxParts, HTTP and Request in HTTPRequest, he in he0 (digits
+// are their own steps). An apostrophe between
 // letters stays inside (don't).
 func namePartEnd(l []rune, i int) int {
 	n := len(l)
@@ -102,7 +104,7 @@ func namePartEnd(l []rune, i int) int {
 			j++
 			continue
 		}
-		if c == '_' || !isWord(c) || unicode.IsUpper(c) {
+		if c == '_' || !isWord(c) || unicode.IsUpper(c) || unicode.IsDigit(c) {
 			break
 		}
 		j++

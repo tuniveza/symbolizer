@@ -20,7 +20,7 @@ func TestSteps(t *testing.T) {
 		"char *parts[MAX_PARTS];":        {"char", "*", "parts", "[", "MAX", "_", "PARTS", "]", ";"},
 		"maxParts = parseHTTPRequest(x)": {"max", "Parts", "=", "parse", "HTTP", "Request", "(", "x", ")"},
 		"def __init__(self):":            {"def", "__", "init", "__", "(", "self", ")", ":"},
-		"snake_case_name x86_64 IOError": {"snake", "_", "case", "_", "name", "x86", "_", "6", "4", "IO", "Error"},
+		"snake_case_name x86_64 IOError": {"snake", "_", "case", "_", "name", "x", "8", "6", "_", "6", "4", "IO", "Error"},
 		"x += foo(bar)  baz":             {"x", "+=", "foo", "(", "bar", ")", "baz"},
 		"std::vector<int> v;":            {"std", "::", "vector", "<", "int", ">", "v", ";"},
 		"p->next = q;":                   {"p", "->", "next", "=", "q", ";"},
@@ -36,6 +36,8 @@ func TestSteps(t *testing.T) {
 		"width: 10px;":                   {"width", ":", "1", "0", "px", ";"},
 		"    return arr[i][j];":          {"return", "arr", "[", "i", "]", "[", "j", "]", ";"},
 		"x := <-ch":                      {"x", ":=", "<-", "ch"},
+		"he0.0f":                         {"he", "0", ".", "0", "f"},
+		"h1 utf8 v2Beta":                 {"h", "1", "utf", "8", "v", "2", "Beta"},
 		"I'm writing plain words, too.":  {"I'm", "writing", "plain", "words", ",", "too", "."},
 	}
 	for line, want := range cases {
@@ -85,4 +87,17 @@ func TestAltShiftLineEnds(t *testing.T) {
 	want(t, m, m.buf.Text(), Pos{0, 13})
 	press(m, "alt+left")
 	want(t, m, m.buf.Text(), Pos{0, 0})
+}
+
+// Letters and digits in a name are separate stops: he0.0f.
+func TestStepsLettersThenDigits(t *testing.T) {
+	m := newTest(t, "he0.0f")
+	for _, c := range []int{2, 3, 4, 5, 6} {
+		press(m, "right")
+		want(t, m, m.buf.Text(), Pos{0, c})
+	}
+	for _, c := range []int{5, 4, 3, 2, 0} {
+		press(m, "left")
+		want(t, m, m.buf.Text(), Pos{0, c})
+	}
 }
