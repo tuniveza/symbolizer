@@ -1,11 +1,9 @@
 package emmet
 
 // Unit hints for CSS: the recommended unit for each property, shown as a
-// dim "shadow" in the editor before or while a value is typed, and a
-// better unit for a value already there (16px font-size → 1rem).
+// dim "shadow" in the editor before or while a value is typed.
 
 import (
-	"math"
 	"strconv"
 	"strings"
 	"unicode"
@@ -89,12 +87,6 @@ func init() {
 	}
 }
 
-// remFromPx gives px / 16 as a short rem value: 24 → "1.5rem".
-func remFromPx(px float64) string {
-	r := math.Round(px/16*10000) / 10000
-	return strconv.FormatFloat(r, 'f', -1, 64) + "rem"
-}
-
 // UnitHintAt looks at the CSS declaration the cursor (col) is in and gives
 // the hint to show, if any.
 func UnitHintAt(line []rune, col int) (UnitHint, bool) {
@@ -157,29 +149,6 @@ func UnitHintAt(line []rune, col int) (UnitHint, bool) {
 		}
 	}
 
-	// a value already there in a unit that is not the recommended one
-	for i := vs; i < de; {
-		if !unicode.IsDigit(line[i]) && line[i] != '.' || i > vs && (unicode.IsLetter(line[i-1]) || line[i-1] == '-' || line[i-1] == '#') {
-			i++
-			continue
-		}
-		j := i
-		for j < de && (unicode.IsDigit(line[j]) || line[j] == '.') {
-			j++
-		}
-		k := j
-		for k < de && unicode.IsLetter(line[k]) {
-			k++
-		}
-		if h, ok := betterUnit(prop, rule, string(line[i:j]), strings.ToLower(string(line[j:k])), i, k); ok {
-			h.AtCursor = col >= i && col <= k
-			return h, true
-		}
-		i = k
-		if k == j {
-			i++
-		}
-	}
 	return UnitHint{}, false
 }
 
@@ -201,30 +170,9 @@ func numberHint(prop string, rule unitRule, num string, start, end int) (UnitHin
 	case rule.unit == "ms" && n < 10:
 		return add("s", "seconds; 0.2s is the same as 200ms")
 	case rule.unit == "rem" && whole && n > 6:
-		// a big plain number is pixels in mind: say it in rem
-		r := remFromPx(n)
-		return UnitHint{Start: start, End: end, New: r, Ghost: "px → " + r, Why: sentenceOf(num + "px is " + r + ". " + rule.why + ". Tab writes " + r), AtCursor: true}, true
+		return UnitHint{}, false // a big plain number is pixels in mind: "16rem" would be wrong
 	}
 	return add(rule.unit, prop+": "+rule.why)
-}
-
-// betterUnit is the advice for a value already written as num+unit.
-func betterUnit(prop string, rule unitRule, num, unit string, start, end int) (UnitHint, bool) {
-	n, err := strconv.ParseFloat(num, 64)
-	if err != nil {
-		return UnitHint{}, false
-	}
-	switch {
-	case unit == "px" && rule.unit == "rem" && n >= 4:
-		r := remFromPx(n)
-		return UnitHint{Start: start, End: end, New: r, Ghost: " → " + r, Why: sentenceOf(num + "px is " + r + ". " + rule.why)}, true
-	case unit == "vh" && (strings.Contains(prop, "height") || strings.Contains(prop, "block-size")):
-		v := num + "dvh"
-		return UnitHint{Start: start, End: end, New: v, Ghost: " → " + v, Why: "dvh fits the visible screen on phones; vh can be taller."}, true
-	case unit != "" && prop == "line-height":
-		return UnitHint{Start: end, End: end, Ghost: " → a plain number, e.g. 1.5", Why: "line-height: a plain number scales with each font size."}, true
-	}
-	return UnitHint{}, false
 }
 
 func sentenceOf(s string) string {

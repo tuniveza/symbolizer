@@ -1,8 +1,7 @@
 package main
 
 // Unit hints in CSS: a dim "shadow" in the line shows the recommended unit
-// before or while a value is typed (font-size: 1|rem), or a better unit for
-// a value already there (16px → 1rem). Tab takes it. The message line says
+// before or while a value is typed (font-size: 1|rem). Tab takes it. The message line says
 // why in one sentence. The rules are in emmet/units.go.
 
 import (

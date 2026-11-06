@@ -149,7 +149,7 @@ var helpGroups = []helpGroup{
 		{"Typing a word", "a list shows ways to finish it: CSS properties and values, HTML tags, words in the file"},
 		{"  Tab / Up, Down / Esc", "  take the chosen one / choose / close the list"},
 		{"Typing : (CSS)", "after a property, the ; appears after the cursor; typing ; steps over it"},
-		{"Dim shadow (CSS)", "the recommended unit: font-size: 16 shows px → 1rem; Tab takes it; the message says why"},
+		{"Dim shadow (CSS)", "the recommended unit: font-size: 1 shows rem; Tab takes it; the message says why"},
 	}},
 	{"Web files: Emmet and auto-correct (HTML, CSS, JSX, XML)", false, []helpLine{
 		{"Tab", "expand the abbreviation before the cursor (ul>li*3, m10, d:f); Tab again: the next empty place"},

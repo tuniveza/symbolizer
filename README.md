@@ -171,7 +171,7 @@ In code files (not plain text or Markdown):
 - **A list of suggestions** shows while you type a word: CSS properties (3 letters or more), the values a property takes, pseudo-classes, HTML tags after `<`, and words already in the file. **Tab** takes the chosen one, **Up / Down** choose, **Esc** closes the list.
 - **CSS:** choosing a property gives `display: ;` and opens its values. Typing `color:` adds the `;` after the cursor.
 - Short Emmet words (`fl`, `ta`, `m10`) show no list, so Tab still expands them.
-- **Unit hints (CSS):** a dim shadow shows the recommended unit as you type. `font-size: 1` shows `rem`; `font-size: 16` shows `px → 1rem`; an empty `height:` shows `auto`. A value already there in a weaker unit shows one too: `16px → 1rem`, `100vh → 100dvh`. **Tab** takes it. The message line says why.
+- **Unit hints (CSS):** a dim shadow shows the recommended unit as you type. `font-size: 1` shows `rem`; an empty `height:` shows `auto`. **Tab** takes it. The message line says why.
 
 ## ✦ Learn
 

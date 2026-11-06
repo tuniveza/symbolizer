@@ -10,15 +10,23 @@ import (
 func TestUnitHintTyping(t *testing.T) {
 	m := newWebTest(t, "a.css", "a {\n  \n}")
 	m.buf.Cursor = Pos{1, 2}
-	typeStr(m, "font-size: 16")
-	if !strings.Contains(ansi.Strip(m.View().Content), "font-size: 16px → 1rem;") {
+	typeStr(m, "font-size: 1")
+	if !strings.Contains(ansi.Strip(m.View().Content), "font-size: 1rem;") {
 		t.Fatalf("no shadow on screen:\n%s", ansi.Strip(m.View().Content))
 	}
-	if !strings.Contains(m.msg, "1rem") {
+	if !strings.Contains(m.msg, "rem") {
 		t.Fatalf("message = %q", m.msg)
 	}
 	press(m, "tab")
 	want(t, m, lines("a {", "  font-size: 1rem;", "}"), Pos{1, 17})
+
+	// a big number gets no hint and no arrow
+	m = newWebTest(t, "d.css", "a {\n  \n}")
+	m.buf.Cursor = Pos{1, 2}
+	typeStr(m, "font-size: 16")
+	if _, ok := m.showHint(); ok || strings.Contains(ansi.Strip(m.View().Content), "→") {
+		t.Fatalf("hint on a big number:\n%s", ansi.Strip(m.View().Content))
+	}
 
 	// a small number gets the unit added
 	m = newWebTest(t, "b.css", "a {\n  \n}")
@@ -34,23 +42,15 @@ func TestUnitHintTyping(t *testing.T) {
 	want(t, m, lines("a {", "  gap: 1em;", "}"), Pos{1, 11})
 }
 
-func TestUnitHintOnValueThere(t *testing.T) {
-	m := newWebTest(t, "a.css", "a {\n  font-size: 16px;\n}")
-	m.buf.Cursor = Pos{1, 16} // on 16px
+func TestNoUnitHintOnValueThere(t *testing.T) {
+	m := newWebTest(t, "a.css", "a {\n  min-height: calc(100vh - 2vh);\n}")
+	m.buf.Cursor = Pos{1, 22} // inside 100vh
 	m.Update(nil)
-	if h, ok := m.showHint(); !ok || h.New != "1rem" {
-		t.Fatalf("hint = %+v %v", h, ok)
+	if h, ok := m.showHint(); ok {
+		t.Fatalf("hint on a value already there: %+v", h)
 	}
-	press(m, "tab")
-	want(t, m, lines("a {", "  font-size: 1rem;", "}"), Pos{1, 17})
-	press(m, "ctrl+z")
-	want(t, m, lines("a {", "  font-size: 16px;", "}"), Pos{1, 16})
-
-	// Tab at the start of the line still indents
-	m.buf.Cursor = Pos{1, 0}
-	press(m, "tab")
-	if got := string(m.buf.Lines[1]); got != "      font-size: 16px;" {
-		t.Fatalf("tab did not indent: %q", got)
+	if strings.Contains(ansi.Strip(m.View().Content), "→") {
+		t.Fatalf("arrow on screen:\n%s", ansi.Strip(m.View().Content))
 	}
 }
 
