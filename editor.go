@@ -260,6 +260,20 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			panic(r)
 		}
 	}()
+	switch msg := msg.(type) {
+	case designSaveMsg:
+		return m, m.designSaveNow()
+	case designSavedMsg:
+		m.design.saveErr = msg.err
+		return m, nil
+	}
+	if m.design != nil && m.design.editing == partNone {
+		m.design.undoWriting = -1 // writing stopped: the next words are a new step
+	}
+	if _, ok := msg.(designFrameMsg); ok {
+		m.ds().frameTick = false // the View after this draws the board afresh
+		return m, nil
+	}
 	version := m.buf.Version()
 	cmd = m.update(msg)
 	if m.buf.Version() != version {
@@ -272,7 +286,7 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		cmd = tea.Batch(cmd, save)
 	}
 	m.noteLastOpen()
-	return m, cmd
+	return m, tea.Batch(cmd, m.designFrameCmd(), m.designSaveCmd())
 }
 
 func (m *Model) update(msg tea.Msg) tea.Cmd {

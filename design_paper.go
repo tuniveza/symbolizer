@@ -135,13 +135,17 @@ func newHint(kind string) string {
 func selHint(o *dOct) string {
 	switch o.Kind {
 	case kOct:
-		return "Drag moves · ◢ resizes · double-click writes · [" + octLayouts[o.Layout%len(octLayouts)].icon + "] or L layout · I image · ▾ or D drawer · Delete removes"
+		hint := "Drag moves · ◢ resizes · double-click writes · [" + octLayouts[o.Layout%len(octLayouts)].icon + "] or L layout · I image · ▾ or D drawer · ✕ or Delete deletes"
+		if o.Image != "" {
+			hint += " · ✕ on the picture (Shift+Delete) deletes just it"
+		}
+		return hint + " · Ctrl+Z brings back"
 	case kCabinet:
-		return "Click a stack to pull it out · drag a thing out onto the board · drop pages/notes on it · double-click the name to rename"
+		return "Click a stack to pull it out · drag a thing out onto the board · drop pages/notes on it · a row's ✕ deletes it · ✕ or Delete deletes the cabinet · Ctrl+Z brings back"
 	case kNote:
-		return "Drag moves · double-click writes (one page) · drag onto a cabinet or an open drawer to file it · ▾ or D drawer"
+		return "Drag moves · double-click writes (one page) · drag onto a cabinet or an open drawer to file it · ▾ or D drawer · ✕ or Delete deletes · Ctrl+Z brings back"
 	}
-	return "Drag moves · ◢ resizes · double-click writes · wheel or PgUp/PgDn scrolls · drag onto a cabinet or open drawer to file it · I text file"
+	return "Drag moves · ◢ resizes · double-click writes · wheel or PgUp/PgDn scrolls · drag onto a cabinet or open drawer to file it · I text file · ✕ or Delete deletes · Ctrl+Z brings back"
 }
 
 // ---- writing --------------------------------------------------------------------
@@ -288,6 +292,10 @@ func drawRows(rows []stackRow, w int, fill, edge string) []string {
 			gap := max(w-lipgloss.Width(left)-len(count)-1, 1)
 			out[i] = st(mixHex(edge, cText, 0.5), fill).Bold(true).Render(left) +
 				st(mixHex(cDim, fill, 0.3), fill).Render(strings.Repeat("·", gap)) + st(cText, fill).Render(count+" ")
+		case strings.HasPrefix(r.act, "item:") && w >= 6:
+			// The title, and a ✕ that deletes the thing (itemDeleteAct).
+			out[i] = st(cText, fill).Render(padTo(ansi.Truncate(" "+r.text, w-3, "…"), w-2)) +
+				st(cError, fill).Render("✕") + st(cText, fill).Render(" ")
 		case strings.HasPrefix(r.act, "item:"):
 			out[i] = st(cText, fill).Render(padTo(ansi.Truncate(" "+r.text, w, "…"), w))
 		default:
@@ -408,7 +416,7 @@ func (d *designState) paperLayers(o *dOct) []*lipgloss.Layer {
 	if o.Kind == kDrawing {
 		lines = strings.Split(o.Body, "\n")
 	} else {
-		lines = strings.Split(ansi.Wrap(o.Body, cw, ""), "\n")
+		lines = o.wrapped(cw)
 	}
 	total := len(lines)
 	if o.Body == "" {
@@ -477,6 +485,32 @@ func (d *designState) paperLayers(o *dOct) []*lipgloss.Layer {
 	out = append(out, e.Render(bl+strings.Repeat("─", max(w-3-lipgloss.Width(info), 0)))+st(dim, fill).Render(info)+e.Render("─"+br))
 	layers := []*lipgloss.Layer{lipgloss.NewLayer(strings.Join(out, "\n")).X(x).Y(y)}
 	return d.octExtras(layers, o, x, y, w, h, edge, fill, selected && resizable(o), d.linkMode && d.linkFrom == o.ID)
+}
+
+// wrapped is the body wrapped at w columns. It is worked out again only when
+// the body or the width changes. The caller may append to it but not change it.
+func (o *dOct) wrapped(w int) []string {
+	if o.wrapLines != nil && o.wrapW == w && o.wrapBody == o.Body {
+		return o.wrapLines[:len(o.wrapLines):len(o.wrapLines)]
+	}
+	if o.wrapW != w {
+		o.wrapParas = nil
+	}
+	old := o.wrapParas
+	paras := make(map[string][]string, len(old))
+	lines := make([]string, 0, len(o.wrapLines)+1)
+	for p := range strings.SplitSeq(o.Body, "\n") {
+		wl, ok := paras[p]
+		if !ok {
+			if wl, ok = old[p]; !ok {
+				wl = strings.Split(ansi.Wrap(p, w, ""), "\n")
+			}
+			paras[p] = wl
+		}
+		lines = append(lines, wl...)
+	}
+	o.wrapBody, o.wrapW, o.wrapLines, o.wrapParas = o.Body, w, lines, paras
+	return o.wrapLines[:len(o.wrapLines):len(o.wrapLines)]
 }
 
 func boolInt(b bool) int {
@@ -558,10 +592,12 @@ type hitWhere int
 const (
 	hitNone hitWhere = iota
 	hitBody
-	hitHandle // the drawer's ▾, or the pull of an open drawer
-	hitToggle // an octagon's layout toggle
-	hitRow    // a row of a cabinet or an open drawer
-	hitDrawer // an open drawer, not on a row
+	hitHandle     // the drawer's ▾, or the pull of an open drawer
+	hitToggle     // an octagon's layout toggle
+	hitRow        // a row of a cabinet or an open drawer
+	hitDrawer     // an open drawer, not on a row
+	hitDelete     // the ✕ on the chosen structure
+	hitDelPicture // the ✕ on the chosen octagon's picture
 )
 
 type hitInfo struct {
@@ -576,6 +612,12 @@ func (d *designState) hit(sx, sy int) hitInfo {
 	for i := len(d.octs) - 1; i >= 0; i-- {
 		o := d.octs[i]
 		x, y, w, h := d.rect(o)
+		if dx, dy, ok := d.deleteSpot(o, x, y, w, h); ok && sx == dx && sy == dy {
+			return hitInfo{o, hitDelete, ""}
+		}
+		if dx, dy, ok := d.pictureDeleteSpot(o, x, y); ok && sx == dx && sy == dy {
+			return hitInfo{o, hitDelPicture, ""}
+		}
 		if hx, hy, label, ok := d.handleSpot(o, x, y, w, h); ok {
 			if sy == hy && sx >= hx && sx < hx+lipgloss.Width(label) {
 				return hitInfo{o, hitHandle, ""}
@@ -585,7 +627,7 @@ func (d *designState) hit(sx, sy int) hitInfo {
 				if sx >= dx && sx < dx+dw && sy >= dy && sy < dy+dh {
 					rows := stackRows(o, true)
 					if r := sy - dy - 1; r >= 0 && r < len(rows) && sx > dx && sx < dx+dw-1 {
-						return hitInfo{o, hitRow, rows[r].act}
+						return hitInfo{o, hitRow, itemDeleteAct(rows[r].act, sx-dx-1, dw-2)}
 					}
 					if sy == dy+dh-1 {
 						return hitInfo{o, hitHandle, ""}
@@ -605,7 +647,7 @@ func (d *designState) hit(sx, sy int) hitInfo {
 		if o.Kind == kCabinet && w >= 6 && h >= 4 {
 			rows := stackRows(o, false)
 			if r := sy - y - 3; r >= 0 && r < len(rows) && rows[r].act != "" && sx > x && sx < x+w-1 {
-				return hitInfo{o, hitRow, rows[r].act}
+				return hitInfo{o, hitRow, itemDeleteAct(rows[r].act, sx-x-1, w-2)}
 			}
 		}
 		return hitInfo{o, hitBody, ""}
@@ -626,6 +668,10 @@ func (m *Model) designRow(o *dOct, act string, sx, sy int) tea.Cmd {
 		} else {
 			o.OpenStack = k
 		}
+	case strings.HasPrefix(act, "del:"):
+		var i int
+		fmt.Sscanf(act, "del:%d", &i)
+		m.designDeleteItem(o, i)
 	case strings.HasPrefix(act, "item:"):
 		var i int
 		fmt.Sscanf(act, "item:%d", &i)
@@ -719,28 +765,6 @@ func (m *Model) designFileInto(it, to *dOct) {
 		where = octName(to)
 	}
 	m.say(kindIcons[it.Kind] + " " + itemTitle(it) + " put in " + where + " (" + stackNames[it.Kind] + ").")
-}
-
-// designRemove removes a structure; when it holds things, it asks first.
-func (m *Model) designRemove(o *dOct) tea.Cmd {
-	d := m.ds()
-	n := countItems(o)
-	if n == 0 {
-		d.remove(o.ID)
-		m.say("Structure removed (and its links).")
-		return nil
-	}
-	id := o.ID
-	return m.confirm(fmt.Sprintf("Remove %s and the %d things in it? y = yes, n = no", octName(o), n), "yn", func(m *Model, k rune) tea.Cmd {
-		if k == 'y' {
-			m.ds().remove(id)
-			m.ds().save()
-			m.say("Removed.")
-		} else {
-			m.say("Kept.")
-		}
-		return nil
-	})
 }
 
 func countItems(o *dOct) int {

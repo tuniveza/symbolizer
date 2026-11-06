@@ -8,11 +8,15 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -72,6 +76,14 @@ type dOct struct {
 	OpenStack  string  `json:"openStack,omitempty"`  // the stack shown open in the drawer or cabinet
 	Scroll     int     `json:"scroll,omitempty"`     // a page: the first line shown
 	From       string  `json:"from,omitempty"`       // where it came from (a diary page, a file)
+
+	// The body wrapped at wrapW columns, kept so a long page is not wrapped
+	// again on every frame while it scrolls. wrapParas keeps each paragraph's
+	// wrap, so typing re-wraps only the paragraph that changed.
+	wrapBody  string
+	wrapW     int
+	wrapLines []string
+	wrapParas map[string][]string
 }
 
 type dLink struct {
@@ -120,13 +132,36 @@ const (
 )
 
 type designState struct {
-	octs   []*dOct // the last one is on top
-	links  []dLink
-	marks  map[[2]int]dMark
-	camX   float64 // the board cell at the top-left of the screen
-	camY   float64
-	zoom   int // index into designZooms
-	nextID int
+	drawn map[int]drawnStruct // each structure's last drawing, by ID (cachedLayers)
+	// Pictures met while drawing a structure (pictureArea), and the layers
+	// standing for them (octLayers), whose cells come from pictureCanvas.
+	picSpots    []picSpot
+	picLayers   map[*lipgloss.Layer]picSpot
+	picsAsText  bool                             // draw pictures as styled text for now (octLayers)
+	selLink     int                              // the chosen link, by index in links, or -1
+	undo, redo  []*boardState                    // the board before each step, and after each undone one (design_undo.go)
+	undoBase    *boardState                      // the board after the last step
+	undoWriting int                              // the structure being written in during the last step, or -1
+	picBox      map[int][4]int                   // where each structure's picture is, from its corner: x, y, w, h
+	holesLeft   bool                             // pictureAlone left empty lines this time
+	emptyHoles  bool                             // pictures alone on their rows leave empty lines (pictureAlone)
+	preMade     map[*lipgloss.Layer]*boardCanvas // layers whose cells are made already (preCells)
+
+	// The last drawing of the board (designRows), and whether a tick to draw
+	// it again is on its way (designFrameCmd).
+	frame          string
+	frameAt        time.Time
+	frameW, frameH int
+	frameTick      bool
+	frameCost      time.Duration // how long the last drawing took
+	canvas         *boardCanvas  // the board drawn (designCanvas)
+	octs           []*dOct       // the last one is on top
+	links          []dLink
+	marks          map[[2]int]dMark
+	camX           float64 // the board cell at the top-left of the screen
+	camY           float64
+	zoom           int // index into designZooms
+	nextID         int
 
 	sel      int // the chosen structure's ID, or -1
 	editing  int // the part being written in (partNone: none)
@@ -148,7 +183,12 @@ type designState struct {
 	dropOn         int        // while a page or note is dragged: the structure it would go into, or -1
 	dirty          bool
 	saveErr        string
-	loadedFrom     string // the board's file
+	savePending    bool        // a change waits to be written (designSaveLater)
+	saveTick       bool        // the wait for it has started (designSaveCmd)
+	snapGen        int         // snapshots taken
+	lastSnap       *designFile // the newest of them, for flushSave
+	written        int         // the newest snapshot on disk (under designDisk)
+	loadedFrom     string      // the board's file
 }
 
 type toolSpot struct {
@@ -170,15 +210,21 @@ func (m *Model) ds() *designState {
 	return m.design
 }
 
+// startUndo makes the board as loaded the place undo goes back to.
+func (d *designState) startUndo() *designState {
+	d.undoBase = d.state()
+	return d
+}
+
 func loadDesign(path string) *designState {
-	d := &designState{marks: map[[2]int]dMark{}, zoom: designZoom100, sel: -1, linkFrom: -1, pen: -1, nextID: 1, dropOn: -1, loadedFrom: path}
+	d := &designState{marks: map[[2]int]dMark{}, zoom: designZoom100, sel: -1, linkFrom: -1, pen: -1, nextID: 1, dropOn: -1, selLink: -1, undoWriting: -1, loadedFrom: path}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return d
+		return d.startUndo()
 	}
 	var f designFile
 	if json.Unmarshal(data, &f) != nil {
-		return d
+		return d.startUndo()
 	}
 	for _, o := range f.Octs {
 		if o != nil {
@@ -202,39 +248,135 @@ func loadDesign(path string) *designState {
 		d.zoom = f.Zoom
 	}
 	d.nextID = max(d.nextID, f.NextID)
-	return d
+	return d.startUndo()
 }
 
-// save writes the board when something changed.
+// designSaveLater: a change reaches the disk a moment later, written from
+// another goroutine (on in the real program, see main.go; tests save at
+// once and look at the file straight away). A large project is megabytes
+// of text, and writing it all at every key made typing stutter.
+var designSaveLater = false
+
+// designSaveDelay is how long after a change the board is written.
+const designSaveDelay = 400 * time.Millisecond
+
+// designSaveMsg: time to write the board. designSavedMsg: it was written.
+type (
+	designSaveMsg  struct{}
+	designSavedMsg struct{ err string }
+)
+
+// designDisk keeps writes in order: a slower, older one never lands on top
+// of a newer one.
+var designDisk sync.Mutex // guards writing and designState.written
+
+// save writes the board when something changed (or, with designSaveLater,
+// notes that it must be written soon: see designSaveCmd).
 func (d *designState) save() {
 	if !d.dirty {
 		return
 	}
+	d.recordUndo()
 	d.dirty = false
-	f := designFile{Octs: d.octs, Links: d.links, CamX: d.camX, CamY: d.camY, Zoom: d.zoom, NextID: d.nextID}
+	if designSaveLater {
+		d.savePending = true
+		return
+	}
+	gen, f := d.snapshot()
+	d.saveErr = d.writeSnapshot(f, gen)
+}
+
+// snapshot copies what is saved, so it can be written while the board
+// changes. The words are shared (Go strings never change); the structures
+// are copied.
+func (d *designState) snapshot() (int, designFile) {
+	f := designFile{Octs: copyOcts(d.octs), Links: append([]dLink(nil), d.links...), CamX: d.camX, CamY: d.camY, Zoom: d.zoom, NextID: d.nextID}
 	for at, mk := range d.marks {
 		f.Marks = append(f.Marks, dMarkAt{at[0], at[1], mk})
 	}
+	d.snapGen++
+	d.lastSnap = &f
+	return d.snapGen, f
+}
+
+func copyOcts(os []*dOct) []*dOct {
+	if os == nil {
+		return nil
+	}
+	out := make([]*dOct, len(os))
+	for i, o := range os {
+		if o == nil {
+			continue
+		}
+		c := dOct{X: o.X, Y: o.Y, ID: o.ID, W: o.W, H: o.H, Header: o.Header, Body: o.Body, Footer: o.Footer, Color: o.Color,
+			Kind: o.Kind, Layout: o.Layout, Image: o.Image, DrawerOpen: o.DrawerOpen, OpenStack: o.OpenStack, Scroll: o.Scroll, From: o.From}
+		c.Items = copyOcts(o.Items)
+		out[i] = &c
+	}
+	return out
+}
+
+// writeSnapshot writes snapshot gen unless a newer one is on disk already.
+// It returns the error, or "".
+func (d *designState) writeSnapshot(f designFile, gen int) string {
+	designDisk.Lock()
+	defer designDisk.Unlock()
+	if gen <= d.written {
+		return ""
+	}
 	data, err := json.MarshalIndent(f, "", " ")
 	if err != nil {
-		d.saveErr = err.Error()
-		return
+		return err.Error()
 	}
 	path := d.loadedFrom
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		d.saveErr = err.Error()
-		return
+		return err.Error()
 	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		d.saveErr = err.Error()
-		return
+		return err.Error()
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		d.saveErr = err.Error()
-		return
+		return err.Error()
 	}
-	d.saveErr = ""
+	d.written = gen
+	return ""
+}
+
+// designSaveCmd starts the wait before a pending save.
+func (m *Model) designSaveCmd() tea.Cmd {
+	d := m.design
+	if d == nil || !d.savePending || d.saveTick {
+		return nil
+	}
+	d.saveTick = true
+	return tea.Tick(designSaveDelay, func(time.Time) tea.Msg { return designSaveMsg{} })
+}
+
+// designSaveNow takes a snapshot and writes it from another goroutine.
+func (m *Model) designSaveNow() tea.Cmd {
+	d := m.design
+	if d == nil {
+		return nil
+	}
+	d.saveTick = false
+	if !d.savePending {
+		return nil
+	}
+	d.savePending = false
+	gen, f := d.snapshot()
+	return func() tea.Msg { return designSavedMsg{d.writeSnapshot(f, gen)} }
+}
+
+// flushSave writes anything not yet on disk, and waits for it: for quitting.
+func (d *designState) flushSave() {
+	if d.savePending {
+		d.savePending = false
+		d.snapshot()
+	}
+	if d.lastSnap != nil {
+		d.saveErr = d.writeSnapshot(*d.lastSnap, d.snapGen)
+	}
 }
 
 // ---- colours ---------------------------------------------------------------------
@@ -269,7 +411,33 @@ func hslHex(h, s, l float64) string {
 }
 
 // mixHex is a mixed with b: t=0 is a, t=1 is b.
+// mixHex is drawn with hundreds of times a frame, and reading the hex is
+// slow, so each mix is worked out once and kept.
+var (
+	mixed  sync.Map     // mixKey → string
+	mixedN atomic.Int64 // how many are kept: pen over a picture makes new ones
+)
+
+type mixKey struct {
+	a, b string
+	t    float64
+}
+
 func mixHex(a, b string, t float64) string {
+	k := mixKey{a, b, t}
+	if s, ok := mixed.Load(k); ok {
+		return s.(string)
+	}
+	s := mixHexNow(a, b, t)
+	if mixedN.Add(1) > 50000 {
+		mixed.Clear()
+		mixedN.Store(0)
+	}
+	mixed.Store(k, s)
+	return s
+}
+
+func mixHexNow(a, b string, t float64) string {
 	ar, ag, ab := rgb(a)
 	br, bg, bb := rgb(b)
 	f := func(x, y int) int { return int(float64(x) + (float64(y)-float64(x))*t + 0.5) }
@@ -286,9 +454,9 @@ func (d *designState) rect(o *dOct) (x, y, w, h int) {
 	ow, oh := d.size(o)
 	x = int(math.Floor((float64(o.X) - d.camX) * z))
 	y = int(math.Floor((float64(o.Y) - d.camY) * z))
-	x1 := int(math.Floor((float64(o.X+ow) - d.camX) * z))
-	y1 := int(math.Floor((float64(o.Y+oh) - d.camY) * z))
-	return x, y, max(x1-x, 1), max(y1-y, 1)
+	// The size comes from the zoom alone, not from where the edges fall,
+	// so it stays the same while the board pans.
+	return x, y, max(int(math.Round(float64(ow)*z)), 1), max(int(math.Round(float64(oh)*z)), 1)
 }
 
 // at is the top structure under a canvas cell.
@@ -349,6 +517,7 @@ func (d *designState) newOct(cx, cy int) *dOct {
 }
 
 func (d *designState) remove(id int) {
+	d.selLink = -1
 	for i, o := range d.octs {
 		if o.ID == id {
 			d.octs = append(d.octs[:i:i], d.octs[i+1:]...)
@@ -374,7 +543,7 @@ func (d *designState) remove(id int) {
 // toggleLink links a and b, or unlinks them when they already are.
 // It says whether they are linked now.
 func (d *designState) toggleLink(a, b int) bool {
-	d.dirty = true
+	d.dirty, d.selLink = true, -1
 	for i, l := range d.links {
 		if l.A == a && l.B == b || l.A == b && l.B == a {
 			d.links = append(d.links[:i:i], d.links[i+1:]...)
@@ -455,6 +624,14 @@ func (m *Model) designKey(k tea.Key) tea.Cmd {
 	d := m.ds()
 	defer d.save()
 	name := keyName(k)
+	switch name {
+	case "ctrl+z":
+		m.designUndo()
+		return nil
+	case "ctrl+y", "ctrl+shift+z", "ctrl+Z":
+		m.designRedo()
+		return nil
+	}
 	if d.editing != partNone {
 		if o := d.byID(d.sel); o != nil {
 			m.designWrite(d, o, k, name)
@@ -525,9 +702,16 @@ func (m *Model) designKey(k tea.Key) tea.Cmd {
 			d.editing = partHeader
 		}
 	case "delete", "backspace":
-		if o := d.byID(d.sel); o != nil {
+		if d.selLink >= 0 && d.selLink < len(d.links) {
+			m.designDeleteLink(d.selLink)
+		} else if o := d.byID(d.sel); o != nil {
 			return m.designRemove(o)
 		}
+	case "shift+delete", "shift+backspace":
+		if o := d.byID(d.sel); o != nil && o.Image != "" {
+			m.designDeletePicture(o)
+		}
+
 	case "left", "right", "up", "down", "shift+left", "shift+right", "shift+up", "shift+down":
 		step := 1
 		if strings.HasPrefix(name, "shift+") {
@@ -677,8 +861,16 @@ func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 		}
 		return nil
 	}
+	d.selLink = -1
 	if o == nil {
 		d.sel, d.editing = -1, partNone
+		if i := d.linkAt(sx, sy, m.width, m.textHeight()); i >= 0 && !double {
+			d.selLink = i
+			a, b := d.byID(d.links[i].A), d.byID(d.links[i].B)
+			m.say("Link " + octName(a) + " – " + octName(b) + " chosen: Delete deletes it (Ctrl+Z brings it back).")
+			d.drag = dragNone
+			return nil
+		}
 		if double {
 			wx, wy := d.world(sx, sy)
 			d.newKind(d.place, int(math.Floor(wx)), int(math.Floor(wy)))
@@ -697,6 +889,13 @@ func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 	d.sel = o.ID
 	d.origX, d.origY, d.origW, d.origH = o.X, o.Y, o.W, o.H
 	switch hit.where {
+	case hitDelete:
+		d.drag = dragNone
+		return m.designRemove(o)
+	case hitDelPicture:
+		d.drag = dragNone
+		m.designDeletePicture(o)
+		return nil
 	case hitHandle:
 		m.designDrawer(o)
 		d.drag = dragNone
@@ -834,6 +1033,10 @@ func (m *Model) designToolClick(x int) {
 			d.over = !d.over
 		case t.act == "link":
 			m.designLinkToggle()
+		case t.act == "undo":
+			m.designUndo()
+		case t.act == "redo":
+			m.designRedo()
 		case t.act == "zoomin":
 			d.zoomTo(d.zoom+1, m.width/2, m.textHeight()/2)
 		case t.act == "zoomout":
@@ -867,32 +1070,200 @@ var octMiddle = lipgloss.Border{
 var octSides = lipgloss.Border{Left: "│", Right: "│"}
 
 // designCanvas is the whole board, drawn.
-func (m *Model) designCanvas() *lipgloss.Canvas {
+func (m *Model) designCanvas() *boardCanvas {
 	d := m.ds()
-	c := lipgloss.NewCanvas(m.width, m.textHeight())
-	c.Compose(lipgloss.NewLayer(d.boardLayer(m.width, m.textHeight())))
-	var layers []*lipgloss.Layer
-	for i, o := range d.octs {
-		for _, l := range d.structLayers(o) {
-			layers = append(layers, l.Z(i+1))
+	// One canvas, kept from frame to frame: the board covers all of it.
+	if d.canvas == nil || d.canvas.Width() != m.width || d.canvas.Height() != m.textHeight() {
+		d.canvas = newBoardCanvas(m.width, m.textHeight())
+	}
+	c := d.canvas
+	d.paintBoard(c)
+	seen := make(map[int]drawnStruct, len(d.drawn))
+	for _, o := range d.octs { // in order: the last one is on top
+		if !d.onScreen(o, m.width, m.textHeight()) {
+			continue // nothing of it shows: drawing it would only cost time
+		}
+		for _, p := range d.cachedLayers(o, seen) {
+			p.paint(c)
 		}
 	}
-	if len(layers) > 0 {
-		c.Compose(lipgloss.NewCompositor(layers...))
-	}
+	d.drawn = seen
 	d.tint(c)
 	return c
 }
 
+// drawKey is everything a structure's drawing depends on, except where it
+// is on the screen. When it has not changed, the last drawing is moved
+// instead of drawn again, so panning and dragging stay smooth.
+type drawKey struct {
+	w, h                                    int
+	kind, header, body, footer, color       string
+	image, openStack, items                 string
+	layout, scroll, editing                 int
+	drawerOpen, sel, source, drop           bool
+	linkMode                                bool
+	bg, text, dim, accent, err, bar, stText string
+	stBG, ember                             string
+}
+
+type drawnStruct struct {
+	key   drawKey
+	parts []*drawnPart
+}
+
+// drawnPart is one layer of a structure's drawing.
+type drawnPart struct {
+	l      *lipgloss.Layer
+	dx, dy int          // its place, from the structure's corner
+	cells  *boardCanvas // its letters and colours, read once from the layer
+}
+
+// paint copies the part's cells that fall on the canvas. A structure zoomed
+// in can be many screens big; reading its styled text only once, and then
+// copying just the cells that show, keeps every frame about one screen's work.
+func (p *drawnPart) paint(c *boardCanvas) {
+	x, y := p.l.GetX(), p.l.GetY()
+	if p.cells == nil {
+		s := p.l.GetContent()
+		p.cells = newBoardCanvas(lipgloss.Width(s), lipgloss.Height(s))
+		uv.NewStyledString(s).Draw(p.cells, p.cells.Bounds())
+	}
+	w, h := p.cells.Width(), p.cells.Height()
+	c0, c1 := max(0, -x), min(w, c.Width()-x)
+	if c0 >= c1 {
+		return
+	}
+	for cy := max(0, -y); cy < min(h, c.Height()-y); cy++ {
+		c.copyCells(x+c0, y+cy, p.cells.Lines[cy][c0:c1])
+	}
+}
+
+func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
+	if o.Image != "" && !picLoaded(filepath.Join(d.imagesDir(), o.Image)) {
+		return drawKey{}, false // a missing picture may turn up: look again each time
+	}
+	_, _, w, h := d.rect(o)
+	k := drawKey{
+		w: w, h: h, kind: o.Kind, header: o.Header, body: o.Body, footer: o.Footer, color: o.Color,
+		image: o.Image, openStack: o.OpenStack, layout: o.Layout, scroll: o.Scroll, drawerOpen: o.DrawerOpen,
+		sel: d.sel == o.ID, source: d.linkMode && d.linkFrom == o.ID, drop: d.dropOn == o.ID, linkMode: d.linkMode,
+		bg: cBG, text: cText, dim: cDim, accent: cAccent, err: cError, bar: cBarBG, stText: cStatusText,
+		stBG: cStatusBG, ember: cEmber,
+	}
+	if k.sel {
+		k.editing = d.editing
+	}
+	if len(o.Items) > 0 {
+		var sb strings.Builder
+		for _, it := range o.Items {
+			if it != nil {
+				sb.WriteString(it.Kind + "\x00" + itemTitle(it))
+			}
+			sb.WriteByte('\n')
+		}
+		k.items = sb.String()
+	}
+	return k, true
+}
+
+// cachedLayers is structLayers, reusing the last drawing when nothing in it changed.
+func (d *designState) cachedLayers(o *dOct, seen map[int]drawnStruct) []*drawnPart {
+	x, y, _, _ := d.rect(o)
+	k, ok := d.drawKeyOf(o)
+	if ok {
+		if c, hit := d.drawn[o.ID]; hit && c.key == k {
+			for _, p := range c.parts {
+				p.l.X(x + p.dx).Y(y + p.dy)
+			}
+			seen[o.ID] = c
+			return c.parts
+		}
+	}
+	layers := d.structLayers(o)
+	parts := make([]*drawnPart, len(layers))
+	for i, l := range layers {
+		parts[i] = &drawnPart{l: l, dx: l.GetX() - x, dy: l.GetY() - y}
+		if sp, ok := d.picLayers[l]; ok {
+			parts[i].cells = pictureCanvas(sp.path, sp.w, sp.h, sp.fill)
+			delete(d.picLayers, l)
+		}
+		if c, ok := d.preMade[l]; ok {
+			parts[i].cells = c
+			delete(d.preMade, l)
+		}
+	}
+	if k, ok = d.drawKeyOf(o); ok { // drawing a page can change its scroll
+		seen[o.ID] = drawnStruct{key: k, parts: parts}
+	}
+	return parts
+}
+
+// onScreen is whether any part of o (with its open drawer, handle and
+// corner marks, which sit just outside it) falls on a w×h screen.
+func (d *designState) onScreen(o *dOct, w, h int) bool {
+	x, y, ow, oh := d.rect(o)
+	x0, y0, x1, y1 := x, y, x+ow, y+oh
+	if o.DrawerOpen && o.Kind != kCabinet {
+		dx, dy, dw, dh := d.drawerRect(o)
+		x0, y0, x1, y1 = min(x0, dx), min(y0, dy), max(x1, dx+dw), max(y1, dy+dh)
+	}
+	const margin = 3
+	return x1+margin > 0 && y1+margin > 0 && x0-margin < w && y0-margin < h
+}
+
+// designFrameGap is the shortest time between two drawings of the board,
+// when designFrames is on: the screen is sent to the terminal at most 120
+// times a second, so drawing more often only falls behind. A fast drag
+// brings a mouse move every few milliseconds; drawing the whole board for
+// each of them, full screen and zoomed in, left it trailing behind the hand.
+const designFrameGap = time.Second / 120
+
+// frameGap is the wait before the next drawing: three times what the last
+// one took, so drawing never takes more than a third of the time, but at
+// most designFrameGap and at least 2 ms. A quick board waits less, and what
+// reaches the screen is fresher.
+func (d *designState) frameGap() time.Duration {
+	return min(designFrameGap, max(2*time.Millisecond, 3*d.frameCost))
+}
+
+// designFrames: the board may reuse its last drawing for a moment (on in
+// the real program, see main.go; off in tests, which look straight away).
+var designFrames = false
+
+// designFrameMsg asks for the board to be drawn again: the last View reused
+// an older drawing.
+type designFrameMsg struct{}
+
 // designRows draws the board in the text area.
 func (m *Model) designRows(sb *strings.Builder) {
-	rows := strings.Split(m.designCanvas().Render(), "\n")
-	for y := range m.textHeight() {
-		if y < len(rows) {
-			sb.WriteString(rows[y])
-		}
-		sb.WriteByte('\n')
+	d := m.ds()
+	if designFrames && d.frame != "" && d.frameW == m.width && d.frameH == m.textHeight() &&
+		time.Since(d.frameAt) < d.frameGap() {
+		sb.WriteString(d.frame) // designFrameCmd has a fresh drawing coming
+		return
 	}
+	start := time.Now()
+	var fb strings.Builder
+	fb.Grow(len(d.frame) + len(d.frame)/8)
+	m.designCanvas().renderTo(&fb)
+	d.frame, d.frameAt, d.frameW, d.frameH = fb.String(), time.Now(), m.width, m.textHeight()
+	d.frameCost = d.frameAt.Sub(start)
+	sb.WriteString(d.frame)
+}
+
+// designFrameCmd: when the next View would reuse the last drawing, a tick
+// draws the latest board as soon as the gap is over.
+func (m *Model) designFrameCmd() tea.Cmd {
+	if !designFrames || !m.inDesign() {
+		return nil
+	}
+	d := m.ds()
+	wait := d.frameGap() - time.Since(d.frameAt)
+	if d.frameTick || wait <= 0 {
+		return nil
+	}
+	d.frameTick = true
+	return tea.Tick(wait, func(time.Time) tea.Msg { return designFrameMsg{} })
 }
 
 // The four ways a line can leave a cell, mixed into one box letter.
@@ -912,11 +1283,72 @@ var boxLetters = map[int]string{
 
 // boardLayer is the empty board: a dot where its grid lines cross (they
 // spread apart as it zooms in), a + at its middle, and the links.
+// boardMark is a letter on the empty board: a grid dot or a piece of a link.
+type boardMark struct {
+	s, fg string
+}
+
+// boardLayer is the empty board as styled text (paintBoard lays the same
+// cells straight onto the canvas; the tests check they match).
 func (d *designState) boardLayer(w, h int) string {
-	type mark struct {
-		s, fg string
+	type mark = boardMark
+	at := d.boardMarks(w, h)
+	// Styling is slow next to the rest, and the same few dots and gaps come
+	// again and again, so each is styled once per frame.
+	bg := st(cText, cBG)
+	gaps := map[int]string{}
+	gap := func(n int) string {
+		s, ok := gaps[n]
+		if !ok {
+			s = bg.Render(strings.Repeat(" ", n))
+			gaps[n] = s
+		}
+		return s
 	}
-	at := map[[2]int]mark{}
+	styled := map[mark]string{}
+	var sb strings.Builder
+	for y := range h {
+		run := 0
+		for x := range w {
+			mk, ok := at[[2]int{x, y}]
+			if !ok {
+				run++
+				continue
+			}
+			if run > 0 {
+				sb.WriteString(gap(run))
+				run = 0
+			}
+			s, ok := styled[mk]
+			if !ok {
+				s = st(mk.fg, cBG).Render(mk.s)
+				styled[mk] = s
+			}
+			sb.WriteString(s)
+		}
+		if run > 0 {
+			sb.WriteString(gap(run))
+		}
+		if y < h-1 {
+			sb.WriteByte('\n')
+		}
+	}
+	return sb.String()
+}
+
+// boardMarks is where the empty board's dots and links are on a w×h screen.
+func (d *designState) boardMarks(w, h int) map[[2]int]boardMark {
+	at := map[[2]int]boardMark{}
+	d.boardDots(w, h, func(x, y int, mk boardMark) { at[[2]int{x, y}] = mk })
+	for cell, l := range d.linkCells(w, h) {
+		at[cell] = l
+	}
+	return at
+}
+
+// boardDots calls dot for each grid dot (and the + at the middle) on a
+// w×h screen, row by row.
+func (d *designState) boardDots(w, h int, dot func(x, y int, mk boardMark)) {
 	z := d.z()
 	stepX, stepY := 8, 4
 	for float64(stepX)*z < 6 {
@@ -927,7 +1359,7 @@ func (d *designState) boardLayer(w, h int) string {
 		b := math.Floor((cam + float64(s+1)/z) / float64(step))
 		return b > a, int(b) * step
 	}
-	dot, centre := mixHex(cDim, cBG, 0.45), mixHex(cDim, cBG, 0.1)
+	plain, centre := boardMark{"·", mixHex(cDim, cBG, 0.45)}, boardMark{"+", mixHex(cDim, cBG, 0.1)}
 	var xs [][2]int
 	for x := range w {
 		if ok, wx := crosses(x, d.camX, stepX); ok {
@@ -941,53 +1373,182 @@ func (d *designState) boardLayer(w, h int) string {
 		}
 		for _, x := range xs {
 			if x[1] == 0 && wy == 0 {
-				at[[2]int{x[0], y}] = mark{"+", centre}
+				dot(x[0], y, centre)
 			} else {
-				at[[2]int{x[0], y}] = mark{"·", dot}
+				dot(x[0], y, plain)
 			}
 		}
 	}
-	for cell, l := range d.linkCells(w, h) {
-		at[cell] = l
+}
+
+// paintBoard lays the empty board straight onto the canvas as cells: no
+// styled text to build and read back, which was a fifth of a frame.
+func (d *designState) paintBoard(c *boardCanvas) {
+	colours := map[string]color.Color{}
+	rgba := func(hex string) color.Color {
+		col, ok := colours[hex]
+		if !ok {
+			r, g, b := rgb(hex)
+			col = color.RGBA{uint8(r), uint8(g), uint8(b), 255}
+			colours[hex] = col
+		}
+		return col
 	}
-	bg := st(cText, cBG)
-	var sb strings.Builder
-	for y := range h {
-		run := 0
-		for x := range w {
-			mk, ok := at[[2]int{x, y}]
-			if !ok {
-				run++
-				continue
+	blank := make(uv.Line, c.Width())
+	for x := range blank {
+		blank[x] = uv.Cell{Content: " ", Width: 1, Style: uv.Style{Fg: rgba(cText), Bg: rgba(cBG)}}
+	}
+	for _, line := range c.Lines {
+		copy(line, blank)
+	}
+	bg := rgba(cBG)
+	put := func(x, y int, mk boardMark) {
+		c.Lines[y][x] = uv.Cell{Content: mk.s, Width: 1, Style: uv.Style{Fg: rgba(mk.fg), Bg: bg}}
+	}
+	d.boardDots(c.Width(), c.Height(), put)
+	for at, l := range d.linkCells(c.Width(), c.Height()) {
+		put(at[0], at[1], l)
+	}
+}
+
+// boardCanvas is the board's grid of cells. It is uv's screen buffer, used
+// directly: whole runs of cells are copied at once, not set one by one.
+type boardCanvas struct {
+	uv.ScreenBuffer
+}
+
+func newBoardCanvas(w, h int) *boardCanvas {
+	s := uv.NewScreenBuffer(w, h)
+	s.Method = ansi.GraphemeWidth // as Lip Gloss measures
+	return &boardCanvas{s}
+}
+
+// Render is the cells as styled text, as Lip Gloss's canvas renders them.
+func (c *boardCanvas) Render() string { return uv.TrimSpace(c.Buffer.Render()) }
+
+// renderTo writes the cells as styled text, one row per line, each line
+// ending in "\n". It gives the same cells as uv's own rendering when read
+// back, without its allocations: that was half of a full-screen frame.
+// Each change of style is written whole (reset, then everything).
+func (c *boardCanvas) renderTo(sb *strings.Builder) {
+	var buf []byte
+	for _, line := range c.Lines {
+		buf = buf[:0]
+		var pen uv.Style
+		for i := range line {
+			cell := &line[i]
+			if cell.IsZero() {
+				continue // the right half of a wide letter
 			}
-			if run > 0 {
-				sb.WriteString(bg.Render(strings.Repeat(" ", run)))
-				run = 0
+			if cell.Link.URL != "" {
+				buf = append(buf[:0], uv.Lines{line}.Render()...) // links: uv's way
+				pen = uv.Style{}
+				break
 			}
-			sb.WriteString(st(mk.fg, cBG).Render(mk.s))
+			if !cell.Style.Equal(&pen) {
+				buf = appendStyle(buf, &cell.Style)
+				pen = cell.Style
+			}
+			if cell.Content == "" {
+				buf = append(buf, ' ')
+			} else {
+				buf = append(buf, cell.Content...)
+			}
 		}
-		if run > 0 {
-			sb.WriteString(bg.Render(strings.Repeat(" ", run)))
+		if !pen.IsZero() {
+			buf = append(buf, "\x1b[m"...)
 		}
-		if y < h-1 {
-			sb.WriteByte('\n')
+		sb.Write(buf)
+		sb.WriteByte('\n')
+	}
+}
+
+// appendStyle appends the escape that sets style s from scratch.
+func appendStyle(buf []byte, s *uv.Style) []byte {
+	if s.IsZero() {
+		return append(buf, "\x1b[m"...)
+	}
+	fg, fgOK := s.Fg.(color.RGBA)
+	bg, bgOK := s.Bg.(color.RGBA)
+	if s.Underline != 0 || s.UnderlineColor != nil || (s.Fg != nil && !fgOK) || (s.Bg != nil && !bgOK) {
+		return append(append(buf, "\x1b[m"...), s.String()...) // rarer styles: uv's way
+	}
+	buf = append(buf, "\x1b[0"...)
+	for bit, code := range [...]byte{'1', '2', '3', '5', '6', '7', '8', '9'} {
+		if s.Attrs&(1<<bit) != 0 {
+			buf = append(buf, ';', code)
 		}
 	}
-	return sb.String()
+	rgb := func(buf []byte, lead string, c color.RGBA) []byte {
+		buf = append(buf, lead...)
+		buf = strconv.AppendUint(buf, uint64(c.R), 10)
+		buf = append(buf, ';')
+		buf = strconv.AppendUint(buf, uint64(c.G), 10)
+		buf = append(buf, ';')
+		return strconv.AppendUint(buf, uint64(c.B), 10)
+	}
+	if s.Fg != nil {
+		buf = rgb(buf, ";38;2;", fg)
+	}
+	if s.Bg != nil {
+		buf = rgb(buf, ";48;2;", bg)
+	}
+	return append(buf, 'm')
+}
+
+// copyCells puts src's cells at (x, y). A wide letter cut in two at either
+// end becomes a space, as setting the cells one by one would leave it.
+func (c *boardCanvas) copyCells(x, y int, src uv.Line) {
+	line := c.Lines[y]
+	n := copy(line[x:], src)
+	if n == 0 {
+		return
+	}
+	blank := func(i int) { line[i].Content, line[i].Width = " ", 1 }
+	if x > 0 && line[x-1].Width > 1 {
+		blank(x - 1) // its right half was just covered
+	}
+	if line[x].Width == 0 {
+		blank(x) // the right half of a letter whose left half is cut off
+	}
+	if last := x + n - 1; line[last].Width > 1 {
+		blank(last) // its right half is cut off
+	}
+	if end := x + n; end < len(line) && line[end].Width == 0 {
+		blank(end) // the right half of a letter just covered
+	}
 }
 
 // linkCells works out the links' lines: each goes with right-angle bends
 // from the middle of one structure to the middle of the other. The
 // structures are drawn over the ends, so a line seems to leave from the edge.
 func (d *designState) linkCells(w, h int) map[[2]int]struct{ s, fg string } {
+	return d.linkGrid(w, h, nil)
+}
+
+// linkAt is the link drawn at screen cell (sx, sy) of a w×h board, or -1.
+func (d *designState) linkAt(sx, sy, w, h int) int {
+	owner := map[[2]int]int{}
+	if _, ok := d.linkGrid(w, h, owner)[[2]int{sx, sy}]; !ok {
+		return -1
+	}
+	return owner[[2]int{sx, sy}]
+}
+
+// linkGrid is linkCells, noting in owner (when not nil) the link of each cell.
+func (d *designState) linkGrid(w, h int, owner map[[2]int]int) map[[2]int]struct{ s, fg string } {
 	ways := map[[2]int]int{}
 	colour := map[[2]int]string{}
+	current := 0
 	add := func(x, y, way int, c string) {
 		if x < 0 || y < 0 || x >= w || y >= h {
 			return
 		}
 		ways[[2]int{x, y}] |= way
 		colour[[2]int{x, y}] = c
+		if owner != nil {
+			owner[[2]int{x, y}] = current
+		}
 	}
 	hline := func(x0, x1, y int, c string) {
 		if y < 0 || y >= h {
@@ -1013,12 +1574,16 @@ func (d *designState) linkCells(w, h int) map[[2]int]struct{ s, fg string } {
 			add(x, y+1, goUp, c)
 		}
 	}
-	for _, l := range d.links {
+	for i, l := range d.links {
 		a, b := d.byID(l.A), d.byID(l.B)
 		if a == nil || b == nil {
 			continue
 		}
+		current = i
 		c := mixHex(mixHex(a.Color, b.Color, 0.5), cBG, 0.2)
+		if i == d.selLink {
+			c = cAccent // the chosen link
+		}
 		ax, ay, aw, ah := d.rect(a)
 		bx, by, bw, bh := d.rect(b)
 		x0, y0, x1, y1 := ax+aw/2, ay+ah/2, bx+bw/2, by+bh/2
@@ -1048,6 +1613,7 @@ func (d *designState) linkCells(w, h int) map[[2]int]struct{ s, fg string } {
 // at the bottom. The cut corners are separate, narrower layers, so the
 // board shows through beside them.
 func (d *designState) octLayers(o *dOct) []*lipgloss.Layer {
+	delete(d.picBox, o.ID) // drawing it says where its picture is now
 	x, y, w, h := d.rect(o)
 	selected := d.sel == o.ID
 	source := d.linkMode && d.linkFrom == o.ID
@@ -1095,10 +1661,16 @@ func (d *designState) octLayers(o *dOct) []*lipgloss.Layer {
 
 	if h < octMinH || w < octMinW { // small: corners cut by one
 		add(diag("╱")+line(w-2)+diag("╲"), x, y)
+		spots := len(d.picSpots)
+		// A header wider than the box wraps onto more rows and moves the
+		// picture down by an amount only the text knows: draw it as text.
+		d.picsAsText = lipgloss.Width(head) > w-4
 		inner := head + "\n" + d.octContent(o, editing, w-4, h-3, fill, dim)
+		d.picsAsText = false
 		add(lipgloss.NewStyle().Border(octSides, false, true, false, true).BorderForeground(hex(edge)).BorderBackground(hex(fill)).
 			Background(hex(fill)).Foreground(hex(cText)).Padding(0, 1).Width(w).Height(h-2).
 			Render(centredFirst(inner, w-4, fill)), x, y+1)
+		layers = d.pictureLayers(layers, spots, x+2, y+2, o, x, y)
 		add(diag("╲")+line(w-2)+diag("╱"), x, y+h-1)
 		return d.octExtras(layers, o, x, y, w, h, edge, fill, selected, source)
 	}
@@ -1106,9 +1678,25 @@ func (d *designState) octLayers(o *dOct) []*lipgloss.Layer {
 	foot := part(partFooter, o.Footer, "footer", st(mixHex(cText, fill, 0.3), fill).Italic(true), w-6)
 	add(diag("╱")+line(w-6)+diag("╲"), x+2, y)
 	add(diag("╱")+centred(head, w-4)+diag("╲"), x+1, y+1)
-	add(lipgloss.NewStyle().Border(octMiddle).BorderForeground(hex(edge)).BorderBackground(hex(fill)).
-		Background(hex(fill)).Foreground(hex(cText)).Padding(0, 1).Width(w).Height(h-4).
-		Render(d.octContent(o, editing, w-4, h-6, fill, dim)), x, y+2)
+	spots := len(d.picSpots)
+	d.emptyHoles, d.holesLeft = middlesDirect, false
+	content := d.octContent(o, editing, w-4, h-6, fill, dim)
+	d.emptyHoles = false
+	if c := d.middleCells(content, w, h-4, edge, fill); c != nil {
+		l := lipgloss.NewLayer("").X(x).Y(y + 2) // its cells are made already
+		d.preCells(l, c)
+		layers = append(layers, l)
+	} else {
+		if d.holesLeft {
+			// Built for middleCells, but it could not take it: start again.
+			d.picSpots = d.picSpots[:spots]
+			content = d.octContent(o, editing, w-4, h-6, fill, dim)
+		}
+		add(lipgloss.NewStyle().Border(octMiddle).BorderForeground(hex(edge)).BorderBackground(hex(fill)).
+			Background(hex(fill)).Foreground(hex(cText)).Padding(0, 1).Width(w).Height(h-4).
+			Render(content), x, y+2)
+	}
+	layers = d.pictureLayers(layers, spots, x+2, y+3, o, x, y)
 	add(diag("╲")+centred(foot, w-4)+diag("╱"), x+1, y+h-2)
 	add(diag("╲")+line(w-6)+diag("╱"), x+2, y+h-1)
 	if tx, ty, ok := layoutToggleSpot(x, y, w, h); ok {
@@ -1152,6 +1740,122 @@ func (d *designState) octBody(o *dOct, editing, w, rows int, fill, dim string) s
 }
 
 // centredFirst centres the first line (the header of a small structure).
+// middlesDirect: a structure's middle (its sides, dotted lines and text) is
+// built as cells, not as text Lip Gloss lays out and uv reads back. Zoomed
+// in, the middle is hundreds of cells across and that was most of the work
+// of a zoom step. (Off only in the tests that check both ways match.)
+var middlesDirect = true
+
+// middleCells builds the middle of a structure w wide and h high: the
+// dotted lines at top and bottom, a side at each edge, and content inside,
+// one cell of room on either side, exactly as Lip Gloss lays it out. It
+// returns nil when content needs Lip Gloss (a line too wide, too many lines).
+func (d *designState) middleCells(content string, w, h int, edge, fill string) *boardCanvas {
+	if !middlesDirect || w < 4 || h < 2 {
+		return nil
+	}
+	lines := strings.Split(content, "\n")
+	cw := w - 4
+	if len(lines) > h-2 {
+		return nil
+	}
+	text, bg, edgeFG := rgbaOf(cText), rgbaOf(fill), rgbaOf(edge)
+	c := newBoardCanvas(w, h)
+	blank := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: bg}} // Lip Gloss leaves room with no letter colour
+	for _, line := range c.Lines {
+		for x := range line {
+			line[x] = blank
+		}
+	}
+	put := func(x, y int, s string) {
+		c.Lines[y][x] = uv.Cell{Content: s, Width: 1, Style: uv.Style{Fg: edgeFG, Bg: bg}}
+	}
+	for x := 1; x < w-1; x++ {
+		put(x, 0, octMiddle.Top)
+		put(x, h-1, octMiddle.Bottom)
+	}
+	put(0, 0, octMiddle.TopLeft)
+	put(w-1, 0, octMiddle.TopRight)
+	put(0, h-1, octMiddle.BottomLeft)
+	put(w-1, h-1, octMiddle.BottomRight)
+	for y := 1; y < h-1; y++ {
+		put(0, y, octMiddle.Left)
+		put(w-1, y, octMiddle.Right)
+	}
+	var row *boardCanvas
+	for i, s := range lines {
+		if s == "" {
+			continue
+		}
+		if row == nil || row.Width() < len(s)+1 {
+			row = newBoardCanvas(len(s)+1, 1)
+		}
+		uv.NewStyledString(s).Draw(row, row.Bounds())
+		cells := row.Lines[0]
+		n := len(cells)
+		for n > 0 && cells[n-1] == uv.EmptyCell {
+			n--
+		}
+		if n > cw {
+			return nil // Lip Gloss would wrap it
+		}
+		for x := range n {
+			cell := cells[x]
+			if cell.IsZero() { // the right half of a wide letter: left as it is
+				c.Lines[1+i][2+x] = cell
+				continue
+			}
+			if cell.Style.Fg == nil {
+				cell.Style.Fg = text
+			}
+			if cell.Style.Bg == nil {
+				cell.Style.Bg = bg
+			}
+			c.Lines[1+i][2+x] = cell
+		}
+	}
+	return c
+}
+
+// rgbaOf is a #rrggbb colour as uv reads it from text.
+func rgbaOf(hex string) color.Color {
+	r, g, b := rgb(hex)
+	return color.RGBA{uint8(r), uint8(g), uint8(b), 255}
+}
+
+// preCells notes that layer l stands for cells made already: cachedLayers
+// takes them instead of reading the layer's (empty) text.
+func (d *designState) preCells(l *lipgloss.Layer, c *boardCanvas) {
+	if d.preMade == nil {
+		d.preMade = map[*lipgloss.Layer]*boardCanvas{}
+	}
+	d.preMade[l] = c
+}
+
+// pictureLayers turns the pictures met since picSpots[from] into layers
+// whose text corner is at (cx, cy): empty stand-ins that cachedLayers
+// fills with the picture's cells.
+func (d *designState) pictureLayers(layers []*lipgloss.Layer, from, cx, cy int, o *dOct, x, y int) []*lipgloss.Layer {
+	for _, sp := range d.picSpots[from:] {
+		px, py := cx+sp.dx, cy+sp.dy
+		l := lipgloss.NewLayer("").X(px).Y(py)
+		if d.picLayers == nil {
+			d.picLayers = map[*lipgloss.Layer]picSpot{}
+		}
+		d.picLayers[l] = sp
+		layers = append(layers, l)
+		if d.picBox == nil {
+			d.picBox = map[int][4]int{}
+		}
+		d.picBox[o.ID] = [4]int{px - x, py - y, sp.w, sp.h}
+		if dx, dy, ok := d.pictureDeleteSpot(o, x, y); ok {
+			layers = append(layers, lipgloss.NewLayer(st(cBG, cError).Bold(true).Render("✕")).X(dx).Y(dy))
+		}
+	}
+	d.picSpots = d.picSpots[:from]
+	return layers
+}
+
 func centredFirst(s string, w int, fill string) string {
 	first, rest, _ := strings.Cut(s, "\n")
 	return lipgloss.PlaceHorizontal(w, lipgloss.Center, first, lipgloss.WithWhitespaceStyle(st(cText, fill))) + "\n" + rest
@@ -1166,6 +1870,9 @@ func (d *designState) octExtras(layers []*lipgloss.Layer, o *dOct, x, y, w, h in
 	if selected && !d.linkMode {
 		layers = append(layers, lipgloss.NewLayer(st(edge, cBG).Render("◢")).X(x+w-1).Y(y+h-1))
 	}
+	if dx, dy, ok := d.deleteSpot(o, x, y, w, h); ok {
+		layers = append(layers, lipgloss.NewLayer(st(cError, fill).Bold(true).Render("✕")).X(dx).Y(dy))
+	}
 	return layers
 }
 
@@ -1173,35 +1880,67 @@ func (d *designState) octExtras(layers []*lipgloss.Layer, o *dOct, x, y, w, h in
 // cell's background takes the colour and the letter stays exactly as it
 // was. Over the text: the colour is laid over everything; letters show
 // through, tinted, and empty cells show the ink's grain.
-func (d *designState) tint(c *lipgloss.Canvas) {
+func (d *designState) tint(c *boardCanvas) {
 	if len(d.marks) == 0 {
 		return
 	}
 	z := d.z()
+	// The world column under each screen column, and the world rows that
+	// have ink at all: most rows have none and are passed over.
+	wxs := make([]int, c.Width())
+	for x := range wxs {
+		wxs[x] = int(math.Floor(d.camX + (float64(x)+0.5)/z))
+	}
+	inked := make(map[int]bool, len(d.marks))
+	for at := range d.marks {
+		inked[at[1]] = true
+	}
+	// The same cell colours under the same pen come again and again: each
+	// mix is worked out once a frame.
+	type look struct {
+		bg, fg     color.Color
+		pen        int8
+		over, void bool
+	}
+	type result struct {
+		bg, fg color.Color
+		shade  bool // a blank cell gets the ░ shading
+	}
+	done := map[look]result{}
 	for y := range c.Height() {
 		wy := int(math.Floor(d.camY + (float64(y)+0.5)/z))
-		for x := range c.Width() {
-			mk, ok := d.marks[[2]int{int(math.Floor(d.camX + (float64(x)+0.5)/z)), wy}]
+		if !inked[wy] {
+			continue
+		}
+		line := c.Lines[y]
+		for x, wx := range wxs {
+			mk, ok := d.marks[[2]int{wx, wy}]
 			if !ok {
 				continue
 			}
-			cell := c.CellAt(x, y)
-			if cell == nil || cell.Width == 0 {
+			cell := &line[x]
+			if cell.Width == 0 {
 				continue
 			}
-			pen := penColors[mk.Pen]
-			bg, fg := colorHex(cell.Style.Bg, cBG), colorHex(cell.Style.Fg, cText)
-			if !mk.Over {
-				cell.Style.Bg = hex(mixHex(bg, pen, 0.5))
-				continue
+			k := look{cell.Style.Bg, cell.Style.Fg, mk.Pen, mk.Over, strings.TrimSpace(cell.Content) == ""}
+			r, ok := done[k]
+			if !ok {
+				pen := penColors[mk.Pen]
+				bg, fg := colorHex(cell.Style.Bg, cBG), colorHex(cell.Style.Fg, cText)
+				switch {
+				case !mk.Over:
+					r = result{bg: hex(mixHex(bg, pen, 0.5)), fg: cell.Style.Fg}
+				case k.void:
+					nbg := mixHex(bg, pen, 0.38)
+					r = result{bg: hex(nbg), fg: hex(mixHex(nbg, pen, 0.55)), shade: true}
+				default:
+					r = result{bg: hex(mixHex(bg, pen, 0.38)), fg: hex(mixHex(fg, pen, 0.45))}
+				}
+				done[k] = r
 			}
-			nbg := mixHex(bg, pen, 0.38)
-			cell.Style.Bg = hex(nbg)
-			if strings.TrimSpace(cell.Content) == "" {
+			cell.Style.Bg, cell.Style.Fg = r.bg, r.fg
+			if r.shade {
 				cell.Content, cell.Width = "░", 1
-				cell.Style.Fg = hex(mixHex(nbg, pen, 0.55))
-			} else {
-				cell.Style.Fg = hex(mixHex(fg, pen, 0.45))
 			}
 		}
 	}
@@ -1271,7 +2010,14 @@ func (m *Model) designToolbar() string {
 	put(" − ", st(cStatusText, cBarBG).Bold(true), "zoomout")
 	put(fmt.Sprintf("%3.0f%%", d.z()*100), st(cStatusText, cBarBG), "")
 	put(" + ", st(cStatusText, cBarBG).Bold(true), "zoomin")
+	put(" ", bar, "")
+	canUndo, canRedo := len(d.undo) > 0 || (d.undoBase != nil && d.dirty), len(d.redo) > 0
+	put(" ↶ ", st(map[bool]string{true: cStatusText, false: mixHex(cDim, cBarBG, 0.4)}[canUndo], cBarBG).Bold(canUndo), "undo")
+	put(" ↷ ", st(map[bool]string{true: cStatusText, false: mixHex(cDim, cBarBG, 0.4)}[canRedo], cBarBG).Bold(canRedo), "redo")
 	right := bar.Render(fmt.Sprintf("%d structures · %d links ", len(d.octs), len(d.links)))
+	if m.width-x-lipgloss.Width(right) <= 0 { // short, when the long one does not fit
+		right = bar.Render(fmt.Sprintf("%d %s · %d ⛓ ", len(d.octs), kindIcons[kOct], len(d.links)))
+	}
 	if gap := m.width - x - lipgloss.Width(right); gap > 0 {
 		sb.WriteString(bar.Render(strings.Repeat(" ", gap)) + right)
 	} else {

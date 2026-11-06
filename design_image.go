@@ -20,6 +20,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -86,23 +87,29 @@ func (d *designState) octContent(o *dOct, editing, cw, rows int, fill, dim strin
 	}
 	switch o.Layout % len(octLayouts) {
 	case layoutPicture:
-		return d.pictureArea(o, cw, rows, fill, dim)
+		return d.pictureAlone(o, cw, rows, fill, dim)
 	case layoutAbove:
 		if rows < 3 {
-			return d.pictureArea(o, cw, rows, fill, dim)
+			return d.pictureAlone(o, cw, rows, fill, dim)
 		}
 		ir := rows / 2
 		if o.Body == "" && editing != partBody {
 			ir = rows - 1
 		}
-		return d.pictureArea(o, cw, ir, fill, dim) + "\n" + fitBlock(d.octBody(o, editing, cw, rows-ir, fill, dim), cw, rows-ir, fill)
+		return d.pictureAlone(o, cw, ir, fill, dim) + "\n" + fitBlock(d.octBody(o, editing, cw, rows-ir, fill, dim), cw, rows-ir, fill)
 	case layoutLeft, layoutRight:
 		if cw < 9 {
 			return d.octBody(o, editing, cw, rows, fill, dim)
 		}
 		iw := cw / 2
 		tw := cw - iw - 1
+		spots := len(d.picSpots)
 		pic := strings.Split(d.pictureArea(o, iw, rows, fill, dim), "\n")
+		if o.Layout%len(octLayouts) == layoutRight {
+			for i := spots; i < len(d.picSpots); i++ {
+				d.picSpots[i].dx += tw + 1
+			}
+		}
 		txt := strings.Split(fitBlock(d.octBody(o, editing, tw, rows, fill, dim), tw, rows, fill), "\n")
 		gap := st(cText, fill).Render(" ")
 		out := make([]string, rows)
@@ -175,10 +182,31 @@ func fitBlock(s string, w, h int, fill string) string {
 	return strings.Join(out, "\n")
 }
 
+// pictureAlone is pictureArea on rows of its own. When the structure's
+// middle is built as cells (middleCells), its hole can be empty lines: the
+// middle is filled already, and there is nothing to read.
+func (d *designState) pictureAlone(o *dOct, w, h int, fill, dim string) string {
+	spots := len(d.picSpots)
+	s := d.pictureArea(o, w, h, fill, dim)
+	if d.emptyHoles && len(d.picSpots) > spots {
+		d.holesLeft = true
+		return strings.Repeat("\n", max(h-1, 0))
+	}
+	return s
+}
+
 // pictureArea is the octagon's picture, w×h cells, or a place for one.
 func (d *designState) pictureArea(o *dOct, w, h int, fill, dim string) string {
 	if o.Image != "" {
-		if s, ok := pictureBlock(filepath.Join(d.imagesDir(), o.Image), w, h, fill); ok {
+		path := filepath.Join(d.imagesDir(), o.Image)
+		if picturesDirect && !d.picsAsText {
+			if _, ok := loadPicture(path); ok {
+				// A hole the size of the picture; its cells are laid in
+				// afterwards, straight from its colours (see picSpot).
+				d.picSpots = append(d.picSpots, picSpot{path: path, w: w, h: h, fill: fill})
+				return fitBlock("", w, h, fill)
+			}
+		} else if s, ok := pictureBlock(path, w, h, fill); ok {
 			return s
 		}
 		return fitBlock(st(cError, fill).Render(ansi.Truncate("■ picture missing: "+o.Image, w, "…")), w, h, fill)
@@ -194,6 +222,14 @@ func (d *designState) pictureArea(o *dOct, w, h int, fill, dim string) string {
 }
 
 // ---- drawing a picture --------------------------------------------------------------
+
+// picLoaded is whether the picture at path has been read already.
+func picLoaded(path string) bool {
+	picMu.Lock()
+	defer picMu.Unlock()
+	_, ok := picFiles[path]
+	return ok
+}
 
 var (
 	picMu    sync.Mutex
@@ -211,18 +247,9 @@ func pictureBlock(path string, w, h int, fill string) (string, bool) {
 	if s, ok := picDrawn[key]; ok {
 		return s, true
 	}
-	img, ok := picFiles[path]
+	img, ok := loadPictureLocked(path)
 	if !ok {
-		f, err := os.Open(path)
-		if err != nil {
-			return "", false
-		}
-		img, _, err = image.Decode(f)
-		f.Close()
-		if err != nil {
-			return "", false
-		}
-		picFiles[path] = img
+		return "", false
 	}
 	if len(picDrawn) > 300 {
 		clear(picDrawn)
@@ -232,12 +259,108 @@ func pictureBlock(path string, w, h int, fill string) (string, bool) {
 	return s, true
 }
 
+// loadPicture reads the picture at path once; later calls reuse it.
+func loadPicture(path string) (image.Image, bool) {
+	picMu.Lock()
+	defer picMu.Unlock()
+	return loadPictureLocked(path)
+}
+
+func loadPictureLocked(path string) (image.Image, bool) {
+	if img, ok := picFiles[path]; ok {
+		return img, true
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, false
+	}
+	img, _, err := image.Decode(f)
+	f.Close()
+	if err != nil {
+		return nil, false
+	}
+	picFiles[path] = img
+	return img, true
+}
+
+// picturesDirect: pictures are laid on the board as cells made straight
+// from their colours, not as styled text that has to be read back. Zoomed
+// in, a picture is hundreds of cells across, and the text way took a tenth
+// of a second a frame. (Off only in the test that checks both ways match.)
+var picturesDirect = true
+
+// picSpot is a picture waiting to be laid into a structure's drawing: its
+// size in cells and where it starts, from the corner of the structure's text.
+type picSpot struct {
+	path   string
+	w, h   int
+	fill   string
+	dx, dy int
+}
+
+var (
+	picCells     = map[string]*boardCanvas{} // pictures as cells, by path, size and fill (under picMu)
+	picCellsKept int                         // how many cells picCells holds
+)
+
+// pictureCanvas is the picture at path as w×h cells, the same cells
+// pictureBlock's text would give.
+func pictureCanvas(path string, w, h int, fill string) *boardCanvas {
+	key := fmt.Sprintf("%s|%d|%d|%s", path, w, h, fill)
+	picMu.Lock()
+	defer picMu.Unlock()
+	if c, ok := picCells[key]; ok {
+		return c
+	}
+	c := newBoardCanvas(w, h)
+	if img, ok := loadPictureLocked(path); ok {
+		cell := uv.Cell{Content: "▀", Width: 1}
+		forPictureCells(img, w, h, fill, func(col, row int, t, bo [3]int) {
+			cell.Style.Fg = color.RGBA{uint8(t[0]), uint8(t[1]), uint8(t[2]), 255}
+			cell.Style.Bg = color.RGBA{uint8(bo[0]), uint8(bo[1]), uint8(bo[2]), 255}
+			c.SetCell(col, row, &cell)
+		})
+	}
+	// A picture zoomed in is hundreds of thousands of cells, about a hundred
+	// bytes each: keep at most a million cells (some 100 MB) of them.
+	if picCellsKept += w * h; picCellsKept > 1_000_000 {
+		clear(picCells)
+		picCellsKept = w * h
+	}
+	picCells[key] = c
+	return c
+}
+
 func drawPicture(img image.Image, w, h int, fill string) string {
+	b := img.Bounds()
+	if b.Dx() <= 0 || b.Dy() <= 0 || w <= 0 || h <= 0 {
+		return fitBlock("", w, h, fill)
+	}
+	var sb strings.Builder
+	var lastT, lastB [3]int
+	forPictureCells(img, w, h, fill, func(col, row int, t, bo [3]int) {
+		if col == 0 && row > 0 {
+			sb.WriteString("\x1b[0m\n")
+		}
+		if col == 0 || t != lastT || bo != lastB {
+			fmt.Fprintf(&sb, "\x1b[38;2;%d;%d;%d;48;2;%d;%d;%dm", t[0], t[1], t[2], bo[0], bo[1], bo[2])
+			lastT, lastB = t, bo
+		}
+		sb.WriteString("▀")
+	})
+	sb.WriteString("\x1b[0m")
+	return sb.String()
+}
+
+// forPictureCells works out each of the w×h cells of the picture fitted
+// inside them, keeping its shape, centred on fill: t is the colour of the
+// cell's top half, bo of its bottom half. Cells go row by row.
+func forPictureCells(img image.Image, w, h int, fill string, cell func(col, row int, t, bo [3]int)) {
 	b := img.Bounds()
 	iw, ih := b.Dx(), b.Dy()
 	pw, ph := w, h*2 // a cell is about twice as tall as wide: two square pixels
 	if iw <= 0 || ih <= 0 || pw <= 0 || ph <= 0 {
-		return fitBlock("", w, h, fill)
+		return
 	}
 	scale := min(float64(pw)/float64(iw), float64(ph)/float64(ih))
 	tw, th := max(1, int(float64(iw)*scale+0.5)), max(1, int(float64(ih)*scale+0.5))
@@ -265,24 +388,11 @@ func drawPicture(img image.Image, w, h int, fill string) string {
 		}
 		return [3]int{int(r/n + 0.5), int(g/n + 0.5), int(bl/n + 0.5)}
 	}
-	var sb strings.Builder
 	for row := range h {
-		var lastT, lastB [3]int
-		first := true
 		for col := range w {
-			t, bo := px(col, row*2), px(col, row*2+1)
-			if first || t != lastT || bo != lastB {
-				fmt.Fprintf(&sb, "\x1b[38;2;%d;%d;%d;48;2;%d;%d;%dm", t[0], t[1], t[2], bo[0], bo[1], bo[2])
-				lastT, lastB, first = t, bo, false
-			}
-			sb.WriteString("▀")
-		}
-		sb.WriteString("\x1b[0m")
-		if row < h-1 {
-			sb.WriteByte('\n')
+			cell(col, row, px(col, row*2), px(col, row*2+1))
 		}
 	}
-	return sb.String()
 }
 
 // ---- putting a picture in -------------------------------------------------------------

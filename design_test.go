@@ -57,7 +57,7 @@ func TestDesignBoard(t *testing.T) {
 		t.Fatalf("written: %+v", a)
 	}
 	screen := ansi.Strip(m.View().Content)
-	for _, w := range []string{"Start", "the body text", "foot", "╱", "╲", "1 structures"} {
+	for _, w := range []string{"Start", "the body text", "foot", "╱", "╲", "1 ◆ · 0 ⛓"} { // the count, short at 100 columns
 		if !strings.Contains(screen, w) {
 			t.Fatalf("board is missing %q:\n%s", w, screen)
 		}

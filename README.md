@@ -166,6 +166,9 @@ Everything on it is drawn with letters, kept in `~/.local/share/symbolizer/desig
 - **Cabinets** (**K**) keep a stack each of pages, books, slides, notes and drawings. Drop a page or note on one to file it. Click a stack to pull it out, and drag a page back out onto the board. A cabinet can bring in your **Diary** pages and the files open in **Text** mode.
 - **Drawers:** every structure has one. The **▾** on its bottom edge (or **D**) pulls it out: a small cabinet of its own.
 - **Links** (**AltGr + L**), a **highlighter pen** with 8 colours (**1–8**, **E** rubber), and the wheel zooms.
+- **Deleting:** everything can go. Click a structure and its red **✕** (or press **Delete**). Click a link's line, then **Delete**. A drawer or cabinet row has its own **✕**, and so does a chosen picture (**Shift + Delete** takes out just the picture). A structure that holds things asks first.
+- **Undo and redo:** **Ctrl + Z** undoes any change (a move, a resize, words, a deletion, a link, ink) and **Ctrl + Y** (or **Ctrl + Shift + Z**) does it again; **↶ ↷** on the toolbar too. Writing in one part is one step, a drag is one step, and moving or zooming the board is not a step. Up to 100 steps, until you quit.
+- **Big boards stay smooth:** only what is on the screen is drawn, each structure is drawn once and then moved, pictures are laid in as cells, and the board is saved in the background a moment after a change.
 
 <div align="center">
 <img src="docs/media/design.gif" alt="An octagon gets a sunset picture and its layout toggle is clicked through the layouts; a cabinet is made and moved; a page called Ideas is dropped into the cabinet; a note's drawer is pulled out and the page goes from the cabinet into the drawer" width="880">
@@ -264,6 +267,8 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 | Alt + M | switch modes: Text, Design, Slides, Diary, Book, Draw |
 | Design: N · P · S · K | new octagon · page · note · cabinet (F1 in Design mode lists all its keys) |
 | Design: I · L · D | a picture (or text file) · next layout · pull the drawer out or put it back |
+| Design: Delete or ✕ | delete the chosen structure or link (Shift + Delete: just the picture) |
+| Design: Ctrl + Z · Ctrl + Y | undo · redo any change on the board (also Ctrl + Shift + Z, and ↶ ↷ on the toolbar) |
 | F1 or Alt + H | every key |
 | Alt + Q | quit (everything is already saved) |
 
@@ -320,7 +325,7 @@ map --when-focus-on title:Symbolizer kitty_mod+down
 | `tree.go` · `fileview.go` | the file manager |
 | `autosave.go` · `sessions.go` · `files.go` | saving, sessions and naming |
 | `diary.go` · `modes.go` | Diary mode and the modes box |
-| `design.go` · `design_paper.go` · `design_image.go` | Design mode: the board · pages, notes, cabinets and drawers · pictures and layouts |
+| `design.go` · `design_paper.go` · `design_image.go` · `design_delete.go` · `design_undo.go` | Design mode: the board · pages, notes, cabinets and drawers · pictures and layouts · deleting · undo and redo |
 | `help.go` · `keycheck.go` | the F1 page and `sy --keys` |
 | `web.go` · `emmet/` | Emmet, closing tags and auto-correct in web files |
 | `pairs.go` · `suggest.go` | brackets that close themselves and the suggestion list |
@@ -334,8 +339,9 @@ map --when-focus-on title:Symbolizer kitty_mod+down
 ## ✦ Tests
 
 ```sh
-go test ./...            # every key and command
-python3 tests/e2e.py     # runs the real sy in a test terminal (needs: pip install pyte)
+go test ./...                              # every key and command
+python3 tests/e2e.py                       # runs the real sy in a test terminal (needs: pip install pyte)
+go test -run x -bench 'Design|BigBoard'    # how fast Design mode draws, on a large made-up project
 ```
 
 <br>
