@@ -109,7 +109,7 @@ var helpGroups = []helpGroup{
 		{"sy book / draw", "start in Book or Draw mode (zsh: bo, dr)"},
 	}},
 	{"Design mode", false, []helpLine{
-		{"(the board)", "kept in ~/.local/share/symbolizer/design/board.json"},
+		{"(the board)", "kept in ~/.local/share/symbolizer/design/ (board.json, a file per structure in parts/, the ink in marks.json)"},
 		{"Double-click the board", "a new octagon structure (or what the toolbar's new chooses): type the header"},
 		{"  Tab · Enter · Esc", "  header → text → footer · next part (a new line in the text) · done"},
 		{"Drag · its ◢ corner", "move a structure · resize it (double-click one to write in it)"},
@@ -125,6 +125,7 @@ var helpGroups = []helpGroup{
 		{"N · P · S · K", "new octagon · page (text of any length) · note (one page of text) · cabinet"},
 		{"  ◆ ≡ ✎ ≣ on the toolbar", "  what a double-click on the empty board places"},
 		{"I  (or drop a file)", "a picture of any format into the chosen octagon (others need ImageMagick); a text file into a page"},
+		{"Drag files onto the board", "in kitty: each goes where you let go (into what is under it, or a new structure there)"},
 		{"[¶] on the top edge · L", "the octagon's layout: text · picture above · left · right · picture only · two columns"},
 		{"▾ on the bottom edge · D", "pull the structure's drawer out (a small cabinet) or put it back"},
 		{"Cabinet: click a stack", "pull out Pages, Books, Slides, Notes or Drawings; drag a thing out onto the board"},

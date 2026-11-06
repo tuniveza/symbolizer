@@ -422,7 +422,20 @@ func (m *Model) designAskFile() tea.Cmd {
 // or a cabinet's Pages stack).
 func (m *Model) designUseFile(path string) tea.Cmd {
 	d := m.ds()
-	o := d.byID(d.sel)
+	return m.designUseFileAt(path, d.byID(d.sel), nil)
+}
+
+// designUseFileAt puts the file at path into o, or, when o cannot take it,
+// into a new structure: at the board cell at (when given; a drop says
+// where) or in the middle of the screen.
+func (m *Model) designUseFileAt(path string, o *dOct, at *[2]float64) tea.Cmd {
+	d := m.ds()
+	newAt := func() (float64, float64) {
+		if at != nil {
+			return at[0], at[1]
+		}
+		return d.world(m.width/2, m.textHeight()/2)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		m.sayErr("Can't read " + filepath.Base(path) + ": " + err.Error())
@@ -431,8 +444,9 @@ func (m *Model) designUseFile(path string) tea.Cmd {
 	if isText(data) && !strings.HasSuffix(strings.ToLower(path), ".svg") {
 		switch {
 		case o == nil || o.Kind == kOct:
-			cx, cy := d.world(m.width/2, m.textHeight()/2)
+			cx, cy := newAt()
 			o = d.newKind(kPage, int(cx), int(cy))
+			d.editing = partNone
 			o.Header = filepath.Base(path)
 			o.From = path
 			m.designAddText(o, textLike(string(data)))
@@ -446,8 +460,11 @@ func (m *Model) designUseFile(path string) tea.Cmd {
 		return nil
 	}
 	if o != nil && o.Kind != kOct {
-		m.sayErr(kindNames[o.Kind] + "s hold only text and text-like media: " + filepath.Base(path) + " is not text. Pictures go in octagon structures.")
-		return nil
+		if at == nil {
+			m.sayErr(kindNames[o.Kind] + "s hold only text and text-like media: " + filepath.Base(path) + " is not text. Pictures go in octagon structures.")
+			return nil
+		}
+		o = nil // dropped on a page or cabinet: a new octagon there instead
 	}
 	id := -1
 	if o != nil {
@@ -455,9 +472,10 @@ func (m *Model) designUseFile(path string) tea.Cmd {
 	}
 	m.say("Reading the picture " + filepath.Base(path) + "…")
 	dir := d.imagesDir()
+	cx, cy := newAt()
 	return func() tea.Msg {
 		name, err := importPicture(path, data, dir)
-		return designPictureMsg{id: id, name: name, path: path, err: err}
+		return designPictureMsg{id: id, name: name, path: path, err: err, at: [2]float64{cx, cy}}
 	}
 }
 
@@ -466,6 +484,7 @@ type designPictureMsg struct {
 	name string
 	path string
 	err  error
+	at   [2]float64 // where a new octagon goes (its middle, in board cells)
 }
 
 func (m *Model) designPictureDone(msg designPictureMsg) tea.Cmd {
@@ -476,7 +495,7 @@ func (m *Model) designPictureDone(msg designPictureMsg) tea.Cmd {
 	d := m.ds()
 	o := d.byID(msg.id)
 	if o == nil {
-		cx, cy := d.world(m.width/2, m.textHeight()/2)
+		cx, cy := msg.at[0], msg.at[1]
 		o = d.newKind(kOct, int(cx), int(cy))
 		o.W, o.H = 34, 16
 		o.X, o.Y = int(cx)-o.W/2, int(cy)-o.H/2

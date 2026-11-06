@@ -6,7 +6,6 @@ import (
 	"image/color"
 	"math"
 	"math/rand/v2"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -188,6 +187,8 @@ type designState struct {
 	snapGen        int         // snapshots taken
 	lastSnap       *designFile // the newest of them, for flushSave
 	written        int         // the newest snapshot on disk (under designDisk)
+	disk           diskState   // what is on disk, part by part (under designDisk; design_store.go)
+	drop           dropState   // a drag over the board, or a drop being read (design_dnd.go)
 	loadedFrom     string      // the board's file
 }
 
@@ -218,13 +219,16 @@ func (d *designState) startUndo() *designState {
 
 func loadDesign(path string) *designState {
 	d := &designState{marks: map[[2]int]dMark{}, zoom: designZoom100, sel: -1, linkFrom: -1, pen: -1, nextID: 1, dropOn: -1, selLink: -1, undoWriting: -1, loadedFrom: path}
-	data, err := os.ReadFile(path)
-	if err != nil {
+	f, inParts, err := readDesignFile(path)
+	if err != nil && f.Octs == nil && f.Links == nil {
 		return d.startUndo()
 	}
-	var f designFile
-	if json.Unmarshal(data, &f) != nil {
-		return d.startUndo()
+	if err != nil {
+		d.saveErr = err.Error() // some parts could not be read: the rest is shown
+	}
+	if inParts {
+		index, _ := json.MarshalIndent(indexOf(f), "", " ")
+		d.disk.remember(f, index)
 	}
 	for _, o := range f.Octs {
 		if o != nil {
@@ -324,20 +328,8 @@ func (d *designState) writeSnapshot(f designFile, gen int) string {
 	if gen <= d.written {
 		return ""
 	}
-	data, err := json.MarshalIndent(f, "", " ")
-	if err != nil {
-		return err.Error()
-	}
-	path := d.loadedFrom
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err.Error()
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err.Error()
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		return err.Error()
+	if err := d.writeParts(f); err != "" {
+		return err // d.written stays: the next save tries again
 	}
 	d.written = gen
 	return ""
@@ -1089,6 +1081,12 @@ func (m *Model) designCanvas() *boardCanvas {
 	}
 	d.drawn = seen
 	d.tint(c)
+	// Something dragged over the empty board: a ✚ where it would land.
+	if dr := d.drop; dr.over && d.dropOn < 0 {
+		if x, y := dr.x, dr.y-textTop; x >= 0 && y >= 0 && x < c.Width() && y < c.Height() {
+			c.Lines[y][x] = uv.Cell{Content: "✚", Width: 1, Style: uv.Style{Fg: rgbaOf(cAccent), Bg: rgbaOf(cBG), Attrs: uv.AttrBold}}
+		}
+	}
 	return c
 }
 
@@ -1627,6 +1625,9 @@ func (d *designState) octLayers(o *dOct) []*lipgloss.Layer {
 	}
 	if selected {
 		edge = mixHex(o.Color, cText, 0.35)
+	}
+	if d.dropOn == o.ID {
+		edge = cAccent // something dragged over it would go in
 	}
 	headFG := mixHex(o.Color, cText, 0.35)
 	dim := mixHex(cDim, fill, 0.25)

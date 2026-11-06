@@ -524,7 +524,9 @@ func BenchmarkBigBoardSave(b *testing.B) {
 	m := bigBoard(b)
 	d := m.ds()
 	b.ResetTimer()
+	pg := d.octs[30]
 	for i := 0; i < b.N; i++ {
+		pg.Body += "a" // one page changes, as when typing
 		d.dirty = true
 		d.save()
 	}

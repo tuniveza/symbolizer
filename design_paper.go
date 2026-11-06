@@ -386,6 +386,9 @@ func (d *designState) paperLayers(o *dOct) []*lipgloss.Layer {
 	if selected {
 		edge = mixHex(o.Color, cText, 0.35)
 	}
+	if d.dropOn == o.ID {
+		edge = cAccent // something dragged over it would go in
+	}
 	if d.linkMode && d.linkFrom == o.ID {
 		fill = mixHex(fill, o.Color, 0.2)
 	}
@@ -867,6 +870,11 @@ func (m *Model) designPaste(text string) tea.Cmd {
 	d := m.ds()
 	defer d.save()
 	o := d.byID(d.sel)
+	if paths := droppedPaths(text); len(paths) > 1 {
+		d.editing = partNone
+		cx, cy := d.world(m.width/2, m.textHeight()/2)
+		return m.dropFiles(paths, o, cx, cy)
+	}
 	if d.editing != partNone && o != nil {
 		field := map[int]*string{partHeader: &o.Header, partBody: &o.Body, partFooter: &o.Footer}[d.editing]
 		add := textLike(text)

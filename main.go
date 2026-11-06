@@ -89,6 +89,9 @@ func main() {
 	if m.design != nil {
 		m.design.flushSave() // the board's last changes
 	}
+	if m.dropsOn {
+		fmt.Print(dndStop) // drops go back to being pasted
+	}
 	if !m.quitClean {
 		m.saveNow()
 		if saved := rescue(m.buf); saved != "" {

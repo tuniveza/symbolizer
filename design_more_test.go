@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -13,6 +14,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -455,25 +457,36 @@ func TestDesignSaveLater(t *testing.T) {
 	if msg := <-done; msg.err != "" {
 		t.Fatal(msg.err)
 	}
-	data, _ := os.ReadFile(d.loadedFrom)
-	if !strings.Contains(string(data), `"First"`) || strings.Contains(string(data), "Changed") {
-		t.Fatalf("written: %s", data)
+	if got := savedHeaders(t, d.loadedFrom); got != "First" {
+		t.Fatalf("written: %q", got)
 	}
 	d.dirty = true
 	d.save()
 	d.flushSave()
-	data, _ = os.ReadFile(d.loadedFrom)
-	if !strings.Contains(string(data), "Changed after the snapshot") {
-		t.Fatalf("quitting did not write the last change: %s", data)
+	if got := savedHeaders(t, d.loadedFrom); got != "Changed after the snapshot" {
+		t.Fatalf("quitting did not write the last change: %q", got)
 	}
 	// An older write landing late must not undo a newer one.
 	if err := d.writeSnapshot(designFile{}, 1); err != "" {
 		t.Fatal(err)
 	}
-	data, _ = os.ReadFile(d.loadedFrom)
-	if !strings.Contains(string(data), "Changed after the snapshot") {
+	if got := savedHeaders(t, d.loadedFrom); got != "Changed after the snapshot" {
 		t.Fatal("an older snapshot overwrote a newer one")
 	}
+}
+
+// savedHeaders reads the board on disk and gives its structures' headers.
+func savedHeaders(t *testing.T, path string) string {
+	t.Helper()
+	f, _, err := readDesignFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hs []string
+	for _, o := range f.Octs {
+		hs = append(hs, o.Header)
+	}
+	return strings.Join(hs, "|")
 }
 
 // tintSlow is the pen tint as it was first written, cell by cell: the
@@ -970,6 +983,246 @@ func TestDesignUndoSeesEveryField(t *testing.T) {
 		}
 		if sameOct(a, b) {
 			t.Errorf("a change to %s is not a step", f.Name)
+		}
+	}
+}
+
+// The board kept in parts: an old whole board is read, kept as
+// board.v1.json, and written in parts; a save writes only what changed; a
+// deleted structure's part goes; a missing part does not lose the rest.
+func TestDesignStoreInParts(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	path := d.loadedFrom
+	os.MkdirAll(filepath.Dir(path), 0o700)
+	old := `{"structures":[{"id":1,"x":0,"y":0,"w":26,"h":9,"header":"One","body":"","footer":"","color":"#ff0000"},` +
+		`{"id":2,"x":40,"y":0,"w":26,"h":9,"header":"Two","body":"","footer":"","color":"#00ff00"}],` +
+		`"links":[{"a":1,"b":2}],"marks":[{"x":3,"y":4,"pen":2,"over":false}],"camX":0,"camY":0,"zoom":5,"nextID":3}`
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	d = loadDesign(path)
+	if len(d.octs) != 2 || len(d.links) != 1 || len(d.marks) != 1 {
+		t.Fatalf("old board read: %d structures, %d links, %d marks", len(d.octs), len(d.links), len(d.marks))
+	}
+	d.dirty = true
+	d.save()
+	if b, err := os.ReadFile(filepath.Join(filepath.Dir(path), "board.v1.json")); err != nil || string(b) != old {
+		t.Fatalf("the old board was not kept as board.v1.json: %v", err)
+	}
+	for _, id := range []int{1, 2} {
+		if _, err := os.Stat(partPath(path, id)); err != nil {
+			t.Fatalf("part %d not written: %v", id, err)
+		}
+	}
+	again := loadDesign(path)
+	if len(again.octs) != 2 || again.octs[0].Header != "One" || len(again.links) != 1 || len(again.marks) != 1 {
+		t.Fatalf("read back in parts: %d structures, %d links, %d marks", len(again.octs), len(again.links), len(again.marks))
+	}
+
+	// Only what changed is written: part 2 keeps its time.
+	d = again
+	before, _ := os.Stat(partPath(path, 2))
+	time.Sleep(20 * time.Millisecond)
+	d.byID(1).Header = "One, changed"
+	d.dirty = true
+	d.save()
+	after, _ := os.Stat(partPath(path, 2))
+	if !after.ModTime().Equal(before.ModTime()) {
+		t.Fatal("an unchanged structure was written again")
+	}
+	if got := loadDesign(path).byID(1); got == nil || got.Header != "One, changed" {
+		t.Fatal("the changed structure was not written")
+	}
+
+	// A deleted structure's part goes, after the index without it.
+	d.deleteStruct(d.byID(2))
+	d.dirty = true
+	d.save()
+	if _, err := os.Stat(partPath(path, 2)); !os.IsNotExist(err) {
+		t.Fatal("the deleted structure's part is still there")
+	}
+	if got := loadDesign(path); len(got.octs) != 1 || len(got.links) != 0 {
+		t.Fatalf("after deleting: %d structures, %d links", len(got.octs), len(got.links))
+	}
+
+	// A part gone missing: the rest of the board still opens.
+	n := d.newKind(kOct, 0, 0)
+	n.Header = "Three"
+	d.dirty = true
+	d.save()
+	os.Remove(partPath(path, 1))
+	got := loadDesign(path)
+	if len(got.octs) != 1 || got.octs[0].Header != "Three" || got.saveErr == "" {
+		t.Fatalf("with a part missing: %d structures, error %q", len(got.octs), got.saveErr)
+	}
+}
+
+// dndRun runs cmd as Bubble Tea would: what it writes to the terminal is
+// gathered, and messages go back into the model (and their commands run).
+func dndRun(m *Model, cmd tea.Cmd) []string {
+	var out []string
+	var run func(tea.Cmd)
+	run = func(c tea.Cmd) {
+		if c == nil {
+			return
+		}
+		switch msg := c().(type) {
+		case nil:
+		case tea.BatchMsg:
+			for _, c := range msg {
+				run(c)
+			}
+		case tea.RawMsg:
+			out = append(out, fmt.Sprint(msg.Msg))
+		case designSaveMsg, designFrameMsg:
+		default:
+			_, next := m.Update(msg)
+			run(next)
+		}
+	}
+	run(cmd)
+	return out
+}
+
+// dndSend gives sy one of kitty's drag and drop codes and gathers its answer.
+func dndSend(m *Model, code string) string {
+	_, cmd := m.Update(uv.UnknownOscEvent("\x1b]72;" + code + "\x1b\\"))
+	return strings.Join(dndRun(m, cmd), "")
+}
+
+// dndDrop drops data of the first offered type at screen cell (x, y), sent
+// in pieces as kitty sends it.
+func dndDrop(t *testing.T, m *Model, x, y int, offered, data string) {
+	t.Helper()
+	got := dndSend(m, fmt.Sprintf("t=M:x=%d:y=%d:X=0:Y=0;%s", x, y, offered))
+	if !strings.Contains(got, "t=r:x=1") {
+		t.Fatalf("the drop was not asked for: %q", got)
+	}
+	enc := base64.StdEncoding.EncodeToString([]byte(data))
+	half := len(enc) / 2
+	dndSend(m, "t=r:x=1:m=1;"+enc[:half])
+	dndSend(m, "t=r:x=1:m=1;"+enc[half:])
+	if got := dndSend(m, "t=r:x=1:m=0;"); !strings.Contains(got, "t=r:o=1") {
+		t.Fatalf("the drop was not finished: %q", got)
+	}
+}
+
+// Kitty's drag and drop: the board takes drops while it is shown, lights up
+// where a drop would go, and puts each file where it was let go.
+func TestDesignDragAndDrop(t *testing.T) {
+	dndTerminal = true
+	defer func() { dndTerminal = false }()
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY = 0, 0
+	_, cmd := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	if got := strings.Join(dndRun(m, cmd), ""); !strings.Contains(got, dndAccept) {
+		t.Fatalf("the board did not ask for drops: %q", got)
+	}
+
+	// Dragged over the empty board: accepted, and a ✚ shows where.
+	got := dndSend(m, "t=m:x=40:y=12:X=400:Y=240:o=3;text/uri-list text/plain")
+	if !strings.Contains(got, "t=m:o=1;text/uri-list") {
+		t.Fatalf("the drag was not accepted: %q", got)
+	}
+	if c := screenCell(m, 40, 12); c != "✚" {
+		t.Fatalf("no ✚ under the drag: %q", c)
+	}
+
+	// Files dropped there: a picture gets a new octagon, a text file a new
+	// page, a step apart; a name with a space, sent as %20, is found.
+	dir := t.TempDir()
+	pic := writePNG(t, dir)
+	txt := filepath.Join(dir, "my notes.txt")
+	os.WriteFile(txt, []byte("Line one\nLine two\n"), 0o600)
+	uris := "file://" + pic + "\r\nfile://" + strings.ReplaceAll(txt, " ", "%20") + "\r\n"
+	n := len(d.octs)
+	dndDrop(t, m, 40, 12, "text/uri-list text/plain", uris)
+	if len(d.octs) != n+2 {
+		t.Fatalf("dropping 2 files made %d structures", len(d.octs)-n)
+	}
+	var picO, page *dOct
+	for _, o := range d.octs[n:] {
+		if o.Image != "" {
+			picO = o
+		}
+		if o.Kind == kPage {
+			page = o
+		}
+	}
+	if picO == nil || page == nil || !strings.Contains(page.Body, "Line two") || page.Header != "my notes.txt" {
+		t.Fatalf("dropped: picture %v, page %+v", picO != nil, page)
+	}
+	wx, wy := d.world(40, 12-textTop)
+	if cx := picO.X + picO.W/2; abs(cx-int(wx)) > 1 || abs(picO.Y+picO.H/2-int(wy)) > 1 {
+		t.Fatalf("the picture's octagon is at %d,%d, not where it was dropped (%v,%v)", picO.X, picO.Y, wx, wy)
+	}
+
+	// Dragged over a structure, it lights up; a picture dropped on an
+	// octagon goes into it.
+	oct := d.newKind(kOct, 0, 0)
+	oct.X, oct.Y, oct.W, oct.H, oct.Header = 2, 2, 24, 12, "Frame"
+	d.sel, d.editing = -1, partNone
+	m.View()
+	ox, oy, _, _ := d.rect(oct)
+	dndSend(m, fmt.Sprintf("t=m:x=%d:y=%d:o=3;text/uri-list", ox+5, oy+5+textTop))
+	if d.dropOn != oct.ID {
+		t.Fatal("the octagon under the drag did not light up")
+	}
+	n = len(d.octs)
+	dndDrop(t, m, ox+5, oy+5+textTop, "text/uri-list", "file://"+pic+"\r\n")
+	if oct.Image == "" || len(d.octs) != n {
+		t.Fatalf("a picture dropped on an octagon: image %q, %d new structures", oct.Image, len(d.octs)-n)
+	}
+
+	// A text file dropped on a cabinet is filed in it as a page.
+	cab := d.newKind(kCabinet, 0, 0)
+	cab.X, cab.Y, cab.Header = 50, 2, "Archive"
+	d.sel, d.editing = -1, partNone
+	cx, cy, _, _ := d.rect(cab)
+	dndDrop(t, m, cx+3, cy+1+textTop, "text/uri-list", "file://"+txt+"\r\n")
+	if len(cab.Items) != 1 || cab.Items[0].Kind != kPage {
+		t.Fatalf("a text file dropped on a cabinet: %d things in it", len(cab.Items))
+	}
+
+	// Dragged text (no files) becomes a page there.
+	n = len(d.octs)
+	dndDrop(t, m, 60, 20, "text/plain", "Words from a browser")
+	if len(d.octs) != n+1 || d.octs[len(d.octs)-1].Body != "Words from a browser" {
+		t.Fatal("dropped text did not become a page")
+	}
+
+	// Leaving: the light goes out; out of Design mode, no more drops.
+	dndSend(m, "t=m:x=-1:y=-1")
+	if d.drop.over || d.dropOn >= 0 {
+		t.Fatal("the drag left, but the board still shows it")
+	}
+	m.setMode(0) // Text mode
+	_, cmd = m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	if got := strings.Join(dndRun(m, cmd), ""); !strings.Contains(got, dndStop) {
+		t.Fatalf("leaving the board did not stop drops: %q", got)
+	}
+}
+
+// Without kitty's protocol, a terminal pastes dropped files as paths, one
+// a line: each file is put in, not pasted as text.
+func TestDesignPasteSeveralFiles(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.txt")
+	b := filepath.Join(dir, "b c.txt")
+	os.WriteFile(a, []byte("alpha"), 0o600)
+	os.WriteFile(b, []byte("beta"), 0o600)
+	n := len(d.octs)
+	dndRun(m, m.update(tea.PasteMsg{Content: a + "\n" + b + "\n"}))
+	if len(d.octs) != n+2 {
+		t.Fatalf("pasting 2 dropped files made %d structures", len(d.octs)-n)
+	}
+	for _, o := range d.octs[n:] {
+		if strings.Contains(o.Body, dir) {
+			t.Fatalf("a path was pasted as text: %q", o.Body)
 		}
 	}
 }

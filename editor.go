@@ -40,13 +40,14 @@ const (
 
 // Model is the whole editor, as Bubble Tea wants it.
 type Model struct {
-	buf    *Buffer
-	hl     *Highlighter
-	width  int
-	height int
-	top    int // first line on screen
-	topSub int // with word wrap: the first of top's rows on screen (wrap.go)
-	left   int // first screen column on screen (for long lines, wrap off)
+	dropsOn bool // the terminal sends drops to sy (design_dnd.go)
+	buf     *Buffer
+	hl      *Highlighter
+	width   int
+	height  int
+	top     int // first line on screen
+	topSub  int // with word wrap: the first of top's rows on screen (wrap.go)
+	left    int // first screen column on screen (for long lines, wrap off)
 
 	wrap      bool // word wrap (wrap.go)
 	wrapCache map[int]wrapEntry
@@ -260,6 +261,9 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			panic(r)
 		}
 	}()
+	if c, ok := m.dndMsg(msg); ok { // kitty's drag and drop (design_dnd.go)
+		return m, tea.Batch(c, m.designFrameCmd(), m.designSaveCmd(), m.dropsCmd())
+	}
 	switch msg := msg.(type) {
 	case designSaveMsg:
 		return m, m.designSaveNow()
@@ -286,7 +290,7 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		cmd = tea.Batch(cmd, save)
 	}
 	m.noteLastOpen()
-	return m, tea.Batch(cmd, m.designFrameCmd(), m.designSaveCmd())
+	return m, tea.Batch(cmd, m.designFrameCmd(), m.designSaveCmd(), m.dropsCmd())
 }
 
 func (m *Model) update(msg tea.Msg) tea.Cmd {

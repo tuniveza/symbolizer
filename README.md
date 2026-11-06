@@ -157,10 +157,11 @@ Pages are plain text files: `~/.local/share/symbolizer/diary/2026-10-28/001.txt`
 ## ✦ Design mode
 
 `sy design` (or **Alt + M** → Design). A board made of text that zooms and moves.
-Everything on it is drawn with letters, kept in `~/.local/share/symbolizer/design/board.json`.
+Everything on it is drawn with letters, kept in `~/.local/share/symbolizer/design/`: `board.json` says what is on the board, each structure has its own file in `parts/`, and the ink is in `marks.json`. A save writes only what changed, so a large project stays quick to save.
 
 - **Octagons** (double-click the board, or **N**): a header, text and a footer. Drag to move, the ◢ corner resizes.
 - **Pictures** of any format go into an octagon: **I** and a file name, or drop the file on the terminal. They are drawn with half-blocks.
+- **Drag and drop:** in kitty (0.47 or later), drag files from your file manager onto the board. What is under the pointer lights up (a ✚ shows on the empty board), and each file goes where you let go: a picture into the octagon under it, or a new octagon there; a text file into the page or note under it, into the cabinet as a page, or a new page there. Several files land side by side. Dragged text becomes a page. Other terminals paste dropped files as their paths, and sy puts those in too, one file or several.
 - **Layouts:** the icon on an octagon's top edge shows its layout. Click it (or **L**) for the next one: `¶` text · `▀` picture above · `◧` left · `◨` right · `■` picture only · `‖` two columns.
 - **Pages** (**P**) hold text of any length and scroll. **Notes** (**S**) hold one page. Both take only text and text-like media.
 - **Cabinets** (**K**) keep a stack each of pages, books, slides, notes and drawings. Drop a page or note on one to file it. Click a stack to pull it out, and drag a page back out onto the board. A cabinet can bring in your **Diary** pages and the files open in **Text** mode.
@@ -325,7 +326,7 @@ map --when-focus-on title:Symbolizer kitty_mod+down
 | `tree.go` · `fileview.go` | the file manager |
 | `autosave.go` · `sessions.go` · `files.go` | saving, sessions and naming |
 | `diary.go` · `modes.go` | Diary mode and the modes box |
-| `design.go` · `design_paper.go` · `design_image.go` · `design_delete.go` · `design_undo.go` | Design mode: the board · pages, notes, cabinets and drawers · pictures and layouts · deleting · undo and redo |
+| `design.go` · `design_paper.go` · `design_image.go` · `design_delete.go` · `design_undo.go` · `design_store.go` · `design_dnd.go` | Design mode: the board · pages, notes, cabinets and drawers · pictures and layouts · deleting · undo and redo · the board on disk, in parts · drag and drop |
 | `help.go` · `keycheck.go` | the F1 page and `sy --keys` |
 | `web.go` · `emmet/` | Emmet, closing tags and auto-correct in web files |
 | `pairs.go` · `suggest.go` | brackets that close themselves and the suggestion list |
