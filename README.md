@@ -14,7 +14,7 @@
 <br>
 Embers on charcoal. It saves by itself. Every key is meant for your hands.
 
-[Install](#-install) · [Key modes](#-key-modes) · [File manager](#-file-manager) · [Themes](#-colour-themes) · [Diary](#-diary) · [Every key](#-every-key)
+[Install](#-install) · [Key modes](#-key-modes) · [File manager](#-file-manager) · [Themes](#-colour-themes) · [Diary](#-diary) · [Design](#-design-mode) · [Every key](#-every-key)
 
 <br>
 
@@ -30,7 +30,7 @@ Embers on charcoal. It saves by itself. Every key is meant for your hands.
 - **Nothing to lose.** Every change saves itself a moment later. Text with no name is kept as a **session**.
 - **Keys that say what they do.** Hold Shift, Ctrl or Alt and the status bar tells you what the arrows will do.
 - **More than one kind of work.** Text, Diary and Design work today. Slides, Book and Draw are on the way.
-- **Design mode.** A board made of text: octagon structures you drag, resize and link (AltGr+L), a highlighter pen with 8 colours, zoom with the wheel. Octagons hold a picture of any format (I, or drop the file on the terminal) and have six layouts, chosen by the icon on their top edge. Pages (P) hold text of any length; notes (S) hold one page. Cabinets (K) keep stacks of pages, books, slides, notes and drawings, and every structure has a drawer (its ▾).
+- **Design mode.** A board made of text: octagons with pictures and six layouts, pages, notes, cabinets and drawers, links and a highlighter pen. [See it below](#-design-mode).
 
 ## ✦ Install
 
@@ -42,6 +42,8 @@ cd symbolizer
 go build -o sy .
 ln -s "$PWD/sy" ~/.local/bin/sy     # so `sy` works from anywhere
 ```
+
+For pictures in Design mode in formats other than PNG, JPEG and GIF, install **ImageMagick** (`rsvg-convert` and `ffmpeg` help too).
 
 It runs in any terminal. It looks its best in **[kitty](https://sw.kovidgoyal.net/kitty/)** with a **Nerd Font**: kitty tells Symbolizer when a key goes up, so held keys work exactly.
 
@@ -81,9 +83,9 @@ Inside, press **F1** for every key. **Alt + Q** quits. Everything is already sav
 | **Alt + Shift** | ✥ **movement** | move the highlighted text. Nothing highlighted: the word swaps places with its neighbour, and Up / Down move the whole line |
 
 <div align="center">
-<img src="docs/media/moving.gif" alt="Holding Ctrl steps one letter; holding Alt moves the word 'fire' along the line; Shift highlights 'sparks rise'; Alt moves it down a line and back; then the whole line moves" width="880">
+<img src="docs/media/moving.gif" alt="The arrows step a word; holding Ctrl steps one letter; holding Alt jumps to the end and start of the line; Alt + Shift carries the word 'fire' along; Shift highlights 'and sparks'; Alt + Shift moves it up a line and back; then the whole line moves" width="880">
 <br>
-<sub>Ctrl steps letter by letter · Alt carries the word “fire” along · Shift highlights · Alt moves the highlight down a line and back · then the whole line moves</sub>
+<sub>Arrows step a word · Ctrl a letter · Alt jumps to the line's end and start · Alt + Shift carries “fire” along · Shift highlights · Alt + Shift moves the highlight up a line and back · then the whole line moves</sub>
 </div>
 
 <br>
@@ -148,6 +150,27 @@ Pages are plain text files: `~/.local/share/symbolizer/diary/2026-10-28/001.txt`
 
 <div align="center">
 <img src="docs/media/diary.gif" alt="Diary pages turned one by one, the all-pages view, then the Alt+M modes box" width="880">
+</div>
+
+<br>
+
+## ✦ Design mode
+
+`sy design` (or **Alt + M** → Design). A board made of text that zooms and moves.
+Everything on it is drawn with letters, kept in `~/.local/share/symbolizer/design/board.json`.
+
+- **Octagons** (double-click the board, or **N**): a header, text and a footer. Drag to move, the ◢ corner resizes.
+- **Pictures** of any format go into an octagon: **I** and a file name, or drop the file on the terminal. They are drawn with half-blocks.
+- **Layouts:** the icon on an octagon's top edge shows its layout. Click it (or **L**) for the next one: `¶` text · `▀` picture above · `◧` left · `◨` right · `■` picture only · `‖` two columns.
+- **Pages** (**P**) hold text of any length and scroll. **Notes** (**S**) hold one page. Both take only text and text-like media.
+- **Cabinets** (**K**) keep a stack each of pages, books, slides, notes and drawings. Drop a page or note on one to file it. Click a stack to pull it out, and drag a page back out onto the board. A cabinet can bring in your **Diary** pages and the files open in **Text** mode.
+- **Drawers:** every structure has one. The **▾** on its bottom edge (or **D**) pulls it out: a small cabinet of its own.
+- **Links** (**AltGr + L**), a **highlighter pen** with 8 colours (**1–8**, **E** rubber), and the wheel zooms.
+
+<div align="center">
+<img src="docs/media/design.gif" alt="An octagon gets a sunset picture and its layout toggle is clicked through the layouts; a cabinet is made and moved; a page called Ideas is dropped into the cabinet; a note's drawer is pulled out and the page goes from the cabinet into the drawer" width="880">
+<br>
+<sub>A picture in an octagon · its layout toggle · a cabinet · a page filed in it · a note's drawer · the page moves from the cabinet into the drawer</sub>
 </div>
 
 <br>
@@ -239,6 +262,8 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 | Alt + T or µ | colour themes |
 | ŧ (Right Alt + T) | sy term: show or hide a kitty terminal under the editor |
 | Alt + M | switch modes: Text, Design, Slides, Diary, Book, Draw |
+| Design: N · P · S · K | new octagon · page · note · cabinet (F1 in Design mode lists all its keys) |
+| Design: I · L · D | a picture (or text file) · next layout · pull the drawer out or put it back |
 | F1 or Alt + H | every key |
 | Alt + Q | quit (everything is already saved) |
 
@@ -295,6 +320,7 @@ map --when-focus-on title:Symbolizer kitty_mod+down
 | `tree.go` · `fileview.go` | the file manager |
 | `autosave.go` · `sessions.go` · `files.go` | saving, sessions and naming |
 | `diary.go` · `modes.go` | Diary mode and the modes box |
+| `design.go` · `design_paper.go` · `design_image.go` | Design mode: the board · pages, notes, cabinets and drawers · pictures and layouts |
 | `help.go` · `keycheck.go` | the F1 page and `sy --keys` |
 | `web.go` · `emmet/` | Emmet, closing tags and auto-correct in web files |
 | `pairs.go` · `suggest.go` | brackets that close themselves and the suggestion list |

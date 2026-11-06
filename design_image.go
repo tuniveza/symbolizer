@@ -40,11 +40,11 @@ import (
 // its top edge shows the icon of the one in use; a click shifts it on.
 var octLayouts = []struct{ icon, name string }{
 	{"¶", "text"},
-	{"⬒", "picture above the text"},
+	{"▀", "picture above the text"},
 	{"◧", "picture on the left, text on the right"},
 	{"◨", "text on the left, picture on the right"},
-	{"▣", "picture only"},
-	{"▥", "text in two columns"},
+	{"■", "picture only"},
+	{"‖", "text in two columns"},
 }
 
 const (
@@ -181,13 +181,13 @@ func (d *designState) pictureArea(o *dOct, w, h int, fill, dim string) string {
 		if s, ok := pictureBlock(filepath.Join(d.imagesDir(), o.Image), w, h, fill); ok {
 			return s
 		}
-		return fitBlock(st(cError, fill).Render(ansi.Truncate("▣ picture missing: "+o.Image, w, "…")), w, h, fill)
+		return fitBlock(st(cError, fill).Render(ansi.Truncate("■ picture missing: "+o.Image, w, "…")), w, h, fill)
 	}
 	lines := make([]string, h)
 	for i := range lines {
 		lines[i] = st(mixHex(cDim, fill, 0.55), fill).Render(strings.Repeat("░", w))
 	}
-	label := ansi.Truncate(" ▣ I adds a picture ", w, "")
+	label := ansi.Truncate(" ■ I adds a picture ", w, "")
 	lines[h/2] = lipgloss.PlaceHorizontal(w, lipgloss.Center, st(dim, fill).Italic(true).Render(label),
 		lipgloss.WithWhitespaceChars("░"), lipgloss.WithWhitespaceStyle(st(mixHex(cDim, fill, 0.55), fill)))
 	return strings.Join(lines, "\n")

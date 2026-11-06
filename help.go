@@ -119,7 +119,7 @@ var helpGroups = []helpGroup{
 		{"Right-drag", "rub out the pen"},
 		{"Delete · C · + − 0 · arrows", "remove a structure · new colour · zoom · move it (or the board)"},
 		{"N · P · S · K", "new octagon · page (text of any length) · note (one page of text) · cabinet"},
-		{"  ◆ ≡ ✎ ▦ on the toolbar", "  what a double-click on the empty board places"},
+		{"  ◆ ≡ ✎ ≣ on the toolbar", "  what a double-click on the empty board places"},
 		{"I  (or drop a file)", "a picture of any format into the chosen octagon (others need ImageMagick); a text file into a page"},
 		{"[¶] on the top edge · L", "the octagon's layout: text · picture above · left · right · picture only · two columns"},
 		{"▾ on the bottom edge · D", "pull the structure's drawer out (a small cabinet) or put it back"},

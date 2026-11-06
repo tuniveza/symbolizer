@@ -113,7 +113,7 @@ func TestDesignCabinetAndDrawers(t *testing.T) {
 	pg.X, pg.Y, pg.W, pg.H, pg.Header = 2, 2, 20, 8, "Draft"
 	d.sel, d.editing = -1, partNone
 	s := screenOf(m)
-	for _, w := range []string{"▦ Archive", "Pages", "Books", "Slides", "Notes", "Drawings"} {
+	for _, w := range []string{"≣ Archive", "Pages", "Books", "Slides", "Notes", "Drawings"} {
 		if !strings.Contains(s, w) {
 			t.Fatalf("cabinet is missing %q:\n%s", w, s)
 		}

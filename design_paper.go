@@ -42,7 +42,7 @@ const (
 // stackKinds are what a cabinet (and every drawer) holds, a stack of each.
 var stackKinds = []string{kPage, kBook, kSlide, kNote, kDrawing}
 
-var kindIcons = map[string]string{kOct: "◆", kCabinet: "▦", kPage: "≡", kNote: "✎", kBook: "▥", kSlide: "▤", kDrawing: "✐"}
+var kindIcons = map[string]string{kOct: "◆", kCabinet: "≣", kPage: "≡", kNote: "✎", kBook: "◫", kSlide: "☐", kDrawing: "✐"}
 var kindNames = map[string]string{kOct: "structure", kCabinet: "cabinet", kPage: "page", kNote: "note", kBook: "book", kSlide: "slide", kDrawing: "drawing"}
 var stackNames = map[string]string{kPage: "Pages", kBook: "Books", kSlide: "Slides", kNote: "Notes", kDrawing: "Drawings"}
 
@@ -331,19 +331,19 @@ func (d *designState) cabinetLayers(o *dOct) []*lipgloss.Layer {
 	if w < 6 || h < 4 {
 		pill := mixHex(cBG, o.Color, 0.55)
 		return []*lipgloss.Layer{lipgloss.NewLayer(st(cBG, pill).Bold(true).Width(w).MaxWidth(w).
-			Render(ansi.Truncate("▦"+o.Header, w, ""))).X(x).Y(y)}
+			Render(ansi.Truncate("≣"+o.Header, w, ""))).X(x).Y(y)}
 	}
 	iw := w - 2
 	e := st(edge, fill)
 	name := o.Header
 	editing := selected && d.editing == partHeader
-	title := st(mixHex(o.Color, cText, 0.4), fill).Bold(true).Render(ansi.Truncate(" ▦ "+name, iw-1, "…"))
+	title := st(mixHex(o.Color, cText, 0.4), fill).Bold(true).Render(ansi.Truncate(" ≣ "+name, iw-1, "…"))
 	switch {
 	case editing:
-		title = st(mixHex(o.Color, cText, 0.4), fill).Bold(true).Render(ansi.TruncateLeft(" ▦ "+name, max(0, lipgloss.Width(" ▦ "+name)-(iw-2)), "…")) +
+		title = st(mixHex(o.Color, cText, 0.4), fill).Bold(true).Render(ansi.TruncateLeft(" ≣ "+name, max(0, lipgloss.Width(" ≣ "+name)-(iw-2)), "…")) +
 			st(cAccent, fill).Render("▏")
 	case name == "":
-		title = st(mixHex(cDim, fill, 0.25), fill).Italic(true).Render(" ▦ cabinet")
+		title = st(mixHex(cDim, fill, 0.25), fill).Italic(true).Render(" ≣ cabinet")
 	}
 	lines := []string{
 		e.Render("┏" + strings.Repeat("━", iw) + "┓"),
@@ -542,7 +542,7 @@ func (d *designState) structLayers(o *dOct) []*lipgloss.Layer {
 		for _, r := range drawRows(stackRows(o, true), iw, fill, edge) {
 			lines = append(lines, e.Render("│")+r+e.Render("│"))
 		}
-		pull := "═◯═"
+		pull := "═○═"
 		left := (iw - 3) / 2
 		lines = append(lines, e.Render("└"+strings.Repeat("─", left)+pull+strings.Repeat("─", max(iw-3-left, 0))+"┘"))
 		layers = append(layers, lipgloss.NewLayer(strings.Join(lines, "\n")).X(dx).Y(dy))
