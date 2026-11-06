@@ -43,6 +43,17 @@ func (m *Model) View() tea.View {
 		sb.WriteString(paintRow(m.statusBar(), m.height-2, m.width))
 		sb.WriteByte('\n')
 		sb.WriteString(m.bottomLine())
+	case m.inDesign():
+		sb.WriteString(paintRow(m.topPanel(), 0, m.width))
+		sb.WriteByte('\n')
+		sb.WriteString(paintRow(m.tabBar(), 1, m.width))
+		sb.WriteByte('\n')
+		m.designRows(&sb) // design.go
+		sb.WriteString(paintRow(m.designToolbar(), m.height-3, m.width))
+		sb.WriteByte('\n')
+		sb.WriteString(paintRow(m.designStatus(), m.height-2, m.width))
+		sb.WriteByte('\n')
+		sb.WriteString(m.bottomLine())
 	case !modes[m.mode].ready:
 		sb.WriteString(paintRow(m.topPanel(), 0, m.width))
 		sb.WriteByte('\n')
@@ -88,7 +99,7 @@ func (m *Model) View() tea.View {
 	if m.learn != nil {
 		content = m.overlay(content, m.learnBox()) // learn.go
 	}
-	if !m.help && m.picker == nil && !m.modesOpen && !m.themeOpen && m.learn == nil && !m.tabMode && !m.diaryViewer() && !(m.treeFocus && m.showTree) {
+	if !m.help && m.picker == nil && !m.modesOpen && !m.themeOpen && m.learn == nil && !m.tabMode && !m.diaryViewer() && !m.inDesign() && !(m.treeFocus && m.showTree) {
 		content = m.overlaySuggest(content) // suggest.go
 	}
 	content = m.overlayPlate(content)
@@ -104,7 +115,7 @@ func (m *Model) View() tea.View {
 	v.ForegroundColor = hex(cText)
 	name := m.tabName(m.cur) + " — Symbolizer"
 	v.WindowTitle = name
-	if !m.help && m.picker == nil && !m.modesOpen && !m.themeOpen && m.learn == nil && !m.tabMode && modes[m.mode].ready && !m.diaryViewer() && !(m.treeFocus && m.showTree && m.prompt == pNone) {
+	if !m.help && m.picker == nil && !m.modesOpen && !m.themeOpen && m.learn == nil && !m.tabMode && modes[m.mode].ready && !m.diaryViewer() && !m.inDesign() && !(m.treeFocus && m.showTree && m.prompt == pNone) {
 		v.Cursor = m.cursor()
 	}
 	return v

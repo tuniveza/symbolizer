@@ -29,7 +29,8 @@ Embers on charcoal. It saves by itself. Every key is meant for your hands.
 - **A calm editor.** The text sits in a centred column. The bars glow a little warmer in the middle.
 - **Nothing to lose.** Every change saves itself a moment later. Text with no name is kept as a **session**.
 - **Keys that say what they do.** Hold Shift, Ctrl or Alt and the status bar tells you what the arrows will do.
-- **More than one kind of work.** Text and Diary work today. Design, Slides, Book and Draw are on the way.
+- **More than one kind of work.** Text, Diary and Design work today. Slides, Book and Draw are on the way.
+- **Design mode.** A board made of text: octagon structures you drag, resize and link (AltGr+L), a highlighter pen with 8 colours, zoom with the wheel.
 
 ## ✦ Install
 

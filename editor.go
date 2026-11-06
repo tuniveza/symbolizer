@@ -145,6 +145,7 @@ type Model struct {
 	plate      *lockPlate   // the lock plate while it shows (lockplate.go)
 	blurred    bool         // the terminal says another window has the keyboard
 	diary      *diaryState  // diary mode: chapters, pages, the page in focus (diary.go)
+	design     *designState // design mode: the board, its structures, links and pen (design.go)
 	startDir   string       // folder sy was started in
 	snip       snippetStops // Tab's stops after an Emmet expansion (web.go)
 	sugg       *suggestions // the suggestion list while a word is typed (suggest.go)
@@ -378,6 +379,10 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		case "ŧ", "altgr+t":
 			return m.syTerm()
 		case "ł", "altgr+l":
+			if m.inDesign() && m.learn == nil && !m.help {
+				m.designLinkToggle() // in Design mode AltGr+L is link mode (design.go)
+				return nil
+			}
 			return m.openLearn()
 		}
 		if m.learn != nil {
@@ -388,6 +393,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		if m.modesOpen {
 			return m.modesKey(keyName(msg.Key()), msg.Key().Text)
+		}
+		if m.inDesign() && !m.help && m.prompt == pNone && m.picker == nil && !(m.treeFocus && m.showTree && m.tree != nil) {
+			return m.designKey(msg.Key())
 		}
 		if m.inDiary() && !(m.help && m.diaryViewer()) {
 			if cmd, done := m.diaryKey(keyName(msg.Key())); done {
@@ -428,14 +436,23 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if m.diaryViewer() && msg.Mouse().Y != 0 && !m.help {
 			return nil // the page viewer has nothing to click but the top panel
 		}
+		if m.designMouseHere(msg.Mouse().Y) {
+			return m.designPress(msg.Mouse())
+		}
 		return m.mouseClick(msg.Mouse())
 	case tea.MouseMotionMsg:
+		if m.inDesign() && m.design != nil && m.design.drag != dragNone {
+			return m.designMotion(msg.Mouse())
+		}
 		if m.dragMargin != "" {
 			m.marginDrag(msg.Mouse().X)
 			return nil
 		}
 		return m.mouseDrag(msg.Mouse())
 	case tea.MouseReleaseMsg:
+		if m.inDesign() && m.design != nil && m.design.drag != dragNone {
+			return m.designRelease()
+		}
 		if m.dragMargin != "" {
 			return m.marginRelease()
 		}
@@ -452,6 +469,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if m.help {
 			m.helpTop = max(0, m.helpTop+n)
 			return nil
+		}
+		if m.designMouseHere(msg.Mouse().Y) {
+			return m.designWheel(msg.Mouse())
 		}
 		if m.diaryViewer() && m.diary != nil {
 			m.diary.turn(n / 3) // the wheel turns pages

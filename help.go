@@ -104,9 +104,20 @@ var helpGroups = []helpGroup{
 		{"", "  moving shows it · Enter keeps it · Esc puts it back"},
 	}},
 	{"Modes", false, []helpLine{
-		{"Alt + M", "switch modes: Text, Design, Slides, Diary, Book, Draw (Design, Slides, Book, Draw are empty for now)"},
+		{"Alt + M", "switch modes: Text, Design, Slides, Diary, Book, Draw (Slides, Book, Draw are empty for now)"},
 		{"sy design / slide / diary", "start in that mode (zsh: de, sli, syd or di)"},
 		{"sy book / draw", "start in Book or Draw mode (zsh: bo, dr)"},
+	}},
+	{"Design mode", false, []helpLine{
+		{"(the board)", "kept in ~/.local/share/symbolizer/design/board.json"},
+		{"Double-click the board", "a new octagon structure (its own random colour): type the header"},
+		{"  Tab · Enter · Esc", "  header → text → footer · next part (a new line in the text) · done"},
+		{"Drag · its ◢ corner", "move a structure · resize it (double-click one to write in it)"},
+		{"Middle-drag · wheel", "move the board (left-drag on empty board too) · zoom in and out"},
+		{"AltGr + L  (ł)", "link mode: click a structure, then each one to attach (click again to detach)"},
+		{"1–8 · E · O", "highlighter pen colours · rubber · under the text or over it (text shows through)"},
+		{"Right-drag", "rub out the pen"},
+		{"Delete · C · + − 0 · arrows", "remove a structure · new colour · zoom · move it (or the board)"},
 	}},
 	{"Diary mode", false, []helpLine{
 		{"(chapters)", "a chapter a day; its pages in ~/.local/share/symbolizer/diary"},
