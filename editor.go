@@ -29,12 +29,13 @@ const (
 	pOpen
 	pSaveAs
 	pConfirm
-	pName      // Ctrl+S on a session: what to call it
-	pRename    // file manager
-	pNewFile   // file manager
-	pNewFolder // file manager
-	pWrap      // Emmet: wrap with an abbreviation (web.go)
-	pUpdateTag // Emmet: update the tag at the cursor
+	pName       // Ctrl+S on a session: what to call it
+	pRename     // file manager
+	pNewFile    // file manager
+	pNewFolder  // file manager
+	pWrap       // Emmet: wrap with an abbreviation (web.go)
+	pUpdateTag  // Emmet: update the tag at the cursor
+	pDesignFile // Design mode: a picture or text file to put in (design_image.go)
 )
 
 // Model is the whole editor, as Bubble Tea wants it.
@@ -333,7 +334,12 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			m.input, c = m.input.Update(msg)
 			return tea.Batch(c, m.promptChanged())
 		}
+		if m.inDesign() && !m.help && m.picker == nil {
+			return m.designPaste(msg.Content) // design_paper.go
+		}
 		return m.pasteText(msg.Content)
+	case designPictureMsg:
+		return m.designPictureDone(msg)
 	case tea.KeyReleaseMsg:
 		if cmd, done := m.altGrRelease(msg.Key()); done {
 			return cmd

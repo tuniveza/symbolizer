@@ -28,6 +28,13 @@ import (
 // it, its ◢ corner resizes it, middle-drag (or left-drag on the empty board)
 // moves the board, the wheel zooms, right-drag rubs out the pen.
 // Keys: AltGr+L link mode, 1–8 pen, E rubber, O over/under, + − 0 zoom.
+//
+// More kinds of structure (design_paper.go): pages (text of any length),
+// notes (one page of text), and cabinets that keep stacks of pages, books,
+// slides, notes and drawings. Every structure has a drawer, a small cabinet
+// of its own, opened and closed by the ▾ on its bottom edge. Octagons can
+// hold an image of any format and have layouts, chosen by the icon on their
+// top edge (design_image.go).
 
 const designMode = 1 // its place in modes
 
@@ -56,6 +63,15 @@ type dOct struct {
 	Body   string `json:"body"`
 	Footer string `json:"footer"`
 	Color  string `json:"color"`
+
+	Kind       string  `json:"kind,omitempty"`       // "" an octagon, or cabinet, page, note, book, slide, drawing
+	Layout     int     `json:"layout,omitempty"`     // an octagon's layout (octLayouts)
+	Image      string  `json:"image,omitempty"`      // an octagon's picture: a file in design/images
+	Items      []*dOct `json:"items,omitempty"`      // what its drawer (or the cabinet) holds
+	DrawerOpen bool    `json:"drawerOpen,omitempty"` // its drawer is pulled out
+	OpenStack  string  `json:"openStack,omitempty"`  // the stack shown open in the drawer or cabinet
+	Scroll     int     `json:"scroll,omitempty"`     // a page: the first line shown
+	From       string  `json:"from,omitempty"`       // where it came from (a diary page, a file)
 }
 
 type dLink struct {
@@ -128,6 +144,8 @@ type designState struct {
 	lastClick      time.Time
 	lastCX, lastCY int
 	toolbar        []toolSpot // what the toolbar row has where (for clicks)
+	place          string     // the kind a double-click on the empty board places
+	dropOn         int        // while a page or note is dragged: the structure it would go into, or -1
 	dirty          bool
 	saveErr        string
 	loadedFrom     string // the board's file
@@ -153,7 +171,7 @@ func (m *Model) ds() *designState {
 }
 
 func loadDesign(path string) *designState {
-	d := &designState{marks: map[[2]int]dMark{}, zoom: designZoom100, sel: -1, linkFrom: -1, pen: -1, nextID: 1, loadedFrom: path}
+	d := &designState{marks: map[[2]int]dMark{}, zoom: designZoom100, sel: -1, linkFrom: -1, pen: -1, nextID: 1, dropOn: -1, loadedFrom: path}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return d
@@ -164,12 +182,13 @@ func loadDesign(path string) *designState {
 	}
 	for _, o := range f.Octs {
 		if o != nil {
-			o.W, o.H = max(o.W, octMinW), max(o.H, octMinH)
+			mw, mh := minSize(o.Kind)
+			o.W, o.H = max(o.W, mw), max(o.H, mh)
 			if o.Color == "" {
 				o.Color = randomOctColor()
 			}
 			d.octs = append(d.octs, o)
-			d.nextID = max(d.nextID, o.ID+1)
+			d.nextID = max(d.nextID, highestID(o)+1)
 		}
 	}
 	d.links = f.Links
@@ -264,10 +283,11 @@ func (d *designState) z() float64 { return designZooms[d.zoom] }
 // rect is where a structure is on the screen (canvas cells).
 func (d *designState) rect(o *dOct) (x, y, w, h int) {
 	z := d.z()
+	ow, oh := d.size(o)
 	x = int(math.Floor((float64(o.X) - d.camX) * z))
 	y = int(math.Floor((float64(o.Y) - d.camY) * z))
-	x1 := int(math.Floor((float64(o.X+o.W) - d.camX) * z))
-	y1 := int(math.Floor((float64(o.Y+o.H) - d.camY) * z))
+	x1 := int(math.Floor((float64(o.X+ow) - d.camX) * z))
+	y1 := int(math.Floor((float64(o.Y+oh) - d.camY) * z))
 	return x, y, max(x1-x, 1), max(y1-y, 1)
 }
 
@@ -470,10 +490,31 @@ func (m *Model) designKey(k tea.Key) tea.Cmd {
 		d.zoomTo(d.zoom-1, cx, cy)
 	case "0":
 		d.zoomTo(designZoom100, cx, cy)
-	case "n":
+	case "n", "p", "s", "k":
 		wx, wy := d.world(cx, cy)
-		d.newOct(int(wx), int(wy))
+		kind := map[string]string{"n": kOct, "p": kPage, "s": kNote, "k": kCabinet}[name]
+		d.newKind(kind, int(wx), int(wy))
 		d.editing = partHeader
+		m.say(newHint(kind))
+	case "l", "shift+l", "L":
+		if o := d.byID(d.sel); o != nil && o.Kind == kOct {
+			step := 1
+			if name != "l" {
+				step = -1
+			}
+			m.designLayout(o, step)
+		}
+	case "d":
+		if o := d.byID(d.sel); o != nil {
+			m.designDrawer(o)
+		}
+	case "i":
+		return m.designAskFile()
+	case "pgup", "pgdown":
+		if o := d.byID(d.sel); o != nil && o.Kind != kOct && o.Kind != kCabinet {
+			o.Scroll = max(0, o.Scroll+map[string]int{"pgup": -1, "pgdown": 1}[name]*max(1, o.H-5))
+			d.dirty = true
+		}
 	case "c":
 		if o := d.byID(d.sel); o != nil {
 			o.Color = randomOctColor()
@@ -484,9 +525,8 @@ func (m *Model) designKey(k tea.Key) tea.Cmd {
 			d.editing = partHeader
 		}
 	case "delete", "backspace":
-		if d.byID(d.sel) != nil {
-			d.remove(d.sel)
-			m.say("Structure removed (and its links).")
+		if o := d.byID(d.sel); o != nil {
+			return m.designRemove(o)
 		}
 	case "left", "right", "up", "down", "shift+left", "shift+right", "shift+up", "shift+down":
 		step := 1
@@ -531,21 +571,26 @@ func (m *Model) designPen(p int) {
 // designWrite types into the part of the structure being written in.
 func (m *Model) designWrite(d *designState, o *dOct, k tea.Key, name string) {
 	field := map[int]*string{partHeader: &o.Header, partBody: &o.Body, partFooter: &o.Footer}[d.editing]
+	if field == nil || !hasPart(o, d.editing) {
+		d.editing = partNone
+		return
+	}
+	before := *field
 	switch name {
 	case "esc":
 		d.editing = partNone
 		return
 	case "tab":
-		d.editing = d.editing%3 + 1
+		d.editing = nextPart(o, d.editing, 1)
 		return
 	case "shift+tab":
-		d.editing = (d.editing+1)%3 + 1
+		d.editing = nextPart(o, d.editing, -1)
 		return
 	case "enter":
 		if d.editing == partBody {
 			*field += "\n"
 		} else {
-			d.editing = d.editing%3 + 1
+			d.editing = nextPart(o, d.editing, 1)
 			return
 		}
 	case "backspace":
@@ -559,7 +604,12 @@ func (m *Model) designWrite(d *designState, o *dOct, k tea.Key, name string) {
 		if k.Text == "" || k.Mod.Contains(tea.ModCtrl) || k.Mod.Contains(tea.ModAlt) {
 			return
 		}
-		*field += k.Text
+		*field += textLike(k.Text)
+	}
+	if o.Kind == kNote && d.editing == partBody && !noteFits(o.Body) {
+		*field = before
+		m.say("This note is full: a note holds one page (" + fmt.Sprint(noteRows) + " lines). Use a page (P) for more.")
+		return
 	}
 	d.dirty = true
 }
@@ -605,7 +655,8 @@ func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 		d.mark(sx, sy, false)
 		return nil
 	}
-	o := d.at(sx, sy)
+	hit := d.hit(sx, sy)
+	o := hit.o
 	if d.linkMode {
 		switch {
 		case o == nil:
@@ -630,9 +681,9 @@ func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 		d.sel, d.editing = -1, partNone
 		if double {
 			wx, wy := d.world(sx, sy)
-			d.newOct(int(math.Floor(wx)), int(math.Floor(wy)))
+			d.newKind(d.place, int(math.Floor(wx)), int(math.Floor(wy)))
 			d.editing = partHeader
-			m.say("New structure: type its header · Tab goes to the text, then the footer · Esc stops.")
+			m.say(newHint(d.place))
 			return nil
 		}
 		d.drag = dragPan // the empty board moves with the left button too
@@ -645,12 +696,27 @@ func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 	}
 	d.sel = o.ID
 	d.origX, d.origY, d.origW, d.origH = o.X, o.Y, o.W, o.H
-	if double {
-		d.editing = octPartAt(sy-y, h)
+	switch hit.where {
+	case hitHandle:
+		m.designDrawer(o)
+		d.drag = dragNone
+		return nil
+	case hitToggle:
+		m.designLayout(o, 1)
+		d.drag = dragNone
+		return nil
+	case hitRow:
+		return m.designRow(o, hit.act, sx, sy)
+	case hitDrawer:
 		d.drag = dragNone
 		return nil
 	}
-	if sx >= x+w-2 && sy >= y+h-2 {
+	if double {
+		d.editing = partAt(o, sy-y, h)
+		d.drag = dragNone
+		return nil
+	}
+	if resizable(o) && sx >= x+w-2 && sy >= y+h-2 {
 		d.drag = dragResize
 	} else {
 		d.drag = dragMove
@@ -691,10 +757,17 @@ func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 	case dragMove:
 		if o := d.byID(d.sel); o != nil {
 			o.X, o.Y = d.origX+int(math.Round(dx)), d.origY+int(math.Round(dy))
+			d.dropOn = -1
+			if textual(o.Kind) {
+				if t := d.dropTarget(o, sx, sy); t != nil {
+					d.dropOn = t.ID
+				}
+			}
 		}
 	case dragResize:
 		if o := d.byID(d.sel); o != nil {
-			o.W, o.H = max(octMinW, d.origW+int(math.Round(dx))), max(octMinH, d.origH+int(math.Round(dy)))
+			mw, mh := minSize(o.Kind)
+			o.W, o.H = max(mw, d.origW+int(math.Round(dx))), max(mh, d.origH+int(math.Round(dy)))
 		}
 	case dragPaint:
 		d.stroke(sx, sy, false)
@@ -709,7 +782,10 @@ func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 
 func (m *Model) designRelease() tea.Cmd {
 	d := m.ds()
-	d.drag = dragNone
+	if d.drag == dragMove && d.dropOn >= 0 {
+		m.designFileInto(d.byID(d.sel), d.byID(d.dropOn))
+	}
+	d.drag, d.dropOn = dragNone, -1
 	d.save()
 	return nil
 }
@@ -718,6 +794,18 @@ func (m *Model) designWheel(ms tea.Mouse) tea.Cmd {
 	d := m.ds()
 	sx, sy := ms.X, ms.Y-textTop
 	z := d.z()
+	if o := d.hit(sx, sy).o; o != nil && o.ID == d.sel && o.Kind != kOct && o.Kind != kCabinet &&
+		(ms.Button == tea.MouseWheelUp || ms.Button == tea.MouseWheelDown) {
+		// The wheel over the chosen page scrolls its text.
+		if ms.Button == tea.MouseWheelUp {
+			o.Scroll = max(0, o.Scroll-3)
+		} else {
+			o.Scroll += 3
+		}
+		d.dirty = true
+		d.save()
+		return nil
+	}
 	switch ms.Button {
 	case tea.MouseWheelUp:
 		d.zoomTo(d.zoom+1, sx, sy)
@@ -750,6 +838,9 @@ func (m *Model) designToolClick(x int) {
 			d.zoomTo(d.zoom+1, m.width/2, m.textHeight()/2)
 		case t.act == "zoomout":
 			d.zoomTo(d.zoom-1, m.width/2, m.textHeight()/2)
+		case strings.HasPrefix(t.act, "place:"):
+			d.place = strings.TrimPrefix(t.act, "place:")
+			m.say("Double-click the empty board to place a " + kindNames[d.place] + ".")
 		}
 		return
 	}
@@ -782,7 +873,7 @@ func (m *Model) designCanvas() *lipgloss.Canvas {
 	c.Compose(lipgloss.NewLayer(d.boardLayer(m.width, m.textHeight())))
 	var layers []*lipgloss.Layer
 	for i, o := range d.octs {
-		for _, l := range d.octLayers(o) {
+		for _, l := range d.structLayers(o) {
 			layers = append(layers, l.Z(i+1))
 		}
 	}
@@ -1004,7 +1095,7 @@ func (d *designState) octLayers(o *dOct) []*lipgloss.Layer {
 
 	if h < octMinH || w < octMinW { // small: corners cut by one
 		add(diag("╱")+line(w-2)+diag("╲"), x, y)
-		inner := head + "\n" + d.octBody(o, editing, w-4, h-3, fill, dim)
+		inner := head + "\n" + d.octContent(o, editing, w-4, h-3, fill, dim)
 		add(lipgloss.NewStyle().Border(octSides, false, true, false, true).BorderForeground(hex(edge)).BorderBackground(hex(fill)).
 			Background(hex(fill)).Foreground(hex(cText)).Padding(0, 1).Width(w).Height(h-2).
 			Render(centredFirst(inner, w-4, fill)), x, y+1)
@@ -1017,9 +1108,14 @@ func (d *designState) octLayers(o *dOct) []*lipgloss.Layer {
 	add(diag("╱")+centred(head, w-4)+diag("╲"), x+1, y+1)
 	add(lipgloss.NewStyle().Border(octMiddle).BorderForeground(hex(edge)).BorderBackground(hex(fill)).
 		Background(hex(fill)).Foreground(hex(cText)).Padding(0, 1).Width(w).Height(h-4).
-		Render(d.octBody(o, editing, w-4, h-6, fill, dim)), x, y+2)
+		Render(d.octContent(o, editing, w-4, h-6, fill, dim)), x, y+2)
 	add(diag("╲")+centred(foot, w-4)+diag("╱"), x+1, y+h-2)
 	add(diag("╲")+line(w-6)+diag("╱"), x+2, y+h-1)
+	if tx, ty, ok := layoutToggleSpot(x, y, w, h); ok {
+		// The layout toggle: its icon is the layout in use; a click shifts it to the next.
+		tog := st(edge, fill).Render("[") + st(cAccent, fill).Bold(true).Render(octLayouts[o.Layout%len(octLayouts)].icon) + st(edge, fill).Render("]")
+		add(tog, tx, ty)
+	}
 	return d.octExtras(layers, o, x, y, w, h, edge, fill, selected, source)
 }
 
@@ -1138,7 +1234,7 @@ func (m *Model) designToolbar() string {
 	}
 	bar := st(cDim, cBarBG)
 	put(" "+modes[designMode].Icon()+" ", st(cEmber, cBarBG).Bold(true), "")
-	put("pen ", bar, "")
+	put("pen", bar, "")
 	for i, c := range penColors {
 		label := fmt.Sprintf(" %d ", i+1)
 		if d.pen == i {
@@ -1151,19 +1247,27 @@ func (m *Model) designToolbar() string {
 		rub = "[⌫]"
 	}
 	put(rub, st(cStatusText, mixHex(cBarBG, cText, 0.25)).Bold(d.pen == rubber), "pen8")
-	put("  ", bar, "")
+	put(" ", bar, "")
 	if d.over {
 		put("░ over ", st(cAccent, cBarBG).Bold(true), "over")
 	} else {
 		put("▁ under", st(cAccent, cBarBG).Bold(true), "over")
 	}
-	put("  ", bar, "")
+	put(" ", bar, "")
 	if d.linkMode {
 		put(" ⛓ LINK MODE ", st(cBG, cAccent).Bold(true), "link")
 	} else {
 		put("⛓ link", bar, "link")
 	}
-	put("  ", bar, "")
+	put(" new ", bar, "")
+	for _, k := range []string{kOct, kPage, kNote, kCabinet} {
+		if d.place == k {
+			put("["+kindIcons[k]+"]", st(cBG, cAccent).Bold(true), "place:"+k)
+		} else {
+			put(" "+kindIcons[k]+" ", st(cStatusText, cBarBG), "place:"+k)
+		}
+	}
+	put(" ", bar, "")
 	put(" − ", st(cStatusText, cBarBG).Bold(true), "zoomout")
 	put(fmt.Sprintf("%3.0f%%", d.z()*100), st(cStatusText, cBarBG), "")
 	put(" + ", st(cStatusText, cBarBG).Bold(true), "zoomin")
@@ -1183,8 +1287,13 @@ func (m *Model) designStatus() string {
 	switch {
 	case d.saveErr != "":
 		hint = "✗ board not saved: " + d.saveErr
+	case d.drag == dragMove && d.dropOn >= 0:
+		hint = "Let go to put it in " + octName(d.byID(d.dropOn)) + (map[bool]string{true: "", false: "'s drawer"}[d.byID(d.dropOn) != nil && d.byID(d.dropOn).Kind == kCabinet])
 	case d.editing != partNone:
 		part := map[int]string{partHeader: "header", partBody: "text", partFooter: "footer"}[d.editing]
+		if o := d.byID(d.sel); o != nil && o.Kind != kOct {
+			part = map[int]string{partHeader: "title", partBody: "text"}[d.editing]
+		}
 		hint = "Writing the " + part + " · Tab next part · Enter " + map[bool]string{true: "new line", false: "next part"}[d.editing == partBody] + " · Esc done"
 	case d.linkMode && d.linkFrom >= 0:
 		hint = "Link mode · click structures to attach (click again to detach) · empty board: choose another · AltGr+L leaves"
@@ -1194,10 +1303,10 @@ func (m *Model) designStatus() string {
 		hint = "Rubber · drag to take colour off · Esc puts it down"
 	case d.pen >= 0:
 		hint = "Pen " + penNames[d.pen] + " · drag to colour · right-drag rubs out · O over/under · Esc puts it down"
-	case d.sel >= 0:
-		hint = "Drag moves · ◢ corner resizes · double-click writes · Enter writes · Delete removes · C new colour · AltGr+L link"
+	case d.sel >= 0 && d.byID(d.sel) != nil:
+		hint = selHint(d.byID(d.sel))
 	default:
-		hint = "Double-click: new structure · middle-drag moves the board · wheel zooms · 1–8 pen · AltGr+L link · F1 keys"
+		hint = "Double-click: new " + kindNames[d.place] + " · P page · S note · K cabinet · I image · wheel zooms · 1–8 pen · AltGr+L link · F1 keys"
 	}
 	style := stStatus
 	if d.saveErr != "" {

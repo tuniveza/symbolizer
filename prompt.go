@@ -90,7 +90,7 @@ func (m *Model) promptKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 	case "tab":
-		if m.prompt == pOpen || m.prompt == pSaveAs || m.prompt == pName {
+		if m.prompt == pOpen || m.prompt == pSaveAs || m.prompt == pName || m.prompt == pDesignFile {
 			m.completePath()
 			return nil
 		}
@@ -150,6 +150,12 @@ func (m *Model) promptEnter(_ bool) tea.Cmd {
 		return nil
 	case pGoto:
 		return m.gotoLine(value)
+	case pDesignFile:
+		path := expandPath(strings.Trim(strings.TrimSpace(value), `'"`))
+		if path == "" {
+			return nil
+		}
+		return m.designUseFile(path)
 	case pOpen:
 		path := expandPath(value)
 		if path == "" {

@@ -30,7 +30,7 @@ Embers on charcoal. It saves by itself. Every key is meant for your hands.
 - **Nothing to lose.** Every change saves itself a moment later. Text with no name is kept as a **session**.
 - **Keys that say what they do.** Hold Shift, Ctrl or Alt and the status bar tells you what the arrows will do.
 - **More than one kind of work.** Text, Diary and Design work today. Slides, Book and Draw are on the way.
-- **Design mode.** A board made of text: octagon structures you drag, resize and link (AltGr+L), a highlighter pen with 8 colours, zoom with the wheel.
+- **Design mode.** A board made of text: octagon structures you drag, resize and link (AltGr+L), a highlighter pen with 8 colours, zoom with the wheel. Octagons hold a picture of any format (I, or drop the file on the terminal) and have six layouts, chosen by the icon on their top edge. Pages (P) hold text of any length; notes (S) hold one page. Cabinets (K) keep stacks of pages, books, slides, notes and drawings, and every structure has a drawer (its ▾).
 
 ## ✦ Install
 
