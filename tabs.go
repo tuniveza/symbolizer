@@ -15,6 +15,7 @@ type tab struct {
 	buf        *Buffer
 	hl         *Highlighter
 	top, left  int
+	topSub     int
 	savePaused bool
 	saveErr    string
 }
@@ -22,14 +23,14 @@ type tab struct {
 func (m *Model) storeTab() {
 	if m.cur < len(m.tabs) {
 		t := m.tabs[m.cur]
-		t.buf, t.hl, t.top, t.left, t.savePaused, t.saveErr = m.buf, m.hl, m.top, m.left, m.savePaused, m.saveErr
+		t.buf, t.hl, t.top, t.topSub, t.left, t.savePaused, t.saveErr = m.buf, m.hl, m.top, m.topSub, m.left, m.savePaused, m.saveErr
 	}
 }
 
 func (m *Model) showTab(i int) {
 	t := m.tabs[i]
 	m.cur = i
-	m.buf, m.hl, m.top, m.left, m.savePaused, m.saveErr = t.buf, t.hl, t.top, t.left, t.savePaused, t.saveErr
+	m.buf, m.hl, m.top, m.topSub, m.left, m.savePaused, m.saveErr = t.buf, t.hl, t.top, t.topSub, t.left, t.savePaused, t.saveErr
 	m.buf.OnSplice = m.hl.Splice
 	m.showMatches = false
 	m.ensureVisible()
@@ -41,7 +42,7 @@ func (m *Model) addTab(b *Buffer) {
 	at := min(m.cur+1, len(m.tabs))
 	m.tabs = append(m.tabs[:at], append([]*tab{{buf: b}}, m.tabs[at:]...)...)
 	m.cur = at
-	m.buf, m.top, m.left, m.savePaused, m.saveErr = b, 0, 0, false, ""
+	m.buf, m.top, m.topSub, m.left, m.savePaused, m.saveErr = b, 0, 0, 0, false, ""
 	m.resetHighlighter()
 	m.tabs[at].hl = m.hl
 }
@@ -142,12 +143,14 @@ func (m *Model) tabName(i int) string {
 	return name
 }
 
-// tabBar draws the open files along the top, centred. tabHits remembers where each
-// tab is, so a mouse click can choose it.
+// tabBar draws the open files along the top, centred on the whole width
+// whichever tab is chosen. tabHits remembers where each tab is, so a mouse
+// click can choose it.
 func (m *Model) tabBar() string {
 	left := stBar.Render(" ")
 	right := stBar.Render(" F1 help ")
-	room := m.width - lipgloss.Width(left) - lipgloss.Width(right)
+	// The same room kept clear on both sides, so the tabs stay in the middle.
+	room := m.width - 2*max(lipgloss.Width(left), lipgloss.Width(right))
 	type part struct {
 		text string
 		i    int
@@ -180,11 +183,8 @@ func (m *Model) tabBar() string {
 			to--
 		}
 	}
-	// Centre the tabs on the whole width, keeping clear of "F1 help".
-	x := lipgloss.Width(left)
-	if w := width() - 1; w < room {
-		x = max(x, min((m.width-w)/2, m.width-lipgloss.Width(right)-w))
-	}
+	// Centre the tabs on the whole width (as tab mode does).
+	x := max(lipgloss.Width(left), (m.width-(width()-1))/2)
 	m.tabHits = m.tabHits[:0]
 	var sb strings.Builder
 	sb.WriteString(left)

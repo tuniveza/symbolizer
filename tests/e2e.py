@@ -432,7 +432,7 @@ def main():
           and "ø" not in u.text(), u.text()[:300])
     u.close()
 
-    # ---- tabs: tab mode (Alt+Tab), Alt+N, AltGr+C (kitty's codes) ----
+    # ---- tabs: tab mode (Alt+Tab), Alt+N, Alt+C (kitty's codes) ----
     proj2 = os.path.join(tmp, "proj2")
     os.makedirs(proj2)
     for n in ("a.txt", "b.txt", "c.txt"):
@@ -479,8 +479,11 @@ def main():
     k2.send(alt_tab, 0.5)                            # tab mode again
     k2.send("\x1b[B", 0.5)                           # Down
     check("tab mode: Down keeps the file and leaves tab mode", "b.txt" in on() and "tabs" not in on(), on())
-    k2.send("\x1b[57453u\x1b[99;1;162u\x1b[57453;1:3u", 0.3)   # AltGr+C (¢), kitty's codes
-    check("AltGr+C closes the file", "3 " not in k2.row(1) and "b.txt" not in k2.row(1), k2.row(1))
+    bar = k2.row(1).replace("F1 help", "       ").rstrip()
+    lead = len(bar) - len(bar.lstrip())
+    check("the tabs sit in the middle of the tab row", abs(lead - (COLS - len(bar))) <= 1, (lead, COLS - len(bar), k2.row(1)))
+    k2.send("\x1b[99;3u", 0.3)                       # Alt+C, kitty's code
+    check("Alt+C closes the file", "3 " not in k2.row(1) and "b.txt" not in k2.row(1), k2.row(1))
     k2.send("\x1b[110;3u", 0.3)                      # Alt+N
     check("Alt+N opens a new tab with a made-up ember name", re.search(r"3 [a-z]+-[a-z]+\.txt", k2.row(1)) is not None, k2.row(1))
     k2.close()
@@ -686,6 +689,82 @@ def main():
     t.key("enter")
     t.type("dispaly: flx;")
     check("CSS auto-correct: dispaly: flx → display: flex", "display: flex;" in t.row(5), t.row(5))
+    t.key("enter")
+    t.type("backg")
+    check("CSS: typing backg shows a list with background-color", "background-color" in t.text(), t.text())
+    t.key("tab", wait=0.3)
+    check("Tab takes background and adds : ;", "background: ;" in t.row(6), t.row(6))
+    check("then the values list shows", "transparent" in t.text(), t.text())
+    t.type("tom")
+    t.key("tab", wait=0.3)
+    check("Tab takes tomato", "background: tomato;" in t.row(6), t.row(6))
+    t.type(";")
+    t.key("enter")
+    t.type("color:")
+    check("color: adds the ; after the cursor", "color:;" in t.row(7), t.row(7))
+    t.type(" red;")
+    check("typing ; steps over the one there", "color: red;" in t.row(7) and ";;" not in t.row(7), t.row(7))
+    t.close()
+
+    open(os.path.join(tmp, "pairs.go"), "w").write("package main\n\nvar counterValue int\n\n")
+    t = Term([os.path.join(tmp, "pairs.go")])
+    t.key("down", "down", "down", "down")
+    t.type("f(")
+    check("( adds its )", "f()" in t.text(), t.text())
+    t.type('"hi")')
+    check('" adds its ", and ) steps over', 'f("hi")' in t.text() and 'f("hi"))' not in t.text(), t.text())
+    t.key("enter")
+    t.type("cou")
+    check("Go: typing cou offers counterValue", t.text().count("counterValue") >= 2, t.text())
+    t.key("tab", wait=0.3)
+    check("Tab takes counterValue", sum("counterValue" in r and "var" not in r for r in t.screen.display) == 1
+          and "cou\n" not in t.text(), t.text())
+    t.close()
+
+    # ---- CSS unit hints: a dim shadow with the recommended unit ----
+    open(os.path.join(tmp, "units.css"), "w").write("a {\n    \n}\n")
+    t = Term([os.path.join(tmp, "units.css")])
+    t.key("down", "end")
+    t.type("font-size: 16")
+    check("typing font-size: 16 shows the shadow px → 1rem", "font-size: 16px → 1rem;" in t.text(), t.text())
+    check("the message says why", "1rem" in t.row(ROWS - 1), t.row(ROWS - 1))
+    t.key("tab", wait=0.3)
+    check("Tab writes 1rem", "font-size: 1rem;" in t.text() and "→" not in t.text(), t.text())
+    t.key("end", "enter")
+    t.type("height: ")
+    check("an empty height shows auto as a shadow", "height: auto;" in t.text(), t.text())
+    t.close()
+
+    # ---- AltGr + L: the Learn card, open at what the cursor is on ----
+    open(os.path.join(tmp, "learn.css"), "w").write("a {\n  font-size: 16px;\n}\n")
+    t = Term([os.path.join(tmp, "learn.css")])
+    t.key("down", "end", "left", "left")              # on the px of 16px
+    t.send("ł".encode(), 0.4)
+    check("AltGr+L opens the Learn box", "L E A R N" in t.text(), t.text())
+    check("on 16px it opens Units at px", "Units: which to use" in t.text() and "▸ px" in t.text(), t.text())
+    check("the line has What and Like", "What" in t.text() and "Like" in t.text(), t.text())
+    t.key("right")
+    check("Right goes to the next section", "Sizes that adapt" in t.text(), t.text())
+    t.send("\t", 0.3)
+    check("Tab shows another language", "HTML" in t.text(), t.text())
+    t.key("esc")
+    check("Esc closes it and leaves the text alone", "L E A R N" not in t.text() and "font-size: 16px" in t.text(), t.text())
+    t.close()
+
+    # ---- a file another program changes reloads by itself ----
+    watched = os.path.join(tmp, "watched.txt")
+    open(watched, "w").write("first line\nsecond line\n")
+    t = Term([watched])
+    time.sleep(0.3)
+    open(watched, "w").write("first line\nchanged by git\nsecond line\n")
+    os.utime(watched, (time.time() + 2, time.time() + 2))
+    t.pump(1.5)
+    check("a file changed by another program reloads by itself", "changed by git" in t.text(), t.text())
+    check("the message says so", "Another program changed" in t.row(ROWS - 1), t.row(ROWS - 1))
+    t.key("ctrl+z", wait=0.3)
+    check("Ctrl+Z takes the outside change back", "changed by git" not in t.text(), t.text())
+    t.pump(0.5)
+    check("and that is saved too", "changed by git" not in open(watched).read(), open(watched).read())
     t.close()
 
     # ---- Alt+D deletes a line, Alt+B a block (bracket to bracket) ----
@@ -710,6 +789,16 @@ def main():
     check("one Ctrl+Z brings the block back", "if x {" in t.row(5) and "y()" in t.row(6), t.text())
     t.close()
 
+    open(os.path.join(tmp, "digits.go"), "w").write("i = 10\n")
+    t = Term([os.path.join(tmp, "digits.go")])
+    col = cursor(t)[1]
+    t.key("right", "right")                                 # past i, past =
+    t.key("right")
+    check("Right stops after the 1 of 10", cursor(t) == (2, col + 5), cursor(t))
+    t.key("right")
+    check("Right stops after the 0 of 10", cursor(t) == (2, col + 6), cursor(t))
+    t.close()
+
     open(os.path.join(tmp, "blocks.html"), "w").write(
         "<body>\n<main>\n  <p>a</p>\n\n  <p>b</p>\n</main>\n</body>\n")
     t = Term([os.path.join(tmp, "blocks.html")])
@@ -720,6 +809,47 @@ def main():
     t.key("alt+up")
     check("Alt+Up on </main> = back to <main>", cursor(t) == (3, col), cursor(t))
     t.close()
+
+    # ---- word wrap and the build number ----
+    longp = os.path.join(tmp, "long.go")
+    open(longp, "w").write("package main\n\n// " + " ".join(f"w{i:02d}" for i in range(60)) + " end\nvar x = 1\n")
+    t = Term([longp])
+    check("word wrap: the whole long line shows, its last word too", "w59 end" in t.text() and "w00" in t.text(), t.text()[:600])
+    check("word wrap: it carries on in the next row, with no line number",
+          re.search(r"│ +w19 ", t.row(5)) is not None, t.row(5))
+    rows = [t.row(y) for y in range(ROWS)]
+    end_y = next(y for y, r in enumerate(rows) if "w59 end" in r)
+    check("word wrap: the next line comes after all its rows", "4 var x = 1" in rows[end_y + 1], rows[end_y + 1])
+    t.key("down", "down")
+    col = cursor(t)[1]
+    t.key("down")
+    check("word wrap: Down goes into the line's second row", cursor(t) == (5, col), cursor(t))
+    status = t.row(ROWS - 2)
+    check("status bar shows the build number", "build " in status, status)
+    t.close()
+
+    # ---- file manager: Right opens a folder's files, Shift+Right only text ----
+    proj3 = os.path.join(tmp, "proj3")
+    os.makedirs(os.path.join(proj3, "pics"))
+    for name, data in [("a.go", b"package a\n"), ("notes.txt", b"notes\n"), ("empty.md", b""),
+                       ("logo.svg", b"<svg></svg>\n"), ("photo.png", b"\x89PNG\r\n\x1a\n\x00\x00")]:
+        open(os.path.join(proj3, "pics", name), "wb").write(data)
+    t = Term([proj3])
+    t.key("down")                                           # on pics/
+    t.key("right", wait=0.4)
+    check("Right on a folder opens every file in it as tabs",
+          "Opened 5 files" in t.row(ROWS - 1) and "photo.png" in t.row(1) and "a.go" in t.row(1),
+          (t.row(1), t.row(ROWS - 1)))
+    t.close()
+    t = Term([proj3])
+    t.key("down")
+    t.send("\x1b[1;2C", 0.4)                                # Shift+Right
+    check("Shift+Right opens only text with something in it",
+          "Opened 2 files" in t.row(ROWS - 1) and "Skipped 3" in t.row(ROWS - 1) and "photo" not in t.row(1),
+          (t.row(1), t.row(ROWS - 1)))
+    t.close()
+    check("opening the folder changed no file", open(os.path.join(proj3, "pics", "photo.png"), "rb").read()
+          == b"\x89PNG\r\n\x1a\n\x00\x00")
 
     # ---- info line, weather and colours (at the end: themes are remembered) ----
     os.makedirs(os.path.join(FAKE_HOME, ".cache", "emberline"), exist_ok=True)

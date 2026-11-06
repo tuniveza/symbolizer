@@ -29,12 +29,13 @@ const (
 	pOpen
 	pSaveAs
 	pConfirm
-	pName      // Ctrl+S on a session: what to call it
-	pRename    // file manager
-	pNewFile   // file manager
-	pNewFolder // file manager
-	pWrap      // Emmet: wrap with an abbreviation (web.go)
-	pUpdateTag // Emmet: update the tag at the cursor
+	pName       // Ctrl+S on a session: what to call it
+	pRename     // file manager
+	pNewFile    // file manager
+	pNewFolder  // file manager
+	pWrap       // Emmet: wrap with an abbreviation (web.go)
+	pUpdateTag  // Emmet: update the tag at the cursor
+	pDesignFile // Design mode: a picture or text file to put in (design_image.go)
 )
 
 // Model is the whole editor, as Bubble Tea wants it.
@@ -44,7 +45,11 @@ type Model struct {
 	width  int
 	height int
 	top    int // first line on screen
-	left   int // first screen column on screen (for long lines)
+	topSub int // with word wrap: the first of top's rows on screen (wrap.go)
+	left   int // first screen column on screen (for long lines, wrap off)
+
+	wrap      bool // word wrap (wrap.go)
+	wrapCache map[int]wrapEntry
 
 	msg    string
 	msgErr bool
@@ -96,13 +101,21 @@ type Model struct {
 	showTree   bool
 	treeFocus  bool
 	treeTarget string
+	treeArm    string // "right <path>" or "left <path>": the first of two presses (project.go)
+
+	// the folder open as a project, and how to undo opening it (project.go)
+	project  *project
+	projUndo *projectUndo
 
 	picker *picker // the Alt+L list
 
 	// tab switch mode (tabmode.go)
 	tabMode     bool
 	tabModeFrom int
-	altTap      bool // Left Alt is down with no other key yet (a tap ends tab mode)
+	altTap      bool      // Left Alt is down with no other key yet (a tap ends tab mode)
+	tabDownAt   time.Time // when Down was last pressed in tab mode (twice quickly chooses)
+	tabDownFrom int       // the tab chosen before that Down
+	eatEnterAt  time.Time // Enter chose a tab: a quick second Enter is not typed
 
 	// what was last written to the last-open file (lastopen.go)
 	lastOpen struct {
@@ -133,8 +146,12 @@ type Model struct {
 	plate      *lockPlate   // the lock plate while it shows (lockplate.go)
 	blurred    bool         // the terminal says another window has the keyboard
 	diary      *diaryState  // diary mode: chapters, pages, the page in focus (diary.go)
+	design     *designState // design mode: the board, its structures, links and pen (design.go)
 	startDir   string       // folder sy was started in
 	snip       snippetStops // Tab's stops after an Emmet expansion (web.go)
+	sugg       *suggestions // the suggestion list while a word is typed (suggest.go)
+	learn      *learnState  // the Learn box (AltGr + L), while it shows (learn.go)
+	hintC      hintCache    // the CSS unit hint for the cursor (ghost.go)
 }
 
 func NewModel(path string, line int) (*Model, error) {
@@ -143,6 +160,7 @@ func NewModel(path string, line int) (*Model, error) {
 	settings := loadSettings()
 	applyTheme(themeIndex(settings["theme"]))
 	m.zoneWidth, _ = strconv.Atoi(settings["zone-width"])
+	m.wrap = settings["wrap"] != "off"
 	m.input = newInput()
 	m.startDir, _ = os.Getwd()
 	m.emblem = newEmblem()
@@ -220,7 +238,7 @@ func (m *Model) resetHighlighter() {
 }
 
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(m.hl.Want(m.buf.Version(), m.top, m.textHeight()), nextMinute(), loadWeather(), weatherEvery(), m.startLamps())
+	return tea.Batch(m.hl.Want(m.buf.Version(), m.top, m.textHeight()), nextMinute(), loadWeather(), weatherEvery(), m.startLamps(), watchDisk())
 }
 
 func (m *Model) say(s string)    { m.msg, m.msgErr = s, false }
@@ -274,6 +292,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return nil
 	case saveTick:
 		return m.startSave()
+	case diskTick:
+		m.checkDisk() // files another program changed (reload.go)
+		return watchDisk()
 	case lampsMsg:
 		return m.gotLamps(string(msg))
 	case plateMsg:
@@ -313,7 +334,12 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			m.input, c = m.input.Update(msg)
 			return tea.Batch(c, m.promptChanged())
 		}
+		if m.inDesign() && !m.help && m.picker == nil {
+			return m.designPaste(msg.Content) // design_paper.go
+		}
 		return m.pasteText(msg.Content)
+	case designPictureMsg:
+		return m.designPictureDone(msg)
 	case tea.KeyReleaseMsg:
 		if cmd, done := m.altGrRelease(msg.Key()); done {
 			return cmd
@@ -327,6 +353,17 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.altTap = msg.Key().Code == tea.KeyLeftAlt && !msg.Key().IsRepeat || m.altTap && msg.Key().IsRepeat
 		if m.altGrPress(msg.Key()) || isModifierOnly(msg.Key()) {
 			return nil // a modifier on its own does nothing (and keeps the message line)
+		}
+		if m.undoProjectKey(keyName(msg.Key())) {
+			return nil // Left straight after opening a project undoes it (project.go)
+		}
+		if !m.eatEnterAt.IsZero() {
+			// Enter chose a tab: a second Enter straight after is not typed.
+			quick := time.Since(m.eatEnterAt) < tabTwice && keyName(msg.Key()) == "enter"
+			m.eatEnterAt = time.Time{}
+			if quick {
+				return nil
+			}
 		}
 		if m.tabMode {
 			if cmd, done := m.tabModeKey(msg.Key()); done {
@@ -347,12 +384,24 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			return m.openThemes()
 		case "ŧ", "altgr+t":
 			return m.syTerm()
+		case "ł", "altgr+l":
+			if m.inDesign() && m.learn == nil && !m.help {
+				m.designLinkToggle() // in Design mode AltGr+L is link mode (design.go)
+				return nil
+			}
+			return m.openLearn()
+		}
+		if m.learn != nil {
+			return m.learnKey(m.altGrName(msg.Key()))
 		}
 		if m.themeOpen {
 			return m.themeKey(keyName(msg.Key()))
 		}
 		if m.modesOpen {
 			return m.modesKey(keyName(msg.Key()), msg.Key().Text)
+		}
+		if m.inDesign() && !m.help && m.prompt == pNone && m.picker == nil && !(m.treeFocus && m.showTree && m.tree != nil) {
+			return m.designKey(msg.Key())
 		}
 		if m.inDiary() && !(m.help && m.diaryViewer()) {
 			if cmd, done := m.diaryKey(keyName(msg.Key())); done {
@@ -385,19 +434,31 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if m.treeFocus && m.showTree && m.tree != nil {
 			return m.treeKey(msg.Key())
 		}
-		return m.editKey(msg.Key())
+		cmd := m.editKey(msg.Key())
+		m.noteHint() // why the CSS unit hint is shown (ghost.go)
+		return cmd
 	case tea.MouseClickMsg:
+		m.sugg = nil
 		if m.diaryViewer() && msg.Mouse().Y != 0 && !m.help {
 			return nil // the page viewer has nothing to click but the top panel
 		}
+		if m.designMouseHere(msg.Mouse().Y) {
+			return m.designPress(msg.Mouse())
+		}
 		return m.mouseClick(msg.Mouse())
 	case tea.MouseMotionMsg:
+		if m.inDesign() && m.design != nil && m.design.drag != dragNone {
+			return m.designMotion(msg.Mouse())
+		}
 		if m.dragMargin != "" {
 			m.marginDrag(msg.Mouse().X)
 			return nil
 		}
 		return m.mouseDrag(msg.Mouse())
 	case tea.MouseReleaseMsg:
+		if m.inDesign() && m.design != nil && m.design.drag != dragNone {
+			return m.designRelease()
+		}
 		if m.dragMargin != "" {
 			return m.marginRelease()
 		}
@@ -415,6 +476,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			m.helpTop = max(0, m.helpTop+n)
 			return nil
 		}
+		if m.designMouseHere(msg.Mouse().Y) {
+			return m.designWheel(msg.Mouse())
+		}
 		if m.diaryViewer() && m.diary != nil {
 			m.diary.turn(n / 3) // the wheel turns pages
 			return nil
@@ -425,7 +489,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			t.sel = max(t.scroll, min(t.sel, t.scroll+max(m.fmListH-1, 0)))
 			return nil
 		}
-		m.top = max(0, min(m.top+n, len(m.buf.Lines)-1))
+		m.scrollRows(n)
 		return nil
 	}
 	if m.prompt != pNone {
@@ -438,8 +502,8 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 
 // keyName gives one stable name per key: "ctrl+alt+shift+x".
 func keyName(k tea.Key) string {
-	if (k.Text == "ß" || k.Text == "ø" || k.Text == "”" || k.Text == "æ" || k.Text == "¢") && !k.Mod.Contains(tea.ModCtrl) {
-		return k.Text // Right Alt+S / O / N / A / C on a UK keyboard
+	if (k.Text == "ß" || k.Text == "ø" || k.Text == "”" || k.Text == "æ") && !k.Mod.Contains(tea.ModCtrl) {
+		return k.Text // Right Alt+S / O / N / A on a UK keyboard
 	}
 	s := k.Keystroke()
 	// Some terminals report Alt+Shift+L as "alt+L".
@@ -489,6 +553,7 @@ func init() {
 		"alt+l":     func(m *Model) tea.Cmd { return m.openLoadList() },
 		"alt+o":     func(m *Model) tea.Cmd { return m.openTree(false) },
 		"alt+j":     func(m *Model) tea.Cmd { return m.toggleCentre() },
+		"alt+z":     func(m *Model) tea.Cmd { return m.toggleWrap() },
 		// On a UK keyboard Right Alt+S types ß and Right Alt+O types ø, so
 		// these letters are commands, not text.
 		"ß":      func(m *Model) tea.Cmd { return m.save() },
@@ -557,8 +622,7 @@ func init() {
 
 		// tabs
 		"ctrl+w":      func(m *Model) tea.Cmd { return m.closeTab() },
-		"¢":           func(m *Model) tea.Cmd { return m.closeTab() }, // AltGr+C on a UK keyboard
-		"altgr+c":     func(m *Model) tea.Cmd { return m.closeTab() },
+		"alt+c":       func(m *Model) tea.Cmd { return m.closeTab() },
 		"alt+n":       func(m *Model) tea.Cmd { return m.newFile() },
 		"alt+tab":     func(m *Model) tea.Cmd { return m.openTabMode() },
 		"ctrl+pgup":   func(m *Model) tea.Cmd { return m.nextTab(-1) },
@@ -573,9 +637,14 @@ func init() {
 		"alt+shift+tab": func(m *Model) tea.Cmd { m.outdent(); return nil },
 		"shift+tab":     func(m *Model) tea.Cmd { m.outdent(); return nil },
 		"backspace": func(m *Model) tea.Cmd {
+			if m.backspacePair() { // (|) goes as one (pairs.go)
+				m.ensureVisible()
+				return nil
+			}
 			tp := m.pairBefore()
 			m.buf.Backspace()
 			m.mirrorTag(tp)
+			m.refreshSuggest()
 			m.ensureVisible()
 			return nil
 		},
@@ -642,6 +711,9 @@ func init() {
 
 func (m *Model) editKey(k tea.Key) tea.Cmd {
 	name := m.altGrName(k)
+	if m.sugg != nil && m.suggestKey(name) {
+		return nil
+	}
 	if dir := ctrlArrow(name); dir != "" {
 		m.ctrlArrow(dir, k)
 		return nil
@@ -702,6 +774,11 @@ func (m *Model) moveVert(d int, sel bool) {
 	} else {
 		b.ClearSelect()
 	}
+	if m.wrap {
+		m.moveRows(d)
+		m.ensureVisible()
+		return
+	}
 	if b.WantCol < 0 {
 		b.WantCol = colToX(m.line(b.Cursor.Row), b.Cursor.Col)
 	}
@@ -723,6 +800,13 @@ func (m *Model) moveVert(d int, sel bool) {
 
 func (m *Model) page(d int, sel bool) {
 	h := m.textHeight() - 1
+	if m.wrap {
+		keep := m.rowsBetween(m.topRow(), m.rowAt(m.buf.Cursor.Row, m.buf.Cursor.Col), h)
+		m.moveVert(d*h, sel)
+		m.setTop(m.rowsUp(m.rowAt(m.buf.Cursor.Row, m.buf.Cursor.Col), keep))
+		m.ensureVisible()
+		return
+	}
 	keep := m.buf.Cursor.Row - m.top
 	m.moveVert(d*h, sel)
 	m.top = max(0, min(m.buf.Cursor.Row-keep, len(m.buf.Lines)-1))
@@ -967,6 +1051,11 @@ func (m *Model) typeText(s string) {
 		m.buf.BreakUndo()
 	}
 	m.afterSpace = s == " "
+	if m.typePair(s) { // brackets and quotes close themselves (pairs.go)
+		m.refreshSuggest()
+		m.ensureVisible()
+		return
+	}
 	tp := tagPair{}
 	if len([]rune(s)) == 1 && (isWord([]rune(s)[0]) || s == "-" || s == ":" || s == ".") {
 		tp = m.pairBefore()
@@ -976,6 +1065,7 @@ func (m *Model) typeText(s string) {
 	if len([]rune(s)) == 1 {
 		m.afterTyped(s) // Emmet: close tags, fix CSS and paths (web.go)
 	}
+	m.refreshSuggest() // the suggestion list (suggest.go)
 	m.ensureVisible()
 }
 
@@ -1514,6 +1604,12 @@ func (m *Model) gutterWidth() int {
 func (m *Model) textWidth() int { _, text, _ := m.zone(); return text }
 
 func (m *Model) ensureVisible() {
+	if m.wrap {
+		m.left = 0
+		m.ensureRowVisible()
+		return
+	}
+	m.topSub = 0
 	h := m.textHeight()
 	margin := min(3, (h-1)/2)
 	r := m.buf.Cursor.Row
@@ -1544,9 +1640,12 @@ func colToX(l []rune, col int) int {
 	return x
 }
 
-func xToCol(l []rune, want int) int {
-	x := 0
-	for i, r := range l {
+func xToCol(l []rune, want int) int { return xToColAt(l, 0, 0, want) }
+
+// xToColAt is xToCol starting from letter from, which is at screen column x.
+func xToColAt(l []rune, from, x, want int) int {
+	for i := from; i < len(l); i++ {
+		r := l[i]
 		w := runeWidth(r, x)
 		if x+w > want {
 			if want-x > w/2 && r != '\t' {
@@ -1565,12 +1664,18 @@ func (m *Model) mouseToPos(x, y int) (Pos, bool) {
 	if y < textTop || y >= textTop+m.textHeight() {
 		return Pos{}, false
 	}
-	r := m.top + y - textTop
+	v := m.screenRows()[y-textTop]
+	r := v.r
 	if r >= len(m.buf.Lines) {
 		return m.endOfFile(), true
 	}
 	left, _, _ := m.zone()
-	col := xToCol(m.line(r), max(0, x-m.treeWidth()-left-m.gutterWidth()-m.lineOffset(r))+m.left)
+	lr := m.rowsOf(r)
+	want := max(0, x-m.treeWidth()-left-m.gutterWidth()-m.rowOffset(r, v.k)) + m.left
+	col := xToColAt(m.line(r), lr.start[v.k], lr.x[v.k], lr.x[v.k]+want)
+	if v.k+1 < len(lr.start) {
+		col = min(col, lr.start[v.k+1]-1) // past a wrapped row's end: its last letter
+	}
 	return Pos{r, col}, true
 }
 
@@ -1643,11 +1748,11 @@ func (m *Model) mouseDrag(ms tea.Mouse) tea.Cmd {
 	}
 	y := ms.Y
 	if y < textTop {
-		m.top = max(0, m.top-1)
+		m.scrollRows(-1)
 		y = textTop
 	}
 	if y >= textTop+m.textHeight() {
-		m.top = min(len(m.buf.Lines)-1, m.top+1)
+		m.scrollRows(1)
 		y = textTop + m.textHeight() - 1
 	}
 	if p, ok := m.mouseToPos(ms.X, y); ok {

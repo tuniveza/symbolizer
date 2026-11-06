@@ -164,6 +164,9 @@ func (m *Model) fileManagerBox() string {
 			if nd == t.top {
 				up := icon("", "‹")
 				s = on(cDim, rowBG).Render(" " + up + "  up a folder")
+				if p := m.project; p != nil && p.dir == nd.path {
+					s = on(cAccent, rowBG).Render(" " + up + "  project " + nd.name + " · Left twice closes it")
+				}
 				if len(t.rows) == 1 {
 					s = on(cDim, rowBG).Render(" (empty folder)")
 				}
@@ -203,7 +206,9 @@ func (m *Model) fileName(name, path, cur string, openTabs map[string]bool, back 
 		name += "/"
 	}
 	mark := ""
-	if path == cur {
+	if p := m.project; dir && p != nil && p.dir == path {
+		mark = lipgloss.NewStyle().Background(hex(back)).Foreground(hex(cAccent)).Render("  ◆ project")
+	} else if path == cur {
 		mark = lipgloss.NewStyle().Background(hex(back)).Foreground(hex(cAccent)).Render("  ◆")
 	} else if openTabs[path] {
 		mark = lipgloss.NewStyle().Background(hex(back)).Foreground(hex(cDim)).Render("  ●")
@@ -241,4 +246,5 @@ func (m *Model) treeMouse(x, y int) tea.Cmd {
 
 func (m *Model) closeTree() {
 	m.showTree, m.treeFocus = false, false
+	m.treeArm = ""
 }

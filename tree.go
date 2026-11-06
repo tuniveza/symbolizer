@@ -236,13 +236,23 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 	if k.Text == "þ" || m.altGr.down && k.Code == 'p' {
 		name = "altgr+p" // AltGr+P types þ on a UK keyboard
 	}
+	// Some keys count only when pressed twice in a row on the same row.
+	prev := m.treeArm
+	m.treeArm = ""
+	twice := func(key, path string) bool {
+		if prev == key+" "+path {
+			return true
+		}
+		m.treeArm = key + " " + path
+		return false
+	}
 	finding := t.query != ""
 	count := len(t.rows)
 	if finding {
 		count = len(t.found)
 	}
 	switch name {
-	case "alt+n", "altgr+c", "¢", "alt+tab", "ctrl+w", "ctrl+pgup", "ctrl+pgdown":
+	case "alt+n", "alt+c", "alt+tab", "ctrl+w", "ctrl+pgup", "ctrl+pgdown":
 		return bindings[name](m)
 	case "esc":
 		if finding {
@@ -272,10 +282,16 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 		t.sel = 0
 	case "end":
 		t.sel = max(count-1, 0)
-	case "enter", "right":
+	case "enter", "right", "shift+right":
+		// Enter opens a file or opens / closes a folder. Right opens a file.
+		// On a folder, Right once opens it here in the file manager; Right
+		// twice opens it as a project, every file in it (and its folders) as
+		// tabs. Shift+Right does the same with only text that has something
+		// in it.
+		words := name == "shift+right"
 		if finding {
 			if t.sel < len(t.found) {
-				return m.treeOpen(t.found[t.sel])
+				return m.treePick(t.found[t.sel], words)
 			}
 			if p := expandPath(t.query); strings.ContainsAny(t.query, "/~") && fileExists(p) {
 				return m.treeGo(p)
@@ -284,24 +300,55 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 		}
 		n := t.rows[t.sel]
 		if n == t.top {
-			return m.treeKey(tea.Key{Code: tea.KeyLeft}) // the "up a folder" row
-		}
-		if n.dir {
-			if name == "right" && n.open && len(n.children) > 0 {
-				t.sel++
+			if p := m.project; p != nil && p.dir == n.path && name != "enter" {
+				m.say("This is project " + n.name + ". Left twice closes it.")
 				return nil
 			}
-			n.open = !n.open || name == "right"
+			m.treeArm = prev
+			return m.treeKey(tea.Key{Code: tea.KeyLeft}) // the "up a folder" row
+		}
+		if n.dir && name == "enter" {
+			n.open = !n.open
 			if n.open && !n.loaded {
 				t.load(n)
 			}
 			t.flatten()
 			return nil
 		}
-		return m.treeOpen(n.path)
+		if n.dir {
+			pick := pickAll
+			if words {
+				pick = pickWords
+			}
+			if !twice(name, n.path) {
+				// Right once only opens the folder here in the file manager.
+				if !n.open {
+					n.open = true
+					if !n.loaded {
+						t.load(n)
+					}
+					t.flatten()
+				}
+				key := "Right"
+				if words {
+					key = "Shift+Right"
+				}
+				if m.project != nil {
+					m.say("Opened " + n.name + " here. Project " + filepath.Base(m.project.dir) + " is open, so it cannot open as a project.")
+				} else {
+					m.say(key + " again opens " + n.name + " as a project, its files as tabs.")
+				}
+				return nil
+			}
+			if m.openProject(n.path, pick) {
+				m.closeTree()
+			}
+			return nil
+		}
+		return m.treePick(n.path, words)
 	case "shift+enter", "ctrl+enter":
 		// Every text file in the chosen folder (or the chosen file's folder) as tabs.
-		if m.openFolder(m.treeFolder()) {
+		if m.openProject(m.treeFolder(), pickText) {
 			m.closeTree()
 		}
 		return nil
@@ -310,6 +357,19 @@ func (m *Model) treeKey(k tea.Key) tea.Cmd {
 			return nil
 		}
 		n := t.rows[t.sel]
+		if p := m.project; p != nil && n.path == p.dir {
+			// Left twice on the project's folder closes the project.
+			if twice("left", n.path) {
+				m.closeProject()
+				return nil
+			}
+			if n.dir && n.open && n != t.top {
+				n.open = false
+				t.flatten()
+			}
+			m.say("Left again closes project " + n.name + " and its tabs.")
+			return nil
+		}
 		if n.dir && n.open && n != t.top {
 			n.open = false
 			t.flatten()
@@ -426,6 +486,19 @@ func (m *Model) treeOpen(path string) tea.Cmd {
 	m.tree.flatten()
 	m.tree.reveal(path)
 	return cmd
+}
+
+// treePick opens a file chosen with Right, or with Shift+Right when it is
+// text with something in it.
+func (m *Model) treePick(path string, words bool) tea.Cmd {
+	if words {
+		info, err := os.Stat(path)
+		if err != nil || !picked(path, info.Size(), pickWords) {
+			m.say(filepath.Base(path) + " is media, empty or not text, so Shift+Right leaves it. Right opens it.")
+			return nil
+		}
+	}
+	return m.treeOpen(path)
 }
 
 // treeGo goes to a typed path: a folder becomes the project, a file opens.

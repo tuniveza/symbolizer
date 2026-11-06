@@ -42,6 +42,7 @@ type Buffer struct {
 	FinalNewline bool
 	ModTime      time.Time
 	Draft        bool  // no name yet: saved to the drafts folder until Ctrl+S names it
+	Binary       bool  // not text: never saved, so its bytes stay as they are
 	Centre       *bool // lines centred in the zone (nil: decided by the language)
 
 	// the file-like name shown for a session (names.go)

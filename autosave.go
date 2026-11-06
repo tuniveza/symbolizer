@@ -78,7 +78,7 @@ func (m *Model) startSave() tea.Cmd {
 	if b.Draft {
 		m.followLanguage()
 	}
-	if !b.Modified() || b.Path == "" || m.savePaused {
+	if !b.Modified() || b.Path == "" || m.savePaused || b.Binary {
 		return nil
 	}
 	if b.ChangedOnDisk() {
@@ -132,7 +132,7 @@ func (m *Model) saveNow() bool {
 		}
 		b.Path = path
 	}
-	if m.savePaused {
+	if m.savePaused || b.Binary {
 		return false
 	}
 	if b.ChangedOnDisk() {
