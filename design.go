@@ -30,9 +30,11 @@ import (
 // Mouse: double-click places a structure (or writes in one), left-drag moves
 // it, its ◢ corner resizes it, middle-drag (or left-drag on the empty board)
 // moves the board, the wheel zooms, right-drag rubs out the pen.
-// Keys: AltGr+L link mode, 1–8 pen, R rubber, O over/under, + − 0 zoom,
-// arrows move the view (and choose), E writes in the chosen structure,
-// Alt + arrows move it (design_keys.go).
+// Keys (only these): arrows move the view (and choose), Alt + arrows move the
+// chosen structure (design_keys.go), + − 0 zoom, 1–8 pen, Tab writes in the
+// chosen structure's parts, Alt+N then P/N/C/S places a page, note, cabinet
+// or shape, Alt+L changes a shape's layout, X twice deletes, Ctrl+Z/Ctrl+Y
+// undo and redo. The rest is on the toolbar and the mouse.
 //
 // More kinds of structure (design_paper.go): pages (text of any length),
 // notes (one page of text), and cabinets that keep stacks of pages, books,
@@ -204,6 +206,8 @@ type designState struct {
 	holding        bool        // a structure is gliding: one undo step when it stops
 	heldAt         time.Time
 	lastArrowAt    time.Time
+	placing        bool         // Alt+N was pressed: the next key says what to place
+	xAt            time.Time    // when X was pressed: X again soon deletes
 	inked          map[int]bool // the board rows that have ink (tint), for inkedVer
 	inkedVer       int
 	inkedLen       int
@@ -651,10 +655,20 @@ func (m *Model) designLinkToggle() {
 		if o := d.byID(d.sel); o != nil {
 			d.linkFrom = o.ID
 		}
-		m.say("⛓  Link mode: click a structure, then each one to attach to it. AltGr+L or Esc leaves.")
+		m.say("⛓  Link mode: click a structure, then each one to attach to it. Esc leaves.")
 	} else {
 		m.say("Link mode off.")
 	}
+}
+
+// xTwice is how quickly X must come again to delete.
+const xTwice = 600 * time.Millisecond
+
+// placeKeys are the keys after Alt+N, and what each places.
+var placeKeys = map[string]string{
+	"p": kPage, "n": kNote, "c": kCabinet, "s": kOct,
+	"P": kPage, "N": kNote, "C": kCabinet, "S": kOct,
+	"shift+p": kPage, "shift+n": kNote, "shift+c": kCabinet, "shift+s": kOct,
 }
 
 func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
@@ -677,7 +691,25 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		d.editing = partNone
 	}
 	m.msg = ""
-	cx, cy := m.width/2, m.textHeight()/2
+	cx, cy := m.width/2, m.boardH()/2
+	if d.placing { // Alt+N was pressed: this key says what to place
+		d.placing = false
+		if kind, ok := placeKeys[name]; ok {
+			wx, wy := d.world(cx, cy)
+			d.newKind(kind, int(wx), int(wy))
+			d.editing = partHeader
+			m.say(newHint(kind))
+		} else {
+			m.say("Nothing placed. Alt+N, then P page · N note · C cabinet · S shape.")
+		}
+		return nil
+	}
+	if name == "X" || name == "shift+x" {
+		name = "x"
+	}
+	if name != "x" {
+		d.xAt = time.Time{}
+	}
 	switch name {
 	case "f1":
 		m.help = true
@@ -693,60 +725,43 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		}
 	case "1", "2", "3", "4", "5", "6", "7", "8":
 		m.designPen(int(name[0] - '1'))
-	case "r":
-		m.designPen(rubber)
-	case "o":
-		d.over = !d.over
-		m.say("Pen colours " + map[bool]string{true: "over the text: it shows through, tinted.", false: "under the text: the letters stay as they are."}[d.over])
 	case "+", "=", "ctrl+=", "shift+=", "plus", "kp+":
 		d.zoomTo(d.zoom+1, cx, cy)
 	case "-", "ctrl+-", "minus", "kp-":
 		d.zoomTo(d.zoom-1, cx, cy)
 	case "0":
 		d.zoomTo(designZoom100, cx, cy)
-	case "n", "p", "s", "k":
-		wx, wy := d.world(cx, cy)
-		kind := map[string]string{"n": kOct, "p": kPage, "s": kNote, "k": kCabinet}[name]
-		d.newKind(kind, int(wx), int(wy))
-		d.editing = partHeader
-		m.say(newHint(kind))
-	case "l", "shift+l", "L":
+	case "alt+n":
+		d.placing = true
+		m.say("Place: P page · N note · C cabinet · S shape (any other key: nothing).")
+	case "alt+l", "alt+shift+l", "alt+L":
 		if o := d.byID(d.sel); o != nil && o.Kind == kOct {
 			step := 1
-			if name != "l" {
+			if name != "alt+l" {
 				step = -1
 			}
 			m.designLayout(o, step)
+		} else {
+			m.say("Alt+L changes the layout of a chosen shape.")
 		}
-	case "d":
-		if o := d.byID(d.sel); o != nil {
-			m.designDrawer(o)
+	case "x":
+		// X twice, quickly, deletes what is chosen.
+		o := d.byID(d.sel)
+		hasLink := d.selLink >= 0 && d.selLink < len(d.links)
+		if o == nil && !hasLink {
+			m.say("Nothing chosen to delete.")
+			return nil
 		}
-	case "i":
-		return m.designAskFile()
-	case "pgup", "pgdown":
-		if o := d.byID(d.sel); o != nil && o.Kind != kOct && o.Kind != kCabinet {
-			o.Scroll = max(0, o.Scroll+map[string]int{"pgup": -1, "pgdown": 1}[name]*max(1, o.H-5))
-			d.dirty = true
+		if d.xAt.IsZero() || time.Since(d.xAt) > xTwice {
+			d.xAt = time.Now()
+			m.say("Press X again to delete it.")
+			return nil
 		}
-	case "c":
-		if o := d.byID(d.sel); o != nil {
-			o.Color = randomOctColor()
-			d.dirty = true
-		}
-	case "enter":
-		if d.byID(d.sel) != nil {
-			d.editing = partHeader
-		}
-	case "delete", "backspace":
-		if d.selLink >= 0 && d.selLink < len(d.links) {
+		d.xAt = time.Time{}
+		if hasLink {
 			m.designDeleteLink(d.selLink)
-		} else if o := d.byID(d.sel); o != nil {
+		} else {
 			return m.designRemove(o)
-		}
-	case "shift+delete", "shift+backspace":
-		if o := d.byID(d.sel); o != nil && o.Image != "" {
-			m.designDeletePicture(o)
 		}
 
 	case "left", "right", "up", "down", "shift+left", "shift+right", "shift+up", "shift+down":
@@ -776,12 +791,8 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 			o.Y += dy * step
 			d.dirty = true
 		}
-	case "e":
-		m.designEdit()
 	case "tab", "shift+tab":
 		m.designTab(name == "shift+tab")
-	case "f":
-		m.designFit()
 	}
 	return nil
 }
@@ -860,17 +871,16 @@ func (m *Model) designWrite(d *designState, o *dOct, k tea.Key, name string) {
 // designMouseHere: does the board take this mouse event?
 func (m *Model) designMouseHere(y int) bool {
 	return m.inDesign() && !m.help && !m.modesOpen && !m.themeOpen && m.learn == nil && !m.tabMode &&
-		m.picker == nil && !(m.showTree && m.tree != nil) && y >= textTop && y < m.height-2
+		m.picker == nil && !(m.showTree && m.tree != nil) && y >= m.boardTop() && y < m.height-2
 }
 
 func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 	d := m.ds()
 	defer d.save()
 	if ms.Y == m.height-3 {
-		m.designToolClick(ms.X)
-		return nil
+		return m.designToolClick(ms.X)
 	}
-	sx, sy := ms.X, ms.Y-textTop
+	sx, sy := ms.X, ms.Y-m.boardTop()
 	d.pressX, d.pressY, d.lastPX, d.lastPY = sx, sy, sx, sy
 	d.origCX, d.origCY = d.camX, d.camY
 	switch ms.Button {
@@ -921,10 +931,10 @@ func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 	d.selLink = -1
 	if o == nil {
 		d.sel, d.editing = -1, partNone
-		if i := d.linkAt(sx, sy, m.width, m.textHeight()); i >= 0 && !double {
+		if i := d.linkAt(sx, sy, m.width, m.boardH()); i >= 0 && !double {
 			d.selLink = i
 			a, b := d.byID(d.links[i].A), d.byID(d.links[i].B)
-			m.say("Link " + octName(a) + " – " + octName(b) + " chosen: Delete deletes it (Ctrl+Z brings it back).")
+			m.say("Link " + octName(a) + " – " + octName(b) + " chosen: X X deletes it (Ctrl+Z brings it back).")
 			d.drag = dragNone
 			return nil
 		}
@@ -1004,7 +1014,7 @@ func octName(o *dOct) string {
 
 func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 	d := m.ds()
-	sx, sy := ms.X, ms.Y-textTop
+	sx, sy := ms.X, ms.Y-m.boardTop()
 	z := d.z()
 	dx, dy := float64(sx-d.pressX)/z, float64(sy-d.pressY)/z
 	switch d.drag {
@@ -1048,7 +1058,7 @@ func (m *Model) designRelease() tea.Cmd {
 
 func (m *Model) designWheel(ms tea.Mouse) tea.Cmd {
 	d := m.ds()
-	sx, sy := ms.X, ms.Y-textTop
+	sx, sy := ms.X, ms.Y-m.boardTop()
 	z := d.z()
 	if o := d.hit(sx, sy).o; o != nil && o.ID == d.sel && o.Kind != kOct && o.Kind != kCabinet &&
 		ms.Mod.Contains(tea.ModShift) && (ms.Button == tea.MouseWheelUp || ms.Button == tea.MouseWheelDown) {
@@ -1078,7 +1088,7 @@ func (m *Model) designWheel(ms tea.Mouse) tea.Cmd {
 	return nil
 }
 
-func (m *Model) designToolClick(x int) {
+func (m *Model) designToolClick(x int) tea.Cmd {
 	d := m.ds()
 	for _, t := range d.toolbar {
 		if x < t.x0 || x >= t.x1 {
@@ -1091,20 +1101,23 @@ func (m *Model) designToolClick(x int) {
 			d.over = !d.over
 		case t.act == "link":
 			m.designLinkToggle()
+		case t.act == "file":
+			return m.designAskFile() // a picture for the chosen shape, a text file for a page
 		case t.act == "undo":
 			m.designUndo()
 		case t.act == "redo":
 			m.designRedo()
 		case t.act == "zoomin":
-			d.zoomTo(d.zoom+1, m.width/2, m.textHeight()/2)
+			d.zoomTo(d.zoom+1, m.width/2, m.boardH()/2)
 		case t.act == "zoomout":
-			d.zoomTo(d.zoom-1, m.width/2, m.textHeight()/2)
+			d.zoomTo(d.zoom-1, m.width/2, m.boardH()/2)
 		case strings.HasPrefix(t.act, "place:"):
 			d.place = strings.TrimPrefix(t.act, "place:")
 			m.say("Double-click the empty board to place a " + kindNames[d.place] + ".")
 		}
-		return
+		return nil
 	}
+	return nil
 }
 
 // ---- drawing (Lip Gloss) -----------------------------------------------------------
@@ -1131,14 +1144,14 @@ var octSides = lipgloss.Border{Left: "│", Right: "│"}
 func (m *Model) designCanvas() *boardCanvas {
 	d := m.ds()
 	// One canvas, kept from frame to frame: the board covers all of it.
-	if d.canvas == nil || d.canvas.Width() != m.width || d.canvas.Height() != m.textHeight() {
-		d.canvas = newBoardCanvas(m.width, m.textHeight())
+	if d.canvas == nil || d.canvas.Width() != m.width || d.canvas.Height() != m.boardH() {
+		d.canvas = newBoardCanvas(m.width, m.boardH())
 	}
 	c := d.canvas
 	d.paintBoard(c)
 	seen := make(map[int][]drawnStruct, len(d.drawn))
 	for _, o := range d.octs { // in order: the last one is on top
-		if !d.onScreen(o, m.width, m.textHeight()) {
+		if !d.onScreen(o, m.width, m.boardH()) {
 			continue // nothing of it shows: drawing it would only cost time
 		}
 		for _, p := range d.cachedLayers(o, seen) {
@@ -1159,7 +1172,7 @@ func (m *Model) designCanvas() *boardCanvas {
 	d.tint(c)
 	// Something dragged over the empty board: a ✚ where it would land.
 	if dr := d.drop; dr.over && d.dropOn < 0 {
-		if x, y := dr.x, dr.y-textTop; x >= 0 && y >= 0 && x < c.Width() && y < c.Height() {
+		if x, y := dr.x, dr.y-m.boardTop(); x >= 0 && y >= 0 && x < c.Width() && y < c.Height() {
 			c.Lines[y][x] = uv.Cell{Content: "✚", Width: 1, Style: uv.Style{Fg: rgbaOf(cAccent), Bg: rgbaOf(cBG), Attrs: uv.AttrBold}}
 		}
 	}
@@ -1344,7 +1357,7 @@ type designFrameMsg struct{}
 // designRows draws the board in the text area.
 func (m *Model) designRows(sb *strings.Builder) {
 	d := m.ds()
-	if designFrames && d.frame != "" && d.frameW == m.width && d.frameH == m.textHeight() &&
+	if designFrames && d.frame != "" && d.frameW == m.width && d.frameH == m.boardH() &&
 		time.Since(d.frameAt) < d.frameGap() {
 		sb.WriteString(d.frame) // designFrameCmd has a fresh drawing coming
 		return
@@ -1353,7 +1366,7 @@ func (m *Model) designRows(sb *strings.Builder) {
 	var fb strings.Builder
 	fb.Grow(len(d.frame) + len(d.frame)/8)
 	m.designCanvas().renderTo(&fb)
-	d.frame, d.frameAt, d.frameW, d.frameH = fb.String(), time.Now(), m.width, m.textHeight()
+	d.frame, d.frameAt, d.frameW, d.frameH = fb.String(), time.Now(), m.width, m.boardH()
 	d.frameCost = d.frameAt.Sub(start)
 	sb.WriteString(d.frame)
 }
@@ -2145,6 +2158,8 @@ func (m *Model) designToolbar() string {
 	} else {
 		put("⛓ link", bar, "link")
 	}
+	put(" ", bar, "")
+	put("img", st(cStatusText, cBarBG), "file")
 	put(" new ", bar, "")
 	for _, k := range []string{kOct, kPage, kNote, kCabinet} {
 		if d.place == k {
@@ -2173,6 +2188,33 @@ func (m *Model) designToolbar() string {
 	return sb.String()
 }
 
+// boardTop is the screen row where the board starts: under the top panel,
+// the tab bar and Design mode's own top bar.
+func (m *Model) boardTop() int { return textTop + 1 }
+
+// boardH is how many screen rows the board has (the top bar takes one).
+func (m *Model) boardH() int { return max(m.textHeight()-1, 1) }
+
+// designTopBar is the bar over the board. For now it names the board and
+// what is chosen; what goes on it is still to be decided.
+func (m *Model) designTopBar() string {
+	d := m.ds()
+	bar := st(cStatusText, cBarBG)
+	left := " " + kindIcons[kOct] + " Design board"
+	right := ""
+	switch {
+	case d.placing:
+		right = "Place: P page · N note · C cabinet · S shape "
+	case d.byID(d.sel) != nil:
+		right = "Chosen: " + octName(d.byID(d.sel)) + " "
+	}
+	l, r := bar.Bold(true).Render(left), bar.Render(right)
+	if gap := m.width - lipgloss.Width(l) - lipgloss.Width(r); gap > 0 {
+		return l + bar.Render(strings.Repeat(" ", gap)) + r
+	}
+	return fit(l+bar.Render(" ")+r, m.width, bar)
+}
+
 // designStatus is the status bar: what the mouse and keys do just now.
 func (m *Model) designStatus() string {
 	d := m.ds()
@@ -2189,17 +2231,17 @@ func (m *Model) designStatus() string {
 		}
 		hint = "Writing the " + part + " · Tab next part · Enter " + map[bool]string{true: "new line", false: "next part"}[d.editing == partBody] + " · Esc done"
 	case d.linkMode && d.linkFrom >= 0:
-		hint = "Link mode · click structures to attach (click again to detach) · empty board: choose another · AltGr+L leaves"
+		hint = "Link mode · click structures to attach (click again to detach) · empty board: choose another · Esc leaves"
 	case d.linkMode:
-		hint = "Link mode · click the structure to link from · AltGr+L or Esc leaves"
+		hint = "Link mode · click the structure to link from · Esc leaves"
 	case d.pen == rubber:
 		hint = "Rubber · drag to take colour off · Esc puts it down"
 	case d.pen >= 0:
-		hint = "Pen " + penNames[d.pen] + " · drag to colour · right-drag rubs out · O over/under · Esc puts it down"
+		hint = "Pen " + penNames[d.pen] + " · drag to colour · right-drag rubs out · Esc puts it down"
 	case d.sel >= 0 && d.byID(d.sel) != nil:
 		hint = selHint(d.byID(d.sel))
 	default:
-		hint = "Double-click: new " + kindNames[d.place] + " · arrows look around · E writes · + − zoom · P page · S note · K cabinet · I image · 1–8 pen · AltGr+L link · AltGr+K keys"
+		hint = "Double-click: new " + kindNames[d.place] + " · arrows look around · + − zoom · Alt+N place · 1–8 pen · Ctrl+Z undo · AltGr+K keys"
 	}
 	style := stStatus
 	if d.saveErr != "" {

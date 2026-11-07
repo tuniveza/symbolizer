@@ -73,7 +73,7 @@ func (m *Model) designLayout(o *dOct, step int) {
 	l := octLayouts[o.Layout]
 	msg := "Layout " + l.icon + " " + l.name + "."
 	if o.Image == "" && o.Layout != layoutText && o.Layout != layoutColumns {
-		msg += " No picture yet: I adds one (or drop a file on the terminal)."
+		msg += " No picture yet: img on the toolbar adds one (or drop a file on the terminal)."
 	}
 	m.say(msg)
 }
@@ -215,7 +215,7 @@ func (d *designState) pictureArea(o *dOct, w, h int, fill, dim string) string {
 	for i := range lines {
 		lines[i] = st(mixHex(cDim, fill, 0.55), fill).Render(strings.Repeat("░", w))
 	}
-	label := ansi.Truncate(" ■ I adds a picture ", w, "")
+	label := ansi.Truncate(" ■ drop a picture here ", w, "")
 	lines[h/2] = lipgloss.PlaceHorizontal(w, lipgloss.Center, st(dim, fill).Italic(true).Render(label),
 		lipgloss.WithWhitespaceChars("░"), lipgloss.WithWhitespaceStyle(st(mixHex(cDim, fill, 0.55), fill)))
 	return strings.Join(lines, "\n")
@@ -434,7 +434,7 @@ func (m *Model) designUseFileAt(path string, o *dOct, at *[2]float64) tea.Cmd {
 		if at != nil {
 			return at[0], at[1]
 		}
-		return d.world(m.width/2, m.textHeight()/2)
+		return d.world(m.width/2, m.boardH()/2)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {

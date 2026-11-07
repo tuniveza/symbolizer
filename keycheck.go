@@ -11,7 +11,7 @@ import (
 // does with it. For finding out why a shortcut does not work.
 
 var keyMeaning = map[string]string{
-	"alt+shift+left": "move the highlighted text (or the word) left", "alt+shift+right": "move the highlighted text (or the word) right",
+	"alt+shift+left": "dedent: the line (or the highlighted lines) one indent left", "alt+shift+right": "indent: the line (or the highlighted lines) one indent right",
 	"alt+shift+up": "move the highlighted text (or the line) up", "alt+shift+down": "move the highlighted text (or the line) down",
 	"alt+q": "quit to the terminal",
 	"alt+l": "load list (sessions, this file from disk)", "alt+o": "open a file (file manager)",

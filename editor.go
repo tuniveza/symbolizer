@@ -409,8 +409,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			return m.openKeys() // help.go
 		case "ł", "altgr+l":
 			if m.inDesign() && m.learn == nil && !m.help {
-				m.designLinkToggle() // in Design mode AltGr+L is link mode (design.go)
-				return nil
+				return nil // Design mode has no AltGr+L: ⛓ link on its toolbar (design.go)
 			}
 			return m.openLearn()
 		}
@@ -606,11 +605,12 @@ func init() {
 		"shift+pgdown": func(m *Model) tea.Cmd { m.page(1, true); return nil },
 		"ctrl+a":       func(m *Model) tea.Cmd { m.selectAll(); return nil },
 
-		// moving text: the highlighted text, else the word at the cursor
-		"alt+shift+left":  func(m *Model) tea.Cmd { m.moveSideways(-1); return nil },
-		"alt+shift+right": func(m *Model) tea.Cmd { m.moveSideways(1); return nil },
-		"alt+shift+up":    func(m *Model) tea.Cmd { m.moveUpDown(-1); return nil },
-		"alt+shift+down":  func(m *Model) tea.Cmd { m.moveUpDown(1); return nil },
+		// indent: the line, or every highlighted line, one indent left or right
+		"alt+shift+left":  func(m *Model) tea.Cmd { m.outdent(); return nil },
+		"alt+shift+right": func(m *Model) tea.Cmd { m.indent(); return nil },
+		// moving text: the highlighted lines, else the line
+		"alt+shift+up":   func(m *Model) tea.Cmd { m.moveUpDown(-1); return nil },
+		"alt+shift+down": func(m *Model) tea.Cmd { m.moveUpDown(1); return nil },
 
 		// start / end of the line
 		"alt+left": func(m *Model) tea.Cmd { m.moveTo(Pos{m.buf.Cursor.Row, 0}, false); return nil },
@@ -1147,6 +1147,13 @@ func (m *Model) tab() {
 	m.ensureVisible()
 }
 
+// indent adds one indent to the line, or to every highlighted line.
+func (m *Model) indent() {
+	r1, r2, _ := m.selectedRows()
+	m.indentRows(r1, r2, 1)
+	m.ensureVisible()
+}
+
 func (m *Model) outdent() {
 	r1, r2, _ := m.selectedRows()
 	m.indentRows(r1, r2, -1)
@@ -1434,7 +1441,7 @@ func (m *Model) moveTextSideways(d int) {
 	m.ensureVisible()
 }
 
-// moveSideways is Alt+Left / Alt+Right: the highlighted text moves one
+// moveSideways (no key now: Alt+Shift+Left/Right indent): the highlighted text moves one
 // letter that way; with nothing highlighted, the word at the cursor swaps
 // places with the word (or symbol) next to it.
 func (m *Model) moveSideways(d int) {

@@ -123,10 +123,10 @@ func (m *Model) designDnd(meta map[string]string, payload string) tea.Cmd {
 		dr.over, dr.x, dr.y = true, x, y
 		want := m.dropWants(dr.offered)
 		op := "1"
-		if want == "" || y < textTop || y >= textTop+m.textHeight() {
+		if want == "" || y < m.boardTop() || y >= m.boardTop()+m.boardH() {
 			op = "0" // off the board, or nothing it can take
 		}
-		m.dropHint(x, y-textTop, op == "1")
+		m.dropHint(x, y-m.boardTop(), op == "1")
 		answer := "t=m:o=" + op
 		if answer == dr.lastAnswer {
 			return nil
@@ -138,7 +138,7 @@ func (m *Model) designDnd(meta map[string]string, payload string) tea.Cmd {
 		offered := strings.Fields(payload)
 		want := m.dropWants(offered)
 		y := atoi(meta["y"])
-		if want == "" || y < textTop || y >= textTop+m.textHeight() {
+		if want == "" || y < m.boardTop() || y >= m.boardTop()+m.boardH() {
 			return tea.Raw(oscDnd + "t=r:o=0" + oscEnd)
 		}
 		idx := 0
@@ -147,7 +147,7 @@ func (m *Model) designDnd(meta map[string]string, payload string) tea.Cmd {
 				idx = i + 1
 			}
 		}
-		dr.reading, dr.mime, dr.atX, dr.atY = idx, want, atoi(meta["x"]), y-textTop
+		dr.reading, dr.mime, dr.atX, dr.atY = idx, want, atoi(meta["x"]), y-m.boardTop()
 		dr.data.Reset()
 		return tea.Raw(fmt.Sprintf("%st=r:x=%d%s", oscDnd, idx, oscEnd))
 	case "r": // the data, in pieces; an empty last piece ends it

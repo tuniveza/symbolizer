@@ -83,9 +83,9 @@ Inside, press **F1** for every key. **Alt + Q** quits. Everything is already sav
 | **Alt + Shift** | ✥ **movement** | move the highlighted text. Nothing highlighted: the word swaps places with its neighbour, and Up / Down move the whole line |
 
 <div align="center">
-<img src="docs/media/moving.gif" alt="The arrows step a word; holding Ctrl steps one letter; holding Alt jumps to the end and start of the line; Alt + Shift carries the word 'fire' along; Shift highlights 'and sparks'; Alt + Shift moves it up a line and back; then the whole line moves" width="880">
+<img src="docs/media/moving.gif" alt="The arrows step a word; holding Ctrl steps one letter; holding Alt jumps to the end and start of the line; Alt + Shift + Right indents the line twice and Alt + Shift + Left takes one indent off; Shift highlights 'and sparks'; Alt + Shift moves it up a line and back; then the whole line moves" width="880">
 <br>
-<sub>Arrows step a word · Ctrl a letter · Alt jumps to the line's end and start · Alt + Shift carries “fire” along · Shift highlights · Alt + Shift moves the highlight up a line and back · then the whole line moves</sub>
+<sub>Arrows step a word · Ctrl a letter · Alt jumps to the line's end and start · Alt + Shift + Right / Left indent and dedent · Shift highlights · Alt + Shift moves the highlight up a line and back · then the whole line moves</sub>
 </div>
 
 <br>
@@ -159,33 +159,34 @@ Pages are plain text files: `~/.local/share/symbolizer/diary/2026-10-28/001.txt`
 `sy design` (or **Alt + M** → Design). A board made of text that zooms and moves.
 Everything on it is drawn with letters, kept in `~/.local/share/symbolizer/design/`: `board.json` says what is on the board, each structure has its own file in `parts/`, and the ink is in `marks.json`. A save writes only what changed, so a large project stays quick to save.
 
-- **Octagons** (double-click the board, or **N**): a header, text and a footer. Drag to move, the ◢ corner resizes.
-- **Pictures** of any format go into an octagon: **I** and a file name, or drop the file on the terminal. They are drawn with half-blocks.
+- **Octagons**, or shapes (double-click the board, or **Alt + N**, **S**): a header, text and a footer. Drag to move, the ◢ corner resizes.
+- **Pictures** of any format go into an octagon: **img** on the toolbar and a file name, or drop the file on the terminal. They are drawn with half-blocks.
 - **Drag and drop:** in kitty (0.47 or later), drag files from your file manager onto the board. What is under the pointer lights up (a ✚ shows on the empty board), and each file goes where you let go: a picture into the octagon under it, or a new octagon there; a text file into the page or note under it, into the cabinet as a page, or a new page there. Several files land side by side. Dragged text becomes a page. Other terminals paste dropped files as their paths, and sy puts those in too, one file or several.
-- **Layouts:** the icon on an octagon's top edge shows its layout. Click it (or **L**) for the next one: `¶` text · `▀` picture above · `◧` left · `◨` right · `■` picture only · `‖` two columns.
-- **Pages** (**P**) hold text of any length and scroll. **Notes** (**S**) hold one page. Both take only text and text-like media.
-- **Cabinets** (**K**) keep a stack each of pages, books, slides, notes and drawings. Drop a page or note on one to file it. Click a stack to pull it out, and drag a page back out onto the board. A cabinet can bring in your **Diary** pages and the files open in **Text** mode.
-- **Drawers:** every structure has one. The **▾** on its bottom edge (or **D**) pulls it out: a small cabinet of its own.
-- **Links** (**AltGr + L**), a **highlighter pen** with 8 colours (**1–8**, **R** rubber), and the wheel zooms, toward the pointer (**Shift + wheel** scrolls a chosen page). All text on the board is centred.
-- **By keyboard:** the **arrows** move the view (**Shift** for bigger steps; held, it glides on at once with no pause; hold two, like **Up + Right**, to go diagonally), and the structure nearest the middle of the screen is chosen as you go. **E** writes in the chosen one (a page's or note's text, an octagon's header), and **Tab** steps through its parts: header, text, footer (**Shift + Tab** back; on a cabinet, the next stack). **Esc** stops. **Alt + arrows** move the chosen structure (**Alt + Shift**: further; two held: diagonally). **+** and **−** zoom the view (the keypad's too), **0** goes back to 100%.
-- **Structures fit what they hold:** while you write, a structure grows wider and then taller so all its words show (up to the screen's height; a page scrolls beyond that), and the view follows the typing. **F** fits the chosen structure exactly, smaller too; a picture keeps its shape.
+- **Layouts:** the icon on an octagon's top edge shows its layout. Click it (or **Alt + L**) for the next one: `¶` text · `▀` picture above · `◧` left · `◨` right · `■` picture only · `‖` two columns.
+- **Pages** (**Alt + N**, **P**) hold text of any length and scroll. **Notes** (**Alt + N**, **N**) hold one page. Both take only text and text-like media.
+- **Cabinets** (**Alt + N**, **C**) keep a stack each of pages, books, slides, notes and drawings. Drop a page or note on one to file it. Click a stack to pull it out, and drag a page back out onto the board. A cabinet can bring in your **Diary** pages and the files open in **Text** mode.
+- **Drawers:** every structure has one. The **▾** on its bottom edge pulls it out: a small cabinet of its own.
+- **Links** (**⛓ link** on the toolbar), a **highlighter pen** with 8 colours (**1–8**; the rubber is **⌫** on the toolbar), and the wheel zooms, toward the pointer (**Shift + wheel** scrolls a chosen page). All text on the board is centred.
+- **Top bar:** over the board, it names the board and what is chosen.
+- **By keyboard:** the **arrows** move the view (**Shift** for bigger steps; held, it glides on at once with no pause; hold two, like **Up + Right**, to go diagonally), and the structure nearest the middle of the screen is chosen as you go. **Tab** writes in the chosen one and steps through its parts: header, text, footer (**Shift + Tab** back; on a cabinet, the next stack). **Esc** stops. **Alt + arrows** move the chosen structure (**Alt + Shift**: further; two held: diagonally). **+** and **−** zoom the view (the keypad's too), **0** goes back to 100%. **Alt + N**, then **P**, **N**, **C** or **S**, places a page, note, cabinet or shape in the middle of the screen. **Alt + L** changes a shape's layout. Those are all of Design mode's keys; the rest is on the toolbar and the mouse.
+- **Structures fit what they hold:** while you write, a structure grows wider and then taller so all its words show (up to the screen's height; a page scrolls beyond that), and the view follows the typing.
 - **AltGr + K** shows every keyboard shortcut, opened at the keys of the mode you are in. Press it again (or **Esc**) to close.
-- **Deleting:** everything can go. Click a structure and its red **✕** (or press **Delete**). Click a link's line, then **Delete**. A drawer or cabinet row has its own **✕**, and so does a chosen picture (**Shift + Delete** takes out just the picture). A structure that holds things asks first.
+- **Deleting:** everything can go. Click a structure and its red **✕** (or press **X** twice, quickly). Click a link's line, then **X X**. A drawer or cabinet row has its own **✕**, and so does a chosen picture (it takes out just the picture). A structure that holds things asks first.
 - **Undo and redo:** **Ctrl + Z** undoes any change (a move, a resize, words, a deletion, a link, ink) and **Ctrl + Y** (or **Ctrl + Shift + Z**) does it again; **↶ ↷** on the toolbar too. Writing in one part is one step, a drag is one step, and moving or zooming the board is not a step. Up to 100 steps, until you quit.
 - **Big boards stay smooth:** only what is on the screen is drawn, each structure is drawn once and then moved (and kept at the last few zoom sizes), pictures are laid in as cells, and the board is saved in the background a moment after a change. With 5,000 structures, 2,000 links and 20,000 ink marks, panning, clicking, dragging, typing and zooming each take 2–3 ms a frame.
 
 <div align="center">
-<img src="docs/media/design.gif" alt="An octagon gets a sunset picture and its layout toggle is clicked through the layouts; a cabinet is made and moved; a page called Ideas is dropped into the cabinet; a note's drawer is pulled out and the page goes from the cabinet into the drawer" width="880">
+<img src="docs/media/design.gif" alt="An octagon gets a sunset picture (img on the toolbar) and its layout toggle is clicked through the layouts; a cabinet is made with Alt + N, C and moved; a page called Ideas (Alt + N, P) is dropped into the cabinet; a note's drawer is pulled out and the page goes from the cabinet into the drawer" width="880">
 <br>
-<sub>A picture in an octagon · its layout toggle · a cabinet · a page filed in it · a note's drawer · the page moves from the cabinet into the drawer</sub>
+<sub>A picture in an octagon (img) · its layout toggle · Alt + N places a cabinet, a page, a note · a page filed in it · a note's drawer · the page moves from the cabinet into the drawer</sub>
 </div>
 
 <br>
 
 <div align="center">
-<img src="docs/media/design2.gif" alt="The arrows move the view and choose the structure in the middle, two arrows held go diagonally; E writes in the page Ideas, which grows to fit; Tab steps to its parts; Alt + arrows move it; the note's red ✕ deletes it, Ctrl+Z brings it back and Ctrl+Y deletes it again; F fits the sunset octagon to its picture; minus and plus zoom; AltGr + K shows Design mode's keys" width="880">
+<img src="docs/media/design2.gif" alt="The arrows move the view and choose the structure in the middle, two arrows held go diagonally; Tab writes in the page Ideas, which grows to fit, and steps to its parts; Alt + arrows move it; X pressed twice deletes the note, Ctrl+Z brings it back and Ctrl+Y deletes it again; Alt + L changes the sunset octagon's layout and back; Alt + N, S places a new shape; minus and plus zoom; AltGr + K shows Design mode's keys" width="880">
 <br>
-<sub>Arrows move the view and choose · two held: diagonally · E writes and the page grows to fit · Tab · Alt + arrows move it · ✕ deletes, Ctrl+Z / Ctrl+Y · F fits · − + zoom · AltGr + K: the keys</sub>
+<sub>Arrows move the view and choose · two held: diagonally · Tab writes and the page grows to fit · Alt + arrows move it · X X deletes, Ctrl+Z / Ctrl+Y · Alt + L layouts · Alt + N, S a shape · − + zoom · AltGr + K: the keys</sub>
 </div>
 
 <br>
@@ -255,7 +256,7 @@ Press **F1** inside Symbolizer for the full, scrollable list, or **AltGr + K** t
 | Ctrl + Left + Up (hold both), and the other 3 pairs | one line and one letter at once |
 | Shift + Left / Right | highlight one step |
 | Ctrl + Shift + arrows | highlight one character, or a whole number (Up / Down: one line) |
-| Alt + Shift + Left / Right | move the highlighted text one letter, or swap the word with the next one |
+| Alt + Shift + Left / Right | dedent / indent the line, or every highlighted line |
 | Alt + Shift + Up / Down | move the highlighted text a line, in its column; whole lines or nothing highlighted: the line moves |
 | Ctrl + C · Ctrl + X · Ctrl + V / Ctrl + P | copy · cut · paste |
 | Ctrl + Z · Ctrl + Y | undo · redo |
@@ -277,14 +278,14 @@ Press **F1** inside Symbolizer for the full, scrollable list, or **AltGr + K** t
 | Alt + T or µ | colour themes |
 | ŧ (Right Alt + T) | sy term: show or hide a kitty terminal under the editor |
 | Alt + M | switch modes: Text, Design, Slides, Diary, Book, Draw |
-| Design: N · P · S · K | new octagon · page · note · cabinet (F1 in Design mode lists all its keys) |
-| Design: I · L · D | a picture (or text file) · next layout · pull the drawer out or put it back |
-| Design: Delete or ✕ | delete the chosen structure or link (Shift + Delete: just the picture) |
+| Design: Alt + N, then P · N · C · S | new page · note · cabinet · shape (F1 in Design mode lists all its keys) |
+| Design: Alt + L | the chosen shape's next layout (Alt + Shift + L: the one before) |
+| Design: X X or ✕ | delete the chosen structure or link |
+| Design: img on the toolbar | a picture (or text file) for the chosen structure: type its path |
 | Design: Ctrl + Z · Ctrl + Y | undo · redo any change on the board (also Ctrl + Shift + Z, and ↶ ↷ on the toolbar) |
-| Design: arrows · E · Tab | move the view (the structure in the middle is chosen; two arrows: diagonally) · write in the chosen structure · its next part |
-| Design: F | fit the chosen structure to what it holds |
+| Design: arrows · Tab | move the view (the structure in the middle is chosen; two arrows: diagonally) · write in the chosen structure, then its next part |
 | Design: Alt + arrows · + − 0 | move the chosen structure · zoom the view in, out, back to 100% |
-| Design: 1–8 · R · O | pen colours · rubber · ink under or over the text |
+| Design: 1–8 | pen colours (rubber and over/under are on the toolbar) |
 | F1 or Alt + H | every key |
 | AltGr + K (ĸ) | every key, opened at the mode you are in |
 | Alt + Q | quit (everything is already saved) |

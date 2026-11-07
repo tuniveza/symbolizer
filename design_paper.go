@@ -135,17 +135,17 @@ func newHint(kind string) string {
 func selHint(o *dOct) string {
 	switch o.Kind {
 	case kOct:
-		hint := "Drag moves · ◢ resizes · double-click writes · [" + octLayouts[o.Layout%len(octLayouts)].icon + "] or L layout · I image · ▾ or D drawer · ✕ or Delete deletes"
+		hint := "Drag moves · ◢ resizes · double-click writes · [" + octLayouts[o.Layout%len(octLayouts)].icon + "] or Alt+L layout · ▾ drawer · ✕ or X X deletes"
 		if o.Image != "" {
-			hint += " · ✕ on the picture (Shift+Delete) deletes just it"
+			hint += " · ✕ on the picture deletes just it"
 		}
 		return hint + " · Ctrl+Z brings back"
 	case kCabinet:
-		return "Click a stack to pull it out · drag a thing out onto the board · drop pages/notes on it · a row's ✕ deletes it · ✕ or Delete deletes the cabinet · Ctrl+Z brings back"
+		return "Click a stack to pull it out · drag a thing out onto the board · drop pages/notes on it · a row's ✕ deletes it · ✕ or X X deletes the cabinet · Ctrl+Z brings back"
 	case kNote:
-		return "Drag moves · double-click writes (one page) · drag onto a cabinet or an open drawer to file it · ▾ or D drawer · ✕ or Delete deletes · Ctrl+Z brings back"
+		return "Drag moves · double-click writes (one page) · drag onto a cabinet or an open drawer to file it · ▾ drawer · ✕ or X X deletes · Ctrl+Z brings back"
 	}
-	return "Drag moves · ◢ resizes · double-click writes · wheel or PgUp/PgDn scrolls · drag onto a cabinet or open drawer to file it · I text file · ✕ or Delete deletes · Ctrl+Z brings back"
+	return "Drag moves · ◢ resizes · double-click writes · wheel scrolls · drag onto a cabinet or open drawer to file it · ✕ or X X deletes · Ctrl+Z brings back"
 }
 
 // ---- writing --------------------------------------------------------------------
@@ -902,7 +902,7 @@ func (m *Model) designPaste(text string) tea.Cmd {
 		// dropped file as its path), even while writing, so the file goes
 		// in rather than its name being typed.
 		d.editing = partNone
-		cx, cy := d.world(m.width/2, m.textHeight()/2)
+		cx, cy := d.world(m.width/2, m.boardH()/2)
 		return m.dropFiles(paths, o, cx, cy)
 	}
 	if d.editing != partNone && o != nil {
@@ -928,7 +928,7 @@ func (m *Model) designPaste(text string) tea.Cmd {
 		return m.designUseFile(path)
 	}
 	if o == nil || o.Kind == kOct || o.Kind == kCabinet {
-		cx, cy := d.world(m.width/2, m.textHeight()/2)
+		cx, cy := d.world(m.width/2, m.boardH()/2)
 		o = d.newKind(kPage, int(cx), int(cy))
 	}
 	m.designAddText(o, textLike(text))

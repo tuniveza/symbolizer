@@ -140,16 +140,53 @@ func TestNavigationKeys(t *testing.T) {
 	want(t, m, m.buf.Text(), Pos{0, 0})
 }
 
+// Alt+Shift+Left / Right dedent and indent the line, or the highlighted lines.
+func TestAltShiftIndent(t *testing.T) {
+	m := newTest(t, "one\ntwo\nthree")
+	m.buf.Indent = "\t"
+	m.buf.Cursor = Pos{1, 1}
+	press(m, "alt+shift+right")
+	want(t, m, "one\n\ttwo\nthree", Pos{1, 2})
+	press(m, "alt+shift+right")
+	want(t, m, "one\n\t\ttwo\nthree", Pos{1, 3})
+	press(m, "alt+shift+left")
+	want(t, m, "one\n\ttwo\nthree", Pos{1, 2})
+	press(m, "alt+shift+left")
+	press(m, "alt+shift+left") // nothing left to take off: stays
+	want(t, m, "one\ntwo\nthree", Pos{1, 1})
+	press(m, "ctrl+z")
+	want(t, m, "one\n\ttwo\nthree", Pos{1, 2})
+
+	// highlighted lines all move, and stay highlighted
+	m = newTest(t, "a\nb\nc")
+	m.buf.Indent = "  "
+	m.buf.Cursor = Pos{0, 0}
+	press(m, "shift+down")
+	press(m, "shift+down")
+	press(m, "alt+shift+right")
+	if got := m.buf.Text(); got != "  a\n  b\nc" && got != "  a\n  b\n  c" {
+		t.Fatalf("indented: %q", got)
+	}
+	if _, _, ok := m.buf.Selection(); !ok {
+		t.Fatal("the highlight was lost")
+	}
+	press(m, "alt+shift+left")
+	if got := m.buf.Text(); got != "a\nb\nc" {
+		t.Fatalf("dedented: %q", got)
+	}
+}
+
+// moveSideways has no key now, but still works.
 func TestAltArrowsMoveText(t *testing.T) {
 	m := newTest(t, "one two three\nfour\nfive")
 	m.buf.Cursor = Pos{0, 1} // in "one"
-	press(m, "alt+shift+right")
+	m.moveSideways(1)
 	want(t, m, "two one three\nfour\nfive", Pos{0, 5})
-	press(m, "alt+shift+right")
+	m.moveSideways(1)
 	want(t, m, "two three one\nfour\nfive", Pos{0, 11})
-	press(m, "alt+shift+right") // last on the line: stays
+	m.moveSideways(1) // last on the line: stays
 	want(t, m, "two three one\nfour\nfive", Pos{0, 11})
-	press(m, "alt+shift+left")
+	m.moveSideways(-1)
 	want(t, m, "two one three\nfour\nfive", Pos{0, 5})
 	press(m, "ctrl+z")
 	want(t, m, "two three one\nfour\nfive", Pos{0, 11})
@@ -159,19 +196,19 @@ func TestAltArrowsMoveText(t *testing.T) {
 	m.buf.Cursor = Pos{0, 1}
 	press(m, "ctrl+shift+right")
 	press(m, "ctrl+shift+right") // "bc" highlighted
-	press(m, "alt+shift+right")
+	m.moveSideways(1)
 	want(t, m, "adbcef", Pos{0, 4})
 	if got := m.buf.SelectedText(); got != "bc" {
 		t.Fatalf("still highlighted: %q", got)
 	}
-	press(m, "alt+shift+left")
-	press(m, "alt+shift+left")
+	m.moveSideways(-1)
+	m.moveSideways(-1)
 	want(t, m, "bcadef", Pos{0, 2})
 
 	// whole words: a name with _ moves as one, and so does an operator
 	m = newTest(t, "x = MAX_PARTS + 1")
 	m.buf.Cursor = Pos{0, 13} // just after MAX_PARTS
-	press(m, "alt+shift+left")
+	m.moveSideways(-1)
 	want(t, m, "x MAX_PARTS = + 1", Pos{0, 11})
 
 	// Alt + Up / Down still move the line
@@ -450,7 +487,7 @@ func TestMoveTextSideways(t *testing.T) {
 	m.buf.Cursor = Pos{0, 1}
 	m.buf.Anchor = &Pos{0, 1}
 	m.buf.Cursor = Pos{0, 2} // "b" highlighted
-	press(m, "alt+shift+right")
+	m.moveSideways(1)
 	want(t, m, "acbd", Pos{0, 3})
 	if m.buf.SelectedText() != "b" {
 		t.Fatalf("selection lost: %q", m.buf.SelectedText())

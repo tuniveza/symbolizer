@@ -3,7 +3,7 @@ package main
 // ---- the board by keyboard ---------------------------------------------------------
 //
 // The arrows move the view (Shift: further) and choose the structure nearest
-// the middle of the screen as they go; E writes in the chosen one; Alt + the
+// the middle of the screen as they go; Alt + the
 // arrows move it; + and - zoom (the keypad's too).
 
 import (
@@ -50,7 +50,7 @@ func (d *designState) middleStructure(w, h int) *dOct {
 // designChooseMiddle chooses the structure nearest the middle of the screen.
 func (m *Model) designChooseMiddle() {
 	d := m.ds()
-	o := d.middleStructure(m.width, m.textHeight())
+	o := d.middleStructure(m.width, m.boardH())
 	if o == nil {
 		if d.sel >= 0 {
 			d.sel, d.editing = -1, partNone
@@ -59,7 +59,7 @@ func (m *Model) designChooseMiddle() {
 	}
 	if o.ID != d.sel {
 		d.sel, d.editing, d.selLink = o.ID, partNone, -1
-		m.say("Chosen: " + octName(o) + " · E writes in it · Alt + arrows move it · Delete deletes it")
+		m.say("Chosen: " + octName(o) + " · Tab writes in it · Alt + arrows move it · X X deletes it")
 	}
 }
 
@@ -231,7 +231,7 @@ func (d *designState) fitSize(o *dOct, maxH int) (int, int, bool) {
 
 // boardRows is how many board rows the screen shows at this zoom.
 func (m *Model) boardRows() int {
-	return max(4, int(float64(m.textHeight())/m.ds().z())-1)
+	return max(4, int(float64(m.boardH())/m.ds().z())-1)
 }
 
 // growToFit makes o bigger, never smaller, until all of it shows (or it
@@ -272,7 +272,7 @@ func (m *Model) designFit() {
 func (m *Model) keepInView(o *dOct, bottom bool) {
 	d := m.ds()
 	x, y, w, h := d.rect(o)
-	sw, sh := m.width, m.textHeight()
+	sw, sh := m.width, m.boardH()
 	z := d.z()
 	dx, dy := 0, 0
 	switch {

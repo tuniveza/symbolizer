@@ -48,6 +48,8 @@ func (m *Model) View() tea.View {
 		sb.WriteByte('\n')
 		sb.WriteString(paintRow(m.tabBar(), 1, m.width))
 		sb.WriteByte('\n')
+		sb.WriteString(paintRow(m.designTopBar(), textTop, m.width))
+		sb.WriteByte('\n')
 		m.designRows(&sb) // design.go
 		sb.WriteString(paintRow(m.designToolbar(), m.height-3, m.width))
 		sb.WriteByte('\n')

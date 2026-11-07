@@ -57,7 +57,7 @@ func TestDesignPagesAndNotes(t *testing.T) {
 	d := m.ds()
 
 	// P: a page. It takes text of any length and scrolls.
-	press(m, "p")
+	placeKey(m, "p")
 	typeKeys(m, "Plan")
 	press(m, "tab")
 	for i := range 40 {
@@ -75,12 +75,12 @@ func TestDesignPagesAndNotes(t *testing.T) {
 		t.Fatalf("page not drawn:\n%s", s)
 	}
 	press(m, "pgdown")
-	if pg.Scroll == 0 {
-		t.Fatal("PgDn did not scroll the page")
+	if pg.Scroll != 0 {
+		t.Fatal("PgDn scrolled the page: Design mode has no PgDn now")
 	}
 
-	// S: a note. It holds one page and no more.
-	press(m, "s")
+	// Alt+N, N: a note. It holds one page and no more.
+	placeKey(m, "n")
 	typeKeys(m, "Remember")
 	press(m, "tab")
 	for range noteRows + 5 {
@@ -132,7 +132,7 @@ func TestDesignCabinetAndDrawers(t *testing.T) {
 	// Drag the page onto the cabinet: it is filed in the Pages stack.
 	px, py, _, _ := d.rect(pg)
 	cx, cy, _, _ := d.rect(cab)
-	dragTo(m, px+5, py+textTop+1, cx+8, cy+textTop+5, tea.MouseLeft)
+	dragTo(m, px+5, py+m.boardTop()+1, cx+8, cy+m.boardTop()+5, tea.MouseLeft)
 	if d.byID(pg.ID) != nil || len(cab.Items) != 1 || cab.Items[0] != pg || cab.OpenStack != kPage {
 		t.Fatalf("not filed: board %d, cabinet %d", len(d.octs), len(cab.Items))
 	}
@@ -148,7 +148,7 @@ func TestDesignCabinetAndDrawers(t *testing.T) {
 			row = i
 		}
 	}
-	dragTo(m, cx+5, cy+textTop+3+row, 20, 20, tea.MouseLeft)
+	dragTo(m, cx+5, cy+m.boardTop()+3+row, 20, 20, tea.MouseLeft)
 	if d.byID(pg.ID) == nil || len(cab.Items) != 0 {
 		t.Fatalf("not taken out: cabinet %d", len(cab.Items))
 	}
@@ -162,7 +162,7 @@ func TestDesignCabinetAndDrawers(t *testing.T) {
 	if !ok {
 		t.Fatal("no drawer handle")
 	}
-	click(m, hx+1, hy+textTop, tea.MouseLeft)
+	click(m, hx+1, hy+m.boardTop(), tea.MouseLeft)
 	if !oc.DrawerOpen || !strings.Contains(screenOf(m), "drawer") {
 		t.Fatal("drawer did not open")
 	}
@@ -170,14 +170,14 @@ func TestDesignCabinetAndDrawers(t *testing.T) {
 	pg.X, pg.Y = 40, 4
 	px, py, _, _ = d.rect(pg)
 	dx, dy, _, _ := d.drawerRect(oc)
-	dragTo(m, px+3, py+textTop+1, dx+4, dy+textTop+2, tea.MouseLeft)
+	dragTo(m, px+3, py+m.boardTop()+1, dx+4, dy+m.boardTop()+2, tea.MouseLeft)
 	if len(oc.Items) != 1 || oc.Items[0] != pg {
 		t.Fatalf("page not in the drawer: %d items", len(oc.Items))
 	}
 	d.sel = oc.ID
-	press(m, "d") // D closes the chosen structure's drawer
+	m.designDrawer(oc) // ▾ closes the chosen structure's drawer
 	if oc.DrawerOpen {
-		t.Fatal("D did not close the drawer")
+		t.Fatal("the drawer did not close")
 	}
 
 	// It all comes back after a save.
@@ -199,7 +199,7 @@ func TestDesignCabinetAndDrawers(t *testing.T) {
 
 	// Removing a structure that holds things asks first.
 	d.sel = oc.ID
-	press(m, "delete")
+	pressXX(m)
 	if d.byID(oc.ID) == nil || m.prompt != pConfirm {
 		t.Fatal("removed without asking")
 	}
@@ -251,12 +251,12 @@ func TestDesignPictureAndLayouts(t *testing.T) {
 	// The toggle on the top edge shifts the layout, its icon with it.
 	x, y, w, h := d.rect(o)
 	tx, ty, _ := layoutToggleSpot(x, y, w, h)
-	click(m, tx+1, ty+textTop, tea.MouseLeft)
+	click(m, tx+1, ty+m.boardTop(), tea.MouseLeft)
 	if o.Layout != layoutLeft || !strings.Contains(screenOf(m), "[◧]") {
 		t.Fatalf("toggle: layout %d", o.Layout)
 	}
 	for i := range len(octLayouts) {
-		press(m, "l")
+		press(m, "alt+l")
 		if s := screenOf(m); !strings.Contains(s, "["+octLayouts[o.Layout].icon+"]") {
 			t.Fatalf("layout %d (%d) icon missing", o.Layout, i)
 		}
@@ -576,7 +576,7 @@ func TestDesignCanvasMatchesCompositor(t *testing.T) {
 		for _, cam := range [][2]float64{{-2, -1}, {7.5, 3.25}, {-31, -9}, {13, 0}} {
 			for _, sel := range []int{-1, b.ID} {
 				d.zoom, d.camX, d.camY, d.sel, d.editing, d.drawn = zoom, cam[0], cam[1], sel, partNone, nil
-				w, h := m.width, m.textHeight()
+				w, h := m.width, m.boardH()
 				picturesDirect, middlesDirect = false, false
 				ref := lipgloss.NewCanvas(w, h)
 				ref.Compose(lipgloss.NewLayer(d.boardLayer(w, h)))
@@ -703,9 +703,13 @@ func TestDesignDelete(t *testing.T) {
 	d.dirty = true
 	d.save() // the board so far is where undo starts
 
-	// A structure, by Delete: gone with its link; Ctrl+Z brings both back.
+	// A structure, by X X: gone with its link; Ctrl+Z brings both back.
 	d.sel = aID
-	press(m, "delete")
+	press(m, "x")
+	if d.byID(aID) == nil {
+		t.Fatal("one X deleted it: it takes two")
+	}
+	press(m, "x")
 	if d.byID(aID) != nil || len(d.links) != 0 {
 		t.Fatalf("Delete: %d structures, %d links", len(d.octs), len(d.links))
 	}
@@ -720,10 +724,10 @@ func TestDesignDelete(t *testing.T) {
 	b = d.byID(bID)
 	x, y, w, h := d.rect(b)
 	dx, dy, ok := d.deleteSpot(b, x, y, w, h)
-	if !ok || screenCell(m, dx, dy+textTop) != "✕" {
-		t.Fatalf("no ✕ on the chosen structure (at %d,%d: %q)", dx, dy, screenCell(m, dx, dy+textTop))
+	if !ok || screenCell(m, dx, dy+m.boardTop()) != "✕" {
+		t.Fatalf("no ✕ on the chosen structure (at %d,%d: %q)", dx, dy, screenCell(m, dx, dy+m.boardTop()))
 	}
-	click(m, dx, dy+textTop, tea.MouseLeft)
+	click(m, dx, dy+m.boardTop(), tea.MouseLeft)
 	if d.byID(bID) != nil {
 		t.Fatal("the ✕ did not delete the structure")
 	}
@@ -736,17 +740,17 @@ func TestDesignDelete(t *testing.T) {
 	d.sel = -1
 	m.View()
 	lx, ly := -1, -1
-	for cell := range d.linkCells(m.width, m.textHeight()) {
+	for cell := range d.linkCells(m.width, m.boardH()) {
 		if d.hit(cell[0], cell[1]).o == nil {
 			lx, ly = cell[0], cell[1]
 			break
 		}
 	}
-	click(m, lx, ly+textTop, tea.MouseLeft)
+	click(m, lx, ly+m.boardTop(), tea.MouseLeft)
 	if d.selLink != 0 {
 		t.Fatalf("clicking the link at %d,%d did not choose it", lx, ly)
 	}
-	press(m, "backspace")
+	pressXX(m)
 	if len(d.links) != 0 || d.byID(aID) == nil || d.byID(bID) == nil {
 		t.Fatalf("Delete on a link: %d links, structures kept %v %v", len(d.links), d.byID(aID) != nil, d.byID(bID) != nil)
 	}
@@ -792,7 +796,7 @@ func TestDesignDelete(t *testing.T) {
 
 	// A structure holding things asks first; y deletes, Ctrl+Z brings it all back.
 	d.sel = cabID
-	press(m, "delete")
+	pressXX(m)
 	if d.byID(cabID) == nil || m.prompt != pConfirm {
 		t.Fatal("deleting a full cabinet did not ask")
 	}
@@ -815,10 +819,10 @@ func TestDesignDelete(t *testing.T) {
 	m.View()
 	ax, ay, _, _ := d.rect(a)
 	px, py, ok := d.pictureDeleteSpot(a, ax, ay)
-	if !ok || screenCell(m, px, py+textTop) != "✕" {
-		t.Fatalf("no ✕ on the chosen picture (at %d,%d: %q)", px, py, screenCell(m, px, py+textTop))
+	if !ok || screenCell(m, px, py+m.boardTop()) != "✕" {
+		t.Fatalf("no ✕ on the chosen picture (at %d,%d: %q)", px, py, screenCell(m, px, py+m.boardTop()))
 	}
-	click(m, px, py+textTop, tea.MouseLeft)
+	click(m, px, py+m.boardTop(), tea.MouseLeft)
 	if d.byID(aID) == nil || d.byID(aID).Image != "" {
 		t.Fatal("the picture's ✕ did not take out just the picture")
 	}
@@ -827,9 +831,9 @@ func TestDesignDelete(t *testing.T) {
 		t.Fatal("Ctrl+Z did not bring back the picture")
 	}
 	d.sel = aID
-	press(m, "shift+delete")
+	m.designDeletePicture(d.byID(aID)) // the ✕ on the picture
 	if d.byID(aID) == nil || d.byID(aID).Image != "" {
-		t.Fatal("Shift+Delete did not take out just the picture")
+		t.Fatal("the picture's ✕ did not take out just the picture")
 	}
 
 	// A thing in an octagon's open drawer, by the ✕ on its row.
@@ -900,7 +904,7 @@ func TestDesignUndoRedo(t *testing.T) {
 		t.Fatalf("Ctrl+Y did not bring back the structure and its title: %+v", got)
 	}
 	d.sel = id
-	press(m, "enter") // write in its header again
+	press(m, "tab") // write in its header again
 	typeKeys(m, " B")
 	press(m, "esc")
 	if d.byID(id).Header != "Plan B" {
@@ -1156,7 +1160,7 @@ func TestDesignDragAndDrop(t *testing.T) {
 	if picO == nil || page == nil || !strings.Contains(page.Body, "Line two") || page.Header != "my notes.txt" {
 		t.Fatalf("dropped: picture %v, page %+v", picO != nil, page)
 	}
-	wx, wy := d.world(40, 12-textTop)
+	wx, wy := d.world(40, 12-m.boardTop())
 	if cx := picO.X + picO.W/2; abs(cx-int(wx)) > 1 || abs(picO.Y+picO.H/2-int(wy)) > 1 {
 		t.Fatalf("the picture's octagon is at %d,%d, not where it was dropped (%v,%v)", picO.X, picO.Y, wx, wy)
 	}
@@ -1168,12 +1172,12 @@ func TestDesignDragAndDrop(t *testing.T) {
 	d.sel, d.editing = -1, partNone
 	m.View()
 	ox, oy, _, _ := d.rect(oct)
-	dndSend(m, fmt.Sprintf("t=m:x=%d:y=%d:o=3;text/uri-list", ox+5, oy+5+textTop))
+	dndSend(m, fmt.Sprintf("t=m:x=%d:y=%d:o=3;text/uri-list", ox+5, oy+5+m.boardTop()))
 	if d.dropOn != oct.ID {
 		t.Fatal("the octagon under the drag did not light up")
 	}
 	n = len(d.octs)
-	dndDrop(t, m, ox+5, oy+5+textTop, "text/uri-list", "file://"+pic+"\r\n")
+	dndDrop(t, m, ox+5, oy+5+m.boardTop(), "text/uri-list", "file://"+pic+"\r\n")
 	if oct.Image == "" || len(d.octs) != n {
 		t.Fatalf("a picture dropped on an octagon: image %q, %d new structures", oct.Image, len(d.octs)-n)
 	}
@@ -1183,7 +1187,7 @@ func TestDesignDragAndDrop(t *testing.T) {
 	cab.X, cab.Y, cab.Header = 50, 2, "Archive"
 	d.sel, d.editing = -1, partNone
 	cx, cy, _, _ := d.rect(cab)
-	dndDrop(t, m, cx+3, cy+1+textTop, "text/uri-list", "file://"+txt+"\r\n")
+	dndDrop(t, m, cx+3, cy+1+m.boardTop(), "text/uri-list", "file://"+txt+"\r\n")
 	if len(cab.Items) != 1 || cab.Items[0].Kind != kPage {
 		t.Fatalf("a text file dropped on a cabinet: %d things in it", len(cab.Items))
 	}
@@ -1419,7 +1423,7 @@ func TestDesignKeyboard(t *testing.T) {
 	m := designTest(t)
 	d := m.ds()
 	d.camX, d.camY, d.zoom = 0, 0, designZoom100
-	w, h := m.width, m.textHeight()
+	w, h := m.width, m.boardH()
 	left := d.newKind(kOct, 0, 0)
 	left.X, left.Y, left.W, left.H, left.Header = w/2-13, h/2-6, 26, 12, "Middle"
 	right := d.newKind(kPage, 0, 0)
@@ -1441,10 +1445,15 @@ func TestDesignKeyboard(t *testing.T) {
 		t.Fatalf("after moving the view right, the page in the middle is not chosen (chosen %d)", d.sel)
 	}
 
-	// E writes in it: a page's text.
+	// Tab writes in it: a page's title, then (Tab again) its text.
 	press(m, "e")
+	if d.editing != partNone {
+		t.Fatal("E started writing: Design mode has no E now")
+	}
+	press(m, "tab")
+	press(m, "tab")
 	if d.editing != partBody {
-		t.Fatalf("E on a page: writing in part %d", d.editing)
+		t.Fatalf("Tab Tab on a page: writing in part %d", d.editing)
 	}
 	typeKeys(m, "Hello")
 	press(m, "esc")
@@ -1458,9 +1467,9 @@ func TestDesignKeyboard(t *testing.T) {
 	if d.sel != left.ID {
 		t.Fatalf("back left, the octagon is not chosen (chosen %d)", d.sel)
 	}
-	press(m, "e")
+	press(m, "tab")
 	if d.editing != partHeader {
-		t.Fatalf("E on an octagon: writing in part %d", d.editing)
+		t.Fatalf("Tab on an octagon: writing in part %d", d.editing)
 	}
 	press(m, "esc")
 
@@ -1472,10 +1481,14 @@ func TestDesignKeyboard(t *testing.T) {
 		t.Fatalf("Alt + arrows: structure moved %d, view moved %v", left.X-x, d.camX-cam)
 	}
 
-	// R is the rubber now.
+	// R does nothing now; the rubber is on the toolbar.
 	press(m, "r")
+	if d.pen == rubber {
+		t.Fatal("R took the rubber: Design mode has no R now")
+	}
+	toolClick(m, "pen8")
 	if d.pen != rubber {
-		t.Fatalf("R: pen %d, want the rubber", d.pen)
+		t.Fatalf("⌫: pen %d, want the rubber", d.pen)
 	}
 	press(m, "esc")
 
@@ -1623,8 +1636,8 @@ func TestDesignFitToContents(t *testing.T) {
 		t.Fatalf("a long text did not make it taller: %d → %d", h0, o.H)
 	}
 	m.View()
-	if x, y, w, h := d.rect(o); x < 0 || y < 0 || x+w > m.width || y+h > m.textHeight() {
-		t.Fatalf("it grew off the screen: %d,%d %d×%d on a %d×%d screen", x, y, w, h, m.width, m.textHeight())
+	if x, y, w, h := d.rect(o); x < 0 || y < 0 || x+w > m.width || y+h > m.boardH() {
+		t.Fatalf("it grew off the screen: %d,%d %d×%d on a %d×%d screen", x, y, w, h, m.width, m.boardH())
 	}
 	if s := screenOf(m); !strings.Contains(s, "words that go on") || strings.Contains(s, "…") {
 		t.Fatalf("not all of the text shows:\n%s", s)
@@ -1633,7 +1646,7 @@ func TestDesignFitToContents(t *testing.T) {
 
 	// F: fitted exactly, smaller too, once the text is short.
 	o.Body = "Short"
-	press(m, "f")
+	m.designFit()
 	if o.W >= fitMaxW || o.H != octMinH {
 		t.Fatalf("F after the text got short: %d × %d", o.W, o.H)
 	}
@@ -1656,7 +1669,7 @@ func TestDesignFitToContents(t *testing.T) {
 	pic := d.newKind(kOct, 0, 0)
 	pic.Image, pic.Layout = filepath.Base(writePNG(t, d.imagesDir())), layoutPicture
 	d.sel, d.editing = pic.ID, partNone
-	press(m, "f")
+	m.designFit()
 	cw, rows := pic.W-4, pic.H-6
 	if want := cw * 20 / 40 / 2; abs(rows-want) > 1 {
 		t.Fatalf("picture fitted to %d rows for %d columns, want about %d", rows, cw, want)
@@ -1788,15 +1801,116 @@ func TestDesignWheelZooms(t *testing.T) {
 	d.sel, d.editing = pg.ID, partNone
 	m.View()
 	z := d.zoom
-	m.Update(tea.MouseWheelMsg(tea.Mouse{X: 20, Y: 6 + textTop, Button: tea.MouseWheelUp}))
+	m.Update(tea.MouseWheelMsg(tea.Mouse{X: 20, Y: 6 + m.boardTop(), Button: tea.MouseWheelUp}))
 	if d.zoom != z+1 || pg.Scroll != 0 {
 		t.Fatalf("the wheel over the chosen page: zoom %d (want %d), scroll %d", d.zoom, z+1, pg.Scroll)
 	}
-	m.Update(tea.MouseWheelMsg(tea.Mouse{X: 20, Y: 6 + textTop, Button: tea.MouseWheelDown}))
+	m.Update(tea.MouseWheelMsg(tea.Mouse{X: 20, Y: 6 + m.boardTop(), Button: tea.MouseWheelDown}))
 	m.View()
 	x, y, _, _ := d.rect(pg)
-	m.Update(tea.MouseWheelMsg(tea.Mouse{X: x + 5, Y: y + 5 + textTop, Button: tea.MouseWheelDown, Mod: tea.ModShift}))
+	m.Update(tea.MouseWheelMsg(tea.Mouse{X: x + 5, Y: y + 5 + m.boardTop(), Button: tea.MouseWheelDown, Mod: tea.ModShift}))
 	if pg.Scroll == 0 || d.zoom != z {
 		t.Fatalf("Shift + wheel over the chosen page: scroll %d, zoom %d", pg.Scroll, d.zoom)
+	}
+}
+
+// The keys Design mode keeps: Alt+N then a letter places, Alt+L changes a
+// shape's layout, X twice deletes, and each is one undo step. The top bar
+// sits over the board.
+func TestDesignShortcutsKept(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	d.dirty = true
+	d.save()
+
+	if s := strings.Split(screenOf(m), "\n")[textTop]; !strings.Contains(s, "Design board") {
+		t.Fatalf("no top bar over the board: %q", s)
+	}
+
+	// img on the toolbar asks for a picture's path (the I key is gone).
+	toolClick(m, "file")
+	if m.prompt != pDesignFile {
+		t.Fatal("img on the toolbar did not ask for a file")
+	}
+	m.closePrompt()
+
+	// At 100 columns (the README's size) the toolbar still has undo and redo.
+	m.width = 100
+	m.View()
+	acts := map[string]bool{}
+	for _, sp := range d.toolbar {
+		if sp.x1 <= m.width {
+			acts[sp.act] = true
+		}
+	}
+	if !acts["undo"] || !acts["redo"] || !acts["file"] {
+		t.Fatalf("toolbar cut short at 100 columns: %v", acts)
+	}
+
+	for _, kk := range [][2]string{{"p", kPage}, {"n", kNote}, {"c", kCabinet}, {"s", kOct}} {
+		key, kind := kk[0], kk[1]
+		n := len(d.octs)
+		placeKey(m, key)
+		press(m, "esc")
+		if len(d.octs) != n+1 || d.octs[n].Kind != kind {
+			t.Fatalf("Alt+N, %s: %d structures, want a new %q", key, len(d.octs), kind)
+		}
+	}
+	// The old one-letter keys place nothing now, and no other letter after Alt+N.
+	n := len(d.octs)
+	for _, k := range []string{"p", "n", "s", "k", "c", "d", "i", "o", "f", "e"} {
+		press(m, k)
+	}
+	press(m, "alt+n")
+	press(m, "q")
+	if len(d.octs) != n || d.placing {
+		t.Fatalf("stray keys placed something: %d structures, want %d", len(d.octs), n)
+	}
+
+	// Ctrl+Z takes the last placed shape off; Ctrl+Y puts it back.
+	shape := d.octs[n-1]
+	press(m, "ctrl+z")
+	if d.byID(shape.ID) != nil {
+		t.Fatal("Ctrl+Z did not undo placing the shape")
+	}
+	press(m, "ctrl+y")
+	if d.byID(shape.ID) == nil {
+		t.Fatal("Ctrl+Y did not redo placing the shape")
+	}
+
+	// Alt+L on a shape changes its layout; Alt+Shift+L goes back.
+	shape = d.byID(shape.ID) // undo and redo put back a copy
+	d.sel = shape.ID
+	l := shape.Layout
+	press(m, "alt+l")
+	if shape.Layout == l {
+		t.Fatal("Alt+L did not change the layout")
+	}
+	press(m, "alt+shift+l")
+	if shape.Layout != l {
+		t.Fatalf("Alt+Shift+L: layout %d, want %d back", shape.Layout, l)
+	}
+
+	// X, a pause, X: nothing. X X: gone, and Ctrl+Z brings it back.
+	press(m, "x")
+	d.xAt = time.Now().Add(-2 * xTwice)
+	press(m, "x")
+	if d.byID(shape.ID) == nil {
+		t.Fatal("two slow X presses deleted it")
+	}
+	press(m, "esc")
+	d.sel = shape.ID
+	pressXX(m)
+	if d.byID(shape.ID) != nil {
+		t.Fatal("X X did not delete the chosen shape")
+	}
+	press(m, "ctrl+z")
+	if d.byID(shape.ID) == nil {
+		t.Fatal("Ctrl+Z did not bring back the deleted shape")
+	}
+	press(m, "ctrl+y")
+	if d.byID(shape.ID) != nil {
+		t.Fatal("Ctrl+Y did not delete it again")
 	}
 }

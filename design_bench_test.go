@@ -41,7 +41,7 @@ func designBenchModel(b *testing.B) (*Model, *dOct) {
 
 func BenchmarkDesignPageScroll(b *testing.B) {
 	m, pg := designBenchModel(b)
-	x, y := pg.X+10, pg.Y+10+textTop
+	x, y := pg.X+10, pg.Y+10+m.boardTop()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		btn := tea.MouseWheelDown
@@ -70,10 +70,10 @@ func BenchmarkDesignZoomScroll(b *testing.B) {
 // emptyCell is a board cell with nothing on it.
 func emptyCell(b *testing.B, m *Model) (int, int) {
 	d := m.ds()
-	for y := 2; y < m.textHeight()-2; y++ {
+	for y := 2; y < m.boardH()-2; y++ {
 		for x := 2; x < m.width-2; x++ {
 			if d.hit(x, y).o == nil {
-				return x, y + textTop
+				return x, y + m.boardTop()
 			}
 		}
 	}
@@ -109,7 +109,7 @@ func BenchmarkDesignMove(b *testing.B) {
 	m, _ := designBenchModel(b)
 	d := m.ds()
 	x, y, _, _ := d.rect(d.octs[6])
-	benchDrag(b, m, x+4, y+4+textTop)
+	benchDrag(b, m, x+4, y+4+m.boardTop())
 }
 
 func BenchmarkDesignTyping(b *testing.B) {
@@ -211,7 +211,7 @@ func TestDesignPicTerminalBytes(t *testing.T) {
 		done := make(chan struct{})
 		go func() { p.Run(); close(done) }()
 		time.Sleep(300 * time.Millisecond)
-		x, y := 2, 30+textTop
+		x, y := 2, 30+m.boardTop()
 		start, n0 := time.Now(), n
 		p.Send(tea.MouseClickMsg(tea.Mouse{X: x, Y: y, Button: tea.MouseLeft}))
 		frames := 0
@@ -310,7 +310,7 @@ func BenchmarkDesignOwnBoardWheel(b *testing.B) {
 				if i%4 >= 2 {
 					btn = tea.MouseWheelDown
 				}
-				m.Update(tea.MouseWheelMsg(tea.Mouse{X: 95, Y: 25 + textTop, Button: btn}))
+				m.Update(tea.MouseWheelMsg(tea.Mouse{X: 95, Y: 25 + m.boardTop(), Button: btn}))
 				_ = m.View()
 			}
 		})
@@ -551,7 +551,7 @@ func BenchmarkBigBoardZoom(b *testing.B) {
 				if i%4 >= 2 {
 					btn = tea.MouseWheelDown
 				}
-				m.Update(tea.MouseWheelMsg(tea.Mouse{X: 120, Y: 32 + textTop, Button: btn}))
+				m.Update(tea.MouseWheelMsg(tea.Mouse{X: 120, Y: 32 + m.boardTop(), Button: btn}))
 				_ = m.View()
 			}
 		})
@@ -645,7 +645,7 @@ func BenchmarkHuge(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			s := spots[i%len(spots)]
-			click(nil2(m), s[0], s[1]+textTop, tea.MouseLeft)
+			click(nil2(m), s[0], s[1]+m.boardTop(), tea.MouseLeft)
 			m.View()
 		}
 	})
@@ -656,7 +656,7 @@ func BenchmarkHuge(b *testing.B) {
 		m.View()
 		for _, o := range d.octs {
 			if x, y, w, h := d.rect(o); x > 40 && y > 10 && x+w < 200 && y+h < 50 && o.Kind == kOct {
-				benchDrag(b, m, x+w/2, y+h/2+textTop)
+				benchDrag(b, m, x+w/2, y+h/2+m.boardTop())
 				return
 			}
 		}
@@ -686,7 +686,7 @@ func BenchmarkHuge(b *testing.B) {
 			if i%4 >= 2 {
 				btn = tea.MouseWheelDown
 			}
-			m.Update(tea.MouseWheelMsg(tea.Mouse{X: 120, Y: 32 + textTop, Button: btn}))
+			m.Update(tea.MouseWheelMsg(tea.Mouse{X: 120, Y: 32 + m.boardTop(), Button: btn}))
 			m.View()
 		}
 	})

@@ -4,9 +4,9 @@ package main
 //
 // Everything on the board can be deleted: a structure of any kind (with what
 // its drawer holds), a link, a thing in a drawer or a cabinet, an octagon's
-// picture. Delete (or Backspace) deletes what is chosen and the ✕ on it does
+// picture. X pressed twice deletes what is chosen and the ✕ on it does
 // the same with the mouse; Ctrl+Z brings it back, like any other step
-// (design_undo.go). Pen ink has its own rubber (R, or a right-drag).
+// (design_undo.go). Pen ink has its own rubber (⌫ on the toolbar, or a right-drag).
 
 import (
 	"fmt"
@@ -17,7 +17,7 @@ import (
 
 // deleteSpot is where the chosen structure's ✕ is: on its top edge, near the
 // right corner (left of nothing else drawn there). Small ones have none:
-// Delete still deletes them.
+// X X still deletes them.
 func (d *designState) deleteSpot(o *dOct, x, y, w, h int) (int, int, bool) {
 	if d.sel != o.ID || d.linkMode || w < 8 || h < 3 {
 		return 0, 0, false

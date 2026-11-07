@@ -12,7 +12,7 @@ import (
 //	Shift     highlighter   the arrows highlight
 //	Ctrl      position      the arrows move the cursor one character
 //	Alt       line          Left / Right: the line's start / end; Up / Down: a block
-//	Alt+Shift movement      the arrows move the highlighted text, or the word
+//	Alt+Shift movement      Up / Down move the lines; Left / Right dedent / indent
 //
 // kitty reports Shift, Ctrl and Alt going down and up on their own (see
 // altgr.go), so the word changes the moment the key is pressed. Other

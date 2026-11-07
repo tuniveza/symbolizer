@@ -19,6 +19,24 @@ func designTest(t *testing.T) *Model {
 	return m
 }
 
+// toolClick clicks the toolbar spot that does act.
+func toolClick(m *Model, act string) {
+	m.View()
+	for _, t := range m.ds().toolbar {
+		if t.act == act {
+			click(m, t.x0, m.height-3, tea.MouseLeft)
+			return
+		}
+	}
+	panic("no toolbar spot " + act)
+}
+
+// pressXX presses X twice: it deletes what is chosen.
+func pressXX(m *Model) { press(m, "x"); press(m, "x") }
+
+// placeKey presses Alt+N, then key: p page, n note, c cabinet, s shape.
+func placeKey(m *Model, key string) { press(m, "alt+n"); press(m, key) }
+
 func click(m *Model, x, y int, b tea.MouseButton) {
 	m.Update(tea.MouseClickMsg(tea.Mouse{X: x, Y: y, Button: b}))
 	m.Update(tea.MouseReleaseMsg(tea.Mouse{X: x, Y: y, Button: b}))
@@ -70,13 +88,13 @@ func TestDesignBoard(t *testing.T) {
 	x, y, w, h := d.rect(a)
 	ox, oy := a.X, a.Y
 	time.Sleep(450 * time.Millisecond) // not a double-click
-	dragTo(m, x+5, y+textTop+3, x+15, y+textTop+5, tea.MouseLeft)
+	dragTo(m, x+5, y+m.boardTop()+3, x+15, y+m.boardTop()+5, tea.MouseLeft)
 	if a.X != ox+10 || a.Y != oy+2 {
 		t.Fatalf("move: %d,%d want %d,%d", a.X, a.Y, ox+10, oy+2)
 	}
 	x, y, w, h = d.rect(a)
 	ow, oh := a.W, a.H
-	dragTo(m, x+w-1, y+h-1+textTop, x+w+5, y+h+2+textTop, tea.MouseLeft)
+	dragTo(m, x+w-1, y+h-1+m.boardTop(), x+w+5, y+h+2+m.boardTop(), tea.MouseLeft)
 	if a.W != ow+6 || a.H != oh+3 {
 		t.Fatalf("resize: %dx%d want %dx%d", a.W, a.H, ow+6, oh+3)
 	}
@@ -91,21 +109,22 @@ func TestDesignBoard(t *testing.T) {
 		t.Fatal("two structures got the same colour")
 	}
 	m.Update(tea.KeyPressMsg(tea.Key{Code: 'ł', Text: "ł"}))
-	if !d.linkMode {
-		t.Fatal("AltGr+L did not start link mode")
+	if d.linkMode || m.learn != nil {
+		t.Fatal("AltGr+L did something in Design mode: it has no shortcut there now")
 	}
-	if m.learn != nil {
-		t.Fatal("AltGr+L opened Learn in Design mode")
+	toolClick(m, "link")
+	if !d.linkMode {
+		t.Fatal("⛓ link on the toolbar did not start link mode")
 	}
 	ax, ay, _, _ := d.rect(a)
 	bx, by, _, _ := d.rect(b)
 	time.Sleep(450 * time.Millisecond)
-	click(m, bx+6, by+textTop+3, tea.MouseLeft) // b chosen (it was selected: click again unchooses)
+	click(m, bx+6, by+m.boardTop()+3, tea.MouseLeft) // b chosen (it was selected: click again unchooses)
 	if d.linkFrom == b.ID {
-		click(m, ax+6, ay+textTop+3, tea.MouseLeft)
+		click(m, ax+6, ay+m.boardTop()+3, tea.MouseLeft)
 	} else {
-		click(m, bx+6, by+textTop+3, tea.MouseLeft)
-		click(m, ax+6, ay+textTop+3, tea.MouseLeft)
+		click(m, bx+6, by+m.boardTop()+3, tea.MouseLeft)
+		click(m, ax+6, ay+m.boardTop()+3, tea.MouseLeft)
 	}
 	if len(d.links) != 1 {
 		t.Fatalf("links: %v", d.links)
@@ -143,9 +162,9 @@ func TestDesignBoard(t *testing.T) {
 	if len(d.marks) != 6 {
 		t.Fatalf("after rubbing out: %d cells, want 6", len(d.marks))
 	}
-	press(m, "o")
+	toolClick(m, "over")
 	if !d.over {
-		t.Fatal("O did not switch to over")
+		t.Fatal("over/under on the toolbar did not switch to over")
 	}
 	press(m, "esc")
 
@@ -159,9 +178,9 @@ func TestDesignBoard(t *testing.T) {
 		t.Fatalf("loaded: %d structures, %d links, %d marks", len(again.octs), len(again.links), len(again.marks))
 	}
 
-	// Delete removes a structure and its links.
+	// X twice removes a structure and its links.
 	d.sel = a.ID
-	press(m, "delete")
+	pressXX(m)
 	if len(d.octs) != 1 || len(d.links) != 0 {
 		t.Fatalf("delete: %d structures, %d links", len(d.octs), len(d.links))
 	}
