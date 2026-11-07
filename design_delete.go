@@ -6,7 +6,7 @@ package main
 // its drawer holds), a link, a thing in a drawer or a cabinet, an octagon's
 // picture. Delete (or Backspace) deletes what is chosen and the ✕ on it does
 // the same with the mouse; Ctrl+Z brings it back, like any other step
-// (design_undo.go). Pen ink has its own rubber (E, or a right-drag).
+// (design_undo.go). Pen ink has its own rubber (R, or a right-drag).
 
 import (
 	"fmt"

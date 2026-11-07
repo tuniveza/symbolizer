@@ -30,7 +30,9 @@ import (
 // Mouse: double-click places a structure (or writes in one), left-drag moves
 // it, its ◢ corner resizes it, middle-drag (or left-drag on the empty board)
 // moves the board, the wheel zooms, right-drag rubs out the pen.
-// Keys: AltGr+L link mode, 1–8 pen, E rubber, O over/under, + − 0 zoom.
+// Keys: AltGr+L link mode, 1–8 pen, R rubber, O over/under, + − 0 zoom,
+// arrows move the view (and choose), E writes in the chosen structure,
+// Alt + arrows move it (design_keys.go).
 //
 // More kinds of structure (design_paper.go): pages (text of any length),
 // notes (one page of text), and cabinets that keep stacks of pages, books,
@@ -685,14 +687,14 @@ func (m *Model) designKey(k tea.Key) tea.Cmd {
 		}
 	case "1", "2", "3", "4", "5", "6", "7", "8":
 		m.designPen(int(name[0] - '1'))
-	case "e":
+	case "r":
 		m.designPen(rubber)
 	case "o":
 		d.over = !d.over
 		m.say("Pen colours " + map[bool]string{true: "over the text: it shows through, tinted.", false: "under the text: the letters stay as they are."}[d.over])
-	case "+", "=", "ctrl+=", "shift+=":
+	case "+", "=", "ctrl+=", "shift+=", "plus", "kp+":
 		d.zoomTo(d.zoom+1, cx, cy)
-	case "-", "ctrl+-":
+	case "-", "ctrl+-", "minus", "kp-":
 		d.zoomTo(d.zoom-1, cx, cy)
 	case "0":
 		d.zoomTo(designZoom100, cx, cy)
@@ -742,21 +744,24 @@ func (m *Model) designKey(k tea.Key) tea.Cmd {
 		}
 
 	case "left", "right", "up", "down", "shift+left", "shift+right", "shift+up", "shift+down":
-		step := 1
-		if strings.HasPrefix(name, "shift+") {
-			step = 4
-		}
-		v := map[string][2]int{"left": {-1, 0}, "right": {1, 0}, "up": {0, -1}, "down": {0, 1}}[strings.TrimPrefix(name, "shift+")]
-		dx, dy := v[0], v[1]
+		// The arrows move the view; the structure nearest the middle of
+		// the screen is chosen as it goes by.
+		dx, dy, step := arrowStep(name)
+		z := d.z()
+		d.camX += float64(dx*step*4) / z
+		d.camY += float64(dy*step*2) / z
+		m.designChooseMiddle()
+		d.dirty = true
+	case "alt+left", "alt+right", "alt+up", "alt+down", "alt+shift+left", "alt+shift+right", "alt+shift+up", "alt+shift+down":
+		// Alt + arrows move the chosen structure (Alt + Shift: further).
 		if o := d.byID(d.sel); o != nil {
+			dx, dy, step := arrowStep(strings.TrimPrefix(name, "alt+"))
 			o.X += dx * step
 			o.Y += dy * step
-		} else {
-			z := d.z()
-			d.camX += float64(dx*step*4) / z
-			d.camY += float64(dy*step*2) / z
+			d.dirty = true
 		}
-		d.dirty = true
+	case "e":
+		m.designEdit()
 	}
 	return nil
 }
@@ -2157,7 +2162,7 @@ func (m *Model) designStatus() string {
 	case d.sel >= 0 && d.byID(d.sel) != nil:
 		hint = selHint(d.byID(d.sel))
 	default:
-		hint = "Double-click: new " + kindNames[d.place] + " · P page · S note · K cabinet · I image · wheel zooms · 1–8 pen · AltGr+L link · F1 keys"
+		hint = "Double-click: new " + kindNames[d.place] + " · arrows look around · E writes · + − zoom · P page · S note · K cabinet · I image · 1–8 pen · AltGr+L link · AltGr+K keys"
 	}
 	style := stStatus
 	if d.saveErr != "" {

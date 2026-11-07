@@ -402,6 +402,8 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			return m.openThemes()
 		case "ŧ", "altgr+t":
 			return m.syTerm()
+		case "ĸ", "altgr+k":
+			return m.openKeys() // help.go
 		case "ł", "altgr+l":
 			if m.inDesign() && m.learn == nil && !m.help {
 				m.designLinkToggle() // in Design mode AltGr+L is link mode (design.go)

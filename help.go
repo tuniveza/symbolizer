@@ -115,9 +115,13 @@ var helpGroups = []helpGroup{
 		{"Drag · its ◢ corner", "move a structure · resize it (double-click one to write in it)"},
 		{"Middle-drag · wheel", "move the board (left-drag on empty board too) · zoom in and out"},
 		{"AltGr + L  (ł)", "link mode: click a structure, then each one to attach (click again to detach)"},
-		{"1–8 · E · O", "highlighter pen colours · rubber · under the text or over it (text shows through)"},
+		{"Arrows (Shift: further)", "move the view; the structure nearest the middle of the screen is chosen as you go"},
+		{"E", "write in the chosen structure (its text, or an octagon's header) · Tab: next part · Esc: done"},
+		{"Alt + arrows (Alt + Shift)", "move the chosen structure (further)"},
+		{"+ · − · 0", "zoom the view in · out · back to 100% (the keypad's + and − too)"},
+		{"1–8 · R · O", "highlighter pen colours · rubber · under the text or over it (text shows through)"},
 		{"Right-drag", "rub out the pen"},
-		{"Delete or ✕ · C · + − 0 · arrows", "delete the chosen structure (or link) · new colour · zoom · move it (or the board)"},
+		{"Delete or ✕ · C", "delete the chosen structure (or link) · new colour"},
 		{"Click a link · Delete", "choose the link · delete it"},
 		{"✕ on a drawer or cabinet row", "delete that page, note, book, slide or drawing"},
 		{"✕ on a picture · Shift+Delete", "take the picture out of its octagon (the structure stays)"},
@@ -216,9 +220,13 @@ var helpGroups = []helpGroup{
 	}},
 }
 
+// helpIntro is how many lines come before the first group (helpText).
+const helpIntro = 4
+
 func (m *Model) helpText() []string {
 	var out []string
 	out = append(out, glowText("◆ Symbolizer", cBG)+stHelpText.Render("  ·  keys"))
+	out = append(out, stHelpText.Render("F1 or AltGr + K opens this page; AltGr + K opens it at the keys of the mode you are in."))
 	out = append(out, stHelpNew.Render("Groups marked  ✦ try me  were added by Claude. Keep the ones you like."))
 	out = append(out, "")
 	for _, g := range helpGroups {
@@ -234,8 +242,34 @@ func (m *Model) helpText() []string {
 		}
 		out = append(out, "")
 	}
-	out = append(out, stHelpNew.Render("Esc, F1 or Q closes this page.  Up / Down scrolls."))
+	out = append(out, stHelpNew.Render("Esc, F1, AltGr + K or Q closes this page.  Up / Down scrolls."))
 	return out
+}
+
+// helpLineOf is the line of helpText where the group called title starts, or 0.
+func helpLineOf(title string) int {
+	n := helpIntro
+	for _, g := range helpGroups {
+		if g.title == title {
+			return n
+		}
+		n += 1 + len(g.lines) + 1
+	}
+	return 0
+}
+
+// openKeys opens the keys page at the keys of the mode in use (AltGr + K),
+// or closes it when it is open.
+func (m *Model) openKeys() tea.Cmd {
+	if m.help {
+		m.help = false
+		return nil
+	}
+	m.help, m.helpTop = true, 0
+	if m.mode > 0 && m.mode < len(modes) {
+		m.helpTop = helpLineOf(modes[m.mode].name + " mode")
+	}
+	return nil
 }
 
 func (m *Model) drawHelp(sb *strings.Builder) {

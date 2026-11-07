@@ -873,8 +873,8 @@ func TestDesignUndoRedo(t *testing.T) {
 
 	// A move with the arrows: one step per press.
 	d.sel = id
-	press(m, "right")
-	press(m, "right")
+	press(m, "alt+right")
+	press(m, "alt+right")
 	x := d.byID(id).X
 
 	// Looking around is not a step.
@@ -918,7 +918,7 @@ func TestDesignUndoRedo(t *testing.T) {
 	// A new change ends the redo.
 	press(m, "ctrl+z")
 	d.sel = id
-	press(m, "down")
+	press(m, "alt+down")
 	n := len(d.redo)
 	press(m, "ctrl+y")
 	if n != 0 || d.byID(id).Header != "Plan" {
@@ -1409,5 +1409,112 @@ func TestDesignDropWhileWriting(t *testing.T) {
 	dndRun(m, m.update(tea.PasteMsg{Content: "just words"}))
 	if !strings.HasSuffix(pg.Body, "just words") {
 		t.Fatalf("pasted words: %q", pg.Body)
+	}
+}
+
+// The board by keyboard: the arrows move the view and choose what is in
+// the middle, E writes in it, Alt + arrows move it, R is the rubber, + and
+// - (and the keypad's) zoom, and AltGr + K shows the keys.
+func TestDesignKeyboard(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	w, h := m.width, m.textHeight()
+	left := d.newKind(kOct, 0, 0)
+	left.X, left.Y, left.W, left.H, left.Header = w/2-13, h/2-6, 26, 12, "Middle"
+	right := d.newKind(kPage, 0, 0)
+	right.X, right.Y, right.W, right.H, right.Header = w/2+60, h/2-5, 24, 10, "Far right"
+	d.sel, d.editing = -1, partNone
+
+	// An arrow moves the view (not a structure) and chooses the one in the middle.
+	press(m, "right")
+	if d.camX <= 0 || left.X != w/2-13 {
+		t.Fatalf("Right: view at %v, structure at %d", d.camX, left.X)
+	}
+	if d.sel != left.ID {
+		t.Fatalf("Right did not choose the structure in the middle (chosen %d)", d.sel)
+	}
+	for i := 0; i < 4; i++ { // the view goes right (16 cells a press) until the page is in the middle
+		press(m, "shift+right")
+	}
+	if d.sel != right.ID {
+		t.Fatalf("after moving the view right, the page in the middle is not chosen (chosen %d)", d.sel)
+	}
+
+	// E writes in it: a page's text.
+	press(m, "e")
+	if d.editing != partBody {
+		t.Fatalf("E on a page: writing in part %d", d.editing)
+	}
+	typeKeys(m, "Hello")
+	press(m, "esc")
+	if right.Body != "Hello" {
+		t.Fatalf("written: %q", right.Body)
+	}
+	// An octagon: its header.
+	for i := 0; i < 4; i++ {
+		press(m, "shift+left")
+	}
+	if d.sel != left.ID {
+		t.Fatalf("back left, the octagon is not chosen (chosen %d)", d.sel)
+	}
+	press(m, "e")
+	if d.editing != partHeader {
+		t.Fatalf("E on an octagon: writing in part %d", d.editing)
+	}
+	press(m, "esc")
+
+	// Alt + arrows move the chosen structure, not the view.
+	x, cam := left.X, d.camX
+	press(m, "alt+right")
+	press(m, "alt+shift+right")
+	if left.X != x+5 || d.camX != cam {
+		t.Fatalf("Alt + arrows: structure moved %d, view moved %v", left.X-x, d.camX-cam)
+	}
+
+	// R is the rubber now.
+	press(m, "r")
+	if d.pen != rubber {
+		t.Fatalf("R: pen %d, want the rubber", d.pen)
+	}
+	press(m, "esc")
+
+	// + and - zoom, the keypad's too.
+	z := d.zoom
+	press(m, "=")
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyKpPlus}))
+	if d.zoom != z+2 {
+		t.Fatalf("+ and keypad +: zoom %d, want %d", d.zoom, z+2)
+	}
+	press(m, "-")
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyKpMinus}))
+	if d.zoom != z {
+		t.Fatalf("- and keypad -: zoom %d, want %d", d.zoom, z)
+	}
+
+	// AltGr + K: the keys, at Design mode's; again closes them.
+	m.Update(tea.KeyPressMsg(tea.Key{Code: 'ĸ', Text: "ĸ"}))
+	if !m.help || m.helpTop != helpLineOf("Design mode") || helpLineOf("Design mode") == 0 {
+		t.Fatalf("AltGr + K: help %v at line %d, Design mode's keys at %d", m.help, m.helpTop, helpLineOf("Design mode"))
+	}
+	if s := screenOf(m); !strings.Contains(s, "Design mode") || !strings.Contains(s, "move the view") {
+		t.Fatalf("the keys page does not show Design mode's keys:\n%s", s)
+	}
+	m.Update(tea.KeyPressMsg(tea.Key{Code: 'ĸ', Text: "ĸ"}))
+	if m.help {
+		t.Fatal("AltGr + K again did not close the keys")
+	}
+}
+
+// AltGr + K in Text mode opens the keys at the top.
+func TestKeysPageInText(t *testing.T) {
+	m := newTest(t, "hello")
+	m.Update(tea.KeyPressMsg(tea.Key{Code: 'ĸ', Text: "ĸ"}))
+	if !m.help || m.helpTop != 0 {
+		t.Fatalf("AltGr + K in Text mode: help %v at %d", m.help, m.helpTop)
+	}
+	press(m, "esc")
+	if m.help || string(m.buf.Lines[0]) != "hello" {
+		t.Fatal("Esc did not close the keys, or the text changed")
 	}
 }

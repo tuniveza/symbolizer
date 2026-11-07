@@ -30,7 +30,7 @@ Embers on charcoal. It saves by itself. Every key is meant for your hands.
 - **Nothing to lose.** Every change saves itself a moment later. Text with no name is kept as a **session**.
 - **Keys that say what they do.** Hold Shift, Ctrl or Alt and the status bar tells you what the arrows will do.
 - **More than one kind of work.** Text, Diary and Design work today. Slides, Book and Draw are on the way.
-- **Design mode.** A board made of text: octagons with pictures and six layouts, pages, notes, cabinets and drawers, links and a highlighter pen. [See it below](#-design-mode).
+- **Design mode.** A board made of text: octagons with pictures and six layouts, pages, notes, cabinets and drawers, links and a highlighter pen. Drag files onto it, delete anything, undo and redo, and move around it all by keyboard. Fast with thousands of elements. [See it below](#-design-mode).
 
 ## ✦ Install
 
@@ -166,7 +166,9 @@ Everything on it is drawn with letters, kept in `~/.local/share/symbolizer/desig
 - **Pages** (**P**) hold text of any length and scroll. **Notes** (**S**) hold one page. Both take only text and text-like media.
 - **Cabinets** (**K**) keep a stack each of pages, books, slides, notes and drawings. Drop a page or note on one to file it. Click a stack to pull it out, and drag a page back out onto the board. A cabinet can bring in your **Diary** pages and the files open in **Text** mode.
 - **Drawers:** every structure has one. The **▾** on its bottom edge (or **D**) pulls it out: a small cabinet of its own.
-- **Links** (**AltGr + L**), a **highlighter pen** with 8 colours (**1–8**, **E** rubber), and the wheel zooms.
+- **Links** (**AltGr + L**), a **highlighter pen** with 8 colours (**1–8**, **R** rubber), and the wheel zooms.
+- **By keyboard:** the **arrows** move the view (**Shift** for bigger steps), and the structure nearest the middle of the screen is chosen as you go. **E** writes in the chosen one (a page's or note's text, an octagon's header; **Tab** goes to the next part, **Esc** stops). **Alt + arrows** move the chosen structure (**Alt + Shift**: further). **+** and **−** zoom the view (the keypad's too), **0** goes back to 100%.
+- **AltGr + K** shows every keyboard shortcut, opened at the keys of the mode you are in. Press it again (or **Esc**) to close.
 - **Deleting:** everything can go. Click a structure and its red **✕** (or press **Delete**). Click a link's line, then **Delete**. A drawer or cabinet row has its own **✕**, and so does a chosen picture (**Shift + Delete** takes out just the picture). A structure that holds things asks first.
 - **Undo and redo:** **Ctrl + Z** undoes any change (a move, a resize, words, a deletion, a link, ink) and **Ctrl + Y** (or **Ctrl + Shift + Z**) does it again; **↶ ↷** on the toolbar too. Writing in one part is one step, a drag is one step, and moving or zooming the board is not a step. Up to 100 steps, until you quit.
 - **Big boards stay smooth:** only what is on the screen is drawn, each structure is drawn once and then moved (and kept at the last few zoom sizes), pictures are laid in as cells, and the board is saved in the background a moment after a change. With 5,000 structures, 2,000 links and 20,000 ink marks, panning, clicking, dragging, typing and zooming each take 2–3 ms a frame.
@@ -221,7 +223,7 @@ Press **AltGr + L** (ł) for a card with the recommended way to write the file's
 
 ## ✦ Every key
 
-Press **F1** inside Symbolizer for the full, scrollable list.
+Press **F1** inside Symbolizer for the full, scrollable list, or **AltGr + K** to open it at the keys of the mode you are in.
 
 <div align="center">
 <img src="docs/media/help.png" alt="The F1 keys page" width="880">
@@ -270,7 +272,11 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 | Design: I · L · D | a picture (or text file) · next layout · pull the drawer out or put it back |
 | Design: Delete or ✕ | delete the chosen structure or link (Shift + Delete: just the picture) |
 | Design: Ctrl + Z · Ctrl + Y | undo · redo any change on the board (also Ctrl + Shift + Z, and ↶ ↷ on the toolbar) |
+| Design: arrows · E | move the view (the structure in the middle is chosen) · write in the chosen structure |
+| Design: Alt + arrows · + − 0 | move the chosen structure · zoom the view in, out, back to 100% |
+| Design: 1–8 · R · O | pen colours · rubber · ink under or over the text |
 | F1 or Alt + H | every key |
+| AltGr + K (ĸ) | every key, opened at the mode you are in |
 | Alt + Q | quit (everything is already saved) |
 
 </details>
@@ -326,7 +332,7 @@ map --when-focus-on title:Symbolizer kitty_mod+down
 | `tree.go` · `fileview.go` | the file manager |
 | `autosave.go` · `sessions.go` · `files.go` | saving, sessions and naming |
 | `diary.go` · `modes.go` | Diary mode and the modes box |
-| `design.go` · `design_paper.go` · `design_image.go` · `design_delete.go` · `design_undo.go` · `design_store.go` · `design_dnd.go` | Design mode: the board · pages, notes, cabinets and drawers · pictures and layouts · deleting · undo and redo · the board on disk, in parts · drag and drop |
+| `design.go` · `design_paper.go` · `design_image.go` · `design_delete.go` · `design_undo.go` · `design_store.go` · `design_dnd.go` · `design_keys.go` | Design mode: the board · pages, notes, cabinets and drawers · pictures and layouts · deleting · undo and redo · the board on disk, in parts · drag and drop · moving around by keyboard |
 | `help.go` · `keycheck.go` | the F1 page and `sy --keys` |
 | `web.go` · `emmet/` | Emmet, closing tags and auto-correct in web files |
 | `pairs.go` · `suggest.go` | brackets that close themselves and the suggestion list |
