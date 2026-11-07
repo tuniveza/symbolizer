@@ -189,15 +189,21 @@ type designState struct {
 	dropOn         int        // while a page or note is dragged: the structure it would go into, or -1
 	dirty          bool
 	saveErr        string
-	savePending    bool         // a change waits to be written (designSaveLater)
-	saveTick       bool         // the wait for it has started (designSaveCmd)
-	snapGen        int          // snapshots taken
-	lastSnap       *designFile  // the newest of them, for flushSave
-	written        int          // the newest snapshot on disk (under designDisk)
-	disk           diskState    // what is on disk, part by part (under designDisk; design_store.go)
-	drop           dropState    // a drag over the board, or a drop being read (design_dnd.go)
-	idIndex        map[int]int  // where each structure is in octs, by ID (byID)
-	marksVer       int          // goes up each time the ink changes
+	savePending    bool        // a change waits to be written (designSaveLater)
+	saveTick       bool        // the wait for it has started (designSaveCmd)
+	snapGen        int         // snapshots taken
+	lastSnap       *designFile // the newest of them, for flushSave
+	written        int         // the newest snapshot on disk (under designDisk)
+	disk           diskState   // what is on disk, part by part (under designDisk; design_store.go)
+	drop           dropState   // a drag over the board, or a drop being read (design_dnd.go)
+	idIndex        map[int]int // where each structure is in octs, by ID (byID)
+	marksVer       int         // goes up each time the ink changes
+	lastArrow      string      // the last arrow pressed, for two at once (arrowDiagonal)
+	holdTick       bool        // a glide is going (designHold)
+	holdMods       string      // the keys held with the arrows: "", "shift+", "alt+", "alt+shift+"
+	holding        bool        // a structure is gliding: one undo step when it stops
+	heldAt         time.Time
+	lastArrowAt    time.Time
 	inked          map[int]bool // the board rows that have ink (tint), for inkedVer
 	inkedVer       int
 	inkedLen       int
@@ -651,7 +657,7 @@ func (m *Model) designLinkToggle() {
 	}
 }
 
-func (m *Model) designKey(k tea.Key) tea.Cmd {
+func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 	d := m.ds()
 	defer d.save()
 	name := keyName(k)
@@ -745,8 +751,13 @@ func (m *Model) designKey(k tea.Key) tea.Cmd {
 
 	case "left", "right", "up", "down", "shift+left", "shift+right", "shift+up", "shift+down":
 		// The arrows move the view; the structure nearest the middle of
-		// the screen is chosen as it goes by.
+		// the screen is chosen as it goes by. Held, it glides (designHold).
+		if m.releases && k.IsRepeat {
+			return nil // the terminal's own repeats: the glide moves instead
+		}
+		defer func() { cmd = m.startHold(name) }()
 		dx, dy, step := arrowStep(name)
+		dx, dy = m.arrowDiagonal(arrowDir(name), dx, dy) // two arrows held: diagonally
 		z := d.z()
 		d.camX += float64(dx*step*4) / z
 		d.camY += float64(dy*step*2) / z
@@ -754,14 +765,23 @@ func (m *Model) designKey(k tea.Key) tea.Cmd {
 		d.dirty = true
 	case "alt+left", "alt+right", "alt+up", "alt+down", "alt+shift+left", "alt+shift+right", "alt+shift+up", "alt+shift+down":
 		// Alt + arrows move the chosen structure (Alt + Shift: further).
+		if m.releases && k.IsRepeat {
+			return nil
+		}
 		if o := d.byID(d.sel); o != nil {
+			defer func() { cmd = m.startHold(name) }()
 			dx, dy, step := arrowStep(strings.TrimPrefix(name, "alt+"))
+			dx, dy = m.arrowDiagonal(arrowDir(name), dx, dy)
 			o.X += dx * step
 			o.Y += dy * step
 			d.dirty = true
 		}
 	case "e":
 		m.designEdit()
+	case "tab", "shift+tab":
+		m.designTab(name == "shift+tab")
+	case "f":
+		m.designFit()
 	}
 	return nil
 }
@@ -830,6 +850,9 @@ func (m *Model) designWrite(d *designState, o *dOct, k tea.Key, name string) {
 		return
 	}
 	d.dirty = true
+	if m.growToFit(o) { // all of it shows, without resizing by hand
+		m.keepInView(o, d.editing == partBody)
+	}
 }
 
 // ---- mouse -----------------------------------------------------------------------
@@ -1028,8 +1051,9 @@ func (m *Model) designWheel(ms tea.Mouse) tea.Cmd {
 	sx, sy := ms.X, ms.Y-textTop
 	z := d.z()
 	if o := d.hit(sx, sy).o; o != nil && o.ID == d.sel && o.Kind != kOct && o.Kind != kCabinet &&
-		(ms.Button == tea.MouseWheelUp || ms.Button == tea.MouseWheelDown) {
-		// The wheel over the chosen page scrolls its text.
+		ms.Mod.Contains(tea.ModShift) && (ms.Button == tea.MouseWheelUp || ms.Button == tea.MouseWheelDown) {
+		// Shift + the wheel over the chosen page scrolls its text; the
+		// wheel on its own always zooms, toward the pointer.
 		if ms.Button == tea.MouseWheelUp {
 			o.Scroll = max(0, o.Scroll-3)
 		} else {
@@ -1819,7 +1843,7 @@ func (d *designState) octBody(o *dOct, editing, w, rows int, fill, dim string) s
 		return ""
 	}
 	if o.Body == "" && editing != partBody {
-		return st(dim, fill).Italic(true).Render(ansi.Truncate("double-click to write", w, "…"))
+		return centreLine(st(dim, fill).Italic(true).Render(ansi.Truncate("double-click to write", w, "…")), w, fill)
 	}
 	lines := strings.Split(ansi.Wrap(o.Body, w, ""), "\n")
 	switch {
@@ -1836,12 +1860,25 @@ func (d *designState) octBody(o *dOct, editing, w, rows int, fill, dim string) s
 	}
 	text := st(cText, fill)
 	for i, l := range lines {
-		lines[i] = text.Render(l)
+		lines[i] = text.Render(strings.TrimRight(l, " "))
 	}
 	if editing == partBody {
 		lines[len(lines)-1] += st(cAccent, fill).Render("▏")
 	}
+	for i := range lines {
+		lines[i] = centreLine(lines[i], w, fill) // all text on the board is centred
+	}
 	return strings.Join(lines, "\n")
+}
+
+// centreLine puts styled line s in the middle of w cells (the space on its
+// left in the fill colour; what is on its right is left to the caller).
+func centreLine(s string, w int, fill string) string {
+	n := lipgloss.Width(s)
+	if n >= w {
+		return s
+	}
+	return st(cText, fill).Render(strings.Repeat(" ", (w-n)/2)) + s
 }
 
 // centredFirst centres the first line (the header of a small structure).

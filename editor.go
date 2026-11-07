@@ -274,6 +274,9 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	if m.design != nil && m.design.editing == partNone {
 		m.design.undoWriting = -1 // writing stopped: the next words are a new step
 	}
+	if _, ok := msg.(designHoldMsg); ok {
+		return m, tea.Batch(m.designHold(), m.designFrameCmd(), m.designSaveCmd())
+	}
 	if _, ok := msg.(designFrameMsg); ok {
 		m.ds().frameTick = false // the View after this draws the board afresh
 		return m, nil

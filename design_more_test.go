@@ -1518,3 +1518,285 @@ func TestKeysPageInText(t *testing.T) {
 		t.Fatal("Esc did not close the keys, or the text changed")
 	}
 }
+
+// Two arrows held together move the view (or, with Alt, the chosen
+// structure) diagonally: in kitty, which says when keys are let go, and in
+// other terminals, where two quick presses count as held together.
+func TestDesignDiagonals(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	m.releases = true
+	press(m, "up")
+	x0, y0 := d.camX, d.camY
+	press(m, "right") // Up still held
+	if d.camX <= x0 || d.camY >= y0 {
+		t.Fatalf("Up held, Right: the view moved %v, %v (want right and up)", d.camX-x0, d.camY-y0)
+	}
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyUp}))
+	x0, y0 = d.camX, d.camY
+	press(m, "right")
+	if d.camX <= x0 || d.camY != y0 {
+		t.Fatalf("Up let go, Right: the view moved %v, %v (want right only)", d.camX-x0, d.camY-y0)
+	}
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyRight}))
+
+	// Alt: the chosen structure goes diagonally.
+	o := d.newKind(kOct, 0, 0)
+	d.sel, d.editing = o.ID, partNone
+	x, y := o.X, o.Y
+	press(m, "alt+down")
+	press(m, "alt+left") // Down still held
+	if o.X != x-1 || o.Y != y+2 {
+		t.Fatalf("Alt + Down held, Alt + Left: moved %d, %d (want -1, 2)", o.X-x, o.Y-y)
+	}
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyDown}))
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyLeft}))
+
+	// Without key releases: two arrows pressed together.
+	m.releases = false
+	d.lastArrow = ""
+	press(m, "left")
+	x0, y0 = d.camX, d.camY
+	press(m, "down")
+	if d.camX >= x0 || d.camY <= y0 {
+		t.Fatalf("Left then Down at once: the view moved %v, %v (want left and down)", d.camX-x0, d.camY-y0)
+	}
+}
+
+// Tab on a chosen structure goes from part to part: header, text, footer
+// (Shift+Tab back); on a cabinet it pulls out the next stack.
+func TestDesignTab(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	o := d.newKind(kOct, 0, 0)
+	d.sel, d.editing = o.ID, partNone
+	for _, want := range []int{partHeader, partBody, partFooter, partHeader} {
+		press(m, "tab")
+		if d.editing != want {
+			t.Fatalf("Tab: writing in part %d, want %d", d.editing, want)
+		}
+	}
+	press(m, "shift+tab")
+	if d.editing != partFooter {
+		t.Fatalf("Shift+Tab: part %d, want the footer", d.editing)
+	}
+	press(m, "esc")
+	press(m, "shift+tab")
+	if d.editing != partFooter {
+		t.Fatalf("Shift+Tab on a chosen structure: part %d, want its last (the footer)", d.editing)
+	}
+	press(m, "esc")
+
+	cab := d.newKind(kCabinet, 0, 0)
+	d.sel, d.editing = cab.ID, partNone
+	cab.OpenStack = ""
+	var seen []string
+	for range stackKinds {
+		press(m, "tab")
+		seen = append(seen, cab.OpenStack)
+	}
+	if strings.Join(seen, ",") != strings.Join(stackKinds, ",") {
+		t.Fatalf("Tab on a cabinet pulled out %v, want each stack in turn %v", seen, stackKinds)
+	}
+}
+
+// A structure grows to show all it holds while you write (wider, then
+// taller, no higher than the screen), the view follows, and F fits it
+// exactly; a picture keeps its shape.
+func TestDesignFitToContents(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	o := d.newKind(kOct, 0, 0)
+	o.X, o.Y = 10, 2
+	w0, h0 := o.W, o.H
+	press(m, "esc")
+	d.sel = o.ID
+	press(m, "tab")
+	press(m, "tab") // its text
+	typeKeys(m, strings.Repeat("words that go on ", 12))
+	if o.W <= w0 || o.W > fitMaxW {
+		t.Fatalf("while writing it did not grow wider (to at most %d): %d → %d", fitMaxW, w0, o.W)
+	}
+	if o.H <= h0 {
+		t.Fatalf("a long text did not make it taller: %d → %d", h0, o.H)
+	}
+	m.View()
+	if x, y, w, h := d.rect(o); x < 0 || y < 0 || x+w > m.width || y+h > m.textHeight() {
+		t.Fatalf("it grew off the screen: %d,%d %d×%d on a %d×%d screen", x, y, w, h, m.width, m.textHeight())
+	}
+	if s := screenOf(m); !strings.Contains(s, "words that go on") || strings.Contains(s, "…") {
+		t.Fatalf("not all of the text shows:\n%s", s)
+	}
+	press(m, "esc")
+
+	// F: fitted exactly, smaller too, once the text is short.
+	o.Body = "Short"
+	press(m, "f")
+	if o.W >= fitMaxW || o.H != octMinH {
+		t.Fatalf("F after the text got short: %d × %d", o.W, o.H)
+	}
+
+	// A page grows no higher than the screen; beyond, it scrolls.
+	pg := d.newKind(kPage, 0, 0)
+	d.editing = partBody
+	for i := 0; i < 60; i++ {
+		typeKeys(m, "line")
+		press(m, "enter")
+	}
+	press(m, "esc")
+	if pg.H > m.boardRows() || pg.H < m.boardRows()-1 {
+		t.Fatalf("a long page is %d rows high, want about the screen's %d", pg.H, m.boardRows())
+	}
+
+	// A picture-only octagon fitted keeps the picture's shape (40×20 pixels:
+	// twice as wide as high, a cell being two pixels high).
+	os.MkdirAll(d.imagesDir(), 0o700)
+	pic := d.newKind(kOct, 0, 0)
+	pic.Image, pic.Layout = filepath.Base(writePNG(t, d.imagesDir())), layoutPicture
+	d.sel, d.editing = pic.ID, partNone
+	press(m, "f")
+	cw, rows := pic.W-4, pic.H-6
+	if want := cw * 20 / 40 / 2; abs(rows-want) > 1 {
+		t.Fatalf("picture fitted to %d rows for %d columns, want about %d", rows, cw, want)
+	}
+}
+
+// An arrow held glides the view on at once, no pause, until it is let go;
+// a quick tap is one step; with Alt a held arrow glides the chosen
+// structure, and the glide is one undo step.
+func TestDesignGlide(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	m.releases = true
+	glide := func(n int) {
+		for i := 0; i < n; i++ {
+			_, cmd := m.Update(designHoldMsg{})
+			_ = cmd
+		}
+	}
+
+	// Press Right: one step now, and a glide started.
+	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
+	if d.camX != 4 || cmd == nil || !d.holdTick {
+		t.Fatalf("Right pressed: view at %v (want 4), glide started %v", d.camX, d.holdTick)
+	}
+	// The terminal's own repeats do nothing: the glide moves instead.
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyRight, IsRepeat: true}))
+	if d.camX != 4 {
+		t.Fatalf("a repeat moved the view: %v", d.camX)
+	}
+	glide(5) // still held: five glide steps
+	if d.camX != 24 {
+		t.Fatalf("held for 5 glide steps: view at %v, want 24", d.camX)
+	}
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyRight}))
+	glide(1) // let go: the glide ends
+	if d.camX != 24 || d.holdTick {
+		t.Fatalf("let go: view at %v, glide still going %v", d.camX, d.holdTick)
+	}
+
+	// A tap (let go before the glide's first step) is one step.
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyRight}))
+	glide(1)
+	if d.camX != 28 {
+		t.Fatalf("a tap: view at %v, want 28", d.camX)
+	}
+
+	// Two held: a diagonal glide.
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
+	x, y := d.camX, d.camY
+	glide(2)
+	if d.camX >= x || d.camY <= y {
+		t.Fatalf("Down and Left held: the view glided %v, %v", d.camX-x, d.camY-y)
+	}
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyDown}))
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyLeft}))
+	glide(1)
+
+	// Alt held with an arrow: the chosen structure glides; one undo step.
+	o := d.newKind(kOct, 0, 0)
+	d.sel, d.editing = o.ID, partNone
+	d.dirty = true
+	d.save()
+	ox := o.X
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyRight, Mod: tea.ModAlt}))
+	glide(3)
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyRight, Mod: tea.ModAlt}))
+	glide(1)
+	if o.X != ox+4 {
+		t.Fatalf("Alt + Right held for 3 glide steps: moved %d, want 4", o.X-ox)
+	}
+	press(m, "ctrl+z")
+	if got := d.byID(o.ID); got == nil || got.X != ox {
+		t.Fatalf("one Ctrl+Z did not take back the whole glide: x %v", got)
+	}
+}
+
+// All text on the board is centred: an octagon's text, a page's title and
+// text, a cabinet's name and the things in a drawer.
+func TestDesignTextCentred(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	o := d.newKind(kOct, 0, 0)
+	o.X, o.Y, o.W, o.H, o.Header, o.Body = 2, 1, 30, 10, "Head", "short\na longer line of words"
+	pg := d.newKind(kPage, 0, 0)
+	pg.X, pg.Y, pg.W, pg.H, pg.Header, pg.Body = 40, 1, 30, 10, "Plan", "one\nthree words here"
+	d.sel, d.editing = -1, partNone
+	rows := strings.Split(screenOf(m), "\n")
+	centred := func(word string, left, right int) {
+		t.Helper()
+		for _, r := range rows {
+			rr := []rune(r)
+			at := strings.Index(r, word)
+			if at < 0 || right > len(rr) {
+				continue
+			}
+			i := len([]rune(r[:at]))
+			gapL := i - left
+			gapR := right - (i + len([]rune(word)))
+			if abs(gapL-gapR) > 1 {
+				t.Fatalf("%q is not centred between columns %d and %d (%d on the left, %d on the right):\n%s", word, left, right, gapL, gapR, r)
+			}
+			return
+		}
+		t.Fatalf("%q not on the screen", word)
+	}
+	ox, _, ow, _ := d.rect(o)
+	centred("short", ox+2, ox+ow-2)
+	centred("a longer line of words", ox+2, ox+ow-2)
+	px, _, pw, _ := d.rect(pg)
+	centred("≡ Plan", px+2, px+pw-2)
+	centred("one", px+2, px+pw-2)
+	centred("three words here", px+2, px+pw-2)
+}
+
+// The wheel zooms, also over the chosen page (toward the pointer); Shift +
+// the wheel scrolls the chosen page's text.
+func TestDesignWheelZooms(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	pg := d.newKind(kPage, 0, 0)
+	pg.X, pg.Y, pg.W, pg.H = 10, 2, 30, 10
+	pg.Body = strings.Repeat("line\n", 40)
+	d.sel, d.editing = pg.ID, partNone
+	m.View()
+	z := d.zoom
+	m.Update(tea.MouseWheelMsg(tea.Mouse{X: 20, Y: 6 + textTop, Button: tea.MouseWheelUp}))
+	if d.zoom != z+1 || pg.Scroll != 0 {
+		t.Fatalf("the wheel over the chosen page: zoom %d (want %d), scroll %d", d.zoom, z+1, pg.Scroll)
+	}
+	m.Update(tea.MouseWheelMsg(tea.Mouse{X: 20, Y: 6 + textTop, Button: tea.MouseWheelDown}))
+	m.View()
+	x, y, _, _ := d.rect(pg)
+	m.Update(tea.MouseWheelMsg(tea.Mouse{X: x + 5, Y: y + 5 + textTop, Button: tea.MouseWheelDown, Mod: tea.ModShift}))
+	if pg.Scroll == 0 || d.zoom != z {
+		t.Fatalf("Shift + wheel over the chosen page: scroll %d, zoom %d", pg.Scroll, d.zoom)
+	}
+}

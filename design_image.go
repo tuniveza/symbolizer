@@ -135,7 +135,7 @@ func (d *designState) octColumns(o *dOct, editing, cw, rows int, fill, dim strin
 		return d.octBody(o, editing, cw, rows, fill, dim)
 	}
 	if o.Body == "" && editing != partBody {
-		return fitBlock(st(dim, fill).Italic(true).Render(ansi.Truncate("double-click to write", cw, "…")), cw, rows, fill)
+		return fitBlock(centreLine(st(dim, fill).Italic(true).Render(ansi.Truncate("double-click to write", cw, "…")), cw, fill), cw, rows, fill)
 	}
 	lines := strings.Split(ansi.Wrap(o.Body, colW, ""), "\n")
 	if editing == partBody {
@@ -154,11 +154,11 @@ func (d *designState) octColumns(o *dOct, editing, cw, rows int, fill, dim strin
 		if i >= len(lines) {
 			return fitBlockLine("", colW, fill)
 		}
-		s := text.Render(lines[i])
+		s := text.Render(strings.TrimRight(lines[i], " "))
 		if editing == partBody && i == len(lines)-1 {
 			s += st(cAccent, fill).Render("▏")
 		}
-		return fitBlockLine(s, colW, fill)
+		return fitBlockLine(centreLine(s, colW, fill), colW, fill)
 	}
 	sep := st(mixHex(cDim, fill, 0.3), fill).Render(" │ ")
 	out := make([]string, rows)

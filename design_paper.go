@@ -318,7 +318,7 @@ func drawRows(rows []stackRow, w int, fill, edge string) []string {
 				st(mixHex(cDim, fill, 0.3), fill).Render(strings.Repeat("·", gap)) + st(cText, fill).Render(count+" ")
 		case strings.HasPrefix(r.act, "item:") && w >= 6:
 			// The title, and a ✕ that deletes the thing (itemDeleteAct).
-			out[i] = st(cText, fill).Render(padTo(ansi.Truncate(" "+r.text, w-3, "…"), w-2)) +
+			out[i] = fitBlockLine(centreLine(st(cText, fill).Render(ansi.Truncate(strings.TrimSpace(r.text), w-3, "…")), w-2, fill), w-2, fill) +
 				st(cError, fill).Render("✕") + st(cText, fill).Render(" ")
 		case strings.HasPrefix(r.act, "item:"):
 			out[i] = st(cText, fill).Render(padTo(ansi.Truncate(" "+r.text, w, "…"), w))
@@ -369,13 +369,13 @@ func (d *designState) cabinetLayers(o *dOct) []*lipgloss.Layer {
 	e := st(edge, fill)
 	name := o.Header
 	editing := selected && d.editing == partHeader
-	title := st(mixHex(o.Color, cText, 0.4), fill).Bold(true).Render(ansi.Truncate(" ≣ "+name, iw-1, "…"))
+	title := centreLine(st(mixHex(o.Color, cText, 0.4), fill).Bold(true).Render(ansi.Truncate("≣ "+name, iw-1, "…")), iw, fill)
 	switch {
 	case editing:
-		title = st(mixHex(o.Color, cText, 0.4), fill).Bold(true).Render(ansi.TruncateLeft(" ≣ "+name, max(0, lipgloss.Width(" ≣ "+name)-(iw-2)), "…")) +
-			st(cAccent, fill).Render("▏")
+		title = centreLine(st(mixHex(o.Color, cText, 0.4), fill).Bold(true).Render(ansi.TruncateLeft("≣ "+name, max(0, lipgloss.Width("≣ "+name)-(iw-2)), "…"))+
+			st(cAccent, fill).Render("▏"), iw, fill)
 	case name == "":
-		title = st(mixHex(cDim, fill, 0.25), fill).Italic(true).Render(" ≣ cabinet")
+		title = centreLine(st(mixHex(cDim, fill, 0.25), fill).Italic(true).Render("≣ cabinet"), iw, fill)
 	}
 	lines := []string{
 		e.Render("┏" + strings.Repeat("━", iw) + "┓"),
@@ -430,11 +430,11 @@ func (d *designState) paperLayers(o *dOct) []*lipgloss.Layer {
 	var head string
 	switch {
 	case editing == partHeader:
-		head = st(cText, fill).Bold(true).Render(ansi.TruncateLeft(kindIcons[o.Kind]+" "+title, max(0, lipgloss.Width(title)+2-(cw-1)), "…")) + caret
+		head = centreLine(st(cText, fill).Bold(true).Render(ansi.TruncateLeft(kindIcons[o.Kind]+" "+title, max(0, lipgloss.Width(title)+2-(cw-1)), "…"))+caret, cw, fill)
 	case title == "":
-		head = st(dim, fill).Italic(true).Render(kindIcons[o.Kind] + " " + kindNames[o.Kind])
+		head = centreLine(st(dim, fill).Italic(true).Render(kindIcons[o.Kind]+" "+kindNames[o.Kind]), cw, fill)
 	default:
-		head = st(mixHex(o.Color, cText, 0.45), fill).Bold(true).Render(ansi.Truncate(kindIcons[o.Kind]+" "+title, cw, "…"))
+		head = centreLine(st(mixHex(o.Color, cText, 0.45), fill).Bold(true).Render(ansi.Truncate(kindIcons[o.Kind]+" "+title, cw, "…")), cw, fill)
 	}
 
 	// The text: wrapped (a drawing keeps its lines as drawn), from the scroll
@@ -464,13 +464,16 @@ func (d *designState) paperLayers(o *dOct) []*lipgloss.Layer {
 	for i := range rows {
 		l := ""
 		if top+i < len(lines) {
-			l = text.Render(ansi.Truncate(lines[top+i], cw, ""))
+			l = text.Render(strings.TrimRight(ansi.Truncate(lines[top+i], cw, ""), " "))
 		}
 		if editing == partBody && top+i == len(lines)-1 {
 			l += caret
 		}
 		if o.Body == "" && editing != partBody && i == 0 {
 			l = st(dim, fill).Italic(true).Render(ansi.Truncate("double-click to write", cw, "…"))
+		}
+		if l != "" && o.Kind != kDrawing { // all text on the board is centred (a drawing keeps its lines as drawn)
+			l = centreLine(l, cw, fill)
 		}
 		body[i] = fitBlockLine(l, cw, fill)
 	}
@@ -916,6 +919,9 @@ func (m *Model) designPaste(text string) tea.Cmd {
 			return nil
 		}
 		d.dirty = true
+		if m.growToFit(o) {
+			m.keepInView(o, d.editing == partBody)
+		}
 		return nil
 	}
 	if path := droppedPath(text); path != "" {
@@ -943,6 +949,7 @@ func (m *Model) designAddText(o *dOct, text string) {
 	}
 	o.Body = body
 	d.dirty = true
+	m.growToFit(o) // it grows to show the text (up to the screen's height, then it scrolls)
 	m.say(fmt.Sprintf("Text put in %s.", octName(o)))
 }
 
