@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"os"
 	"os/exec"
 	"strings"
@@ -32,4 +33,20 @@ func (m *Model) syTerm() tea.Cmd {
 		}
 		return nil
 	}
+}
+
+// tellKittyMode tells kitty which mode Symbolizer is in, as the window's
+// user variable sy_mode ("text", "design", …), when it changed. kitty's
+// keys in panes.conf use it: Alt+R resizes the split, except in Text mode,
+// where it is Emmet's remove tag.
+func (m *Model) tellKittyMode() tea.Cmd {
+	if os.Getenv("KITTY_WINDOW_ID") == "" {
+		return nil
+	}
+	name := strings.ToLower(modes[m.mode].name)
+	if name == m.kittyMode {
+		return nil
+	}
+	m.kittyMode = name
+	return tea.Raw("\x1b]1337;SetUserVar=sy_mode=" + base64.StdEncoding.EncodeToString([]byte(name)) + "\x07")
 }

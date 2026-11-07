@@ -142,6 +142,7 @@ type Model struct {
 	fmListTop  int
 	fmListH    int
 	altGr      altGrState   // AltGr tapped twice opens the file manager (altgr.go)
+	kittyMode  string       // the mode kitty was last told (syterm.go)
 	emblem     emblem       // made fresh each start (emblem.go)
 	lamps      string       // lock-key state (lamps.go)
 	plate      *lockPlate   // the lock plate while it shows (lockplate.go)
@@ -239,7 +240,7 @@ func (m *Model) resetHighlighter() {
 }
 
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(m.hl.Want(m.buf.Version(), m.top, m.textHeight()), nextMinute(), loadWeather(), weatherEvery(), m.startLamps(), watchDisk())
+	return tea.Batch(m.tellKittyMode(), m.hl.Want(m.buf.Version(), m.top, m.textHeight()), nextMinute(), loadWeather(), weatherEvery(), m.startLamps(), watchDisk())
 }
 
 func (m *Model) say(s string)    { m.msg, m.msgErr = s, false }
@@ -283,6 +284,9 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	}
 	version := m.buf.Version()
 	cmd = m.update(msg)
+	if c := m.tellKittyMode(); c != nil { // kitty's keys can depend on the mode (syterm.go)
+		cmd = tea.Batch(cmd, c)
+	}
 	if m.buf.Version() != version {
 		m.showMatches = m.prompt == pFind || m.prompt == pReplaceAsk
 	}

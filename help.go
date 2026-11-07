@@ -102,7 +102,7 @@ var helpGroups = []helpGroup{
 		{"µ  (Right Alt + M) or Alt + T", "colour themes: Emberistal, Emberline, Molten, Ash, Cinder, Daybreak"},
 		{"ŧ  (Right Alt + T)", "sy term: show or hide a real kitty terminal under the editor (it keeps running while hidden)"},
 		{"Ctrl + Alt + arrows", "go to the pane that way: Up the editor, Down sy term (kitty does it: ~/.config/kitty/panes.conf)"},
-		{"Alt + R, then an arrow", "resize the split once: Up / Down make the pane you are in taller / shorter (kitty does it)"},
+		{"Alt + R, then an arrow", "resize the split once: Up / Down make the pane you are in taller / shorter (kitty does it; not in Text mode, where Alt + R is Emmet's remove tag)"},
 		{"", "  moving shows it · Enter keeps it · Esc puts it back"},
 	}},
 	{"Modes", false, []helpLine{
@@ -182,7 +182,7 @@ var helpGroups = []helpGroup{
 		{"Alt + W", "a list of every web action"},
 		{"Alt + U / Alt + D", "highlight the tag around / inside"},
 		{"Alt + G", "go to the matching tag"},
-		{"Alt + R / Alt + K", "remove the tag (keep what is inside) / split or join it (in kitty, Alt + R resizes the split instead)"},
+		{"Alt + R / Alt + K", "remove the tag (keep what is inside) / split or join it"},
 		{"Alt + Y", "update the tag: a new name, .class, #id or [attr=value]"},
 		{"Alt + . / Alt + ,", "next / previous empty place to fill in"},
 		{"Alt + ] / Alt + [", "highlight the next / previous item (tag, attribute, value)"},
