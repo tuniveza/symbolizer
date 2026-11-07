@@ -2034,6 +2034,29 @@ func TestDesignSnap(t *testing.T) {
 	if b.X != 32 {
 		t.Fatalf("Alt+Left near a: x %d, want 32 (a gap from it)", b.X)
 	}
+	// It stops at the gap: on toward a does nothing, by a tap or a big step.
+	press(m, "alt+left")
+	press(m, "alt+shift+left")
+	if b.X != 32 {
+		t.Fatalf("Alt+Left at the gap: x %d, want 32 (it stops there)", b.X)
+	}
+	// It can still slide along a.
+	press(m, "alt+down")
+	if b.X != 32 || b.Y != 6 {
+		t.Fatalf("Alt+Down at the gap: %d,%d, want 32,6", b.X, b.Y)
+	}
+	// A big step toward a from further off stops at the gap too, not past it.
+	b.X = 38
+	press(m, "alt+shift+left")
+	if b.X != 32 {
+		t.Fatalf("Alt+Shift+Left past the gap: x %d, want 32", b.X)
+	}
+	// From one past the gap, a big step would land on a: it stops at the gap.
+	b.X = 33
+	press(m, "alt+shift+left")
+	if b.X != 32 {
+		t.Fatalf("Alt+Shift+Left from 33: x %d, want 32", b.X)
+	}
 	// Going back right it gets away at once, one step.
 	press(m, "alt+right")
 	if b.X != 33 {
