@@ -2144,3 +2144,42 @@ func TestDesignJumpDirections(t *testing.T) {
 		t.Fatalf("Right from right chose %q", d.byID(d.sel).Header)
 	}
 }
+
+// No structure is drawn taller than the screen, at any zoom; each keeps
+// its own height.
+func TestDesignFitsScreenHeight(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY = 0, 0
+	tall := d.newKind(kPage, 0, 0)
+	tall.X, tall.Y, tall.W, tall.H = 2, 0, 30, 80
+	oct := d.newKind(kOct, 0, 0)
+	oct.X, oct.Y, oct.W, oct.H, oct.Layout = 40, 0, 40, 60, layoutPicture
+	note := d.newKind(kNote, 0, 0)
+	note.X, note.Y = 90, 0
+	for z := range designZooms {
+		d.zoom = z
+		m.View()
+		for _, o := range []*dOct{tall, oct, note} {
+			if _, _, _, h := d.rect(o); h > m.boardH() {
+				t.Fatalf("zoom %.0f%%: %s drawn %d rows high on a %d-row screen", designZooms[z]*100, o.Kind, h, m.boardH())
+			}
+		}
+	}
+	if tall.H != 80 || oct.H != 60 {
+		t.Fatalf("their own heights changed: %d, %d", tall.H, oct.H)
+	}
+	// Writing, it grows no taller than the screen at 100%, whatever the zoom.
+	d.zoom = 0 // 25%
+	pg := d.newKind(kPage, 0, 0)
+	pg.X, pg.Y = 200, 0
+	d.sel, d.editing = pg.ID, partBody
+	for i := 0; i < 60; i++ {
+		typeKeys(m, "line")
+		press(m, "enter")
+	}
+	press(m, "esc")
+	if pg.H > d.maxH {
+		t.Fatalf("grown to %d rows zoomed out, want at most %d", pg.H, d.maxH)
+	}
+}

@@ -296,9 +296,10 @@ func (d *designState) fitSizeAt(o *dOct, fixedW, maxH int) (int, int, bool) {
 	return w, max(mh, min(fitMaxPageH, maxH, lines(o.Body, w-4)+6)), true
 }
 
-// boardRows is how many board rows the screen shows at this zoom.
+// boardRows is how tall a structure may be: the screen's rows at 100%,
+// less a row above and below, whatever the zoom (see designState.maxH).
 func (m *Model) boardRows() int {
-	return max(4, int(float64(m.boardH())/m.ds().z())-1)
+	return max(4, m.ds().maxH)
 }
 
 // growToFit makes o taller, never wider or smaller, until all of it shows

@@ -141,6 +141,7 @@ var helpGroups = []helpGroup{
 		{"  Drop a page or note", "  on a cabinet, an open drawer or a ▾: it is filed in its stack"},
 		{"  ⇣ rows in Pages", "  bring in the Diary's pages, or the files open in Text mode"},
 		{"Wheel on a page", "scroll it (Shift + wheel)"},
+		{"(height)", "no structure is drawn taller than the screen, at any zoom: its text scrolls, its picture shrinks to fit"},
 		{"(text)", "all text on the board is centred, like prose in Text mode"},
 	}},
 	{"Diary mode", false, []helpLine{

@@ -82,16 +82,24 @@ func resizable(o *dOct) bool { return o.Kind != kNote && o.Kind != kCabinet }
 
 // size is a structure's width and height on the board. A note is always one
 // page; a cabinet is as tall as its stacks.
+// No structure is drawn taller than the screen, at any zoom (d.maxH rows
+// at 100%, fewer zoomed in): a taller one is drawn that high (its text
+// scrolls or is cut, its picture shrinks) and keeps its own height.
 func (d *designState) size(o *dOct) (int, int) {
+	w, h := o.W, o.H
 	switch o.Kind {
 	case kNote:
-		return noteW, noteH
+		w, h = noteW, noteH
 	case kCabinet:
-		return max(o.W, cabinetMinW), 3 + stackRowCount(o, false) + 1
+		w, h = max(o.W, cabinetMinW), 3+stackRowCount(o, false)+1
 	case kOct:
-		return o.W, o.H
+	default:
+		h = max(o.H, pageMinH) // older, shorter pages get room for their footer
 	}
-	return o.W, max(o.H, pageMinH) // older, shorter pages get room for their footer
+	if d.maxH > 0 {
+		h = min(h, max(3, int(float64(d.maxH)/d.z()))) // the screen's rows, in board rows at this zoom
+	}
+	return w, h
 }
 
 // highestID is the highest ID in o and everything in its drawer.

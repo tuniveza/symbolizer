@@ -210,6 +210,7 @@ type designState struct {
 	xAt            time.Time    // when X was pressed: X again soon deletes
 	snapAt         time.Time    // when Alt + arrows last snapped: a held glide stays a moment (design_snap.go)
 	jumpAt         time.Time    // when an arrow last jumped the view to a structure (design_keys.go)
+	maxH           int          // board rows no structure is taller than: the screen at 100% (0: not known yet)
 	inked          map[int]bool // the board rows that have ink (tint), for inkedVer
 	inkedVer       int
 	inkedLen       int
@@ -233,6 +234,11 @@ func (m *Model) inDesign() bool { return m.mode == designMode }
 func (m *Model) ds() *designState {
 	if m.design == nil {
 		m.design = loadDesign(designPath())
+	}
+	if m.height > 0 {
+		// No structure is taller than the screen shows at 100%, less a row
+		// above and below: the whole of it (a picture too) fits on screen.
+		m.design.maxH = max(octMinH, m.boardH()-2)
 	}
 	return m.design
 }
@@ -1043,6 +1049,9 @@ func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 		if o := d.byID(d.sel); o != nil {
 			mw, mh := minSize(o.Kind)
 			o.W, o.H = max(mw, d.origW+int(math.Round(dx))), max(mh, d.origH+int(math.Round(dy)))
+			if d.maxH > 0 {
+				o.H = min(o.H, max(mh, d.maxH)) // no taller than the screen
+			}
 		}
 	case dragPaint:
 		d.stroke(sx, sy, false)
