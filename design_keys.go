@@ -623,3 +623,45 @@ func (m *Model) designZoomTo(i int) {
 	d.zoomTo(i, cx, cy)
 	m.centreOn(o)
 }
+
+// ---- Alt tapped twice: Esc ------------------------------------------------------------
+//
+// Alt (the left one) pressed and let go on its own twice within altTwice
+// does what Esc does: stops writing, cancels Alt+N, leaves link mode, puts
+// the pen down, or else lets go of the chosen structure. (kitty says when
+// Alt alone goes down and up; other terminals do not, so there it is Esc.)
+
+const altTwice = 450 * time.Millisecond
+
+// designAltTap counts an Alt tap; the second one soon after is Esc. It
+// says whether it was.
+func (m *Model) designAltTap() bool {
+	d := m.ds()
+	if d.altTapAt.IsZero() || time.Since(d.altTapAt) > altTwice {
+		d.altTapAt = time.Now()
+		return false
+	}
+	d.altTapAt = time.Time{}
+	m.designEscape()
+	return true
+}
+
+// designEscape is Esc in Design mode.
+func (m *Model) designEscape() {
+	d := m.ds()
+	switch {
+	case d.editing != partNone:
+		d.editing = partNone
+	case d.placing:
+		d.placing = false
+		m.say("Nothing placed.")
+	case d.linkMode:
+		m.designLinkToggle()
+	case d.pen >= 0:
+		d.pen = -1
+		m.say("Pen put down.")
+	default:
+		d.sel = -1
+	}
+	d.dirty = true
+}

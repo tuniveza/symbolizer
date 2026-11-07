@@ -213,6 +213,8 @@ type designState struct {
 	spaceHeld      bool         // Space is down (kitty says when it is let go): the arrows pan
 	spaceAt        time.Time    // when Space was last seen (other terminals repeat it while held)
 	spacePanned    bool         // the view moved while Space was held: when it is let go, the view snaps
+	mapCorner      int          // where the mini map is: 0 hidden, 1–4 the corners (design_map.go)
+	altTapAt       time.Time    // when Alt was last tapped on its own: tapped again soon, it is Esc
 	maxH           int          // board rows no structure is taller than: the screen at 100% (0: not known yet)
 	inked          map[int]bool // the board rows that have ink (tint), for inkedVer
 	inkedVer       int
@@ -740,15 +742,7 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 	case "f1":
 		m.help = true
 	case "esc":
-		switch {
-		case d.linkMode:
-			m.designLinkToggle()
-		case d.pen >= 0:
-			d.pen = -1
-			m.say("Pen put down.")
-		default:
-			d.sel = -1
-		}
+		m.designEscape() // Alt tapped twice does the same (design_keys.go)
 	case "1", "2", "3", "4", "5", "6", "7", "8":
 		m.designPen(int(name[0] - '1'))
 	case "+", "=", "ctrl+=", "shift+=", "plus", "kp+":
@@ -1221,6 +1215,7 @@ func (m *Model) designCanvas() *boardCanvas {
 	}
 	d.drawn = seen
 	d.tint(c)
+	m.paintMap(c) // the mini map, over the board (design_map.go)
 	// Something dragged over the empty board: a ✚ where it would land.
 	if dr := d.drop; dr.over && d.dropOn < 0 {
 		if x, y := dr.x, dr.y-m.boardTop(); x >= 0 && y >= 0 && x < c.Width() && y < c.Height() {

@@ -149,11 +149,19 @@ func (m *Model) tabModeKey(k tea.Key) (tea.Cmd, bool) {
 
 // altTapRelease ends tab mode when Alt (the left one) is pressed and let go
 // with no other key in between. Only kitty reports Alt on its own.
-func (m *Model) altTapRelease(k tea.Key) {
-	if k.Code == tea.KeyLeftAlt && m.altTap && m.tabMode {
-		m.endTabMode()
-	}
+// In Design mode, Alt tapped twice quickly is Esc (design_keys.go); it
+// says whether it was.
+func (m *Model) altTapRelease(k tea.Key) bool {
+	tapped := k.Code == tea.KeyLeftAlt && m.altTap
 	m.altTap = false
+	if tapped && m.tabMode {
+		m.endTabMode()
+		return false
+	}
+	if tapped && m.inDesign() && !m.help && m.learn == nil && !m.modesOpen && !m.themeOpen && m.prompt == pNone {
+		return m.designAltTap()
+	}
+	return false
 }
 
 // endTabMode leaves tab mode on the file now chosen.

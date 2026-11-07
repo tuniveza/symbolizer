@@ -373,7 +373,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if cmd, done := m.altGrRelease(msg.Key()); done {
 			return cmd
 		}
-		m.altTapRelease(msg.Key())
+		if m.altTapRelease(msg.Key()) { // Design mode: Alt tapped twice is Esc
+			return tea.Batch(m.designFrameCmd(), m.designSaveCmd())
+		}
 		m.arrowRelease(msg.Key())
 		if msg.Key().Code == tea.KeySpace && m.design != nil {
 			m.design.spaceHeld = false // the arrows jump again, and the view snaps (design_keys.go)
@@ -415,6 +417,10 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		switch m.altGrName(msg.Key()) {
 		case "µ", "altgr+m", "alt+t":
+			if m.inDesign() && m.learn == nil && !m.help && m.altGrName(msg.Key()) != "alt+t" {
+				m.designMapToggle() // in Design mode AltGr+M is the mini map (design_map.go)
+				return tea.Batch(m.designFrameCmd(), m.designSaveCmd())
+			}
 			return m.openThemes()
 		case "ŧ", "altgr+t":
 			return m.syTerm()

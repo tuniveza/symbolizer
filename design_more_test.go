@@ -2316,3 +2316,68 @@ func TestDesignZoomAroundChosen(t *testing.T) {
 		}
 	}
 }
+
+// AltGr+M shows the mini map in each corner in turn, then hides it; it shows
+// each structure's symbol.
+func TestDesignMiniMap(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	a := d.newKind(kPage, 0, 0)
+	a.X, a.Y = 300, 100 // far off the screen: only the map shows it
+	b := d.newKind(kCabinet, 0, 0)
+	b.X, b.Y = 340, 120
+	d.links = append(d.links, dLink{a.ID, b.ID})
+	altgrM := func() { m.Update(tea.KeyPressMsg(tea.Key{Code: 'µ', Text: "µ"})) }
+	altgrM()
+	if d.mapCorner != 1 || m.themeOpen {
+		t.Fatalf("AltGr+M: corner %d, themes open %v", d.mapCorner, m.themeOpen)
+	}
+	rows := strings.Split(screenOf(m), "\n")
+	top := strings.Join(rows[m.boardTop():m.boardTop()+12], "\n")
+	if !strings.Contains(top, " map ") || !strings.Contains(top, kindIcons[kPage]) || !strings.Contains(top, kindIcons[kCabinet]) {
+		t.Fatalf("the map at the top right does not show the page and the cabinet:\n%s", top)
+	}
+	for want := 2; want <= 4; want++ {
+		altgrM()
+		if d.mapCorner != want {
+			t.Fatalf("AltGr+M: corner %d, want %d", d.mapCorner, want)
+		}
+		m.View()
+	}
+	altgrM()
+	if d.mapCorner != 0 || strings.Contains(screenOf(m), " map ") {
+		t.Fatal("AltGr+M a fifth time did not hide the map")
+	}
+}
+
+// Alt tapped twice quickly is Esc in Design mode.
+func TestDesignAltTwiceIsEsc(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	tap := func() {
+		m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyLeftAlt}))
+		m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyLeftAlt}))
+	}
+	o := d.newKind(kPage, 0, 0)
+	d.sel, d.editing = o.ID, partBody
+	tap()
+	if d.editing != partBody {
+		t.Fatal("one Alt tap stopped writing")
+	}
+	tap()
+	if d.editing != partNone {
+		t.Fatal("Alt tapped twice did not stop writing")
+	}
+	press(m, "4")
+	tap()
+	tap()
+	if d.pen != -1 {
+		t.Fatalf("Alt tapped twice did not put the pen down: %d", d.pen)
+	}
+	tap()
+	tap()
+	if d.sel != -1 {
+		t.Fatal("Alt tapped twice did not let go of the chosen structure")
+	}
+}
