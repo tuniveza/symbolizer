@@ -352,6 +352,7 @@ func (m *Model) keepInView(o *dOct, bottom bool) {
 const (
 	holdStart = 33 * time.Millisecond // the glide's first step, if the arrow is still down
 	holdEvery = 33 * time.Millisecond // then 30 steps a second
+	holdAlt   = 45 * time.Millisecond // Alt + arrows (moving a structure): about 22 a second, a little slower
 	holdLost  = time.Second           // no word of the arrow for this long: let go
 )
 
@@ -417,5 +418,9 @@ func (m *Model) designHold() tea.Cmd {
 	}
 	d.dirty = true
 	d.save()
-	return tea.Tick(holdEvery, func(time.Time) tea.Msg { return designHoldMsg{} })
+	every := holdEvery
+	if strings.HasPrefix(d.holdMods, "alt+") {
+		every = holdAlt
+	}
+	return tea.Tick(every, func(time.Time) tea.Msg { return designHoldMsg{} })
 }

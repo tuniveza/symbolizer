@@ -102,6 +102,7 @@ var helpGroups = []helpGroup{
 		{"µ  (Right Alt + M) or Alt + T", "colour themes: Emberistal, Emberline, Molten, Ash, Cinder, Daybreak"},
 		{"ŧ  (Right Alt + T)", "sy term: show or hide a real kitty terminal under the editor (it keeps running while hidden)"},
 		{"Ctrl + Alt + arrows", "go to the pane that way: Up the editor, Down sy term (kitty does it: ~/.config/kitty/panes.conf)"},
+		{"Ctrl + Alt + R", "resize the split: Up / Down make the pane you are in taller / shorter · Esc or Enter: done"},
 		{"", "  moving shows it · Enter keeps it · Esc puts it back"},
 	}},
 	{"Modes", false, []helpLine{

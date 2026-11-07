@@ -118,7 +118,7 @@ A box that floats over the text, with an icon for each kind of file.
 
 **ŧ** (Right Alt + T) opens a real kitty terminal in a pane under the editor, in the same folder.
 Press it again, in the editor or in the terminal, to hide it. Hidden only means out of sight: whatever runs there keeps going, and it comes back at the same size.
-**Ctrl + Alt + Up / Down** goes between the editor and the terminal (Left / Right: panes beside them).
+**Ctrl + Alt + Up / Down** goes between the editor and the terminal (Left / Right: panes beside them). **Ctrl + Alt + R** resizes the split with the arrows (Esc or Enter when done).
 **¢** (Right Alt + C) in the terminal closes just that pane. It needs kitty with `sy_term.py` and its keys in `panes.conf`.
 
 <br>
@@ -279,6 +279,7 @@ Press **F1** inside Symbolizer for the full, scrollable list, or **AltGr + K** t
 | Alt + T or µ | colour themes |
 | ŧ (Right Alt + T) | sy term: show or hide a kitty terminal under the editor |
 | Ctrl + Alt + arrows | go to the pane that way: Up the editor, Down sy term (a kitty map in `~/.config/kitty/panes.conf`) |
+| Ctrl + Alt + R | resize the split: Up / Down make the pane you are in taller / shorter; Esc or Enter when done |
 | Alt + M | switch modes: Text, Design, Slides, Diary, Book, Draw |
 | Design: Alt + N, then P · N · C · S | new page · note · cabinet · shape (F1 in Design mode lists all its keys) |
 | Design: Alt + L | the chosen shape's next layout (Alt + Shift + L: the one before) |
