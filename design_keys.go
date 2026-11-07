@@ -90,6 +90,30 @@ func (m *Model) designEdit() {
 
 const spaceRepeat = 600 * time.Millisecond
 
+// designSpaceMsg comes spaceRepeat after a Space pan, to see whether Space
+// was let go (in terminals that do not say so).
+type designSpaceMsg struct{}
+
+func (m *Model) spaceCheck() tea.Cmd {
+	return tea.Tick(spaceRepeat+50*time.Millisecond, func(time.Time) tea.Msg { return designSpaceMsg{} })
+}
+
+// designSpaceUp: Space was let go. If the view moved while it was held,
+// it snaps to the structure nearest the middle of the screen, centred and
+// chosen.
+func (m *Model) designSpaceUp() {
+	d := m.design
+	if d == nil || !d.spacePanned || m.spaceDown() || !m.inDesign() {
+		return
+	}
+	d.spacePanned = false
+	if o := d.middleStructure(m.width, m.boardH()); o != nil {
+		m.centreOn(o)
+		d.sel, d.editing, d.selLink = o.ID, partNone, -1
+	}
+	d.dirty = true
+}
+
 // spaceDown is whether Space is held.
 func (m *Model) spaceDown() bool {
 	d := m.ds()
@@ -474,6 +498,7 @@ func (m *Model) designHold() tea.Cmd {
 		}
 	} else if m.spaceDown() { // Space held: the view glides
 		m.designPan(dx, dy, 1)
+		d.spacePanned = true
 	} else if step == 1 { // an arrow held: on to the next structure, every jumpEvery
 		if time.Since(d.jumpAt) >= jumpEvery && !m.designJump(dx, dy) {
 			m.designPan(dx, dy, 1)

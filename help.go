@@ -119,7 +119,7 @@ var helpGroups = []helpGroup{
 		{"⛓ link on the toolbar", "link mode: click a structure, then each one to attach (click again to detach)"},
 		{"Arrows", "jump the view to the closest structure that way and choose it (held: on to the next one); nothing that way: a step"},
 		{"E", "write in the chosen structure's text (a cabinet: its name)"},
-		{"Space held + arrows", "move the view freely, a step at a time (held: it glides)"},
+		{"Space held + arrows", "move the view freely, a step at a time (held: it glides); let go of Space and the view snaps to the structure nearest the middle"},
 		{"Shift + arrows", "move the view freely (held: it glides on at once, no pause); the structure nearest the middle is chosen as you go"},
 		{"Two arrows held (Up + Right …)", "move the view diagonally (with Alt: the chosen structure)"},
 		{"Alt + arrows (Alt + Shift)", "move the chosen structure (further); near the closest one it snaps a small gap away from it and stops there"},

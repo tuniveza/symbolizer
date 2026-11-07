@@ -275,6 +275,10 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	if m.design != nil && m.design.editing == partNone {
 		m.design.undoWriting = -1 // writing stopped: the next words are a new step
 	}
+	if _, ok := msg.(designSpaceMsg); ok { // Space let go? (terminals that do not say)
+		m.designSpaceUp()
+		return m, tea.Batch(m.designFrameCmd(), m.designSaveCmd())
+	}
 	if _, ok := msg.(designHoldMsg); ok {
 		return m, tea.Batch(m.designHold(), m.designFrameCmd(), m.designSaveCmd())
 	}
@@ -372,7 +376,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.altTapRelease(msg.Key())
 		m.arrowRelease(msg.Key())
 		if msg.Key().Code == tea.KeySpace && m.design != nil {
-			m.design.spaceHeld = false // the arrows jump again (design_keys.go)
+			m.design.spaceHeld = false // the arrows jump again, and the view snaps (design_keys.go)
+			m.designSpaceUp()
+			return tea.Batch(m.designFrameCmd(), m.designSaveCmd())
 		}
 		m.keys.release(msg.Key(), m.altGr.down)
 		return nil

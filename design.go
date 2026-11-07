@@ -212,6 +212,7 @@ type designState struct {
 	jumpAt         time.Time    // when an arrow last jumped the view to a structure (design_keys.go)
 	spaceHeld      bool         // Space is down (kitty says when it is let go): the arrows pan
 	spaceAt        time.Time    // when Space was last seen (other terminals repeat it while held)
+	spacePanned    bool         // the view moved while Space was held: when it is let go, the view snaps
 	maxH           int          // board rows no structure is taller than: the screen at 100% (0: not known yet)
 	inked          map[int]bool // the board rows that have ink (tint), for inkedVer
 	inkedVer       int
@@ -798,7 +799,12 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		defer func() { cmd = m.startHold(name) }()
 		dx, dy, step := arrowStep(name)
 		dx, dy = m.arrowDiagonal(arrowDir(name), dx, dy) // two arrows held: diagonally
-		if step > 1 || m.spaceDown() {                   // Shift, or Space held: the view moves freely
+		if m.spaceDown() {                               // Space held: the view moves freely; let go, it snaps to the middle one
+			m.designPan(dx, dy, step)
+			d.spacePanned = true
+			return m.spaceCheck()
+		}
+		if step > 1 { // Shift: the view moves freely
 			m.designPan(dx, dy, step)
 			return nil
 		}

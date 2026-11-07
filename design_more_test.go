@@ -2284,8 +2284,14 @@ func TestDesignEAndSpacePan(t *testing.T) {
 	if d.sel == other.ID {
 		t.Fatal("Space+Right jumped to the next structure")
 	}
-	// Space let go: Right jumps again.
+	// Space let go: the view snaps to the structure nearest the middle, centred and chosen.
 	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeySpace}))
+	if near := d.byID(d.sel); near == nil {
+		t.Fatal("letting go of Space chose nothing")
+	} else if x, y, w, h := d.rect(near); abs(x+w/2-m.width/2) > 1 || abs(y+h/2-m.boardH()/2) > 1 {
+		t.Fatalf("letting go of Space: %q not centred (%d,%d %d×%d)", near.Header, x, y, w, h)
+	}
+	// Right jumps again.
 	d.lastArrow, d.jumpAt = "", time.Time{}
 	d.sel = o.ID
 	press(m, "right")
