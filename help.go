@@ -101,7 +101,7 @@ var helpGroups = []helpGroup{
 	{"Colours", false, []helpLine{
 		{"µ  (Right Alt + M) or Alt + T", "colour themes: Emberistal, Emberline, Molten, Ash, Cinder, Daybreak"},
 		{"ŧ  (Right Alt + T)", "sy term: show or hide a real kitty terminal under the editor (it keeps running while hidden)"},
-		{"Ctrl + Alt + arrows", "go to the pane that way: Up the editor, Down sy term (kitty does it: ~/.config/kitty/panes.conf)"},
+		{"Alt + Tab", "in Design mode and in sy term: the other split (the editor ↔ sy term; kitty does it). In the other modes: tab switch mode"},
 		{"Alt + R, then an arrow", "resize the split once: Up / Down make the pane you are in taller / shorter (kitty does it; not in Text mode, where Alt + R is Emmet's remove tag)"},
 		{"", "  moving shows it · Enter keeps it · Esc puts it back"},
 	}},
