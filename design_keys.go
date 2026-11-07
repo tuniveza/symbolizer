@@ -59,7 +59,7 @@ func (m *Model) designChooseMiddle() {
 	}
 	if o.ID != d.sel {
 		d.sel, d.editing, d.selLink = o.ID, partNone, -1
-		m.say("Chosen: " + octName(o) + " · Tab writes in it · Alt + arrows move it · X X deletes it")
+		m.msg = "" // the top bar names it; the status bar says what keys do
 	}
 }
 
@@ -69,7 +69,7 @@ func (m *Model) designEdit() {
 	d := m.ds()
 	o := d.byID(d.sel)
 	if o == nil {
-		m.say("Nothing chosen: the arrows choose the structure in the middle of the screen, or click one.")
+		m.say("Nothing chosen. Use the arrows, or click one.")
 		return
 	}
 	d.editing = partHeader
@@ -125,7 +125,7 @@ func (m *Model) designTab(back bool) {
 	d := m.ds()
 	o := d.byID(d.sel)
 	if o == nil {
-		m.say("Nothing chosen: the arrows choose the structure in the middle of the screen, or click one.")
+		m.say("Nothing chosen. Use the arrows, or click one.")
 		return
 	}
 	if o.Kind == kCabinet {
@@ -143,7 +143,8 @@ func (m *Model) designTab(back bool) {
 		}
 		o.OpenStack = stackKinds[(i+step+len(stackKinds))%len(stackKinds)]
 		d.dirty = true
-		m.say(octName(o) + ": " + stackNames[o.OpenStack] + " pulled out · Tab: the next stack")
+		m.viewToPart(o, partHeader)
+		m.say(stackNames[o.OpenStack] + " pulled out.")
 		return
 	}
 	ps := partsOf(o)
@@ -151,11 +152,54 @@ func (m *Model) designTab(back bool) {
 	if back {
 		d.editing = ps[len(ps)-1]
 	}
-	m.say("Writing in " + octName(o) + "'s " + partName(d.editing) + " · Tab: the next part · Esc stops.")
+	m.viewToPart(o, d.editing)
+	m.msg = ""
 }
 
-func partName(p int) string {
-	return map[int]string{partHeader: "header", partBody: "text", partFooter: "footer"}[p]
+// partRows is where part p of o is, in board rows from o's top: first and
+// last row. A cabinet is all one part.
+func (d *designState) partRows(o *dOct, p int) (int, int) {
+	_, h := d.size(o)
+	switch {
+	case o.Kind == kCabinet:
+		return 0, h - 1
+	case p == partHeader:
+		return 0, min(1, h-1)
+	case p == partFooter && o.Kind == kOct && h >= octMinH:
+		return h - 2, h - 1
+	case p == partBody && o.Kind == kOct && h >= octMinH:
+		return min(2, h-1), max(2, h-3)
+	case p == partFooter && o.Kind != kOct:
+		return max(0, h-3), h - 1
+	case p == partBody && o.Kind != kOct:
+		return min(2, h-1), max(2, h-4)
+	case p == partBody:
+		return min(2, h-1), h - 1
+	}
+	return 0, h - 1
+}
+
+// viewToPart moves the view to part p of o (Tab picks a part): the
+// structure in the middle across, the part in the middle up and down.
+// A part taller than the screen shows from its top.
+func (m *Model) viewToPart(o *dOct, p int) {
+	d := m.ds()
+	if o == nil {
+		return
+	}
+	z := d.z()
+	w, _ := d.size(o)
+	top, bottom := d.partRows(o, p)
+	screenW, screenH := float64(m.width)/z, float64(m.boardH())/z
+	cx := float64(o.X) + float64(w)/2
+	cy := float64(o.Y) + float64(top+bottom+1)/2
+	d.camX = cx - screenW/2
+	if float64(bottom-top+1) > screenH-2 {
+		d.camY = float64(o.Y+top) - 1
+	} else {
+		d.camY = cy - screenH/2
+	}
+	d.dirty = true
 }
 
 // ---- fitting a structure to what it holds -------------------------------------------
@@ -225,8 +269,8 @@ func (d *designState) fitSize(o *dOct, maxH int) (int, int, bool) {
 	}
 	// Pages and the other sheets.
 	mw, mh := minSize(o.Kind)
-	w := max(mw, min(fitMaxW+10, max(widest(o.Body), lipgloss.Width(o.Header)+2)+4))
-	return w, max(mh, min(fitMaxPageH, maxH, lines(o.Body, w-4)+4)), true
+	w := max(mw, min(fitMaxW+10, max(widest(o.Body), lipgloss.Width(o.Header)+2, lipgloss.Width(o.Footer)+2)+4))
+	return w, max(mh, min(fitMaxPageH, maxH, lines(o.Body, w-4)+6)), true
 }
 
 // boardRows is how many board rows the screen shows at this zoom.
@@ -252,7 +296,7 @@ func (m *Model) designFit() {
 	d := m.ds()
 	o := d.byID(d.sel)
 	if o == nil {
-		m.say("Nothing chosen: the arrows choose the structure in the middle of the screen, or click one.")
+		m.say("Nothing chosen. Use the arrows, or click one.")
 		return
 	}
 	w, h, ok := d.fitSize(o, m.boardRows())

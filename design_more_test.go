@@ -1914,3 +1914,75 @@ func TestDesignShortcutsKept(t *testing.T) {
 		t.Fatal("Ctrl+Y did not delete it again")
 	}
 }
+
+// Tab moves the view to the part it picks; the status bar stays short.
+func TestDesignTabMovesView(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	o := d.newKind(kOct, 0, 0)
+	o.X, o.Y, o.W, o.H, o.Header = 300, 200, 30, 18, "Far"
+	d.sel, d.editing = o.ID, partNone
+
+	middle := func(p int) {
+		t.Helper()
+		x, y, w, _ := d.rect(o)
+		top, bottom := d.partRows(o, p)
+		mid := y + (top+bottom+1)/2
+		if abs(x+w/2-m.width/2) > 1 || abs(mid-m.boardH()/2) > 1 {
+			t.Fatalf("part %d not in the middle: structure at %d,%d, part middle row %d, screen %d×%d", p, x, y, mid, m.width, m.boardH())
+		}
+	}
+	press(m, "tab")
+	if d.editing != partHeader {
+		t.Fatalf("Tab: writing in part %d", d.editing)
+	}
+	middle(partHeader)
+	press(m, "tab")
+	middle(partBody)
+	press(m, "tab")
+	middle(partFooter)
+	press(m, "shift+tab")
+	middle(partBody)
+	press(m, "esc")
+
+	for _, s := range []string{m.designStatus()} {
+		if n := strings.Count(s, "·"); n > 3 {
+			t.Fatalf("status bar has %d items: %q", n+1, s)
+		}
+	}
+}
+
+// Pages and notes have a footer too: Tab reaches it, and it is drawn.
+func TestDesignSheetFooters(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	for _, kk := range [][2]string{{"p", kPage}, {"n", kNote}} {
+		placeKey(m, kk[0])
+		o := d.byID(d.sel)
+		if o == nil || o.Kind != kk[1] {
+			t.Fatalf("Alt+N, %s placed %+v", kk[0], o)
+		}
+		typeKeys(m, "Title")
+		press(m, "tab")
+		typeKeys(m, "Some text")
+		press(m, "tab")
+		if d.editing != partFooter {
+			t.Fatalf("%s: Tab Tab went to part %d, want the footer", kk[1], d.editing)
+		}
+		typeKeys(m, "Signed")
+		press(m, "esc")
+		if o.Footer != "Signed" {
+			t.Fatalf("%s footer %q", kk[1], o.Footer)
+		}
+		if s := screenOf(m); !strings.Contains(s, "Signed") {
+			t.Fatalf("%s footer not drawn:\n%s", kk[1], s)
+		}
+		_, h := d.size(o)
+		if partAt(o, h-2, h) != partFooter || partAt(o, 3, h) != partBody {
+			t.Fatalf("%s: double-click rows go to the wrong parts", kk[1])
+		}
+		o.X += 60 // out of the way of the next one
+	}
+}

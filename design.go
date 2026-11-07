@@ -831,15 +831,18 @@ func (m *Model) designWrite(d *designState, o *dOct, k tea.Key, name string) {
 		return
 	case "tab":
 		d.editing = nextPart(o, d.editing, 1)
+		m.viewToPart(o, d.editing)
 		return
 	case "shift+tab":
 		d.editing = nextPart(o, d.editing, -1)
+		m.viewToPart(o, d.editing)
 		return
 	case "enter":
 		if d.editing == partBody {
 			*field += "\n"
 		} else {
 			d.editing = nextPart(o, d.editing, 1)
+			m.viewToPart(o, d.editing)
 			return
 		}
 	case "backspace":
@@ -857,7 +860,7 @@ func (m *Model) designWrite(d *designState, o *dOct, k tea.Key, name string) {
 	}
 	if o.Kind == kNote && d.editing == partBody && !noteFits(o.Body) {
 		*field = before
-		m.say("This note is full: a note holds one page (" + fmt.Sprint(noteRows) + " lines). Use a page (P) for more.")
+		m.say("This note is full: a note holds one page (" + fmt.Sprint(noteRows) + " lines). Use a page for more.")
 		return
 	}
 	d.dirty = true
@@ -2227,21 +2230,21 @@ func (m *Model) designStatus() string {
 	case d.editing != partNone:
 		part := map[int]string{partHeader: "header", partBody: "text", partFooter: "footer"}[d.editing]
 		if o := d.byID(d.sel); o != nil && o.Kind != kOct {
-			part = map[int]string{partHeader: "title", partBody: "text"}[d.editing]
+			part = map[int]string{partHeader: "title", partBody: "text", partFooter: "footer"}[d.editing]
 		}
-		hint = "Writing the " + part + " · Tab next part · Enter " + map[bool]string{true: "new line", false: "next part"}[d.editing == partBody] + " · Esc done"
+		hint = "Writing the " + part + "  ·  Tab: next part  ·  Esc: done"
 	case d.linkMode && d.linkFrom >= 0:
-		hint = "Link mode · click structures to attach (click again to detach) · empty board: choose another · Esc leaves"
+		hint = "Link mode  ·  click structures to link them  ·  Esc: leave"
 	case d.linkMode:
-		hint = "Link mode · click the structure to link from · Esc leaves"
+		hint = "Link mode  ·  click the first structure  ·  Esc: leave"
 	case d.pen == rubber:
-		hint = "Rubber · drag to take colour off · Esc puts it down"
+		hint = "Rubber  ·  drag to rub out  ·  Esc: put down"
 	case d.pen >= 0:
-		hint = "Pen " + penNames[d.pen] + " · drag to colour · right-drag rubs out · Esc puts it down"
+		hint = "Pen " + penNames[d.pen] + "  ·  drag to colour  ·  Esc: put down"
 	case d.sel >= 0 && d.byID(d.sel) != nil:
 		hint = selHint(d.byID(d.sel))
 	default:
-		hint = "Double-click: new " + kindNames[d.place] + " · arrows look around · + − zoom · Alt+N place · 1–8 pen · Ctrl+Z undo · AltGr+K keys"
+		hint = "Double-click: new " + kindNames[d.place] + "  ·  Alt+N: place  ·  1–8: pen  ·  F1: all keys"
 	}
 	style := stStatus
 	if d.saveErr != "" {

@@ -101,6 +101,7 @@ var helpGroups = []helpGroup{
 	{"Colours", false, []helpLine{
 		{"µ  (Right Alt + M) or Alt + T", "colour themes: Emberistal, Emberline, Molten, Ash, Cinder, Daybreak"},
 		{"ŧ  (Right Alt + T)", "sy term: show or hide a real kitty terminal under the editor (it keeps running while hidden)"},
+		{"Ctrl + Alt + arrows", "go to the pane that way: Up the editor, Down sy term (kitty does it: ~/.config/kitty/panes.conf)"},
 		{"", "  moving shows it · Enter keeps it · Esc puts it back"},
 	}},
 	{"Modes", false, []helpLine{
@@ -118,7 +119,7 @@ var helpGroups = []helpGroup{
 		{"Arrows (Shift: further)", "move the view (held: it glides on at once, no pause); the structure nearest the middle is chosen as you go"},
 		{"Two arrows held (Up + Right …)", "move the view diagonally (with Alt: the chosen structure)"},
 		{"Alt + arrows (Alt + Shift)", "move the chosen structure (further)"},
-		{"Tab · Shift + Tab", "switch areas: write in the chosen structure's header, then its text, then its footer (back); on a cabinet: the next stack"},
+		{"Tab · Shift + Tab", "switch areas: write in the chosen structure's header, then its text, then its footer (back), and the view moves to it; on a cabinet: the next stack"},
 		{"+ · − · 0", "zoom the view in · out · back to 100% (the keypad's + and − too)"},
 		{"1–8", "highlighter pen colours (press the same one again to put it down)"},
 		{"  ⌫ · over/under on the toolbar", "  rubber · pen under the text or over it; right-drag rubs out too"},

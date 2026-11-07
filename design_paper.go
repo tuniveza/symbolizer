@@ -48,9 +48,9 @@ var stackNames = map[string]string{kPage: "Pages", kBook: "Books", kSlide: "Slid
 
 const (
 	pageNewW, pageNewH = 32, 14
-	pageMinW, pageMinH = 14, 6
-	noteCols, noteRows = 28, 8 // one page of a note
-	noteW, noteH       = noteCols + 4, noteRows + 4
+	pageMinW, pageMinH = 14, 8                      // room for the title, a line of text and the footer
+	noteCols, noteRows = 28, 8                      // one page of a note
+	noteW, noteH       = noteCols + 4, noteRows + 6 // edges, title, footer
 	cabinetNewW        = 30
 	cabinetMinW        = 22
 	drawerMinW         = 24
@@ -88,8 +88,10 @@ func (d *designState) size(o *dOct) (int, int) {
 		return noteW, noteH
 	case kCabinet:
 		return max(o.W, cabinetMinW), 3 + stackRowCount(o, false) + 1
+	case kOct:
+		return o.W, o.H
 	}
-	return o.W, o.H
+	return o.W, max(o.H, pageMinH) // older, shorter pages get room for their footer
 }
 
 // highestID is the highest ID in o and everything in its drawer.
@@ -121,31 +123,18 @@ func (d *designState) newKind(kind string, cx, cy int) *dOct {
 }
 
 func newHint(kind string) string {
-	switch kind {
-	case kOct:
-		return "New structure: type its header · Tab goes to the text, then the footer · Esc stops."
-	case kCabinet:
-		return "New cabinet: type its name · Enter or Esc stops · drop pages and notes on it to file them."
-	case kNote:
-		return fmt.Sprintf("New note: type its title · Tab goes to the text (one page: %d lines) · Esc stops.", noteRows)
-	}
-	return "New " + kindNames[kind] + ": type its title · Tab goes to the text (any length) · Esc stops."
+	return "New " + kindNames[kind] + ". Type its title."
 }
 
+// selHint is the status bar for a chosen structure: a few keys, short.
 func selHint(o *dOct) string {
 	switch o.Kind {
 	case kOct:
-		hint := "Drag moves · ◢ resizes · double-click writes · [" + octLayouts[o.Layout%len(octLayouts)].icon + "] or Alt+L layout · ▾ drawer · ✕ or X X deletes"
-		if o.Image != "" {
-			hint += " · ✕ on the picture deletes just it"
-		}
-		return hint + " · Ctrl+Z brings back"
+		return "Tab: write  ·  Alt+arrows: move  ·  Alt+L: layout  ·  X X: delete"
 	case kCabinet:
-		return "Click a stack to pull it out · drag a thing out onto the board · drop pages/notes on it · a row's ✕ deletes it · ✕ or X X deletes the cabinet · Ctrl+Z brings back"
-	case kNote:
-		return "Drag moves · double-click writes (one page) · drag onto a cabinet or an open drawer to file it · ▾ drawer · ✕ or X X deletes · Ctrl+Z brings back"
+		return "Click a stack to open it  ·  Tab: next stack  ·  X X: delete"
 	}
-	return "Drag moves · ◢ resizes · double-click writes · wheel scrolls · drag onto a cabinet or open drawer to file it · ✕ or X X deletes · Ctrl+Z brings back"
+	return "Tab: write  ·  Alt+arrows: move  ·  X X: delete"
 }
 
 // ---- writing --------------------------------------------------------------------
@@ -157,7 +146,7 @@ func partsOf(o *dOct) []int {
 	case o.Kind == kCabinet:
 		return []int{partHeader}
 	}
-	return []int{partHeader, partBody}
+	return []int{partHeader, partBody, partFooter} // pages, notes and the other sheets
 }
 
 func hasPart(o *dOct, p int) bool {
@@ -192,8 +181,11 @@ func partAt(o *dOct, r, h int) int {
 	case kCabinet:
 		return partHeader
 	}
-	if r <= 1 {
+	switch {
+	case r <= 1:
 		return partHeader
+	case r >= h-3:
+		return partFooter
 	}
 	return partBody
 }
@@ -421,7 +413,13 @@ func (d *designState) paperLayers(o *dOct) []*lipgloss.Layer {
 		return []*lipgloss.Layer{lipgloss.NewLayer(st(cBG, pill).Bold(true).Width(w).MaxWidth(w).
 			Render(ansi.Truncate(kindIcons[o.Kind]+itemTitle(o), w, ""))).X(x).Y(y)}
 	}
+	// Edges, the title and its line, the footer and its line; zoomed far
+	// out there may be no room for the footer.
+	showFoot := h >= 7
 	cw, rows := w-4, h-4
+	if showFoot {
+		rows = h - 6
+	}
 	e := st(edge, fill)
 	dim := mixHex(cDim, fill, 0.25)
 	caret := st(cAccent, fill).Render("▏")
@@ -507,6 +505,20 @@ func (d *designState) paperLayers(o *dOct) []*lipgloss.Layer {
 	}
 	for i := range rows {
 		out = append(out, e.Render("│ ")+body[i]+e.Render(" "+bar[i]))
+	}
+	var foot string
+	switch {
+	case editing == partFooter:
+		foot = centreLine(st(cText, fill).Italic(true).Render(ansi.TruncateLeft(o.Footer, max(0, lipgloss.Width(o.Footer)-(cw-1)), "…"))+caret, cw, fill)
+	case o.Footer == "":
+		foot = centreLine(st(dim, fill).Italic(true).Render("footer"), cw, fill)
+	default:
+		foot = centreLine(st(mixHex(cText, fill, 0.3), fill).Italic(true).Render(ansi.Truncate(o.Footer, cw, "…")), cw, fill)
+	}
+	if showFoot {
+		out = append(out,
+			e.Render("├"+strings.Repeat("┈", w-2)+"┤"),
+			e.Render("│ ")+fitBlockLine(foot, cw, fill)+e.Render(" │"))
 	}
 	bl, br := "└", "┘"
 	if o.Kind == kNote {

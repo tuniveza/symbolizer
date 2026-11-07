@@ -118,6 +118,7 @@ A box that floats over the text, with an icon for each kind of file.
 
 **ŧ** (Right Alt + T) opens a real kitty terminal in a pane under the editor, in the same folder.
 Press it again, in the editor or in the terminal, to hide it. Hidden only means out of sight: whatever runs there keeps going, and it comes back at the same size.
+**Ctrl + Alt + Up / Down** goes between the editor and the terminal (Left / Right: panes beside them).
 **¢** (Right Alt + C) in the terminal closes just that pane. It needs kitty with `sy_term.py` and its keys in `panes.conf`.
 
 <br>
@@ -163,12 +164,12 @@ Everything on it is drawn with letters, kept in `~/.local/share/symbolizer/desig
 - **Pictures** of any format go into an octagon: **img** on the toolbar and a file name, or drop the file on the terminal. They are drawn with half-blocks.
 - **Drag and drop:** in kitty (0.47 or later), drag files from your file manager onto the board. What is under the pointer lights up (a ✚ shows on the empty board), and each file goes where you let go: a picture into the octagon under it, or a new octagon there; a text file into the page or note under it, into the cabinet as a page, or a new page there. Several files land side by side. Dragged text becomes a page. Other terminals paste dropped files as their paths, and sy puts those in too, one file or several.
 - **Layouts:** the icon on an octagon's top edge shows its layout. Click it (or **Alt + L**) for the next one: `¶` text · `▀` picture above · `◧` left · `◨` right · `■` picture only · `‖` two columns.
-- **Pages** (**Alt + N**, **P**) hold text of any length and scroll. **Notes** (**Alt + N**, **N**) hold one page. Both take only text and text-like media.
+- **Pages** (**Alt + N**, **P**) hold text of any length and scroll. **Notes** (**Alt + N**, **N**) hold one page. Both take only text and text-like media, and both have a title and a footer.
 - **Cabinets** (**Alt + N**, **C**) keep a stack each of pages, books, slides, notes and drawings. Drop a page or note on one to file it. Click a stack to pull it out, and drag a page back out onto the board. A cabinet can bring in your **Diary** pages and the files open in **Text** mode.
 - **Drawers:** every structure has one. The **▾** on its bottom edge pulls it out: a small cabinet of its own.
 - **Links** (**⛓ link** on the toolbar), a **highlighter pen** with 8 colours (**1–8**; the rubber is **⌫** on the toolbar), and the wheel zooms, toward the pointer (**Shift + wheel** scrolls a chosen page). All text on the board is centred.
 - **Top bar:** over the board, it names the board and what is chosen.
-- **By keyboard:** the **arrows** move the view (**Shift** for bigger steps; held, it glides on at once with no pause; hold two, like **Up + Right**, to go diagonally), and the structure nearest the middle of the screen is chosen as you go. **Tab** writes in the chosen one and steps through its parts: header, text, footer (**Shift + Tab** back; on a cabinet, the next stack). **Esc** stops. **Alt + arrows** move the chosen structure (**Alt + Shift**: further; two held: diagonally). **+** and **−** zoom the view (the keypad's too), **0** goes back to 100%. **Alt + N**, then **P**, **N**, **C** or **S**, places a page, note, cabinet or shape in the middle of the screen. **Alt + L** changes a shape's layout. Those are all of Design mode's keys; the rest is on the toolbar and the mouse.
+- **By keyboard:** the **arrows** move the view (**Shift** for bigger steps; held, it glides on at once with no pause; hold two, like **Up + Right**, to go diagonally), and the structure nearest the middle of the screen is chosen as you go. **Tab** writes in the chosen one and steps through its parts: header, text, footer, and the view moves to each one (**Shift + Tab** back; on a cabinet, the next stack). **Esc** stops. **Alt + arrows** move the chosen structure (**Alt + Shift**: further; two held: diagonally). **+** and **−** zoom the view (the keypad's too), **0** goes back to 100%. **Alt + N**, then **P**, **N**, **C** or **S**, places a page, note, cabinet or shape in the middle of the screen. **Alt + L** changes a shape's layout. Those are all of Design mode's keys; the rest is on the toolbar and the mouse.
 - **Structures fit what they hold:** while you write, a structure grows wider and then taller so all its words show (up to the screen's height; a page scrolls beyond that), and the view follows the typing.
 - **AltGr + K** shows every keyboard shortcut, opened at the keys of the mode you are in. Press it again (or **Esc**) to close.
 - **Deleting:** everything can go. Click a structure and its red **✕** (or press **X** twice, quickly). Click a link's line, then **X X**. A drawer or cabinet row has its own **✕**, and so does a chosen picture (it takes out just the picture). A structure that holds things asks first.
@@ -277,6 +278,7 @@ Press **F1** inside Symbolizer for the full, scrollable list, or **AltGr + K** t
 | Alt + Z | word wrap on / off: long lines carry on in the rows under them, broken between words and indented like their line. On to start with; remembered |
 | Alt + T or µ | colour themes |
 | ŧ (Right Alt + T) | sy term: show or hide a kitty terminal under the editor |
+| Ctrl + Alt + arrows | go to the pane that way: Up the editor, Down sy term (a kitty map in `~/.config/kitty/panes.conf`) |
 | Alt + M | switch modes: Text, Design, Slides, Diary, Book, Draw |
 | Design: Alt + N, then P · N · C · S | new page · note · cabinet · shape (F1 in Design mode lists all its keys) |
 | Design: Alt + L | the chosen shape's next layout (Alt + Shift + L: the one before) |
