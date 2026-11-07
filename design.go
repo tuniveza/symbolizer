@@ -210,6 +210,8 @@ type designState struct {
 	xAt            time.Time    // when X was pressed: X again soon deletes
 	snapAt         time.Time    // when Alt + arrows last snapped: a held glide stays a moment (design_snap.go)
 	jumpAt         time.Time    // when an arrow last jumped the view to a structure (design_keys.go)
+	spaceHeld      bool         // Space is down (kitty says when it is let go): the arrows pan
+	spaceAt        time.Time    // when Space was last seen (other terminals repeat it while held)
 	maxH           int          // board rows no structure is taller than: the screen at 100% (0: not known yet)
 	inked          map[int]bool // the board rows that have ink (tint), for inkedVer
 	inkedVer       int
@@ -749,11 +751,11 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 	case "1", "2", "3", "4", "5", "6", "7", "8":
 		m.designPen(int(name[0] - '1'))
 	case "+", "=", "ctrl+=", "shift+=", "plus", "kp+":
-		d.zoomTo(d.zoom+1, cx, cy)
+		m.designZoomTo(d.zoom + 1)
 	case "-", "ctrl+-", "minus", "kp-":
-		d.zoomTo(d.zoom-1, cx, cy)
+		m.designZoomTo(d.zoom - 1)
 	case "0":
-		d.zoomTo(designZoom100, cx, cy)
+		m.designZoomTo(designZoom100)
 	case "alt+n":
 		d.placing = true
 		m.say("Place: P page · N note · C cabinet · S shape (any other key: nothing).")
@@ -796,7 +798,7 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		defer func() { cmd = m.startHold(name) }()
 		dx, dy, step := arrowStep(name)
 		dx, dy = m.arrowDiagonal(arrowDir(name), dx, dy) // two arrows held: diagonally
-		if step > 1 {                                    // Shift: the view moves freely
+		if step > 1 || m.spaceDown() {                   // Shift, or Space held: the view moves freely
 			m.designPan(dx, dy, step)
 			return nil
 		}
@@ -820,6 +822,13 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		}
 	case "tab", "shift+tab":
 		m.designTab(name == "shift+tab")
+	case "e", "E", "shift+e":
+		m.designEdit() // write in the chosen structure's text
+	case "space":
+		d.spaceAt = time.Now() // held, the arrows pan
+		if m.releases {
+			d.spaceHeld = true
+		}
 	}
 	return nil
 }
@@ -1144,9 +1153,9 @@ func (m *Model) designToolClick(x int) tea.Cmd {
 		case t.act == "redo":
 			m.designRedo()
 		case t.act == "zoomin":
-			d.zoomTo(d.zoom+1, m.width/2, m.boardH()/2)
+			m.designZoomTo(d.zoom + 1)
 		case t.act == "zoomout":
-			d.zoomTo(d.zoom-1, m.width/2, m.boardH()/2)
+			m.designZoomTo(d.zoom - 1)
 		case strings.HasPrefix(t.act, "place:"):
 			d.place = strings.TrimPrefix(t.act, "place:")
 			m.say("Double-click the empty board to place a " + kindNames[d.place] + ".")

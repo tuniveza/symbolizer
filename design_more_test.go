@@ -1460,14 +1460,9 @@ func TestDesignKeyboard(t *testing.T) {
 	m.centreOn(right)
 
 	// Tab writes in it: a page's title, then (Tab again) its text.
-	press(m, "e")
-	if d.editing != partNone {
-		t.Fatal("E started writing: Design mode has no E now")
-	}
-	press(m, "tab")
-	press(m, "tab")
+	press(m, "e") // E: straight into its text
 	if d.editing != partBody {
-		t.Fatalf("Tab Tab on a page: writing in part %d", d.editing)
+		t.Fatalf("E on a page: writing in part %d, want its text", d.editing)
 	}
 	typeKeys(m, "Hello")
 	press(m, "esc")
@@ -2258,5 +2253,60 @@ func TestDesignBarsCentred(t *testing.T) {
 	toolClick(m, "link") // a spot still works where it is drawn
 	if !d.linkMode {
 		t.Fatal("the centred toolbar's ⛓ link did not work")
+	}
+}
+
+// E writes in the chosen structure's text; held Space makes the arrows pan.
+func TestDesignEAndSpacePan(t *testing.T) {
+	m := designTest(t)
+	m.releases = true // kitty: Space's release is known
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	o := d.newKind(kOct, 0, 0)
+	o.X, o.Y = 10, 5
+	other := d.newKind(kPage, 0, 0)
+	other.X, other.Y = 80, 5
+	d.sel, d.editing = o.ID, partNone
+	press(m, "e")
+	if d.editing != partBody {
+		t.Fatalf("E on a shape: part %d, want its text", d.editing)
+	}
+	press(m, "esc")
+
+	// Space down, Right: the view moves a step, nothing jumps.
+	d.sel = o.ID
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeySpace, Text: " "}))
+	cam := d.camX
+	press(m, "right")
+	if d.camX <= cam || d.camX-cam > 5 {
+		t.Fatalf("Space+Right: view moved %v, want one small step", d.camX-cam)
+	}
+	if d.sel == other.ID {
+		t.Fatal("Space+Right jumped to the next structure")
+	}
+	// Space let go: Right jumps again.
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeySpace}))
+	d.lastArrow, d.jumpAt = "", time.Time{}
+	d.sel = o.ID
+	press(m, "right")
+	if d.sel != other.ID {
+		t.Fatalf("Right after Space let go did not jump (chosen %d)", d.sel)
+	}
+}
+
+// + and − zoom around the chosen structure: it stays in the middle.
+func TestDesignZoomAroundChosen(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	o := d.newKind(kPage, 0, 0)
+	o.X, o.Y, o.W, o.H = 70, 14, 20, 8 // off to the lower right
+	d.sel, d.editing = o.ID, partNone
+	for _, k := range []string{"=", "=", "-", "-", "-", "0"} {
+		press(m, k)
+		x, y, w, h := d.rect(o)
+		if abs(x+w/2-m.width/2) > 1 || abs(y+h/2-m.boardH()/2) > 1 {
+			t.Fatalf("after %s (zoom %.0f%%) it is not in the middle: %d,%d %d×%d", k, d.z()*100, x, y, w, h)
+		}
 	}
 }

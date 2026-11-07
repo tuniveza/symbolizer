@@ -371,6 +371,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		m.altTapRelease(msg.Key())
 		m.arrowRelease(msg.Key())
+		if msg.Key().Code == tea.KeySpace && m.design != nil {
+			m.design.spaceHeld = false // the arrows jump again (design_keys.go)
+		}
 		m.keys.release(msg.Key(), m.altGr.down)
 		return nil
 	case tea.KeyPressMsg:

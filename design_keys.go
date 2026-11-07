@@ -73,11 +73,30 @@ func (m *Model) designEdit() {
 		m.say("Nothing chosen. Use the arrows, or click one.")
 		return
 	}
-	d.editing = partHeader
-	if hasPart(o, partBody) && o.Kind != kOct {
-		d.editing = partBody
+	d.editing = partHeader // a cabinet has only its name
+	if hasPart(o, partBody) {
+		d.editing = partBody // its text
 	}
-	m.say("Writing in " + octName(o) + ": Tab goes to the next part · an arrow stops.")
+	m.viewToPart(o, d.editing)
+	m.msg = ""
+}
+
+// ---- Space held: the arrows pan --------------------------------------------------------
+//
+// While Space is held the arrows move the view freely, a step at a time
+// (held, it glides), like Shift + arrows but in smaller steps. kitty says
+// when Space is let go; other terminals repeat it while it is held, so
+// there it counts as held for spaceRepeat after it was last seen.
+
+const spaceRepeat = 600 * time.Millisecond
+
+// spaceDown is whether Space is held.
+func (m *Model) spaceDown() bool {
+	d := m.ds()
+	if m.releases {
+		return d.spaceHeld
+	}
+	return time.Since(d.spaceAt) < spaceRepeat
 }
 
 // ---- diagonals ---------------------------------------------------------------------
@@ -453,6 +472,8 @@ func (m *Model) designHold() tea.Cmd {
 		if o := d.byID(d.sel); o != nil && time.Since(d.snapAt) >= snapStay {
 			d.moveByKeys(o, dx*step, dy*step) // it snapped just now: it stays a moment
 		}
+	} else if m.spaceDown() { // Space held: the view glides
+		m.designPan(dx, dy, 1)
 	} else if step == 1 { // an arrow held: on to the next structure, every jumpEvery
 		if time.Since(d.jumpAt) >= jumpEvery && !m.designJump(dx, dy) {
 			m.designPan(dx, dy, 1)
@@ -557,4 +578,23 @@ func (m *Model) designJump(dx, dy int) bool {
 	d.jumpAt = time.Now()
 	m.msg = ""
 	return true
+}
+
+// ---- zooming by keys ----------------------------------------------------------------
+
+// designZoomTo zooms to level i by keyboard (+ − 0, and the toolbar's + −):
+// around the chosen structure, which stays in the middle of the screen and
+// on it whole (at any zoom it is drawn no taller than the screen), or,
+// with none chosen, around the middle of the screen. The wheel zooms
+// toward the pointer instead.
+func (m *Model) designZoomTo(i int) {
+	d := m.ds()
+	cx, cy := m.width/2, m.boardH()/2
+	o := d.byID(d.sel)
+	if o == nil {
+		d.zoomTo(i, cx, cy)
+		return
+	}
+	d.zoomTo(i, cx, cy)
+	m.centreOn(o)
 }
