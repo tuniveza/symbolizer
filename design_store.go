@@ -108,10 +108,11 @@ func readDesignFile(path string) (f designFile, inParts bool, err error) {
 // diskState is what is on disk now, so a save can leave alone what has not
 // changed. It belongs to writeSnapshot (under designDisk).
 type diskState struct {
-	inParts bool
-	parts   map[int]*dOct // each structure as last written
-	marks   map[[2]int]dMark
-	index   []byte
+	inParts  bool
+	parts    map[int]*dOct // each structure as last written
+	marks    map[[2]int]dMark
+	marksVer int // the ink's version last written
+	index    []byte
 }
 
 // remember notes f as what is on disk (just read, or just written).
@@ -125,6 +126,14 @@ func (s *diskState) remember(f designFile, index []byte) {
 	}
 	s.marks = marksOf(f.Marks)
 	s.index = index
+}
+
+// marksOfFile is f's ink as a map.
+func marksOfFile(f designFile) map[[2]int]dMark {
+	if f.marksMap != nil {
+		return f.marksMap
+	}
+	return marksOf(f.Marks)
 }
 
 func marksOf(ms []dMarkAt) map[[2]int]dMark {
@@ -172,7 +181,7 @@ func (d *designState) writeParts(f designFile) string {
 			continue
 		}
 		ids[o.ID] = true
-		if old, ok := s.parts[o.ID]; ok && sameSaved(old, o) {
+		if old, ok := s.parts[o.ID]; ok && (old == o || sameSaved(old, o)) {
 			continue
 		}
 		data, err := json.MarshalIndent(o, "", " ")
@@ -184,8 +193,13 @@ func (d *designState) writeParts(f designFile) string {
 		}
 		s.parts[o.ID] = o
 	}
-	if marks := marksOf(f.Marks); s.marks == nil || !maps2Equal(marks, s.marks) {
-		sorted := slices.Clone(f.Marks)
+	if f.marksMap != nil && s.inParts && s.marksVer == f.marksVer && s.marks != nil {
+		// The ink is the version already written.
+	} else if marks := marksOfFile(f); s.marks == nil || !maps2Equal(marks, s.marks) {
+		sorted := make([]dMarkAt, 0, len(marks))
+		for k, v := range marks {
+			sorted = append(sorted, dMarkAt{k[0], k[1], v})
+		}
 		slices.SortFunc(sorted, func(a, b dMarkAt) int {
 			if a.Y != b.Y {
 				return a.Y - b.Y
@@ -203,6 +217,9 @@ func (d *designState) writeParts(f designFile) string {
 			return err.Error()
 		}
 		s.marks = marks
+		s.marksVer = f.marksVer
+	} else {
+		s.marksVer = f.marksVer
 	}
 	index, err := json.MarshalIndent(indexOf(f), "", " ")
 	if err != nil {

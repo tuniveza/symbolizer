@@ -18,24 +18,61 @@ const undoKept = 100
 // drawers hold), the links and the ink. Words are shared, never copied:
 // Go strings do not change.
 type boardState struct {
-	octs   []*dOct
-	links  []dLink
-	marks  map[[2]int]dMark
-	nextID int
+	octs     []*dOct // copies, never changed once made: states share them
+	links    []dLink
+	marks    map[[2]int]dMark // a copy, never changed once made
+	marksVer int              // designState.marksVer when it was copied
+	nextID   int
+	byID     map[int]*dOct // octs by ID, made when first needed
 }
 
-// state copies the board as it is now.
-func (d *designState) state() *boardState {
-	marks := make(map[[2]int]dMark, len(d.marks))
-	for k, v := range d.marks {
-		marks[k] = v
+func (s *boardState) index() map[int]*dOct {
+	if s.byID == nil {
+		s.byID = make(map[int]*dOct, len(s.octs))
+		for _, o := range s.octs {
+			if o != nil {
+				s.byID[o.ID] = o
+			}
+		}
 	}
-	return &boardState{octs: copyOcts(d.octs), links: append([]dLink(nil), d.links...), marks: marks, nextID: d.nextID}
+	return s.byID
+}
+
+// state copies the board as it is now. What has not changed since the last
+// state (undoBase) is shared with it, not copied again: typing in a large
+// project copies one page, not all of them, nor all the ink.
+func (d *designState) state() *boardState {
+	prev := d.undoBase
+	st := &boardState{links: append([]dLink(nil), d.links...), nextID: d.nextID, marksVer: d.marksVer}
+	if prev != nil && prev.marksVer == d.marksVer && len(prev.marks) == len(d.marks) {
+		st.marks = prev.marks
+	} else {
+		st.marks = make(map[[2]int]dMark, len(d.marks))
+		for k, v := range d.marks {
+			st.marks[k] = v
+		}
+	}
+	var old map[int]*dOct
+	if prev != nil {
+		old = prev.index()
+	}
+	st.octs = make([]*dOct, len(d.octs))
+	for i, o := range d.octs {
+		if o == nil {
+			continue
+		}
+		if p := old[o.ID]; p != nil && sameSaved(p, o) {
+			st.octs[i] = p
+		} else {
+			st.octs[i] = copyOcts([]*dOct{o})[0]
+		}
+	}
+	return st
 }
 
 // sameAs is whether the board is as s has it (looking around aside).
 func (d *designState) sameAs(s *boardState) bool {
-	if len(d.links) != len(s.links) || len(d.marks) != len(s.marks) || !sameBoard(d.octs, s.octs) {
+	if len(d.links) != len(s.links) || len(d.marks) != len(s.marks) || !sameBoardIndexed(d.octs, s) {
 		return false
 	}
 	for i := range d.links {
@@ -43,8 +80,29 @@ func (d *designState) sameAs(s *boardState) bool {
 			return false
 		}
 	}
+	if s.marksVer == d.marksVer {
+		return true // the ink has not changed since s was taken
+	}
 	for k, v := range d.marks {
 		if w, ok := s.marks[k]; !ok || w != v {
+			return false
+		}
+	}
+	return true
+}
+
+// sameBoardIndexed is sameBoard against a state, using its index.
+func sameBoardIndexed(a []*dOct, s *boardState) bool {
+	if len(a) != len(s.octs) {
+		return false
+	}
+	idx := s.index()
+	for _, o := range a {
+		if o == nil {
+			continue
+		}
+		p, ok := idx[o.ID]
+		if !ok || !sameOct(o, p) || !sameOcts(o.Items, p.Items) {
 			return false
 		}
 	}
@@ -134,6 +192,7 @@ func (d *designState) restore(s *boardState) {
 	for k, v := range s.marks {
 		d.marks[k] = v
 	}
+	d.marksVer = s.marksVer // the ink is as s has it again
 	d.nextID = max(d.nextID, s.nextID)
 	if d.byID(d.sel) == nil {
 		d.sel = -1

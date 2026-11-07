@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -556,3 +557,152 @@ func BenchmarkBigBoardZoom(b *testing.B) {
 		})
 	}
 }
+
+// A very large project: SY_HUGE structures (5000 unless set), a link for
+// every two or three, ink everywhere, and cabinets full of pages, spread
+// over a wide board. designSaveLater is on, as in the real program.
+func hugeBoard(b *testing.B) *Model {
+	n := 5000
+	if s := os.Getenv("SY_HUGE"); s != "" {
+		fmt.Sscan(s, &n)
+	}
+	b.Setenv("XDG_DATA_HOME", b.TempDir())
+	designSaveLater = true
+	b.Cleanup(func() { designSaveLater = false })
+	m, _ := NewModel("", 0)
+	m.Update(tea.WindowSizeMsg{Width: 240, Height: 65})
+	m.setMode(designMode)
+	d := m.ds()
+	rnd := 7
+	next := func(k int) int { rnd = (rnd*1103515245 + 12345) & 0x7fffffff; return rnd % k }
+	side := 40 * int(math.Sqrt(float64(n)))
+	text := strings.Repeat("Words in a large project.\n", 40)
+	for i := 0; i < n; i++ {
+		var o *dOct
+		switch i % 10 {
+		case 0:
+			o = d.newKind(kPage, 0, 0)
+			o.Body = text
+		case 1:
+			o = d.newKind(kNote, 0, 0)
+			o.Body = "A short note."
+		case 2:
+			if i%50 == 2 {
+				o = d.newKind(kCabinet, 0, 0)
+				for j := 0; j < 30; j++ {
+					o.Items = append(o.Items, &dOct{ID: 1_000_000 + i*100 + j, Kind: kPage, Header: fmt.Sprint("Item ", j), Body: text})
+				}
+				o.OpenStack = kPage
+				break
+			}
+			fallthrough
+		default:
+			o = d.newKind(kOct, 0, 0)
+			o.Header, o.Body = fmt.Sprint("Idea ", i), "Some words about this idea."
+		}
+		o.X, o.Y = next(side)-side/2, next(side/2)-side/4
+	}
+	for i := 0; i < n*2/5; i++ {
+		d.links = append(d.links, dLink{d.octs[next(n)].ID, d.octs[next(n)].ID})
+	}
+	for i := 0; i < n*4; i++ {
+		d.marks[[2]int{next(side) - side/2, next(side/2) - side/4}] = dMark{Pen: int8(next(8))}
+	}
+	d.sel, d.editing = -1, partNone
+	d.startUndo()
+	return m
+}
+
+func BenchmarkHuge(b *testing.B) {
+	b.Run("pan100", func(b *testing.B) {
+		m := hugeBoard(b)
+		d := m.ds()
+		d.zoom, d.camX, d.camY = 5, -120, -32
+		m.View()
+		benchDragWith(b, m, 120, 32, tea.MouseMiddle)
+	})
+	b.Run("pan25", func(b *testing.B) {
+		m := hugeBoard(b)
+		d := m.ds()
+		d.zoom, d.camX, d.camY = 0, -480, -128
+		m.View()
+		benchDragWith(b, m, 120, 32, tea.MouseMiddle)
+	})
+	b.Run("click", func(b *testing.B) { // choose structures: hit, bring forward, save
+		m := hugeBoard(b)
+		d := m.ds()
+		d.zoom, d.camX, d.camY = 5, -120, -32
+		m.View()
+		var spots [][2]int
+		for _, o := range d.octs {
+			if x, y, w, h := d.rect(o); x > 2 && y > 2 && x+w < 230 && y+h < 55 {
+				spots = append(spots, [2]int{x + w/2, y + h/2})
+			}
+		}
+		if len(spots) == 0 {
+			b.Skip("nothing on screen")
+		}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			s := spots[i%len(spots)]
+			click(nil2(m), s[0], s[1]+textTop, tea.MouseLeft)
+			m.View()
+		}
+	})
+	b.Run("move", func(b *testing.B) { // drag a structure
+		m := hugeBoard(b)
+		d := m.ds()
+		d.zoom, d.camX, d.camY = 5, -120, -32
+		m.View()
+		for _, o := range d.octs {
+			if x, y, w, h := d.rect(o); x > 40 && y > 10 && x+w < 200 && y+h < 50 && o.Kind == kOct {
+				benchDrag(b, m, x+w/2, y+h/2+textTop)
+				return
+			}
+		}
+		b.Skip("nothing on screen")
+	})
+	b.Run("typing", func(b *testing.B) {
+		m := hugeBoard(b)
+		d := m.ds()
+		pg := d.octs[0]
+		d.zoom, d.sel, d.editing = 5, pg.ID, partBody
+		d.camX, d.camY = float64(pg.X)-20, float64(pg.Y)-10
+		m.View()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			m.Update(tea.KeyPressMsg(tea.Key{Code: 'a', Text: "a"}))
+			m.View()
+		}
+	})
+	b.Run("zoom", func(b *testing.B) {
+		m := hugeBoard(b)
+		d := m.ds()
+		d.zoom, d.camX, d.camY = 1, -360, -96
+		m.View()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			btn := tea.MouseWheelUp
+			if i%4 >= 2 {
+				btn = tea.MouseWheelDown
+			}
+			m.Update(tea.MouseWheelMsg(tea.Mouse{X: 120, Y: 32 + textTop, Button: btn}))
+			m.View()
+		}
+	})
+	b.Run("save", func(b *testing.B) { // the background write, one page changed
+		m := hugeBoard(b)
+		d := m.ds()
+		d.dirty = true
+		gen, f := d.snapshot()
+		d.writeSnapshot(f, gen)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			d.octs[0].Body += "a"
+			gen, f := d.snapshot()
+			d.writeSnapshot(f, gen)
+		}
+	})
+}
+
+func nil2(m *Model) *Model { return m }

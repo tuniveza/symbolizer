@@ -101,12 +101,14 @@ func TestDesignPagesAndNotes(t *testing.T) {
 		t.Fatalf("textLike: %q", got)
 	}
 
-	// A picture is refused by a page.
+	// A picture dropped while a page is chosen does not go into the page
+	// (pages hold text): it gets an octagon of its own.
 	press(m, "esc")
 	d.sel = pg.ID
-	m.Update(tea.PasteMsg{Content: writePNG(t, t.TempDir())})
-	if !m.msgErr || !strings.Contains(m.msg, "only text") || pg.Image != "" {
-		t.Fatalf("page took a picture: %q", m.msg)
+	n := len(d.octs)
+	dndRun(m, m.update(tea.PasteMsg{Content: writePNG(t, t.TempDir())}))
+	if pg.Image != "" || len(d.octs) != n+1 || d.octs[n].Image == "" || d.octs[n].Kind != kOct {
+		t.Fatalf("a picture dropped with a page chosen: page image %q, %d new structures", pg.Image, len(d.octs)-n)
 	}
 }
 
@@ -1224,5 +1226,188 @@ func TestDesignPasteSeveralFiles(t *testing.T) {
 		if strings.Contains(o.Body, dir) {
 			t.Fatalf("a path was pasted as text: %q", o.Body)
 		}
+	}
+}
+
+// linkGridSlow is the link drawing as it was first written: the reference.
+func (d *designState) linkGridSlow(w, h int, owner map[[2]int]int) map[[2]int]struct{ s, fg string } {
+	ways := map[[2]int]int{}
+	colour := map[[2]int]string{}
+	current := 0
+	add := func(x, y, way int, c string) {
+		if x < 0 || y < 0 || x >= w || y >= h {
+			return
+		}
+		ways[[2]int{x, y}] |= way
+		colour[[2]int{x, y}] = c
+		if owner != nil {
+			owner[[2]int{x, y}] = current
+		}
+	}
+	hline := func(x0, x1, y int, c string) {
+		if y < 0 || y >= h {
+			return
+		}
+		if x0 > x1 {
+			x0, x1 = x1, x0
+		}
+		for x := max(x0, -1); x < min(x1, w); x++ {
+			add(x, y, goRight, c)
+			add(x+1, y, goLeft, c)
+		}
+	}
+	vline := func(x, y0, y1 int, c string) {
+		if x < 0 || x >= w {
+			return
+		}
+		if y0 > y1 {
+			y0, y1 = y1, y0
+		}
+		for y := max(y0, -1); y < min(y1, h); y++ {
+			add(x, y, goDown, c)
+			add(x, y+1, goUp, c)
+		}
+	}
+	for i, l := range d.links {
+		a, b := d.byIDSlow(l.A), d.byIDSlow(l.B)
+		if a == nil || b == nil {
+			continue
+		}
+		current = i
+		c := mixHex(mixHex(a.Color, b.Color, 0.5), cBG, 0.2)
+		if i == d.selLink {
+			c = cAccent // the chosen link
+		}
+		ax, ay, aw, ah := d.rect(a)
+		bx, by, bw, bh := d.rect(b)
+		x0, y0, x1, y1 := ax+aw/2, ay+ah/2, bx+bw/2, by+bh/2
+		if abs(x1-x0) >= 2*abs(y1-y0) { // side by side: across, down, across
+			mx := (x0 + x1) / 2
+			hline(x0, mx, y0, c)
+			vline(mx, y0, y1, c)
+			hline(mx, x1, y1, c)
+		} else { // one above the other: down, across, down
+			my := (y0 + y1) / 2
+			vline(x0, y0, my, c)
+			hline(x0, x1, my, c)
+			vline(x1, my, y1, c)
+		}
+	}
+	out := map[[2]int]struct{ s, fg string }{}
+	for at, way := range ways {
+		if s, ok := boxLetters[way]; ok {
+			out[at] = struct{ s, fg string }{s, colour[at]}
+		}
+	}
+	return out
+}
+
+// byIDSlow is finding a structure by looking at each: the reference.
+func (d *designState) byIDSlow(id int) *dOct {
+	for _, o := range d.octs {
+		if o.ID == id {
+			return o
+		}
+	}
+	return nil
+}
+
+// The fast ways give what the first ways gave: links drawn (with the
+// chosen one, links off the screen and crossing), a cabinet's row count,
+// and finding a structure while the board's list changes in every way.
+func TestDesignManyElementsMatchSlow(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	rnd := 3
+	next := func(k int) int { rnd = (rnd*1103515245 + 12345) & 0x7fffffff; return rnd % k }
+	for i := 0; i < 60; i++ {
+		o := d.newKind([]string{kOct, kPage, kNote, kCabinet}[i%4], 0, 0)
+		o.X, o.Y = next(400)-200, next(200)-100
+	}
+	for i := 0; i < 80; i++ {
+		d.links = append(d.links, dLink{d.octs[next(60)].ID, d.octs[next(60)].ID})
+	}
+	for _, sel := range []int{-1, 5} {
+		d.selLink = sel
+		for zoom := range designZooms {
+			for _, cam := range [][2]float64{{-50, -20}, {0, 0}, {120, 40}} {
+				d.zoom, d.camX, d.camY = zoom, cam[0], cam[1]
+				fo, so := map[[2]int]int{}, map[[2]int]int{}
+				fast, slow := d.linkGrid(100, 24, fo), d.linkGridSlow(100, 24, so)
+				if len(fast) != len(slow) {
+					t.Fatalf("zoom %d cam %v: %d link cells, first way %d", zoom, cam, len(fast), len(slow))
+				}
+				for k, v := range slow {
+					if fast[k] != v || fo[k] != so[k] {
+						t.Fatalf("zoom %d cam %v: cell %v is %v (link %d), first way %v (link %d)", zoom, cam, k, fast[k], fo[k], v, so[k])
+					}
+				}
+			}
+		}
+	}
+
+	// A cabinet's rows, counted and made, in every state.
+	cab := &dOct{Kind: kCabinet}
+	for _, k := range stackKinds {
+		for j := 0; j < 3; j++ {
+			cab.Items = append(cab.Items, &dOct{Kind: k, Header: "x"})
+		}
+	}
+	cab.Items = append(cab.Items, nil)
+	for _, open := range append([]string{""}, stackKinds...) {
+		cab.OpenStack = open
+		for _, compact := range []bool{false, true} {
+			if a, b := stackRowCount(cab, compact), len(stackRows(cab, compact)); a != b {
+				t.Fatalf("open %q compact %v: counted %d rows, made %d", open, compact, a, b)
+			}
+		}
+	}
+
+	// Finding structures while the list is reordered, cut, grown, swapped.
+	check := func(what string) {
+		t.Helper()
+		for id := -2; id < d.nextID+3; id++ {
+			if d.byID(id) != d.byIDSlow(id) {
+				t.Fatalf("%s: byID(%d) is wrong", what, id)
+			}
+		}
+	}
+	check("at first")
+	d.toFront(d.octs[3])
+	check("brought to the front")
+	d.remove(d.octs[10].ID)
+	check("one removed")
+	d.newKind(kOct, 0, 0)
+	check("one added")
+	d.octs[0], d.octs[1] = d.octs[1], d.octs[0]
+	check("two swapped in place")
+	d.octs[2] = &dOct{ID: 9999, Kind: kOct}
+	check("one replaced in place")
+	d.restore(d.state())
+	check("after undo puts a copy back")
+}
+
+// A file dropped while writing in a page goes in as a file: its name is
+// not typed into the page.
+func TestDesignDropWhileWriting(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	pg := d.newKind(kPage, 0, 0)
+	d.sel, d.editing = pg.ID, partBody
+	dir := t.TempDir()
+	txt := filepath.Join(dir, "more.txt")
+	os.WriteFile(txt, []byte("More words"), 0o600)
+	dndRun(m, m.update(tea.PasteMsg{Content: txt}))
+	if strings.Contains(pg.Body, dir) {
+		t.Fatalf("the path was typed into the page: %q", pg.Body)
+	}
+	if !strings.Contains(pg.Body, "More words") {
+		t.Fatalf("the file's words did not go into the page: %q", pg.Body)
+	}
+	// Words that are not file names are still typed in.
+	d.editing = partBody
+	dndRun(m, m.update(tea.PasteMsg{Content: "just words"}))
+	if !strings.HasSuffix(pg.Body, "just words") {
+		t.Fatalf("pasted words: %q", pg.Body)
 	}
 }

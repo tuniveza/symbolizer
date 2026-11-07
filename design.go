@@ -109,6 +109,11 @@ type designFile struct {
 	CamY   float64   `json:"camY"`
 	Zoom   int       `json:"zoom"`
 	NextID int       `json:"nextID"`
+
+	// The ink as a map, and its version (designState.marksVer): a save
+	// whose ink has not changed leaves marks.json alone. Not in the JSON.
+	marksMap map[[2]int]dMark
+	marksVer int
 }
 
 type dragKind int
@@ -131,7 +136,7 @@ const (
 )
 
 type designState struct {
-	drawn map[int]drawnStruct // each structure's last drawing, by ID (cachedLayers)
+	drawn map[int][]drawnStruct // each structure's last drawings, newest first, by ID (cachedLayers)
 	// Pictures met while drawing a structure (pictureArea), and the layers
 	// standing for them (octLayers), whose cells come from pictureCanvas.
 	picSpots    []picSpot
@@ -182,14 +187,21 @@ type designState struct {
 	dropOn         int        // while a page or note is dragged: the structure it would go into, or -1
 	dirty          bool
 	saveErr        string
-	savePending    bool        // a change waits to be written (designSaveLater)
-	saveTick       bool        // the wait for it has started (designSaveCmd)
-	snapGen        int         // snapshots taken
-	lastSnap       *designFile // the newest of them, for flushSave
-	written        int         // the newest snapshot on disk (under designDisk)
-	disk           diskState   // what is on disk, part by part (under designDisk; design_store.go)
-	drop           dropState   // a drag over the board, or a drop being read (design_dnd.go)
-	loadedFrom     string      // the board's file
+	savePending    bool         // a change waits to be written (designSaveLater)
+	saveTick       bool         // the wait for it has started (designSaveCmd)
+	snapGen        int          // snapshots taken
+	lastSnap       *designFile  // the newest of them, for flushSave
+	written        int          // the newest snapshot on disk (under designDisk)
+	disk           diskState    // what is on disk, part by part (under designDisk; design_store.go)
+	drop           dropState    // a drag over the board, or a drop being read (design_dnd.go)
+	idIndex        map[int]int  // where each structure is in octs, by ID (byID)
+	marksVer       int          // goes up each time the ink changes
+	inked          map[int]bool // the board rows that have ink (tint), for inkedVer
+	inkedVer       int
+	inkedLen       int
+	idFor          **dOct // the octs it was made for: its first element and length
+	idLen          int
+	loadedFrom     string // the board's file
 }
 
 type toolSpot struct {
@@ -294,10 +306,11 @@ func (d *designState) save() {
 // changes. The words are shared (Go strings never change); the structures
 // are copied.
 func (d *designState) snapshot() (int, designFile) {
-	f := designFile{Octs: copyOcts(d.octs), Links: append([]dLink(nil), d.links...), CamX: d.camX, CamY: d.camY, Zoom: d.zoom, NextID: d.nextID}
-	for at, mk := range d.marks {
-		f.Marks = append(f.Marks, dMarkAt{at[0], at[1], mk})
-	}
+	// The copy undo keeps (state) shares what has not changed since the
+	// last one, so taking it costs little even on a large board.
+	st := d.state()
+	f := designFile{Octs: st.octs, Links: st.links, CamX: d.camX, CamY: d.camY, Zoom: d.zoom, NextID: d.nextID,
+		marksMap: st.marks, marksVer: st.marksVer}
 	d.snapGen++
 	d.lastSnap = &f
 	return d.snapGen, f
@@ -463,10 +476,33 @@ func (d *designState) at(sx, sy int) *dOct {
 }
 
 func (d *designState) byID(id int) *dOct {
-	for _, o := range d.octs {
-		if o.ID == id {
-			return o
+	if id < 0 || len(d.octs) == 0 {
+		return nil
+	}
+	// The index says where each ID was; it is checked against the board
+	// itself, so it is never wrong, only sometimes out of date, and then
+	// made again (once for each change to the board's list).
+	i, ok := d.idIndex[id]
+	if ok && i < len(d.octs) && d.octs[i].ID == id {
+		return d.octs[i]
+	}
+	if !ok && d.idFor == &d.octs[0] && d.idLen == len(d.octs) {
+		// Not in an index made for this very list: most likely there is no
+		// such structure, but a list changed in place could still hold it.
+		for _, o := range d.octs {
+			if o.ID == id {
+				return o
+			}
 		}
+		return nil
+	}
+	d.idIndex = make(map[int]int, len(d.octs))
+	for i, o := range d.octs {
+		d.idIndex[o.ID] = i
+	}
+	d.idFor, d.idLen = &d.octs[0], len(d.octs)
+	if i, ok := d.idIndex[id]; ok {
+		return d.octs[i]
 	}
 	return nil
 }
@@ -562,6 +598,7 @@ func (d *designState) mark(sx, sy int, rub bool) {
 			}
 		}
 	}
+	d.marksVer++ // the ink changed (undo and saving look at this)
 	d.dirty = true
 }
 
@@ -1070,13 +1107,23 @@ func (m *Model) designCanvas() *boardCanvas {
 	}
 	c := d.canvas
 	d.paintBoard(c)
-	seen := make(map[int]drawnStruct, len(d.drawn))
+	seen := make(map[int][]drawnStruct, len(d.drawn))
 	for _, o := range d.octs { // in order: the last one is on top
 		if !d.onScreen(o, m.width, m.textHeight()) {
 			continue // nothing of it shows: drawing it would only cost time
 		}
 		for _, p := range d.cachedLayers(o, seen) {
 			p.paint(c)
+		}
+	}
+	// Structures off the screen keep their drawings too (up to a limit),
+	// so zooming back out or panning back does not draw them again.
+	for id, v := range d.drawn {
+		if len(seen) >= drawnKeptMax {
+			break
+		}
+		if _, ok := seen[id]; !ok && d.byID(id) != nil {
+			seen[id] = v
 		}
 	}
 	d.drawn = seen
@@ -1105,9 +1152,20 @@ type drawKey struct {
 }
 
 type drawnStruct struct {
-	key   drawKey
-	parts []*drawnPart
+	key    drawKey
+	parts  []*drawnPart
+	picBox [4]int // where its picture is, from its corner (picBox)
+	hasPic bool
 }
+
+// drawingsKept is how many sizes of each structure are kept: zooming in
+// and out goes back to the same few sizes, and those are then not drawn
+// again. Only small drawings are kept more than once.
+const (
+	drawingsKept   = 4
+	drawingKeepMax = 6000  // cells
+	drawnKeptMax   = 10000 // structures with drawings kept
+)
 
 // drawnPart is one layer of a structure's drawing.
 type drawnPart struct {
@@ -1165,15 +1223,27 @@ func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
 }
 
 // cachedLayers is structLayers, reusing the last drawing when nothing in it changed.
-func (d *designState) cachedLayers(o *dOct, seen map[int]drawnStruct) []*drawnPart {
+func (d *designState) cachedLayers(o *dOct, seen map[int][]drawnStruct) []*drawnPart {
 	x, y, _, _ := d.rect(o)
 	k, ok := d.drawKeyOf(o)
+	kept := d.drawn[o.ID]
 	if ok {
-		if c, hit := d.drawn[o.ID]; hit && c.key == k {
+		for i, c := range kept {
+			if c.key != k {
+				continue
+			}
 			for _, p := range c.parts {
 				p.l.X(x + p.dx).Y(y + p.dy)
 			}
-			seen[o.ID] = c
+			if c.hasPic {
+				if d.picBox == nil {
+					d.picBox = map[int][4]int{}
+				}
+				d.picBox[o.ID] = c.picBox
+			} else {
+				delete(d.picBox, o.ID)
+			}
+			seen[o.ID] = append([]drawnStruct{c}, append(kept[:i:i], kept[i+1:]...)...)
 			return c.parts
 		}
 	}
@@ -1191,7 +1261,17 @@ func (d *designState) cachedLayers(o *dOct, seen map[int]drawnStruct) []*drawnPa
 		}
 	}
 	if k, ok = d.drawKeyOf(o); ok { // drawing a page can change its scroll
-		seen[o.ID] = drawnStruct{key: k, parts: parts}
+		c := drawnStruct{key: k, parts: parts}
+		c.picBox, c.hasPic = d.picBox[o.ID]
+		keep := []drawnStruct{c}
+		if k.w*k.h <= drawingKeepMax {
+			for _, old := range kept {
+				if len(keep) < drawingsKept && old.key.w*old.key.h <= drawingKeepMax {
+					keep = append(keep, old)
+				}
+			}
+		}
+		seen[o.ID] = keep
 	}
 	return parts
 }
@@ -1404,9 +1484,7 @@ func (d *designState) paintBoard(c *boardCanvas) {
 		c.Lines[y][x] = uv.Cell{Content: mk.s, Width: 1, Style: uv.Style{Fg: rgba(mk.fg), Bg: bg}}
 	}
 	d.boardDots(c.Width(), c.Height(), put)
-	for at, l := range d.linkCells(c.Width(), c.Height()) {
-		put(at[0], at[1], l)
-	}
+	d.linkWalk(c.Width(), c.Height(), func(x, y, _ int, s, fg string) { put(x, y, boardMark{s, fg}) })
 }
 
 // boardCanvas is the board's grid of cells. It is uv's screen buffer, used
@@ -1535,18 +1613,35 @@ func (d *designState) linkAt(sx, sy, w, h int) int {
 
 // linkGrid is linkCells, noting in owner (when not nil) the link of each cell.
 func (d *designState) linkGrid(w, h int, owner map[[2]int]int) map[[2]int]struct{ s, fg string } {
-	ways := map[[2]int]int{}
-	colour := map[[2]int]string{}
+	out := map[[2]int]struct{ s, fg string }{}
+	d.linkWalk(w, h, func(x, y, link int, s, fg string) {
+		out[[2]int{x, y}] = struct{ s, fg string }{s, fg}
+		if owner != nil {
+			owner[[2]int{x, y}] = link
+		}
+	})
+	return out
+}
+
+// linkWalk calls cell for each cell of a w×h screen a link line passes
+// through, row by row, with the link's index, letter and colour. The grid
+// is flat, and a link whose line is wholly off the screen is passed over.
+func (d *designState) linkWalk(w, h int, cell func(x, y, link int, s, fg string)) {
+	if len(d.links) == 0 || w <= 0 || h <= 0 {
+		return
+	}
+	ways := make([]uint8, w*h)
+	colour := make([]string, w*h)
+	owner := make([]int32, w*h)
 	current := 0
 	add := func(x, y, way int, c string) {
 		if x < 0 || y < 0 || x >= w || y >= h {
 			return
 		}
-		ways[[2]int{x, y}] |= way
-		colour[[2]int{x, y}] = c
-		if owner != nil {
-			owner[[2]int{x, y}] = current
-		}
+		k := y*w + x
+		ways[k] |= uint8(way)
+		colour[k] = c
+		owner[k] = int32(current)
 	}
 	hline := func(x0, x1, y int, c string) {
 		if y < 0 || y >= h {
@@ -1577,14 +1672,17 @@ func (d *designState) linkGrid(w, h int, owner map[[2]int]int) map[[2]int]struct
 		if a == nil || b == nil {
 			continue
 		}
+		ax, ay, aw, ah := d.rect(a)
+		bx, by, bw, bh := d.rect(b)
+		x0, y0, x1, y1 := ax+aw/2, ay+ah/2, bx+bw/2, by+bh/2
+		if max(x0, x1) < -1 || min(x0, x1) > w || max(y0, y1) < -1 || min(y0, y1) > h {
+			continue // the whole line is off the screen
+		}
 		current = i
 		c := mixHex(mixHex(a.Color, b.Color, 0.5), cBG, 0.2)
 		if i == d.selLink {
 			c = cAccent // the chosen link
 		}
-		ax, ay, aw, ah := d.rect(a)
-		bx, by, bw, bh := d.rect(b)
-		x0, y0, x1, y1 := ax+aw/2, ay+ah/2, bx+bw/2, by+bh/2
 		if abs(x1-x0) >= 2*abs(y1-y0) { // side by side: across, down, across
 			mx := (x0 + x1) / 2
 			hline(x0, mx, y0, c)
@@ -1597,13 +1695,14 @@ func (d *designState) linkGrid(w, h int, owner map[[2]int]int) map[[2]int]struct
 			vline(x1, my, y1, c)
 		}
 	}
-	out := map[[2]int]struct{ s, fg string }{}
-	for at, way := range ways {
-		if s, ok := boxLetters[way]; ok {
-			out[at] = struct{ s, fg string }{s, colour[at]}
+	for k, way := range ways {
+		if way == 0 {
+			continue
+		}
+		if s, ok := boxLetters[int(way)]; ok {
+			cell(k%w, k/w, int(owner[k]), s, colour[k])
 		}
 	}
-	return out
 }
 
 // octLayers draws one structure as Lip Gloss layers: an octagon with its
@@ -1892,10 +1991,15 @@ func (d *designState) tint(c *boardCanvas) {
 	for x := range wxs {
 		wxs[x] = int(math.Floor(d.camX + (float64(x)+0.5)/z))
 	}
-	inked := make(map[int]bool, len(d.marks))
-	for at := range d.marks {
-		inked[at[1]] = true
+	// Kept until the ink changes (its version, and its size as a check).
+	if d.inked == nil || d.inkedVer != d.marksVer || d.inkedLen != len(d.marks) {
+		d.inked = make(map[int]bool, len(d.marks))
+		for at := range d.marks {
+			d.inked[at[1]] = true
+		}
+		d.inkedVer, d.inkedLen = d.marksVer, len(d.marks)
 	}
+	inked := d.inked
 	// The same cell colours under the same pen come again and again: each
 	// mix is worked out once a frame.
 	type look struct {

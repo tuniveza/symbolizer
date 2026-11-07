@@ -87,7 +87,7 @@ func (d *designState) size(o *dOct) (int, int) {
 	case kNote:
 		return noteW, noteH
 	case kCabinet:
-		return max(o.W, cabinetMinW), 3 + len(stackRows(o, false)) + 1
+		return max(o.W, cabinetMinW), 3 + stackRowCount(o, false) + 1
 	}
 	return o.W, o.H
 }
@@ -233,6 +233,30 @@ type stackRow struct {
 
 // stackRows are the rows of o's stacks. Not compact (a cabinet), a line
 // parts one stack's drawer from the next.
+// stackRowCount is len(stackRows(o, compact)), without making the rows.
+func stackRowCount(o *dOct, compact bool) int {
+	n := 0
+	for i, k := range stackKinds {
+		if i > 0 && !compact {
+			n++
+		}
+		n++
+		if o.OpenStack != k {
+			continue
+		}
+		for _, it := range o.Items {
+			if it != nil && it.Kind == k {
+				n++
+			}
+		}
+		n++
+		if k == kPage {
+			n += 2
+		}
+	}
+	return n
+}
+
 func stackRows(o *dOct, compact bool) []stackRow {
 	var rows []stackRow
 	for i, k := range stackKinds {
@@ -870,7 +894,10 @@ func (m *Model) designPaste(text string) tea.Cmd {
 	d := m.ds()
 	defer d.save()
 	o := d.byID(d.sel)
-	if paths := droppedPaths(text); len(paths) > 1 {
+	if paths := droppedPaths(text); len(paths) > 0 {
+		// Only names of files that are there: a drop (terminals paste a
+		// dropped file as its path), even while writing, so the file goes
+		// in rather than its name being typed.
 		d.editing = partNone
 		cx, cy := d.world(m.width/2, m.textHeight()/2)
 		return m.dropFiles(paths, o, cx, cy)

@@ -169,7 +169,7 @@ Everything on it is drawn with letters, kept in `~/.local/share/symbolizer/desig
 - **Links** (**AltGr + L**), a **highlighter pen** with 8 colours (**1–8**, **E** rubber), and the wheel zooms.
 - **Deleting:** everything can go. Click a structure and its red **✕** (or press **Delete**). Click a link's line, then **Delete**. A drawer or cabinet row has its own **✕**, and so does a chosen picture (**Shift + Delete** takes out just the picture). A structure that holds things asks first.
 - **Undo and redo:** **Ctrl + Z** undoes any change (a move, a resize, words, a deletion, a link, ink) and **Ctrl + Y** (or **Ctrl + Shift + Z**) does it again; **↶ ↷** on the toolbar too. Writing in one part is one step, a drag is one step, and moving or zooming the board is not a step. Up to 100 steps, until you quit.
-- **Big boards stay smooth:** only what is on the screen is drawn, each structure is drawn once and then moved, pictures are laid in as cells, and the board is saved in the background a moment after a change.
+- **Big boards stay smooth:** only what is on the screen is drawn, each structure is drawn once and then moved (and kept at the last few zoom sizes), pictures are laid in as cells, and the board is saved in the background a moment after a change. With 5,000 structures, 2,000 links and 20,000 ink marks, panning, clicking, dragging, typing and zooming each take 2–3 ms a frame.
 
 <div align="center">
 <img src="docs/media/design.gif" alt="An octagon gets a sunset picture and its layout toggle is clicked through the layouts; a cabinet is made and moved; a page called Ideas is dropped into the cabinet; a note's drawer is pulled out and the page goes from the cabinet into the drawer" width="880">
@@ -342,7 +342,7 @@ map --when-focus-on title:Symbolizer kitty_mod+down
 ```sh
 go test ./...                              # every key and command
 python3 tests/e2e.py                       # runs the real sy in a test terminal (needs: pip install pyte)
-go test -run x -bench 'Design|BigBoard'    # how fast Design mode draws, on a large made-up project
+go test -run x -bench 'Design|BigBoard|Huge'  # how fast Design mode is, on large made-up projects
 ```
 
 <br>
