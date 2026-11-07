@@ -663,10 +663,25 @@ func (m *Model) designLinkToggle() {
 		if o := d.byID(d.sel); o != nil {
 			d.linkFrom = o.ID
 		}
-		m.say("⛓  Link mode: click a structure, then each one to attach to it. Esc leaves.")
+		m.say("⛓  Link mode: click a structure, then each one to attach to it. ⛓ link again leaves.")
 	} else {
 		m.say("Link mode off.")
 	}
+}
+
+// stopsWriting: keys that stop writing in a structure and then do their
+// usual work (no Esc needed): the arrows, with Shift or Alt too, Alt+N and
+// Alt+L. Writing has no cursor to move, so the arrows are free.
+func stopsWriting(name string) bool {
+	switch arrowDir(name) {
+	case "left", "right", "up", "down":
+		return !strings.Contains(name, "ctrl+")
+	}
+	switch name {
+	case "alt+n", "alt+l", "alt+shift+l", "alt+L":
+		return true
+	}
+	return false
 }
 
 // xTwice is how quickly X must come again to delete.
@@ -692,11 +707,11 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		return nil
 	}
 	if d.editing != partNone {
-		if o := d.byID(d.sel); o != nil {
+		if o := d.byID(d.sel); o != nil && !stopsWriting(name) {
 			m.designWrite(d, o, k, name)
 			return nil
 		}
-		d.editing = partNone
+		d.editing = partNone // an arrow (or Alt+N, Alt+L): writing stops, and the key does its work
 	}
 	m.msg = ""
 	cx, cy := m.width/2, m.boardH()/2
@@ -819,14 +834,14 @@ func (m *Model) designPen(p int) {
 	d.pen = p
 	d.linkMode, d.linkFrom, d.editing = false, -1, partNone
 	if p == rubber {
-		m.say("Rubber: drag over colour to take it off. Esc puts it down.")
+		m.say("Rubber: drag over colour to take it off. ⌫ again puts it down.")
 		return
 	}
 	where := "under"
 	if d.over {
 		where = "over"
 	}
-	m.say(fmt.Sprintf("%s pen, %s the text: drag to colour. O switches over/under · Esc puts it down.", strings.ToUpper(penNames[p][:1])+penNames[p][1:], where))
+	m.say(fmt.Sprintf("%s pen, %s the text: drag to colour. %d again puts it down.", strings.ToUpper(penNames[p][:1])+penNames[p][1:], where, p+1))
 }
 
 // designWrite types into the part of the structure being written in.
@@ -970,6 +985,9 @@ func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 	}
 	d.sel = o.ID
 	d.origX, d.origY, d.origW, d.origH = o.X, o.Y, o.W, o.H
+	if sw, sh := d.size(o); resizable(o) && sh < o.H {
+		d.origW, d.origH = sw, sh // drawn smaller to fit the screen: a resize starts from what shows
+	}
 	switch hit.where {
 	case hitDelete:
 		d.drag = dragNone
@@ -2194,16 +2212,36 @@ func (m *Model) designToolbar() string {
 	canUndo, canRedo := len(d.undo) > 0 || (d.undoBase != nil && d.dirty), len(d.redo) > 0
 	put(" ↶ ", st(map[bool]string{true: cStatusText, false: mixHex(cDim, cBarBG, 0.4)}[canUndo], cBarBG).Bold(canUndo), "undo")
 	put(" ↷ ", st(map[bool]string{true: cStatusText, false: mixHex(cDim, cBarBG, 0.4)}[canRedo], cBarBG).Bold(canRedo), "redo")
-	right := bar.Render(fmt.Sprintf("%d structures · %d links ", len(d.octs), len(d.links)))
-	if m.width-x-lipgloss.Width(right) <= 0 { // short, when the long one does not fit
-		right = bar.Render(fmt.Sprintf("%d %s · %d ⛓ ", len(d.octs), kindIcons[kOct], len(d.links)))
+	right := bar.Render(fmt.Sprintf("  %d structures · %d links ", len(d.octs), len(d.links)))
+	if m.width-x-lipgloss.Width(right) < 0 { // short, when the long one does not fit
+		right = bar.Render(fmt.Sprintf("  %d %s · %d ⛓ ", len(d.octs), kindIcons[kOct], len(d.links)))
 	}
-	if gap := m.width - x - lipgloss.Width(right); gap > 0 {
-		sb.WriteString(bar.Render(strings.Repeat(" ", gap)) + right)
-	} else {
+	if m.width-x-lipgloss.Width(right) < 0 {
+		right = ""
+	}
+	// All of it in the middle of the row (Design mode centres its text); the
+	// click spots move with it.
+	total := x + lipgloss.Width(right)
+	if total > m.width {
 		return fit(sb.String(), m.width, bar)
 	}
-	return sb.String()
+	off := (m.width - total) / 2
+	for i := range d.toolbar {
+		d.toolbar[i].x0 += off
+		d.toolbar[i].x1 += off
+	}
+	return bar.Render(strings.Repeat(" ", off)) + sb.String() + right + bar.Render(strings.Repeat(" ", m.width-total-off))
+}
+
+// centreBar puts s in the middle of a row w wide, padded with pad (cut
+// when it is too long).
+func centreBar(s string, w int, pad lipgloss.Style) string {
+	n := lipgloss.Width(s)
+	if n >= w {
+		return fit(s, w, pad)
+	}
+	l := (w - n) / 2
+	return pad.Render(strings.Repeat(" ", l)) + s + pad.Render(strings.Repeat(" ", w-n-l))
 }
 
 // boardTop is the screen row where the board starts: under the top panel,
@@ -2226,11 +2264,11 @@ func (m *Model) designTopBar() string {
 	case d.byID(d.sel) != nil:
 		right = "Chosen: " + octName(d.byID(d.sel)) + " "
 	}
-	l, r := bar.Bold(true).Render(left), bar.Render(right)
-	if gap := m.width - lipgloss.Width(l) - lipgloss.Width(r); gap > 0 {
-		return l + bar.Render(strings.Repeat(" ", gap)) + r
+	out := bar.Bold(true).Render(strings.TrimSpace(left))
+	if right != "" {
+		out += bar.Render("  ·  " + strings.TrimSpace(right))
 	}
-	return fit(l+bar.Render(" ")+r, m.width, bar)
+	return centreBar(out, m.width, bar)
 }
 
 // designStatus is the status bar: what the mouse and keys do just now.
@@ -2247,15 +2285,15 @@ func (m *Model) designStatus() string {
 		if o := d.byID(d.sel); o != nil && o.Kind != kOct {
 			part = map[int]string{partHeader: "title", partBody: "text", partFooter: "footer"}[d.editing]
 		}
-		hint = "Writing the " + part + "  ·  Tab: next part  ·  Esc: done"
+		hint = "Writing the " + part + "  ·  Tab: next part  ·  arrows: done"
 	case d.linkMode && d.linkFrom >= 0:
-		hint = "Link mode  ·  click structures to link them  ·  Esc: leave"
+		hint = "Link mode  ·  click structures to link them  ·  ⛓ link: leave"
 	case d.linkMode:
-		hint = "Link mode  ·  click the first structure  ·  Esc: leave"
+		hint = "Link mode  ·  click the first structure  ·  ⛓ link: leave"
 	case d.pen == rubber:
-		hint = "Rubber  ·  drag to rub out  ·  Esc: put down"
+		hint = "Rubber  ·  drag to rub out  ·  ⌫ again: put down"
 	case d.pen >= 0:
-		hint = "Pen " + penNames[d.pen] + "  ·  drag to colour  ·  Esc: put down"
+		hint = "Pen " + penNames[d.pen] + "  ·  drag to colour  ·  " + fmt.Sprint(d.pen+1) + " again: put down"
 	case d.sel >= 0 && d.byID(d.sel) != nil:
 		hint = selHint(d.byID(d.sel))
 	default:
@@ -2265,5 +2303,5 @@ func (m *Model) designStatus() string {
 	if d.saveErr != "" {
 		style = st(cError, cStatusBG)
 	}
-	return fit(style.Render(" "+hint), m.width, stStatus)
+	return centreBar(style.Render(hint), m.width, stStatus)
 }

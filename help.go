@@ -102,7 +102,7 @@ var helpGroups = []helpGroup{
 		{"µ  (Right Alt + M) or Alt + T", "colour themes: Emberistal, Emberline, Molten, Ash, Cinder, Daybreak"},
 		{"ŧ  (Right Alt + T)", "sy term: show or hide a real kitty terminal under the editor (it keeps running while hidden)"},
 		{"Alt + Tab", "in Design mode and in sy term: the other split (the editor ↔ sy term; kitty does it). In the other modes: tab switch mode"},
-		{"Alt + R, then an arrow", "resize the split once: Up / Down make the pane you are in taller / shorter (kitty does it; not in Text mode, where Alt + R is Emmet's remove tag)"},
+		{"Alt + R, then arrows", "resize mode: each arrow makes the pane you are in taller / shorter / narrower / wider; any other key leaves (kitty does it; not in Text mode, where Alt + R is Emmet's remove tag)"},
 		{"", "  moving shows it · Enter keeps it · Esc puts it back"},
 	}},
 	{"Modes", false, []helpLine{
@@ -113,7 +113,7 @@ var helpGroups = []helpGroup{
 	{"Design mode", false, []helpLine{
 		{"(the board)", "kept in ~/.local/share/symbolizer/design/ (board.json, a file per structure in parts/, the ink in marks.json)"},
 		{"Double-click the board", "a new octagon structure (or what the toolbar's new chooses): type the header"},
-		{"  Tab · Enter · Esc", "  header → text → footer · next part (a new line in the text) · done"},
+		{"  Tab · Enter · an arrow", "  header → text → footer · next part (a new line in the text) · done (no Esc needed)"},
 		{"Drag · its ◢ corner", "move a structure · resize it (double-click one to write in it)"},
 		{"Middle-drag · wheel", "move the board (left-drag on empty board too) · zoom in and out, toward the pointer"},
 		{"⛓ link on the toolbar", "link mode: click a structure, then each one to attach (click again to detach)"},
@@ -142,7 +142,7 @@ var helpGroups = []helpGroup{
 		{"  ⇣ rows in Pages", "  bring in the Diary's pages, or the files open in Text mode"},
 		{"Wheel on a page", "scroll it (Shift + wheel)"},
 		{"(height)", "no structure is drawn taller than the screen, at any zoom: its text scrolls, its picture shrinks to fit"},
-		{"(text)", "all text on the board is centred, like prose in Text mode"},
+		{"(text)", "all text in Design mode is centred: on the board, and the bars above and below it"},
 	}},
 	{"Diary mode", false, []helpLine{
 		{"(chapters)", "a chapter a day; its pages in ~/.local/share/symbolizer/diary"},

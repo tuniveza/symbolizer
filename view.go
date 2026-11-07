@@ -248,8 +248,14 @@ func (m *Model) bottomLine() string {
 		if m.msgErr {
 			st = stError
 		}
+		if m.inDesign() { // Design mode centres all its text
+			return centreBar(st.Render(m.msg), m.width, stMessage)
+		}
 		return fit(st.Render(" "+m.msg), m.width, stMessage)
 	case pConfirm:
+		if m.inDesign() {
+			return centreBar(stPrompt.Render(m.confirmText), m.width, stMessage)
+		}
 		return fit(stPrompt.Render(" "+m.confirmText), m.width, stMessage)
 	case pReplaceAsk:
 		return fit(stPrompt.Render(" Replace this one?  y = yes   n = skip   a = all   Esc = stop"),

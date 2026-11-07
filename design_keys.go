@@ -77,7 +77,7 @@ func (m *Model) designEdit() {
 	if hasPart(o, partBody) && o.Kind != kOct {
 		d.editing = partBody
 	}
-	m.say("Writing in " + octName(o) + ": Tab goes to the next part · Esc stops.")
+	m.say("Writing in " + octName(o) + ": Tab goes to the next part · an arrow stops.")
 }
 
 // ---- diagonals ---------------------------------------------------------------------

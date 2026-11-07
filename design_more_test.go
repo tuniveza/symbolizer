@@ -2183,3 +2183,80 @@ func TestDesignFitsScreenHeight(t *testing.T) {
 		t.Fatalf("grown to %d rows zoomed out, want at most %d", pg.H, d.maxH)
 	}
 }
+
+// A structure drawn shorter to fit the screen is drawn narrower by as much,
+// keeping its shape; a resize by hand starts from what shows.
+func TestDesignFitKeepsShape(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	o := d.newKind(kOct, 0, 0)
+	o.X, o.Y, o.W, o.H, o.Layout = 2, 0, 300, 120, layoutPicture
+	m.View()
+	w, h := d.size(o)
+	if h != d.maxH {
+		t.Fatalf("height %d, want the screen's %d", h, d.maxH)
+	}
+	if want := 300 * d.maxH / 120; abs(w-want) > 1 {
+		t.Fatalf("width %d, want about %d (the same shape)", w, want)
+	}
+	// Drag its ◢ corner a little: it becomes that size, not 300 wide.
+	x, y, rw, rh := d.rect(o)
+	dragTo(m, x+rw-1, y+rh-1+m.boardTop(), x+rw+1, y+rh-2+m.boardTop(), tea.MouseLeft)
+	if o.W > w+4 || o.H > d.maxH {
+		t.Fatalf("after a small resize: %d × %d, want about %d × %d", o.W, o.H, w+2, h-1)
+	}
+}
+
+// Nothing in Design mode needs Esc: an arrow stops writing and does its
+// work; a pen goes down with its number again.
+func TestDesignNoEsc(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	a := d.newKind(kPage, 0, 0)
+	a.X, a.Y, a.W, a.H = 10, 5, 24, 10
+	b := d.newKind(kPage, 0, 0)
+	b.X, b.Y, b.W, b.H = 60, 5, 24, 10
+	d.sel, d.editing = a.ID, partHeader
+	typeKeys(m, "Hi")
+	press(m, "right") // stops writing and jumps to b
+	if d.editing != partNone || a.Header != "Hi" || d.sel != b.ID {
+		t.Fatalf("Right while writing: editing %d, header %q, chosen %d", d.editing, a.Header, d.sel)
+	}
+	d.sel, d.editing = b.ID, partBody
+	typeKeys(m, "x")
+	x := b.X
+	press(m, "alt+right") // stops writing and moves it
+	if d.editing != partNone || b.X != x+1 {
+		t.Fatalf("Alt+Right while writing: editing %d, x %d → %d", d.editing, x, b.X)
+	}
+	press(m, "3")
+	press(m, "3")
+	if d.pen != -1 {
+		t.Fatalf("3 again did not put the pen down: pen %d", d.pen)
+	}
+}
+
+// Design mode centres its text: the top bar, the toolbar, the status bar
+// and the message line; the toolbar's click spots move with it.
+func TestDesignBarsCentred(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	o := d.newKind(kPage, 0, 0)
+	d.sel, d.editing = o.ID, partNone
+	m.say("Hello there")
+	rows := strings.Split(screenOf(m), "\n")
+	for _, r := range []int{textTop, m.height - 3, m.height - 2, m.height - 1} {
+		line := []rune(rows[r])
+		l := len(line) - len([]rune(strings.TrimLeft(string(line), " ")))
+		rt := len(line) - len([]rune(strings.TrimRight(string(line), " ")))
+		if abs(l-rt) > 1 {
+			t.Fatalf("row %d not centred (%d spaces left, %d right): %q", r, l, rt, string(line))
+		}
+	}
+	toolClick(m, "link") // a spot still works where it is drawn
+	if !d.linkMode {
+		t.Fatal("the centred toolbar's ⛓ link did not work")
+	}
+}

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
@@ -83,8 +84,9 @@ func resizable(o *dOct) bool { return o.Kind != kNote && o.Kind != kCabinet }
 // size is a structure's width and height on the board. A note is always one
 // page; a cabinet is as tall as its stacks.
 // No structure is drawn taller than the screen, at any zoom (d.maxH rows
-// at 100%, fewer zoomed in): a taller one is drawn that high (its text
-// scrolls or is cut, its picture shrinks) and keeps its own height.
+// at 100%, fewer zoomed in): a taller one is drawn that high and narrower
+// by as much, keeping its shape (its text scrolls, its picture shrinks);
+// it keeps its own size.
 func (d *designState) size(o *dOct) (int, int) {
 	w, h := o.W, o.H
 	switch o.Kind {
@@ -97,7 +99,14 @@ func (d *designState) size(o *dOct) (int, int) {
 		h = max(o.H, pageMinH) // older, shorter pages get room for their footer
 	}
 	if d.maxH > 0 {
-		h = min(h, max(3, int(float64(d.maxH)/d.z()))) // the screen's rows, in board rows at this zoom
+		if limit := max(3, int(float64(d.maxH)/d.z())); h > limit { // the screen's rows, in board rows at this zoom
+			if o.Kind != kNote && o.Kind != kCabinet {
+				// Narrower by as much as it is shorter: it keeps its shape (a picture too).
+				mw, _ := minSize(o.Kind)
+				w = max(mw, int(math.Round(float64(w)*float64(limit)/float64(h))))
+			}
+			h = limit
+		}
 	}
 	return w, h
 }
