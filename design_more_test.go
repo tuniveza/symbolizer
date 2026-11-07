@@ -1986,3 +1986,37 @@ func TestDesignSheetFooters(t *testing.T) {
 		o.X += 60 // out of the way of the next one
 	}
 }
+
+// A structure moved near another snaps to it: beside it with a gap, or
+// lined up with its edges. By keys it snaps only ahead, so it can get away.
+func TestDesignSnap(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	a := d.newKind(kPage, 0, 0)
+	a.X, a.Y, a.W, a.H = 10, 5, 20, 10
+	b := d.newKind(kPage, 0, 0)
+	b.X, b.Y, b.W, b.H = 40, 7, 20, 10
+
+	// Dragged to 2 columns short of beside a (a's right edge 30, gap 2: x 32), 1 row off its top.
+	if x, y := d.snapNearest(b, 34, 6); x != 32 || y != 5 {
+		t.Fatalf("drag near: snapped to %d,%d, want 32,5", x, y)
+	}
+	// Far away: no snapping.
+	if x, y := d.snapNearest(b, 45, 9); x != 45 || y != 9 {
+		t.Fatalf("drag far: moved to %d,%d, want 45,9", x, y)
+	}
+
+	// By keys: Alt+Left from x 36 steps to 35, and the place beside a (32) is within reach ahead.
+	d.sel = b.ID
+	b.X, b.Y = 36, 5
+	press(m, "alt+left")
+	if b.X != 32 {
+		t.Fatalf("Alt+Left near a: x %d, want 32 (snapped beside it)", b.X)
+	}
+	// Going back right it gets away at once, one step.
+	press(m, "alt+right")
+	if b.X != 33 {
+		t.Fatalf("Alt+Right away from a: x %d, want 33 (no snapping back)", b.X)
+	}
+}

@@ -406,9 +406,8 @@ func (m *Model) designHold() tea.Cmd {
 		step = 4
 	}
 	if strings.HasPrefix(d.holdMods, "alt+") {
-		if o := d.byID(d.sel); o != nil {
-			o.X += dx * step
-			o.Y += dy * step
+		if o := d.byID(d.sel); o != nil && time.Since(d.snapAt) >= snapStay {
+			d.moveByKeys(o, dx*step, dy*step) // it snapped just now: it stays a moment
 		}
 	} else {
 		z := d.z()

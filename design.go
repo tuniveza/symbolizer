@@ -208,6 +208,7 @@ type designState struct {
 	lastArrowAt    time.Time
 	placing        bool         // Alt+N was pressed: the next key says what to place
 	xAt            time.Time    // when X was pressed: X again soon deletes
+	snapAt         time.Time    // when Alt + arrows last snapped: a held glide stays a moment (design_snap.go)
 	inked          map[int]bool // the board rows that have ink (tint), for inkedVer
 	inkedVer       int
 	inkedLen       int
@@ -787,8 +788,7 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 			defer func() { cmd = m.startHold(name) }()
 			dx, dy, step := arrowStep(strings.TrimPrefix(name, "alt+"))
 			dx, dy = m.arrowDiagonal(arrowDir(name), dx, dy)
-			o.X += dx * step
-			o.Y += dy * step
+			d.moveByKeys(o, dx*step, dy*step) // it snaps to structures near it (design_snap.go)
 			d.dirty = true
 		}
 	case "tab", "shift+tab":
@@ -1025,7 +1025,7 @@ func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 		d.camX, d.camY = d.origCX-dx, d.origCY-dy
 	case dragMove:
 		if o := d.byID(d.sel); o != nil {
-			o.X, o.Y = d.origX+int(math.Round(dx)), d.origY+int(math.Round(dy))
+			o.X, o.Y = d.snapNearest(o, d.origX+int(math.Round(dx)), d.origY+int(math.Round(dy)))
 			d.dropOn = -1
 			if textual(o.Kind) {
 				if t := d.dropTarget(o, sx, sy); t != nil {
