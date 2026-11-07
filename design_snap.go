@@ -2,50 +2,59 @@ package main
 
 // ---- snapping ----------------------------------------------------------------------
 //
-// A structure being moved snaps to the ones near it when it comes close:
-// its edges line up with theirs (left with left, top with top, …) or it
-// sits beside them with a small gap. Dragged with the mouse, it snaps to
-// the nearest place on each side within reach, and leaves it again as the
-// mouse goes on. Moved by keyboard (Alt + arrows), it snaps only ahead, in
-// the way it is going, so the next step always gets away; held, it stays a
-// moment at each place it snaps to (snapStay).
+// A structure being moved snaps to the closest structure facing it (side by
+// side, or one above the other) when it comes close: it sits a gap away
+// from it (snapGapX columns beside it, snapGapY rows above or below).
+// Dragged with the mouse, it snaps while within reach of that place and
+// leaves it as the mouse goes on (dragged onto a structure, to file it,
+// it does not snap). Moved by keyboard (Alt + arrows), it snaps only ahead,
+// in the way it is going, so the next step always gets away; held, it
+// stays a moment where it snaps (snapStay).
 
 import "time"
 
 const (
-	snapReachX = 3  // columns (on screen) from a place at which a structure snaps to it
-	snapReachY = 2  // rows
-	snapGapX   = 2  // columns between two structures side by side
-	snapGapY   = 1  // rows between two structures one above the other
-	snapNearX  = 12 // columns: structures further apart across do not line up their tops and bottoms
-	snapNearY  = 6  // rows: further apart up and down, they do not line up their sides
+	snapReachX = 3 // columns (on screen) from the gap place at which a structure snaps to it
+	snapReachY = 2 // rows
+	snapGapX   = 2 // columns between two structures side by side
+	snapGapY   = 1 // rows between two structures one above the other
 	snapStay   = 250 * time.Millisecond
 )
 
-// snapPlaces are the X places (or Y places, when vert) o could snap to at
-// (x, y): edges lined up with each structure near it, or beside it.
-func (d *designState) snapPlaces(o *dOct, x, y int, vert bool) []int {
+// snapGap is where o, at (x, y), would sit a gap away from the closest
+// structure facing it: across (vert false: the X it would have) or up and
+// down (vert true: the Y). ok is false when nothing faces it.
+func (d *designState) snapGap(o *dOct, x, y int) (place int, vert, ok bool) {
 	w, h := d.size(o)
-	var out []int
+	best := -1
 	for _, b := range d.octs {
 		if b == nil || b.ID == o.ID {
 			continue
 		}
 		bw, bh := d.size(b)
-		if vert {
-			// Close enough across: overlapping, or a little apart.
-			if b.X > x+w+snapNearX || x > b.X+bw+snapNearX {
-				continue
+		across := max(b.X-(x+w), x-(b.X+bw)) // empty columns between them (< 0: they overlap across)
+		upDown := max(b.Y-(y+h), y-(b.Y+bh)) // empty rows between them
+		var sep, p int
+		var v bool
+		switch {
+		case upDown < 0 && across >= 0: // side by side
+			sep, p = across, b.X+bw+snapGapX
+			if x+w/2 < b.X+bw/2 {
+				p = b.X - w - snapGapX
 			}
-			out = append(out, b.Y, b.Y+bh-h, b.Y+bh+snapGapY, b.Y-h-snapGapY)
-		} else {
-			if b.Y > y+h+snapNearY || y > b.Y+bh+snapNearY {
-				continue
+		case across < 0 && upDown >= 0: // one above the other
+			sep, p, v = upDown*2, b.Y+bh+snapGapY, true // a row is about two columns on screen
+			if y+h/2 < b.Y+bh/2 {
+				p = b.Y - h - snapGapY
 			}
-			out = append(out, b.X, b.X+bw-w, b.X+bw+snapGapX, b.X-w-snapGapX)
+		default: // on top of it (being filed?), or off at a corner
+			continue
+		}
+		if best < 0 || sep < best {
+			best, place, vert, ok = sep, p, v, true
 		}
 	}
-	return out
+	return place, vert, ok
 }
 
 // snapReach is how far (in board cells) a structure snaps, the same on
@@ -55,49 +64,50 @@ func (d *designState) snapReach() (int, int) {
 	return max(1, int(float64(snapReachX)/z+0.5)), max(1, int(float64(snapReachY)/z+0.5))
 }
 
-// snapNearest moves (x, y), where o is dragged to, onto the nearest snap
-// place on each side within reach.
+// snapNearest moves (x, y), where o is dragged to, a gap away from the
+// closest structure, when that is within reach.
 func (d *designState) snapNearest(o *dOct, x, y int) (int, int) {
-	rx, ry := d.snapReach()
-	nearest := func(v, reach int, places []int) int {
-		best, bestD := v, reach+1
-		for _, p := range places {
-			if dist := abs(p - v); dist < bestD {
-				best, bestD = p, dist
-			}
-		}
-		return best
+	p, vert, ok := d.snapGap(o, x, y)
+	if !ok {
+		return x, y
 	}
-	nx := nearest(x, rx, d.snapPlaces(o, x, y, false))
-	ny := nearest(y, ry, d.snapPlaces(o, nx, y, true))
-	return nx, ny
+	rx, ry := d.snapReach()
+	if !vert && abs(p-x) <= rx {
+		return p, y
+	}
+	if vert && abs(p-y) <= ry {
+		return x, p
+	}
+	return x, y
 }
 
-// snapAhead is where o, moved from (x0, y0) to (x, y) by keyboard, ends up:
-// on the first snap place it passed or is about to reach, going that way.
-// It says whether it snapped.
+// snapAhead is where o, moved by keyboard from (x0, y0) to (x, y), ends up:
+// the gap place by the closest structure, when it passed it or is about to
+// reach it, going that way. It says whether it snapped.
 func (d *designState) snapAhead(o *dOct, x0, y0, x, y int) (int, int, bool) {
+	p, vert, ok := d.snapGap(o, x, y)
+	if !ok {
+		return x, y, false
+	}
 	rx, ry := d.snapReach()
-	ahead := func(from, to, reach int, places []int) (int, bool) {
+	ahead := func(from, to, reach int) bool {
 		if to == from {
-			return to, false
+			return false
 		}
 		dir := 1
 		if to < from {
 			dir = -1
 		}
-		best, ok := to, false
-		for _, p := range places {
-			// Past where it started, and no further than reach beyond where it got to.
-			if (p-from)*dir > 0 && (p-to)*dir <= reach && (!ok || (p-best)*dir < 0) {
-				best, ok = p, true
-			}
-		}
-		return best, ok
+		// Past where it started, and no further than reach beyond where it got to.
+		return (p-from)*dir > 0 && (p-to)*dir <= reach
 	}
-	nx, sx := ahead(x0, x, rx, d.snapPlaces(o, x, y, false))
-	ny, sy := ahead(y0, y, ry, d.snapPlaces(o, nx, y, true))
-	return nx, ny, sx || sy
+	if !vert && ahead(x0, x, rx) {
+		return p, y, true
+	}
+	if vert && ahead(y0, y, ry) {
+		return x, p, true
+	}
+	return x, y, false
 }
 
 // moveByKeys moves o by (dx, dy) cells (Alt + arrows), snapping ahead.

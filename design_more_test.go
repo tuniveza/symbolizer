@@ -1987,32 +1987,52 @@ func TestDesignSheetFooters(t *testing.T) {
 	}
 }
 
-// A structure moved near another snaps to it: beside it with a gap, or
-// lined up with its edges. By keys it snaps only ahead, so it can get away.
+// A structure moved near another snaps a gap away from the closest one
+// facing it. By keys it snaps only ahead, so it can get away.
 func TestDesignSnap(t *testing.T) {
 	m := designTest(t)
 	d := m.ds()
 	d.camX, d.camY, d.zoom = 0, 0, designZoom100
 	a := d.newKind(kPage, 0, 0)
-	a.X, a.Y, a.W, a.H = 10, 5, 20, 10
+	a.X, a.Y, a.W, a.H = 10, 5, 20, 10 // right edge after column 29
 	b := d.newKind(kPage, 0, 0)
 	b.X, b.Y, b.W, b.H = 40, 7, 20, 10
 
-	// Dragged to 2 columns short of beside a (a's right edge 30, gap 2: x 32), 1 row off its top.
-	if x, y := d.snapNearest(b, 34, 6); x != 32 || y != 5 {
-		t.Fatalf("drag near: snapped to %d,%d, want 32,5", x, y)
+	// Dragged to 2 columns from the gap place beside a (x 32): it snaps there, and only across.
+	if x, y := d.snapNearest(b, 34, 6); x != 32 || y != 6 {
+		t.Fatalf("drag near: snapped to %d,%d, want 32,6", x, y)
 	}
-	// Far away: no snapping.
-	if x, y := d.snapNearest(b, 45, 9); x != 45 || y != 9 {
-		t.Fatalf("drag far: moved to %d,%d, want 45,9", x, y)
+	// Too far from the gap place: no snapping.
+	if x, y := d.snapNearest(b, 38, 9); x != 38 || y != 9 {
+		t.Fatalf("drag far: moved to %d,%d, want 38,9", x, y)
 	}
+	// Under a, near: a row's gap under it (a's bottom after row 14: y 16).
+	if x, y := d.snapNearest(b, 12, 17); x != 12 || y != 16 {
+		t.Fatalf("drag under: snapped to %d,%d, want 12,16", x, y)
+	}
+	// Dragged onto a (to file it): no snapping.
+	if x, y := d.snapNearest(b, 15, 8); x != 15 || y != 8 {
+		t.Fatalf("drag onto: moved to %d,%d, want 15,8", x, y)
+	}
+	// The closest one wins: c is closer on the right than a on the left.
+	c := d.newKind(kPage, 0, 0)
+	c.X, c.Y, c.W, c.H = 63, 5, 10, 10
+	if x, _ := d.snapNearest(b, 36, 6); x != 36 {
+		// 36: a is 6 columns away, c 7: a is closest, its gap place 32 is 4 away: out of reach.
+		t.Fatalf("closest: x %d, want 36", x)
+	}
+	if x, _ := d.snapNearest(b, 40, 6); x != 41 {
+		// 40: c is 3 columns away (closest); its gap place is 63-20-2 = 41.
+		t.Fatalf("closest: x %d, want 41 (beside c)", x)
+	}
+	d.remove(c.ID)
 
-	// By keys: Alt+Left from x 36 steps to 35, and the place beside a (32) is within reach ahead.
+	// By keys: Alt+Left from x 36 steps to 35; the gap place beside a (32) is within reach ahead.
 	d.sel = b.ID
 	b.X, b.Y = 36, 5
 	press(m, "alt+left")
 	if b.X != 32 {
-		t.Fatalf("Alt+Left near a: x %d, want 32 (snapped beside it)", b.X)
+		t.Fatalf("Alt+Left near a: x %d, want 32 (a gap from it)", b.X)
 	}
 	// Going back right it gets away at once, one step.
 	press(m, "alt+right")
