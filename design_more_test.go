@@ -1430,20 +1430,34 @@ func TestDesignKeyboard(t *testing.T) {
 	right.X, right.Y, right.W, right.H, right.Header = w/2+60, h/2-5, 24, 10, "Far right"
 	d.sel, d.editing = -1, partNone
 
-	// An arrow moves the view (not a structure) and chooses the one in the middle.
-	press(m, "right")
+	// Shift + an arrow moves the view freely (not a structure) and chooses the one in the middle.
+	press(m, "shift+right")
 	if d.camX <= 0 || left.X != w/2-13 {
-		t.Fatalf("Right: view at %v, structure at %d", d.camX, left.X)
+		t.Fatalf("Shift+Right: view at %v, structure at %d", d.camX, left.X)
 	}
 	if d.sel != left.ID {
-		t.Fatalf("Right did not choose the structure in the middle (chosen %d)", d.sel)
+		t.Fatalf("Shift+Right did not choose the structure in the middle (chosen %d)", d.sel)
 	}
-	for i := 0; i < 4; i++ { // the view goes right (16 cells a press) until the page is in the middle
-		press(m, "shift+right")
-	}
+	// An arrow jumps the view to the next structure that way, centred, and chooses it.
+	press(m, "right")
 	if d.sel != right.ID {
-		t.Fatalf("after moving the view right, the page in the middle is not chosen (chosen %d)", d.sel)
+		t.Fatalf("Right did not jump to the page on the right (chosen %d)", d.sel)
 	}
+	if x, _, rw, _ := d.rect(right); abs(x+rw/2-w/2) > 1 {
+		t.Fatalf("the page is not in the middle across: %d+%d/2 on %d", x, rw, w)
+	}
+	// Nothing further right: the view moves a step instead.
+	cam := d.camX
+	press(m, "right")
+	if d.camX <= cam {
+		t.Fatal("Right with nothing that way did not move the view")
+	}
+	press(m, "left")
+	if d.sel != left.ID && d.sel != right.ID {
+		t.Fatalf("Left chose %d", d.sel)
+	}
+	d.sel = right.ID
+	m.centreOn(right)
 
 	// Tab writes in it: a page's title, then (Tab again) its text.
 	press(m, "e")
@@ -1460,10 +1474,8 @@ func TestDesignKeyboard(t *testing.T) {
 	if right.Body != "Hello" {
 		t.Fatalf("written: %q", right.Body)
 	}
-	// An octagon: its header.
-	for i := 0; i < 4; i++ {
-		press(m, "shift+left")
-	}
+	// An octagon: its header. Left jumps back to it.
+	press(m, "left")
 	if d.sel != left.ID {
 		t.Fatalf("back left, the octagon is not chosen (chosen %d)", d.sel)
 	}
@@ -1614,8 +1626,8 @@ func TestDesignTab(t *testing.T) {
 	}
 }
 
-// A structure grows to show all it holds while you write (wider, then
-// taller, no higher than the screen), the view follows, and F fits it
+// A structure grows to show all it holds while you write (taller, never
+// wider; no higher than the screen), the view follows, and designFit fits it
 // exactly; a picture keeps its shape.
 func TestDesignFitToContents(t *testing.T) {
 	m := designTest(t)
@@ -1629,8 +1641,8 @@ func TestDesignFitToContents(t *testing.T) {
 	press(m, "tab")
 	press(m, "tab") // its text
 	typeKeys(m, strings.Repeat("words that go on ", 12))
-	if o.W <= w0 || o.W > fitMaxW {
-		t.Fatalf("while writing it did not grow wider (to at most %d): %d → %d", fitMaxW, w0, o.W)
+	if o.W != w0 {
+		t.Fatalf("while writing it grew wider: %d → %d", w0, o.W)
 	}
 	if o.H <= h0 {
 		t.Fatalf("a long text did not make it taller: %d → %d", h0, o.H)
@@ -2061,5 +2073,74 @@ func TestDesignSnap(t *testing.T) {
 	press(m, "alt+right")
 	if b.X != 33 {
 		t.Fatalf("Alt+Right away from a: x %d, want 33 (no snapping back)", b.X)
+	}
+}
+
+// Writing, a structure grows taller only down to a gap above the one under
+// it; one made by hand to reach further keeps its size.
+func TestDesignGrowStopsAtGap(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	pg := d.newKind(kPage, 0, 0)
+	pg.X, pg.Y, pg.W, pg.H = 10, 1, 24, 8
+	under := d.newKind(kPage, 0, 0)
+	under.X, under.Y, under.W, under.H = 14, 14, 20, 8
+	d.sel, d.editing = pg.ID, partBody
+	for i := 0; i < 20; i++ {
+		typeKeys(m, "a line")
+		press(m, "enter")
+	}
+	press(m, "esc")
+	if pg.W != 24 {
+		t.Fatalf("it grew wider: %d", pg.W)
+	}
+	if want := under.Y - snapGapY - pg.Y; pg.H != want {
+		t.Fatalf("height %d, want %d (a gap above the page under it)", pg.H, want)
+	}
+
+	// Made by hand to reach past the gap: it is not pulled back to the gap.
+	pg.H = 16
+	d.sel, d.editing = pg.ID, partBody
+	typeKeys(m, "more")
+	press(m, "esc")
+	if pg.H < 16 {
+		t.Fatalf("hand-made height shrank: %d, want at least 16", pg.H)
+	}
+}
+
+// Each arrow jumps to the closest structure that way, and only that way.
+func TestDesignJumpDirections(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	mk := func(x, y int, name string) *dOct {
+		o := d.newKind(kPage, 0, 0)
+		o.X, o.Y, o.W, o.H, o.Header = x, y, 20, 8, name
+		return o
+	}
+	mid := mk(100, 100, "mid")
+	right := mk(130, 101, "right")
+	farRight := mk(170, 100, "far right")
+	up := mk(101, 85, "up")
+	down := mk(99, 115, "down")
+	left := mk(60, 99, "left")
+	_ = farRight
+	for _, c := range []struct {
+		key  string
+		want *dOct
+	}{{"right", right}, {"left", left}, {"up", up}, {"down", down}} {
+		d.sel = mid.ID
+		press(m, c.key)
+		if d.sel != c.want.ID {
+			t.Fatalf("%s from mid chose %q, want %q", c.key, d.byID(d.sel).Header, c.want.Header)
+		}
+		d.jumpAt, d.lastArrow = time.Time{}, "" // not two arrows together: one at a time
+	}
+	// From right, Right goes on to far right.
+	d.sel, d.lastArrow = right.ID, ""
+	press(m, "right")
+	if d.sel != farRight.ID {
+		t.Fatalf("Right from right chose %q", d.byID(d.sel).Header)
 	}
 }

@@ -8,6 +8,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"path/filepath"
 	"strings"
 	"time"
@@ -204,10 +205,12 @@ func (m *Model) viewToPart(o *dOct, p int) {
 
 // ---- fitting a structure to what it holds -------------------------------------------
 //
-// While you write, the structure grows (wider up to fitMaxW, then taller) so
-// all of it shows, and the view follows; F fits the chosen one exactly,
-// smaller too. Pictures keep their shape. Notes are one page and cabinets
-// size themselves, so they are left as they are.
+// While you write, the structure grows taller (never wider: the text wraps
+// at the width it has) so all of it shows, and the view follows. It stops a
+// gap above a structure under it, unless it was already made to reach past
+// that by hand; beyond, a page scrolls. designFit fits the chosen one
+// exactly, smaller too. Pictures keep their shape. Notes are one page and
+// cabinets size themselves, so they are left as they are.
 
 const (
 	fitMaxW     = 60 // columns a structure grows to before its text wraps
@@ -218,6 +221,11 @@ const (
 // fitSize is the size (in board cells) that shows all of o, at most maxH
 // rows high (the screen's height: more and it scrolls, or is cut).
 func (d *designState) fitSize(o *dOct, maxH int) (int, int, bool) {
+	return d.fitSizeAt(o, 0, maxH)
+}
+
+// fitSizeAt is fitSize at width fixedW (0: the width that suits it best).
+func (d *designState) fitSizeAt(o *dOct, fixedW, maxH int) (int, int, bool) {
 	widest := func(s string) int {
 		n := 0
 		for _, l := range strings.Split(s, "\n") {
@@ -250,15 +258,27 @@ func (d *designState) fitSize(o *dOct, maxH int) (int, int, bool) {
 			}
 			return max(3, pw/3)
 		}
+		wide := func(least int) int { // the width a layout needs, unless the width is fixed
+			if fixedW > 0 {
+				return fixedW
+			}
+			return max(w, least)
+		}
+		if fixedW > 0 {
+			w, cw = fixedW, fixedW-4
+			rows = lines(o.Body, cw)
+		}
 		switch o.Layout % len(octLayouts) {
 		case layoutPicture:
-			w, cw = max(w, 34), max(w, 34)-4
+			w = wide(34)
+			cw = w - 4
 			rows = pic(cw)
 		case layoutAbove:
-			w, cw = max(w, 34), max(w, 34)-4
+			w = wide(34)
+			cw = w - 4
 			rows = 2 * max(pic(cw), rows) // the picture takes half the rows
 		case layoutLeft, layoutRight:
-			w = max(w, 40)
+			w = wide(40)
 			cw = w - 4
 			iw := cw / 2
 			rows = max(pic(iw), lines(o.Body, cw-iw-1))
@@ -270,6 +290,9 @@ func (d *designState) fitSize(o *dOct, maxH int) (int, int, bool) {
 	// Pages and the other sheets.
 	mw, mh := minSize(o.Kind)
 	w := max(mw, min(fitMaxW+10, max(widest(o.Body), lipgloss.Width(o.Header)+2, lipgloss.Width(o.Footer)+2)+4))
+	if fixedW > 0 {
+		w = fixedW
+	}
 	return w, max(mh, min(fitMaxPageH, maxH, lines(o.Body, w-4)+6)), true
 }
 
@@ -278,17 +301,37 @@ func (m *Model) boardRows() int {
 	return max(4, int(float64(m.boardH())/m.ds().z())-1)
 }
 
-// growToFit makes o bigger, never smaller, until all of it shows (or it
-// is as high as the screen).
+// growToFit makes o taller, never wider or smaller, until all of it shows
+// (or it is as high as the screen, or a gap above a structure under it).
 func (m *Model) growToFit(o *dOct) bool {
 	d := m.ds()
-	w, h, ok := d.fitSize(o, m.boardRows())
-	if !ok || (w <= o.W && h <= o.H) {
+	_, h, ok := d.fitSizeAt(o, o.W, m.boardRows())
+	h = min(h, d.roomBelow(o))
+	if !ok || h <= o.H {
 		return false
 	}
-	o.W, o.H = max(o.W, w), max(o.H, h)
+	o.H = h
 	d.dirty = true
 	return true
+}
+
+// roomBelow is how tall o may grow: down to a gap (snapGapY) above the
+// closest structure under it. One it already reaches (made so by hand, or
+// placed on it) does not count.
+func (d *designState) roomBelow(o *dOct) int {
+	w, h := d.size(o)
+	room := 1 << 30
+	for _, b := range d.octs {
+		if b == nil || b.ID == o.ID {
+			continue
+		}
+		bw, _ := d.size(b)
+		if b.X >= o.X+w || o.X >= b.X+bw || b.Y < o.Y+h {
+			continue // not under it, or already reached
+		}
+		room = min(room, b.Y-snapGapY-o.Y)
+	}
+	return room
 }
 
 // designFit fits the chosen structure to what it holds (F).
@@ -409,11 +452,12 @@ func (m *Model) designHold() tea.Cmd {
 		if o := d.byID(d.sel); o != nil && time.Since(d.snapAt) >= snapStay {
 			d.moveByKeys(o, dx*step, dy*step) // it snapped just now: it stays a moment
 		}
+	} else if step == 1 { // an arrow held: on to the next structure, every jumpEvery
+		if time.Since(d.jumpAt) >= jumpEvery && !m.designJump(dx, dy) {
+			m.designPan(dx, dy, 1)
+		}
 	} else {
-		z := d.z()
-		d.camX += float64(dx*step*4) / z
-		d.camY += float64(dy*step*2) / z
-		m.designChooseMiddle()
+		m.designPan(dx, dy, step)
 	}
 	d.dirty = true
 	d.save()
@@ -422,4 +466,94 @@ func (m *Model) designHold() tea.Cmd {
 		every = holdAlt
 	}
 	return tea.Tick(every, func(time.Time) tea.Msg { return designHoldMsg{} })
+}
+
+// designPan moves the view step steps that way and chooses the structure
+// in the middle of the screen.
+func (m *Model) designPan(dx, dy, step int) {
+	d := m.ds()
+	z := d.z()
+	d.camX += float64(dx*step*4) / z
+	d.camY += float64(dy*step*2) / z
+	m.designChooseMiddle()
+	d.dirty = true
+}
+
+// ---- the view jumps to the next structure ---------------------------------------------
+//
+// An arrow (no Shift) moves the view to the closest structure that way from
+// the chosen one (or from the middle of the screen), centres it and chooses
+// it. With none that way, the view moves a step, as Shift + arrows always
+// do. Held, it jumps on to the next one every jumpEvery.
+
+const jumpEvery = 300 * time.Millisecond
+
+// nextThatWay is the closest structure in direction (dx, dy) from the board
+// point (fx, fy), skipping from: within 45° of the direction, the nearest
+// along it counting a step to the side twice. A row counts as two columns,
+// as on screen.
+func (d *designState) nextThatWay(from *dOct, fx, fy float64, dx, dy int) *dOct {
+	n := math.Hypot(float64(dx), float64(dy))
+	if n == 0 {
+		return nil
+	}
+	ux, uy := float64(dx)/n, float64(dy)/n
+	var best *dOct
+	bestScore := math.Inf(1)
+	for _, b := range d.octs {
+		if b == nil || b == from {
+			continue
+		}
+		bw, bh := d.size(b)
+		vx := float64(b.X) + float64(bw)/2 - fx
+		vy := (float64(b.Y) + float64(bh)/2 - fy) * 2
+		along := vx*ux + vy*uy
+		side := math.Abs(vx*uy - vy*ux)
+		if along <= 0 || side > along {
+			continue
+		}
+		if s := along + 2*side; s < bestScore {
+			best, bestScore = b, s
+		}
+	}
+	return best
+}
+
+// centreOn moves the view so o is in the middle of the screen (a structure
+// taller than the screen shows from its top).
+func (m *Model) centreOn(o *dOct) {
+	d := m.ds()
+	z := d.z()
+	w, h := d.size(o)
+	screenW, screenH := float64(m.width)/z, float64(m.boardH())/z
+	d.camX = float64(o.X) + float64(w)/2 - screenW/2
+	if float64(h) > screenH-2 {
+		d.camY = float64(o.Y) - 1
+	} else {
+		d.camY = float64(o.Y) + float64(h)/2 - screenH/2
+	}
+	d.dirty = true
+}
+
+// designJump moves the view to the next structure in direction (dx, dy)
+// and chooses it. It says whether there was one.
+func (m *Model) designJump(dx, dy int) bool {
+	d := m.ds()
+	from := d.byID(d.sel)
+	var fx, fy float64
+	if from != nil {
+		w, h := d.size(from)
+		fx, fy = float64(from.X)+float64(w)/2, float64(from.Y)+float64(h)/2
+	} else {
+		fx, fy = d.world(m.width/2, m.boardH()/2)
+	}
+	o := d.nextThatWay(from, fx, fy, dx, dy)
+	if o == nil {
+		return false
+	}
+	m.centreOn(o)
+	d.sel, d.editing, d.selLink = o.ID, partNone, -1
+	d.jumpAt = time.Now()
+	m.msg = ""
+	return true
 }

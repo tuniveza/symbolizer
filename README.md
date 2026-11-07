@@ -118,7 +118,7 @@ A box that floats over the text, with an icon for each kind of file.
 
 **ŧ** (Right Alt + T) opens a real kitty terminal in a pane under the editor, in the same folder.
 Press it again, in the editor or in the terminal, to hide it. Hidden only means out of sight: whatever runs there keeps going, and it comes back at the same size.
-**Ctrl + Alt + Up / Down** goes between the editor and the terminal (Left / Right: panes beside them). **Ctrl + Alt + R** resizes the split with the arrows (Esc or Enter when done).
+**Ctrl + Alt + Up / Down** goes between the editor and the terminal (Left / Right: panes beside them). **Alt + R**, then an arrow, resizes the split once.
 **¢** (Right Alt + C) in the terminal closes just that pane. It needs kitty with `sy_term.py` and its keys in `panes.conf`.
 
 <br>
@@ -170,8 +170,8 @@ Everything on it is drawn with letters, kept in `~/.local/share/symbolizer/desig
 - **Links** (**⛓ link** on the toolbar), a **highlighter pen** with 8 colours (**1–8**; the rubber is **⌫** on the toolbar), and the wheel zooms, toward the pointer (**Shift + wheel** scrolls a chosen page). All text on the board is centred.
 - **Top bar:** over the board, it names the board and what is chosen.
 - **Snapping:** a structure moved near another snaps a small gap away from the closest one (2 columns beside it, 1 row above or below), by mouse or by **Alt + arrows**. By keys it stops at the gap: pressing on toward the other one does nothing, but it can slide along it or go back.
-- **By keyboard:** the **arrows** move the view (**Shift** for bigger steps; held, it glides on at once with no pause; hold two, like **Up + Right**, to go diagonally), and the structure nearest the middle of the screen is chosen as you go. **Tab** writes in the chosen one and steps through its parts: header, text, footer, and the view moves to each one (**Shift + Tab** back; on a cabinet, the next stack). **Esc** stops. **Alt + arrows** move the chosen structure (**Alt + Shift**: further; two held: diagonally). **+** and **−** zoom the view (the keypad's too), **0** goes back to 100%. **Alt + N**, then **P**, **N**, **C** or **S**, places a page, note, cabinet or shape in the middle of the screen. **Alt + L** changes a shape's layout. Those are all of Design mode's keys; the rest is on the toolbar and the mouse.
-- **Structures fit what they hold:** while you write, a structure grows wider and then taller so all its words show (up to the screen's height; a page scrolls beyond that), and the view follows the typing.
+- **By keyboard:** an **arrow** jumps the view to the closest structure that way, centres it and chooses it (held: on to the next one; nothing that way: a step). **Shift + arrows** move the view freely (held, it glides on at once with no pause; hold two, like **Up + Right**, to go diagonally), and the structure nearest the middle of the screen is chosen as you go. **Tab** writes in the chosen one and steps through its parts: header, text, footer, and the view moves to each one (**Shift + Tab** back; on a cabinet, the next stack). **Esc** stops. **Alt + arrows** move the chosen structure (**Alt + Shift**: further; two held: diagonally). **+** and **−** zoom the view (the keypad's too), **0** goes back to 100%. **Alt + N**, then **P**, **N**, **C** or **S**, places a page, note, cabinet or shape in the middle of the screen. **Alt + L** changes a shape's layout. Those are all of Design mode's keys; the rest is on the toolbar and the mouse.
+- **Structures fit what they hold:** while you write, a structure grows taller (never wider) so all its words show, and the view follows the typing. It stops a gap above a structure under it (unless you made it reach further yourself), and at the screen's height; a page scrolls beyond that.
 - **AltGr + K** shows every keyboard shortcut, opened at the keys of the mode you are in. Press it again (or **Esc**) to close.
 - **Deleting:** everything can go. Click a structure and its red **✕** (or press **X** twice, quickly). Click a link's line, then **X X**. A drawer or cabinet row has its own **✕**, and so does a chosen picture (it takes out just the picture). A structure that holds things asks first.
 - **Undo and redo:** **Ctrl + Z** undoes any change (a move, a resize, words, a deletion, a link, ink) and **Ctrl + Y** (or **Ctrl + Shift + Z**) does it again; **↶ ↷** on the toolbar too. Writing in one part is one step, a drag is one step, and moving or zooming the board is not a step. Up to 100 steps, until you quit.
@@ -280,14 +280,14 @@ Press **F1** inside Symbolizer for the full, scrollable list, or **AltGr + K** t
 | Alt + T or µ | colour themes |
 | ŧ (Right Alt + T) | sy term: show or hide a kitty terminal under the editor |
 | Ctrl + Alt + arrows | go to the pane that way: Up the editor, Down sy term (a kitty map in `~/.config/kitty/panes.conf`) |
-| Ctrl + Alt + R | resize the split: Up / Down make the pane you are in taller / shorter; Esc or Enter when done |
+| Alt + R, then an arrow | resize the split once: Up / Down make the pane you are in taller / shorter |
 | Alt + M | switch modes: Text, Design, Slides, Diary, Book, Draw |
 | Design: Alt + N, then P · N · C · S | new page · note · cabinet · shape (F1 in Design mode lists all its keys) |
 | Design: Alt + L | the chosen shape's next layout (Alt + Shift + L: the one before) |
 | Design: X X or ✕ | delete the chosen structure or link |
 | Design: img on the toolbar | a picture (or text file) for the chosen structure: type its path |
 | Design: Ctrl + Z · Ctrl + Y | undo · redo any change on the board (also Ctrl + Shift + Z, and ↶ ↷ on the toolbar) |
-| Design: arrows · Tab | move the view (the structure in the middle is chosen; two arrows: diagonally) · write in the chosen structure, then its next part |
+| Design: arrows · Shift + arrows · Tab | jump to the closest structure that way · move the view freely · write in the chosen structure, then its next part |
 | Design: Alt + arrows · + − 0 | move the chosen structure · zoom the view in, out, back to 100% |
 | Design: 1–8 | pen colours (rubber and over/under are on the toolbar) |
 | F1 or Alt + H | every key |

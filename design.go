@@ -209,6 +209,7 @@ type designState struct {
 	placing        bool         // Alt+N was pressed: the next key says what to place
 	xAt            time.Time    // when X was pressed: X again soon deletes
 	snapAt         time.Time    // when Alt + arrows last snapped: a held glide stays a moment (design_snap.go)
+	jumpAt         time.Time    // when an arrow last jumped the view to a structure (design_keys.go)
 	inked          map[int]bool // the board rows that have ink (tint), for inkedVer
 	inkedVer       int
 	inkedLen       int
@@ -774,11 +775,16 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		defer func() { cmd = m.startHold(name) }()
 		dx, dy, step := arrowStep(name)
 		dx, dy = m.arrowDiagonal(arrowDir(name), dx, dy) // two arrows held: diagonally
-		z := d.z()
-		d.camX += float64(dx*step*4) / z
-		d.camY += float64(dy*step*2) / z
-		m.designChooseMiddle()
-		d.dirty = true
+		if step > 1 {                                    // Shift: the view moves freely
+			m.designPan(dx, dy, step)
+			return nil
+		}
+		if k.IsRepeat && time.Since(d.jumpAt) < jumpEvery {
+			return nil // the terminal's own repeats: on to the next one only every jumpEvery
+		}
+		if !m.designJump(dx, dy) { // to the next structure that way, or a step
+			m.designPan(dx, dy, 1)
+		}
 	case "alt+left", "alt+right", "alt+up", "alt+down", "alt+shift+left", "alt+shift+right", "alt+shift+up", "alt+shift+down":
 		// Alt + arrows move the chosen structure (Alt + Shift: further).
 		if m.releases && k.IsRepeat {
