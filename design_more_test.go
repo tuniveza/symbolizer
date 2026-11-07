@@ -2334,7 +2334,7 @@ func TestDesignMiniMap(t *testing.T) {
 		t.Fatalf("AltGr+M: corner %d, themes open %v", d.mapCorner, m.themeOpen)
 	}
 	rows := strings.Split(screenOf(m), "\n")
-	top := strings.Join(rows[m.boardTop():m.boardTop()+12], "\n")
+	top := strings.Join(rows[m.boardTop():m.boardTop()+m.boardH()], "\n")
 	if !strings.Contains(top, " map ") || !strings.Contains(top, kindIcons[kPage]) || !strings.Contains(top, kindIcons[kCabinet]) {
 		t.Fatalf("the map at the top right does not show the page and the cabinet:\n%s", top)
 	}

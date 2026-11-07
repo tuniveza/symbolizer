@@ -119,7 +119,7 @@ var helpGroups = []helpGroup{
 		{"⛓ link on the toolbar", "link mode: click a structure, then each one to attach (click again to detach)"},
 		{"Arrows", "jump the view to the closest structure that way and choose it (held: on to the next one); nothing that way: a step"},
 		{"E", "write in the chosen structure's text (a cabinet: its name)"},
-		{"AltGr + M  (µ)", "the mini map: every structure as its symbol, links as dotted lines, a frame for the screen; again: the next corner, then hidden"},
+		{"AltGr + M  (µ)", "the mini map: every structure as a box of its shape and colour with its symbol and title, links as dotted lines, a frame for the screen; again: the next corner, then hidden"},
 		{"Alt tapped twice", "Esc: stop writing, leave link mode, put the pen down, or let go of the chosen structure"},
 		{"Space held + arrows", "move the view freely, a step at a time (held: it glides); let go of Space and the view snaps to the structure nearest the middle"},
 		{"Shift + arrows", "move the view freely (held: it glides on at once, no pause); the structure nearest the middle is chosen as you go"},
