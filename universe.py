@@ -19,6 +19,7 @@ import re
 import shutil
 import tempfile
 
+import brain
 import conceptnet
 import dictionary
 import neural
@@ -115,6 +116,8 @@ class Token:
         self.borrowed = set()       # ideas from a word ConceptNet says it stands for, used only as a last try
         self.spelled = None         # words brick knows that this could be a slip for ('wnidow': window)
         self.real = False           # ... though it's a real word too ('wit' for wait): only if that completes it
+        self.likened = None         # (a word brick knows, score): nothing else knows this word, but the brain says
+                                    # it's used like that one ('vermilion' like 'red'), used only as the very last try
 
     def __repr__(self):
         return f"{self.text}{sorted(self.ideas)}"
@@ -126,7 +129,7 @@ _analysed = {}
 def analyse(line):
     """The line as directions (see read_directions), remembered: the same line is analysed many times
     over in one build, and its analysis only changes when the universe, the dictionary or the memory do."""
-    key = (line, id(universe()), synchronicity.off(), os.environ.get("BRICK_MEMORY"))
+    key = (line, id(universe()), synchronicity.off(), os.environ.get("BRICK_MEMORY"), brain.stamp())
     if key not in _analysed:
         if len(_analysed) > 4000:
             _analysed.clear()
@@ -175,6 +178,9 @@ def read_directions(line):
                     token.spelled = spelled(phrase.lower())
                     if not token.spelled and len(phrase) >= 3 and real_word(phrase.lower()):
                         token.spelled, token.real = spelled(phrase.lower(), real=True), True
+                    if not token.borrowed and not token.spelled:
+                        token.likened = likened(phrase.lower(), words[i - 1] if i else None,
+                                                words[i + n] if i + n < len(words) else None)
                 doubled = tokens and token.word == tokens[-1].word and "end" not in (ideas or ()) and \
                     (ideas or token.spelled and not token.real) and not token.ideas & {"window", "background"}
                 if not doubled:
@@ -888,6 +894,24 @@ def borrowed(word):
     return set()
 
 
+def likened(word, before, after):
+    """A word nothing else knows (not the universe, the dictionary, spelling, ConceptNet or WordNet): the
+    word brick knows that the brain says it's used like -> (that word, score), or None. Never with
+    BRICK_MEMORY=off (the tests), or with the brain switched off."""
+    if brain.off() or len(word) < 3:
+        return None
+    try:
+        import wordnet
+        from actions import STARTERS
+        world = universe()
+        if any(" " not in o and (o in STARTERS or world.words.get(o, set()) - {"filler", "glue", "chatter"})
+               for o in wordnet.synonyms(word)[:10]):
+            return None                       # WordNet knows a word for it brick knows: that reading is first
+        return brain.brain().understand(word, before, after, world)
+    except Exception:                         # the brain should never stop a build
+        return None
+
+
 def readings(tokens, follows=False):
     """The ways one direction can be read, the best fit first: as the universe's links say, and with each
     word that could be a symbol or plain words ('orange') taken as plain words. Synchronicity orders them:
@@ -1047,6 +1071,21 @@ def tellings(line):
     return found[:MOST]
 
 
+def likened_tellings(line):
+    """The brain's readings of a line, tried only after every other: each word nothing else knows, said as
+    the word the brain says it's used like ('hi in vermilion' -> 'hi in red'), then read like any line."""
+    swaps = {t.word: t.likened[0] for tokens in analyse(line) for t in tokens if t.likened}
+    if not swaps:
+        return []
+    parts = re.split(r'("[^"]*")', line)          # quoted words are shown as written: never swapped
+    for k in range(0, len(parts), 2):
+        for word, known in swaps.items():
+            parts[k] = re.sub(rf"(?<![\w']){re.escape(word)}(?![\w'])", known, parts[k], flags=re.IGNORECASE)
+    swapped = "".join(parts)
+    whole = sure(swapped)
+    return list(dict.fromkeys(([whole] if whole else []) + tellings(swapped) + [swapped]))
+
+
 # ---------------- the compiler asks ----------------
 
 def retell(text, problem, failing, first=None):
@@ -1081,14 +1120,32 @@ def retell(text, problem, failing, first=None):
         said = review.settled().get(raw.strip().lower())
         if said:                      # you said what this line means, after a run: that comes first of all
             ways = [said] + [way for way in ways if way != said]
-        for way in ways:
+        try:
+            liked = likened_tellings(raw.strip())       # the brain's readings: only if nothing else builds
+        except Exception:
+            liked = []
+        for way in ways + [way for way in liked if way not in ways]:
             attempt = lines[:number - 1] + [indent + way] + lines[number:]
             still = failing("\n".join(attempt))
             if number not in still and not still - set(stuck):
                 lines = attempt
-                notes.append(f"Note: line {number} read as: {way}")
+                notes.append(f"Note: line {number} read as: {way}{used_like(raw.strip(), way)}")
                 break
     return ("\n".join(lines), notes) if notes else None
+
+
+def used_like(line, way):
+    """' ('vermilion' is used like 'red')' when the reading took a word the brain likened, else ''."""
+    try:
+        found = [(t.word, t.likened[0]) for tokens in analyse(line) for t in tokens if t.likened]
+    except Exception:
+        return ""
+    found = [(word, known) for word, known in found if re.search(rf"\b{re.escape(known)}\b", way.lower())
+             and not re.search(rf"\b{re.escape(word)}\b", way.lower())]
+    return "".join(f" ('{word}' is used like '{known}')" for word, known in found)
+
+
+USED_LIKE = re.compile(r"(?: \('[^']*' is used like '[^']*'\))+$")      # that note, to take it off again
 
 
 def judged(line, ways, lines, number, failing, spare=()):

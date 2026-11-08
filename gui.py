@@ -664,7 +664,7 @@ def fix_options(text, number, words_file):
         compiler.compile(text)
     except Exception:
         pass
-    told = next((n.split(" read as: ", 1)[1].replace(" (as you said)", "") for n in compiler.notes
+    told = next((universe.USED_LIKE.sub("", n.split(" read as: ", 1)[1].replace(" (as you said)", "")) for n in compiler.notes
                  if n.startswith(f"Note: line {number} read as: ")), None)
     told_lines = lines[:number - 1] + [told or line] + lines[number:]
     made = {review.build("\n".join(told_lines), compiler.words_file)}

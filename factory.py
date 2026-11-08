@@ -15,6 +15,9 @@ Each round (every 5 seconds) it:
              knows: what brick reads right strengthens the memory; what it misreads steers the memory
              toward the reading that's right; what it refuses, it tries to learn the missing words for,
              kept only if the mess then builds exactly the right program
+  links      words to how they're used, in brick's brain (brain.py, texts/factory/brain.txt): every
+             direction it proves, your .brick files, the sentence pool, the universe, the dictionary and
+             ConceptNet, so a word brick doesn't know can be read as one used the same way
   leaves     what it couldn't settle for a person to decide: the Decisions tab in brick gui (outliers.py,
              texts/factory/unsure.txt)
 
@@ -41,6 +44,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
+import brain  # noqa: E402
 import conceptnet  # noqa: E402
 import dictionary  # noqa: E402
 import outliers  # noqa: E402
@@ -421,6 +425,7 @@ class Factory:
         self.quiet = quiet
         self.builder = Builder()
         self.memory = synchronicity.Memory()
+        self.brain = None if brain.off() else brain.Brain(brain.path())    # brick brain off: it doesn't learn
         self.state = self.load_state()
         self.maker = None
         self.added = []                  # (file, line) learned since the last check
@@ -440,12 +445,14 @@ class Factory:
         return {"bricks": state.get("bricks", {}), "tried": set(state.get("tried", [])),
                 "unsure": set(state.get("unsure", [])), "turn": state.get("turn", 0)}
 
-    def save(self):
+    def save(self, final=False):
         with open(os.path.join(FOLDER, "state.json"), "w", encoding="utf-8") as f:
             json.dump({"bricks": self.state["bricks"], "tried": sorted(self.state["tried"])[-20000:],
                        "unsure": sorted(self.state["unsure"])[-5000:], "pending": self.added,
                        "turn": self.state.get("turn", 0)}, f)
         self.memory.save()
+        if self.brain:
+            self.brain.save(every=None if final else 60)       # a big file: written once a minute, and at the end
 
     def say(self, message):
         line = f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {message}"
@@ -516,6 +523,8 @@ class Factory:
             for way in universe.tell(reading):
                 if self.builder.build(way, by_itself=True) == want:
                     self.memory.observe(reading.roles())
+                    if self.brain:
+                        self.brain.learn_proved(line, reading.roles())
                     return
 
     def learn_words(self, text, problem, where):
@@ -609,6 +618,8 @@ class Factory:
                 if self.builder.build(way, by_itself=True) == want:
                     for _ in range(times):
                         self.memory.observe(reading.roles())
+                    if self.brain:
+                        self.brain.learn_proved(messy, reading.roles())
                     return True
         return False
 
@@ -666,7 +677,7 @@ class Factory:
             self.digest("\n".join(self.make()), "the sentence maker")
             self.practise()
         self.check()
-        self.save()
+        self.save(final=True)
         with open(os.path.join(FOLDER, "log.txt"), encoding="utf-8") as f:
             news = [line.split("  ", 1)[1].rstrip() for line in list(f)[before:] if "  " in line]
         learned = [n for n in news if n.startswith("learned: ")]
@@ -681,6 +692,8 @@ class Factory:
     # ---- running ----
 
     def round(self, folders):
+        if self.brain:
+            self.brain.catch_up(folders)              # new lines in the pool, changed files: linked in the brain
         for line in heard():                          # lines brick fixed (or couldn't) in your real builds
             self.add_to_pool([line])
             self.digest(line, "your programs")
@@ -910,7 +923,7 @@ def main(args=None):
             text = source_of(path) if path.endswith(".brick") else open(path, encoding="utf-8").read()
             factory.digest(text, os.path.basename(path))
         factory.check()
-        factory.save()
+        factory.save(final=True)
         return
     parent = int(args[args.index("--while") + 1]) if "--while" in args else None
     folders = [HERE, EXAMPLES]
@@ -925,7 +938,7 @@ def main(args=None):
             time.sleep(5)
     except KeyboardInterrupt:
         pass
-    factory.save()
+    factory.save(final=True)
     factory.say("factory stopped")
 
 

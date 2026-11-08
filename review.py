@@ -82,7 +82,7 @@ def guessed(text, words_file="mywords.txt"):
         except Problem:
             return []
         lines = text.split("\n")
-        guesses = {int(m.group(1)): m.group(2) for m in
+        guesses = {int(m.group(1)): universe.USED_LIKE.sub("", m.group(2)) for m in
                    (re.match(r"Note: line (\d+) read as: (.*)$", note) for note in compiler.notes) if m}
         told_lines = [guesses.get(k + 1, line) for k, line in enumerate(lines)]     # every guess filled in
         found = []

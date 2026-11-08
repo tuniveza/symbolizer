@@ -19,6 +19,11 @@
   brick neural setup          the neural reader: a language model on this computer (Ollama, started and
                               stopped with brick) that suggests readings brick isn't sure of. brick neural:
                               is it ready; brick neural off / on; brick neural model qwen2.5:7b
+  brick brain                 brick's brain: it links each word to how it's used, by itself, so a word
+                              brick doesn't know can be read as one used the same way ('hi in vermilion'
+                              like 'hi in red'). brick brain: is it on, how much it knows; brick brain
+                              like red: the words used most like red; brick brain links red: its links;
+                              brick brain learn: learn from everything now; brick brain off / on
   brick scramble 10           10 broken, errored paragraphs of directions, and how brick did with each
                               (the factory practises on these by itself while brick runs)
   brick review game.txt       the lines brick had to guess in game.txt: say if they're right, or fix them.
@@ -227,6 +232,9 @@ def main():
     if args[:1] == ["neural"]:
         import neural
         return neural.command(args[1:])
+    if args[:1] == ["brain"]:
+        import brain
+        return brain.command(args[1:])
     if args[:1] == ["scramble"]:
         import scrambler
         return scrambler.main(args[1:])
