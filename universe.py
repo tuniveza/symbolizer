@@ -116,7 +116,7 @@ class Token:
         self.borrowed = set()       # ideas from a word ConceptNet says it stands for, used only as a last try
         self.spelled = None         # words brick knows that this could be a slip for ('wnidow': window)
         self.real = False           # ... though it's a real word too ('wit' for wait): only if that completes it
-        self.likened = None         # (a word brick knows, score): nothing else knows this word, but the brain says
+        self.likened = None         # (a word brick knows, score, how): nothing else knows this word, but the brain says
                                     # it's used like that one ('vermilion' like 'red'), used only as the very last try
 
     def __repr__(self):
@@ -896,9 +896,9 @@ def borrowed(word):
 
 def likened(word, before, after):
     """A word nothing else knows (not the universe, the dictionary, spelling, ConceptNet or WordNet): the
-    word brick knows that the brain says it's used like -> (that word, score), or None. Never with
+    word brick knows that the brain says it's used like -> (that word, score, how), or None. Never with
     BRICK_MEMORY=off (the tests), or with the brain switched off."""
-    if brain.off() or len(word) < 3:
+    if brain.off():                           # little words are symbols too: 'zo' is asked about like any word
         return None
     try:
         import wordnet
@@ -1077,13 +1077,16 @@ def likened_tellings(line):
     swaps = {t.word: t.likened[0] for tokens in analyse(line) for t in tokens if t.likened}
     if not swaps:
         return []
-    parts = re.split(r'("[^"]*")', line)          # quoted words are shown as written: never swapped
-    for k in range(0, len(parts), 2):
-        for word, known in swaps.items():
-            parts[k] = re.sub(rf"(?<![\w']){re.escape(word)}(?![\w'])", known, parts[k], flags=re.IGNORECASE)
-    swapped = "".join(parts)
-    whole = sure(swapped)
-    return list(dict.fromkeys(([whole] if whole else []) + tellings(swapped) + [swapped]))
+    found = []
+    for chosen in [swaps] + ([{w: k} for w, k in swaps.items()] if len(swaps) > 1 else []):   # all, then each alone
+        parts = re.split(r'("[^"]*")', line)          # quoted words are shown as written: never swapped
+        for k in range(0, len(parts), 2):
+            for word, known in chosen.items():
+                parts[k] = re.sub(rf"(?<![\w']){re.escape(word)}(?![\w'])", known, parts[k], flags=re.IGNORECASE)
+        swapped = "".join(parts)
+        whole = sure(swapped)
+        found += ([whole] if whole else []) + tellings(swapped) + [swapped]
+    return list(dict.fromkeys(found))
 
 
 # ---------------- the compiler asks ----------------
@@ -1137,15 +1140,16 @@ def retell(text, problem, failing, first=None):
 def used_like(line, way):
     """' ('vermilion' is used like 'red')' when the reading took a word the brain likened, else ''."""
     try:
-        found = [(t.word, t.likened[0]) for tokens in analyse(line) for t in tokens if t.likened]
+        found = [(t.word, t.likened[0], t.likened[-1]) for tokens in analyse(line) for t in tokens if t.likened]
     except Exception:
         return ""
-    found = [(word, known) for word, known in found if re.search(rf"\b{re.escape(known)}\b", way.lower())
+    found = [(word, known, how) for word, known, how in found if re.search(rf"\b{re.escape(known)}\b", way.lower())
              and not re.search(rf"\b{re.escape(word)}\b", way.lower())]
-    return "".join(f" ('{word}' is used like '{known}')" for word, known in found)
+    return "".join(f" ('{word}' is used like '{known}'" + (", and built from letters like it" if "letters" in how else "")
+                   + ")" for word, known, how in found)
 
 
-USED_LIKE = re.compile(r"(?: \('[^']*' is used like '[^']*'\))+$")      # that note, to take it off again
+USED_LIKE = re.compile(r"(?: \('[^']*' is used like '[^']*'[^)]*\))+$")      # that note, to take it off again
 
 
 def judged(line, ways, lines, number, failing, spare=()):
