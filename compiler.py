@@ -165,6 +165,8 @@ class Compiler(Actions, Window):
         self.erases = False            # does it make text disappear? Then text put on the screen is remembered.
         self.written = False           # has anything been shown yet? Until then a background colours the whole screen
         self.uses_brain = False        # does it link symbols? Then it carries the brain's routines too
+        self.worked_out = set()        # lines where write fills in a value it works out ("how many in pets")
+        self.actions_on = {}           # line number -> how many actions brick read on it
         self.last_shown = None         # what "make it disappear" means: "placed" text, a "line", or nothing yet
         self.known_names = set()       # for "did you mean ...?"
         self.words_file = words_file
@@ -255,6 +257,8 @@ class Compiler(Actions, Window):
                     if check.differs(number, told):
                         found[number] = told
                         continue
+                if number in self.worked_out and self.actions_on.get(number) == 1:
+                    continue                  # one direction, with a value brick worked out: brick's own reading
                 recut = self.recut(line, check)
                 if recut and check.differs(number, recut):
                     found[number] = recut
@@ -268,9 +272,9 @@ class Compiler(Actions, Window):
         different program, that's the better reading. None if there's no neural reader, or it agrees."""
         words = re.findall(r"[a-z0-9']+", line.lower())
         if len(words) < 3 or '"' in line or neural.off() or re.search(r"[,;]|\bthen\b|\.\s", line) or \
-                set(words) & CONTROL or teach.read_definition(line):
-            return None                       # one plain direction (as you wrote it); paragraphs are re-cut; ifs, loops and
-                                              # your own words are brick's own
+                set(words) & CONTROL or teach.read_definition(line) or number in self.worked_out:
+            return None                       # one plain direction (as you wrote it); paragraphs are re-cut; ifs, loops,
+                                              # your own words, and lines where brick worked a value out are brick's own
         seen = set(re.findall(r"[a-z0-9']+", shown.lower()))
         echoed = sum(w in seen for w in words[1:]) >= 0.8 * len(words[1:])     # it printed the line itself
         before = "\n".join(lines[max(0, number - 3):number - 1])
@@ -1175,6 +1179,7 @@ class Compiler(Actions, Window):
 
     def compile_action(self, words):
         self.made_before, self.made_just_now = self.made_just_now, None
+        self.actions_on[self.line_number] = self.actions_on.get(self.line_number, 0) + 1
         delay = self.delay_at_start(words)
         if delay:
             self.do_wait(delay[0])

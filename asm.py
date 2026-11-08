@@ -170,6 +170,10 @@ class Asm:
         self.reg_reg(0xC1, 4, reg)
         self.emit(n)
 
+    def shift_right_cl(self, reg):
+        """reg >>= cl (unsigned)."""
+        self.reg_reg(0xD3, 5, reg)
+
     def shift_right(self, reg, n):
         self.reg_reg(0xC1, 5, reg)
         self.emit(n)
