@@ -46,6 +46,7 @@ sys.path.insert(0, HERE)
 
 import brain  # noqa: E402
 import senses as brick_senses  # noqa: E402 (wordnet.senses is another thing)
+import imagine  # noqa: E402
 import symbols  # noqa: E402
 import conceptnet  # noqa: E402
 import dictionary  # noqa: E402
@@ -721,6 +722,9 @@ class Factory:
             sensed = brick_senses.watch_round(self.brain)   # new files in the folders you asked it to watch
             if sensed:
                 self.say(f"senses: {sensed}")
+            imagined = imagine.dream_round()          # imagined pictures, read back by the eye (imagine.py)
+            if imagined:
+                self.say(f"imagination: {imagined}")
         self.practise()
         self.revisit()
         self.check()

@@ -416,6 +416,16 @@ mark { background: rgba(255, 106, 31, .35); color: inherit; border-radius: 2px; 
 .minitray .tiles { max-height: 130px; }
 .badge { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px; background: var(--ember); color: #1b0d07; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
 .badge:empty { display: none; }
+.imagine { padding: 10px 16px 24px; }
+.imagine .status { font-size: 13px; color: var(--dim); margin: 10px 0 12px; line-height: 1.6; }
+.imagine .status b { color: var(--gold); }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.dream { border: 1px solid var(--line); border-radius: 10px; background: var(--bg2); padding: 8px; font-size: 12px; color: var(--dim); }
+.dream img { width: 100%; aspect-ratio: 1; image-rendering: pixelated; border-radius: 6px; background: #fff; display: block; }
+.dream .none { width: 100%; aspect-ratio: 1; border-radius: 6px; border: 1px dashed var(--line); display: flex; align-items: center; justify-content: center; text-align: center; padding: 8px; }
+.dream .who { color: var(--gold); font-size: 11px; margin: 6px 0 2px; }
+.dream .what { color: var(--text); margin-bottom: 3px; }
+.dream div { overflow-wrap: anywhere; }
 .decide { padding: 14px 16px 24px; max-width: 860px; }
 .decide .intro { color: var(--dim); font-size: 13px; margin: 0 0 12px; }
 .decide .status { font-size: 13px; margin-bottom: 14px; }
@@ -510,6 +520,7 @@ write hi name</div>
       <button class="tab on" data-tab="consoleView">Console</button>
       <button class="tab" data-tab="vizView">How it's made</button>
       <button class="tab" data-tab="decideView" title="What brick couldn't settle by itself: decide, if you like">Decisions<span class="badge" id="decideBadge"></span></button>
+      <button class="tab" data-tab="imagineView" title="What brick imagines, on its own or when you ask, and what its eye made of it">Imagination</button>
       <button class="tab" data-tab="helpView">Help</button>
     </div>
 
@@ -537,6 +548,17 @@ write hi name</div>
     </div>
 
     <div class="view" id="decideView"><div class="decide" id="decide"></div></div>
+
+    <div class="view" id="imagineView"><div class="imagine" id="imagine">
+      <div class="subtabs" id="imagineTabs">
+        <button class="subtab on" data-origin="">All</button>
+        <button class="subtab" data-origin="own">On its own</button>
+        <button class="subtab" data-origin="you">From you</button>
+        <button class="subtab" data-origin="learned">After learning</button>
+      </div>
+      <div class="status" id="imagineStatus"></div>
+      <div class="gallery" id="imagineGallery"></div>
+    </div></div>
 
     <div class="view" id="helpView"><div class="help">
       <nav id="helpNav">
@@ -739,6 +761,7 @@ function showTab(id) {
   if (id === "vizView") drawViz();
   if (id === "helpView") drawHelp();
   if (id === "decideView") drawDecisions();
+  if (id === "imagineView") drawImagination();
   if (id === "consoleView") fitTerm();
 }
 $$("#vizTabs .subtab").forEach(t => t.addEventListener("click", () => showViz(t.dataset.viz)));
@@ -1432,6 +1455,36 @@ async function drawDecisions() {
 }
 setInterval(() => { if (state.tab === "decideView" || !document.hidden) drawDecisions(); }, 6000);
 setInterval(() => fetch("/api/alive").catch(() => {}), 20000);   // still open (brick gui --app closes once this stops)
+
+// ---------------- imagination: what brick imagined, and what its eye made of it ----------------
+
+state.origin = "";
+$$("#imagineTabs .subtab").forEach(t => t.addEventListener("click", () => {
+  state.origin = t.dataset.origin;
+  $$("#imagineTabs .subtab").forEach(x => x.classList.toggle("on", x === t));
+  drawImagination();
+}));
+async function drawImagination() {
+  if (state.tab !== "imagineView") return;
+  let d;
+  try { d = await api("/api/imagination?origin=" + encodeURIComponent(state.origin) + "&most=60"); } catch (e) { return; }
+  const t = d.totals || {};
+  $("#imagineStatus").innerHTML = `brick ${d.running ? "<b>is dreaming right now</b> (a few pictures every few seconds)" : "dreams while the factory runs (it runs while brick gui is open)"} ·
+    imagined so far: <b>${t.pictures || 0}</b> pictures, ${t.names || 0} named things, ${t.blends || 0} blends, ${t.contexts || 0} contexts<br>
+    How well its eye reads them back: ${d.eye.length ? d.eye.map(esc).join(" · ") : "nothing yet"}
+    ${d.hardest.length ? `<br>Hardest for the eye: ${d.hardest.map(esc).join(" · ")}` : ""}
+    ${d.tuned.length ? `<br>Tuned the eye: ${esc(d.tuned[0])}` : ""}
+    ${d.learned.length ? `<br>Learned lately: ${esc(d.learned[0])}` : ""}`;
+  const who = {own: "on its own", you: "from you", learned: "after learning"};
+  $("#imagineGallery").innerHTML = d.items.length ? d.items.map(x => `<div class="dream">
+      ${x.url ? `<img src="${esc(x.url)}" alt="${esc(x.recipe)}" loading="lazy">` : `<div class="none">${x.picture ? "picture no longer kept" : "no picture: " + esc(x.recipe)}</div>`}
+      <div class="who">${esc(x.label)} · ${esc(x.time.slice(5, 16))}</div>
+      <div class="what">${esc(x.recipe)}</div>
+      ${x.eye !== "-" ? `<div>eye saw: ${esc(x.eye)}</div>` : ""}
+      ${x["could be"] !== "-" ? `<div>could be: ${esc(x["could be"])}</div>` : ""}
+    </div>`).join("") : `<p class="intro">Nothing ${state.origin ? "like that " : ""}imagined yet. It dreams while brick runs; brick imagine in a terminal makes some now.</p>`;
+}
+setInterval(() => { if (state.tab === "imagineView" && !document.hidden) drawImagination(); }, 5000);
 
 // ---------------- bricks: click or drag brick's words into place ----------------
 

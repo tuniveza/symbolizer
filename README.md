@@ -343,6 +343,7 @@ Nothing else is needed on the computer that runs it.
 | [`symbols.py`](symbols.py) | A universe for each symbol: neurons in `texts/universes/` that keep learning |
 | [`eye.py`](eye.py), [`sight.py`](sight.py) | The eye: quick filters that turn a picture into symbols, and naming it |
 | [`senses.py`](senses.py) | `brick learn`: learning from any file, folder, picture or words |
+| [`imagine.py`](imagine.py) | The imagination: made-up pictures and blends, read back by the eye, and what each could be |
 | [`neural.py`](neural.py) | The optional local language model |
 | [`factory.py`](factory.py), [`scrambler.py`](scrambler.py) | Self-learning: made-up and scrambled directions |
 | [`review.py`](review.py), [`outliers.py`](outliers.py) | "Did it do what you meant?" and the Decisions list |
@@ -459,6 +460,48 @@ Then it adds what is known about the thing (WordNet, ConceptNet) to its universe
 brings in fruit, seeds, trees and pie. Without the model, looking takes about a tenth of a second.
 The vision model is optional: `brick sight setup` downloads it once (qwen2.5vl:3b, about 3 GB), and it runs on
 your own graphics card. **Nothing is sent anywhere.**
+
+### The imagination
+
+brick also makes things up, and looks at what it made.
+
+- **Pictures.** Random shapes (polygons, stars, rings, ovals, blobs, spirals, lines, crosses) in random colours,
+  sizes, places and textures (striped, dotted, checked), alone, side by side, one inside another, or a horizon scene.
+  brick knows the true recipe of each one.
+- **Named things.** `brick imagine apple` draws apple from what brick knows about it (its universe, WordNet,
+  ConceptNet): its shape, colour, parts and how wide it is for how tall. Then the eye checks it can read it back as apple.
+- **Blends and contexts.** `brick imagine apple + ball` draws a round red thing and says what it could be.
+  While dreaming, it also finds new words for contexts it knows (`a _ is` filled with apple and pear: `a cherry is`).
+
+**What could it be?** Each imagined thing's symbols are matched against the neurons, ConceptNet (both ways, by
+weight), WordNet's definitions and the dictionary's colours named after things:
+
+```text
+could be: apple 0.86 (round + red; ConceptNet, WordNet), cherry 0.61 (round + red; ConceptNet, WordNet)
+```
+
+A specific symbol counts more than a broad one (the same breadth weighting as above), and a thing known to be
+another colour counts less. Strong answers are learned into the neurons with source `imagination`, at about a third
+of the strength of seeing. A link or a facet you wrote by hand is never changed.
+
+**Dreaming teaches the eye.** The eye reads each imagined picture without being told, and brick counts where it is
+right or wrong, per channel, in `texts/factory/imagination.txt` (`hexagon read as round 4 of 4`). Every 25 pictures
+it tries the eye's shape thresholds within safe ranges. A value is kept only if the drawn shapes read clearly better
+and no real picture you showed it would read differently. Kept values are in `texts/factory/eye-settings.txt`:
+delete that file to go back to the defaults.
+
+**When it happens.** A few pictures every factory round while brick runs (well under a second, no vision model);
+after `brick learn` or `brick show` (variations and blends of what was just learned); and when you ask:
+
+```console
+$ brick imagine 5            # 5 random pictures, drawn in the terminal, with what each could be
+$ brick imagine apple        # draw apple and check the eye reads it back (--open opens the PNG)
+$ brick dream 20             # 20 dream rounds now, and how well the eye did per channel
+$ brick imaginations own     # what it imagined by itself (also: mine, learned, today, or a number)
+```
+
+Everything it imagined is in `texts/imagination/`: the pictures (60 at most; its own oldest go first) and
+`log.txt`, one line each, saying where it came from. brick kiln shows them live in its **Imagination** tab.
 
 ### In your programs
 

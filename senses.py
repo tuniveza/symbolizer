@@ -15,6 +15,8 @@ What happens to each thing:
       the eye looks (sight.py): it filters the picture, names what it sees, and the neurons of what it saw
       fire together
   anything else is skipped, and counted
+Afterwards the imagination (imagine.py) reacts to what was learned: it draws a few variations or blends of it.
+(While watching folders, that waits for the factory's next dream round.)
 
 Watched folders are in texts/factory/watching.txt, one per line (change it freely). Which files were already
 learned from, and when they last changed, is in texts/factory/senses.json, so nothing is learned twice.
@@ -81,6 +83,7 @@ class Senses:
         import brain
         self.brain = mind if mind is not None else brain.Brain(brain.path())
         self.world = None
+        self.recent = []         # what was just learned, for the imagination to react to (imagine.react)
 
     def text(self, text, source):
         """Each line: how its words are used (the brain), and its words firing together (the neurons)."""
@@ -98,6 +101,8 @@ class Senses:
             for k in range(0, len(words), 12):             # a neuron round takes up to 12 symbols at once
                 symbols.experience(words[k:k + 12], source)
             lines += 1
+        if lines:
+            self.recent = (self.recent + [{"what": source, "words": brain.words_of(text[:4000])[:60]}])[-20:]
         return lines
 
     def picture(self, path, name=None):
@@ -110,6 +115,8 @@ class Senses:
             if seen.get("errors") and not seen.get("symbols"):
                 return None, "; ".join(seen["errors"])
             what = seen.get("name") or "something"
+            self.recent = (self.recent + [{"what": os.path.basename(path), "name": seen.get("name"), "path": path,
+                                           "symbols": [(v, f) for v, f, _ in seen.get("symbols", [])]}])[-20:]
             return f"{what} ({seen.get('how', '?')}, {seen.get('sure', 0):.2f} sure)", None
         if name is None:
             return None, "this version of the eye needs to be told what the picture shows"
@@ -204,6 +211,8 @@ def watch_round(mind, budget=ROUND_BUDGET, most=PER_ROUND):
     with open(SEEN + ".new", "w", encoding="utf-8") as f:
         json.dump(known, f)
     os.replace(SEEN + ".new", SEEN)
+    import imagine
+    imagine.later(senses.recent, "watched folders")       # the next dream round reacts to it
     return summary(done)
 
 
@@ -260,6 +269,12 @@ def command(args):
     if len(total["said"]) > 20:
         print(f"  ... and {len(total['said']) - 20} more")
     print(summary(total).capitalize() + f", in {time.monotonic() - started:.1f}s.")
+    import imagine                                     # the imagination reacts to what was just learned
+    imagined = imagine.react(senses.recent, "brick learn")
+    if imagined:
+        print("Imagined after learning it (brick imaginations learned draws them):")
+        for line in imagined:
+            print("  " + line)
     return 0
 
 

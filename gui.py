@@ -794,6 +794,26 @@ class Handler(BaseHTTPRequestHandler):
                     activity = [line.rstrip() for line in f][-40:][::-1]
             return self.send({"running": factory.running(), "activity": activity, "items": outliers.entries(),
                               "director": len(outliers.entries(outliers.FOR_DIRECTOR))})
+        if url.path == "/api/imagination":           # what brick imagined: newest first, with where it came from
+            import factory
+            import imagine
+            origin = query.get("origin") if query.get("origin") in imagine.ORIGINS else None
+            items = imagine.entries(origin, most=min(200, int(query.get("most") or 40)))
+            for item in items:
+                item["url"] = f"/imagination/{item['picture']}" if item["exists"] else None
+                item.pop("path", None)
+            tally = imagine.Tally()
+            return self.send({"items": items, "eye": tally.summary(), "hardest": tally.worst("shape"),
+                              "tuned": tally.notes["tuned"][:3], "learned": tally.notes["learned"][:5],
+                              "totals": dict(tally.totals), "running": factory.running()})
+        if url.path.startswith("/imagination/"):     # an imagined picture, from texts/imagination
+            import imagine
+            name = os.path.basename(url.path)
+            where = os.path.join(imagine.PICTURES, name)
+            if name.endswith(".png") and os.path.isfile(where):
+                with open(where, "rb") as f:
+                    return self.send(f.read(), "image/png")
+            return self.send({"error": "That picture isn't kept any more."}, status=404)
         if url.path == "/api/bricks":
             import bricks
             return self.send({"groups": bricks.palette()})

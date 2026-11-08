@@ -27,6 +27,16 @@
   brick learn notes.txt       learn from anything: a file, a folder, pictures, or "some words" in quotes.
                               brick learn watch ~/Pictures: learn from new files there by itself while
                               brick runs; brick learn unwatch / watching
+  brick imagine               brick's imagination: it draws 5 random pictures (shapes, colours, textures,
+                              scenes) here in the terminal, its eye reads each back, and it says what each
+                              could be (apple, ball ...) from its neurons, ConceptNet and WordNet.
+                              brick imagine apple: draw apple from what it knows and check the eye reads it
+                              back; brick imagine apple + ball: a blend; --open opens the picture.
+                              It also dreams by itself while brick runs (texts/imagination)
+  brick dream 20              20 dream rounds now, and how well the eye read them back, per channel
+                              (texts/factory/imagination.txt); it tunes the eye where that's safe
+  brick imaginations          what it imagined lately, drawn here: own (by itself), mine (you asked),
+                              learned (after brick learn / show), today, or a number (brick imaginations 20)
   brick show apple.png as apple
                               teach brick a symbol by showing it: brick measures the picture (shape, size,
                               colours, symmetry), asks the vision model what it sees, and adds what it
@@ -248,11 +258,18 @@ def main():
     if args[:1] == ["learn"]:
         import senses                                 # brick learn notes.txt / ~/Pictures / "some words"
         return senses.command(args[1:])
+    if args[:1] in (["imagine"], ["dream"], ["imaginations"]):
+        import imagine                                # brick imagine / brick imagine apple / brick dream 20
+        return imagine.main(args)
     if args[:1] in (["universe"], ["universes"], ["sight"], ["show"], ["look"]) or \
             (args and not find_source(args[0]) and len(args) > 1):
         import symbols                                # brick show apple.png as apple, brick universe apple
         if symbols.handles(args):
-            return symbols.main(args)
+            done = symbols.main(args)
+            if done == 0 and args[0] not in ("universe", "universes", "sight"):
+                import imagine                        # the imagination reacts to the picture it was shown
+                imagine.react_to_show(args)
+            return done
     if args[:1] == ["scramble"]:
         import scrambler
         return scrambler.main(args[1:])

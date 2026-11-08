@@ -24,6 +24,12 @@ Like the channels of the visual cortex, each filter looks at one thing, on a sma
   model      only when memory isn't sure: the vision model on this computer is asked for a name and facets
 
     see(path, name=None, model=True) -> everything found (a dict; summary(found) puts it in words)
+      (memory=False / read=False leave out the memory and text channels: the imagination's quick read-back)
+
+The shape channel's thresholds (how round is round, how hollow a star ...) are DEFAULTS below. brick's
+imagination (imagine.py) draws pictures whose shapes it knows, sees how often the eye reads them right, and,
+where a threshold within its safe range (TUNABLE) reads them better, writes it to texts/factory/
+eye-settings.txt ("star solidity: 0.84"), which the eye reads here. Delete that file to go back to DEFAULTS.
 """
 import base64
 import colorsys
@@ -46,6 +52,15 @@ WEIGHT = {"shape": 1.5, "colour": 1.5, "pattern": 1.2, "text": 1.5, "tone": 1.0,
           "mathematics": 1.0, "edges": 0.7, "size": 0.5, "layout": 0.5, "position": 0.3, "objects": 0.3}
 SURE = 0.3                  # memory's best likeness must reach this,
 AHEAD = 1.25                # and be this many times the next one's, to name a picture without the model
+HERE = os.path.dirname(os.path.abspath(__file__))
+TUNED = os.path.join(HERE, "texts", "factory", "eye-settings.txt")
+TUNABLE = {                 # name: (default, lowest, highest) -- the imagination tunes these within the range
+    "ring hole": (0.08, 0.04, 0.16), "ring fit": (0.6, 0.45, 0.75), "ring elongation": (1.3, 1.15, 1.5),
+    "round fit": (0.8, 0.72, 0.88), "round solidity": (0.9, 0.85, 0.96), "round elongation": (1.15, 1.06, 1.3),
+    "star solidity": (0.8, 0.65, 0.9), "star points": (4, 3, 6), "star elongation": (1.5, 1.3, 1.8),
+    "polygon solidity": (0.9, 0.82, 0.96), "square sides": (1.2, 1.08, 1.4), "roundish fit": (0.6, 0.45, 0.75),
+    "roundish solidity": (0.85, 0.75, 0.92), "long": (2.5, 2.0, 3.2)}
+DEFAULTS = {name: value[0] for name, value in TUNABLE.items()}
 POSITIONS = [["top-left", "top", "top-right"], ["left", "middle", "right"], ["bottom-left", "bottom", "bottom-right"]]
 NOUNS = {"round": "round thing", "oval": "oval", "triangle": "triangle", "square": "square", "rectangle": "rectangle",
          "star": "star", "ring": "ring", "pentagon": "pentagon", "hexagon": "hexagon", "long": "long thing",
@@ -139,6 +154,46 @@ def shrink(w, h, px, longest):
     nw, nh = max(1, round(w / scale)), max(1, round(h / scale))
     return nw, nh, [px[min(h - 1, int(y * scale)) * w + min(w - 1, int(x * scale))]
                     for y in range(nh) for x in range(nw)]
+
+
+_tuned = [None, None]
+
+
+def tuned():
+    """The shape thresholds: DEFAULTS, with any tuned value from texts/factory/eye-settings.txt (kept within
+    TUNABLE's range; a line that doesn't read is ignored)."""
+    try:
+        when = os.path.getmtime(TUNED)
+    except OSError:
+        return dict(DEFAULTS)
+    if _tuned[0] != (TUNED, when):
+        values = dict(DEFAULTS)
+        try:
+            with open(TUNED, encoding="utf-8") as f:
+                for line in f:
+                    found = re.match(r"^\s*([a-z ]+?)\s*:\s*(-?\d+(?:\.\d+)?)", line)
+                    if found and found.group(1) in TUNABLE:
+                        _, low, high = TUNABLE[found.group(1)]
+                        values[found.group(1)] = min(high, max(low, float(found.group(2))))
+        except OSError:
+            pass
+        _tuned[:] = [(TUNED, when), values]
+    return dict(_tuned[1])
+
+
+def save_tuned(values, notes=()):
+    """Write the tuned thresholds (only the ones that differ from DEFAULTS) to texts/factory/eye-settings.txt."""
+    lines = ["# The eye's shape thresholds, tuned by brick's imagination (imagine.py): it draws shapes it knows",
+             "# and keeps a value here only when the eye reads them better with it. Delete this file to go back to",
+             "# the defaults (eye.py, DEFAULTS). You can change a number by hand; it stays within the safe range."]
+    lines += [f"# {note}" for note in notes]
+    for name, value in values.items():
+        if name in TUNABLE and value != DEFAULTS[name]:
+            lines.append(f"{name}: {round(value, 3):g}   # default {DEFAULTS[name]:g}")
+    os.makedirs(os.path.dirname(TUNED), exist_ok=True)
+    with open(TUNED + ".new", "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    os.replace(TUNED + ".new", TUNED)
 
 
 def put(facets, facet, value, strength=2.0):
@@ -463,30 +518,35 @@ def measure_shape(thing, width):
                if (round(2 * cy - y) * width + round(2 * cx - x)) in inside) / a
     quarter = sum(1 for x, y in zip(thing.xs, thing.ys)
                   if (round(cy + (x - cx)) * width + round(cx - (y - cy))) in inside) / a
-    holey = thing.holes and thing.hole_area >= 0.08 * a
-    if holey and fit >= 0.6 and elongation < 1.3:
-        shape = "ring"
-    elif fit >= 0.8 and solidity >= 0.9:
-        shape = "round" if elongation < 1.15 else "oval"
-    elif solidity < 0.8 and points >= 4 and elongation < 1.5:
-        shape = "star"
-    elif solidity >= 0.9 and 3 <= len(corners) <= 6:
-        sides = [math.dist(corners[i], corners[i - 1]) for i in range(len(corners))]
-        if len(corners) == 4:
-            shape = "square" if max(sides) / max(min(sides), 1) < 1.2 else "rectangle"
-        else:
-            shape = {3: "triangle", 5: "pentagon", 6: "hexagon"}[len(corners)]
-    elif fit >= 0.6 and solidity >= 0.85:
-        shape = "roundish"
-    elif elongation >= 2.5:
-        shape = "long"
-    else:
-        shape = "blob"
+    sides = [math.dist(corners[i], corners[i - 1]) for i in range(len(corners))] or [1]
+    m = {"fit": fit, "solidity": solidity, "corners": len(corners), "points": points, "elongation": elongation,
+         "holes": thing.holes, "hole share": thing.hole_area / a, "sides": max(sides) / max(min(sides), 1)}
+    shape = classify(m)
     thing.shape = shape
-    return {"shape": shape, "fit": fit, "solidity": solidity, "corners": len(corners), "points": points,
-            "elongation": elongation, "angle": angle, "holes": thing.holes, "mirror": mirror, "flip": flip,
+    return {**m, "shape": shape, "angle": angle, "mirror": mirror, "flip": flip,
             "turn": turn, "quarter": quarter, "ratio": math.sqrt(m20 / m02) if m02 else 1.0,
             "width": thing.box[2] - thing.box[0] + 1, "height": thing.box[3] - thing.box[1] + 1}
+
+
+def classify(m, settings=None):
+    """A shape's measures -> its name, with the thresholds in settings (tuned() when not given)."""
+    s = settings or tuned()
+    fit, solidity, elongation, corners = m["fit"], m["solidity"], m["elongation"], m["corners"]
+    if m["holes"] and m["hole share"] >= s["ring hole"] and fit >= s["ring fit"] and elongation < s["ring elongation"]:
+        return "ring"
+    if fit >= s["round fit"] and solidity >= s["round solidity"]:
+        return "round" if elongation < s["round elongation"] else "oval"
+    if solidity < s["star solidity"] and m["points"] >= s["star points"] and elongation < s["star elongation"]:
+        return "star"
+    if solidity >= s["polygon solidity"] and 3 <= corners <= 6:
+        if corners == 4:
+            return "square" if m["sides"] < s["square sides"] else "rectangle"
+        return {3: "triangle", 5: "pentagon", 6: "hexagon"}[corners]
+    if fit >= s["roundish fit"] and solidity >= s["roundish solidity"]:
+        return "roundish"
+    if elongation >= s["long"]:
+        return "long"
+    return "blob"
 
 
 def shape(pic, things):
@@ -735,9 +795,11 @@ def layout(pic, things, back):
 class Reader:
     """tesseract reading the picture's writing in the background, while the other filters work: started as soon
     as the picture is open, stopped if the edges say there's no writing to read."""
-    def __init__(self, pic):
+    def __init__(self, pic, off=False):
         self.pic, self.processes, self.why = pic, [], None
-        if os.environ.get("BRICK_EYE_TEXT") == "off":
+        if off:
+            self.why = "not asked"
+        elif os.environ.get("BRICK_EYE_TEXT") == "off":
             self.why = "switched off here"
         elif not shutil.which("tesseract"):
             self.why = "skipped: tesseract isn't installed, so no writing was read (sudo pacman -S tesseract " \
@@ -936,13 +998,13 @@ def ask_model(pic):
 
 # ---------------- seeing ----------------
 
-def see(path, name=None, model=True):
+def see(path, name=None, model=True, memory=True, read=True):
     """Look at a picture with every filter, then name it: given, from memory, or (if unsure) by the model.
     -> {"channels": [(channel, seconds, note)], "facets": {facet: [(symbol, strength)]}, "name", "how",
         "sure", "matches", "model facets", "model note", "contexts", "words", "picture", "seconds"}"""
     started = time.perf_counter()
     pic = Picture(path)
-    reader = Reader(pic)                          # reading writing takes longest: it starts first, alongside
+    reader = Reader(pic, off=not read)            # reading writing takes longest: it starts first, alongside
     channels = [("picture", pic.seconds, f"{pic.original[0]} by {pic.original[1]}, looked at "
                                          f"{pic.width} by {pic.height}", {})]
     facets = {}
@@ -972,7 +1034,7 @@ def see(path, name=None, model=True):
     finally:
         reader.stop()
     t = time.perf_counter()
-    matches = remembered(facets)
+    matches = remembered(facets) if memory else []
     how, sure = None, 0.0
     if name:
         how = "given"
