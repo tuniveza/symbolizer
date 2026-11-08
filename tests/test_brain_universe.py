@@ -118,7 +118,15 @@ def test_the_brain_learns_from_a_proved_direction():
     teacher.builder = factory.Builder()
     teacher.memory = synchronicity.Memory(os.path.join(where, "memory.txt"))
     teacher.brain = brain.Brain(os.path.join(where, "brain.txt"))
-    teacher.prove("write hi in red at the top")
+    import symbols
+    real_folder, symbols.FOLDER = symbols.FOLDER, os.path.join(where, "universes")   # never the real neurons
+    try:
+        teacher.prove("write hi in red at the top")
+        with open(os.path.join(where, "universes", "_waiting.txt"), encoding="utf-8") as f:
+            waiting = f.read()
+    finally:
+        symbols.FOLDER = real_folder
+    assert "red / place: top" in waiting                  # the words of the proved direction fired together
     teacher.brain.save()
     learned = brain.Brain(os.path.join(where, "brain.txt")).links
     assert learned["red"]["[colour]"] >= 1                # red was read as a colour
