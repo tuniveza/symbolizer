@@ -16,7 +16,7 @@ LIST_LIMIT = 1000         # most items in a list
 LIST_SIZE = 8 + LIST_LIMIT * 8
 SYMBOL_LIMIT = 2000       # most symbols the brain can hold (links between them are unlimited)
 LIKENESS_NEEDED = 50      # "is like" means at least half alike, until the program changes it (same-kind pairs
-                          # with mostly shared links score 50-70; different kinds 0-30)
+                          # with mostly shared links score about 50-70; different kinds 0-25)
 HEAP_SIZE = 64 * 1024 * 1024
 FILE_LIMIT = 65536        # biggest file we read
 BILLION = 1_000_000_000
@@ -1472,13 +1472,14 @@ SHARE_LIMIT = 1 << 30     # totals are halved (with their parts) until they're b
 
 def brain_score(a):
     """rax, rcx = two different symbol numbers a, b -> rax = how alike they are, 0 to 100.
-    Every other symbol s (not a or b) linked to either counts in proportion to w(a,s) / breadth'(s): a link
-    to a broad symbol (linked to many) says less than a link to a specific one. breadth'(s) is 1 + how many
-    symbols s links to other than a and b, so a link only a and b share is fully specific.
-    With p_a(s) = w(a,s) / breadth'(s)
+    Every other symbol s (not a or b) linked to either counts in proportion to w(a,s) / (1 + floor(log2
+    breadth'(s))): a link to a broad symbol (linked to many) says less than a link to a specific one.
+    breadth'(s) is 1 + how many symbols s links to other than a and b, so a link only a and b share is fully
+    specific (divisor 1); breadth' 2-3 divides by 2, 4-7 by 3, and so on.
+    With p_a(s) = w(a,s) / (1 + floor(log2 breadth'(s)))
     and P_a their total: 100 x sum of min(p_a(s) x P_b, p_b(s) x P_a) / sum of max(...), rounded down;
-    0 if either total is 0. In whole numbers: p is kept times the lcm of the breadths involved, so it's exact
-    (times 2^20 if that lcm is over 2^24); each side is halved until its total is below 2^30, so every product
+    0 if either total is 0. In whole numbers: p is kept times the lcm of the divisors involved, so it's exact
+    (the divisors are at most 11, so the lcm is at most 27,720; times 2^20 if it were ever over 2^24); each side is halved until its total is below 2^30, so every product
     stays below 2^60 and the sums below 2^62; the x 100 is done in 128 bits. Exact while each side's total
     p stays below 2^30 / scale. (A link strength must stay below 2^39.) Keeps r12-r15 and rbx."""
     v = a.reserve(72, "brain_score_vars")   # 0 Pa, 8 Pb, 16 a's halvings, 24 b's, 32 the smaller ones, 40 the bigger,
@@ -1506,7 +1507,8 @@ def brain_score(a):
     brain_count(a, R13)
 
     def each(name, body):
-        """Go through every other symbol s linked to a or b: r9, rbx = w(a,s), w(b,s); r15 = breadth'(s)."""
+        """Go through every other symbol s linked to a or b: r9, rbx = w(a,s), w(b,s);
+        r15 = 1 + floor(log2 breadth'(s))."""
         a.load(RSI, R14, 48)
         a.load(RDI, R14, 56)
         a.address(R12, "brain_breadth")
@@ -1530,6 +1532,15 @@ def brain_score(a):
             a.jump_if(EQUAL, f"{name}_{w}_not")
             a.op_n("sub", R15, 1)
             a.label(f"{name}_{w}_not")
+        a.mov(RAX, R15)                  # the divisor: 1 + floor(log2 breadth'(s))
+        a.set(R15, 1)
+        a.label(f"{name}_log")
+        a.op_n("cmp", RAX, 1)
+        a.jump_if(NOT_ABOVE, f"{name}_logged")
+        a.shift_right(RAX, 1)
+        a.op_n("add", R15, 1)
+        a.jump(f"{name}_log")
+        a.label(f"{name}_logged")
         body()
         a.label(f"{name}_skip")
         a.op_n("add", RSI, 8)
@@ -1540,7 +1551,7 @@ def brain_score(a):
         a.label(f"{name}_end")
 
     def share(weight):
-        """rax = weight x 2^20 / breadth(s)."""
+        """rax = weight x the scale / the divisor for s."""
         a.mov(RAX, weight)
         a.load(RDX, R14, 64)
         a.multiply(RAX, RDX)
@@ -1553,7 +1564,7 @@ def brain_score(a):
         a.store(R14, at, RDX)
 
     def scale():
-        """The scale so far = lcm(scale, breadth(s)); 0 once it's over SCALE_LIMIT."""
+        """The scale so far = lcm(scale, the divisor for s); 0 once it's over SCALE_LIMIT."""
         a.load(RAX, R14, 64)
         a.op("test", RAX, RAX)
         a.jump_if(EQUAL, "bsl_done")
