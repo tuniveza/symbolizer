@@ -24,6 +24,13 @@
                               like 'hi in red'). brick brain: is it on, how much it knows; brick brain
                               like red: the words used most like red; brick brain links red: its links;
                               brick brain learn: learn from everything now; brick brain off / on
+  brick show apple.png as apple
+                              teach brick a symbol by showing it: brick measures the picture (shape, size,
+                              colours, symmetry), asks the vision model what it sees, and adds what it
+                              knows (WordNet, ConceptNet) to apple's universe, texts/universes/apple.txt
+  brick universe apple        apple's universe: one file per symbol, a neuron that keeps learning by
+                              itself while brick runs. brick universe apple forget: delete it;
+                              brick universes: list them; brick sight setup: download the vision model
   brick scramble 10           10 broken, errored paragraphs of directions, and how brick did with each
                               (the factory practises on these by itself while brick runs)
   brick review game.txt       the lines brick had to guess in game.txt: say if they're right, or fix them.
@@ -235,6 +242,11 @@ def main():
     if args[:1] == ["brain"]:
         import brain
         return brain.command(args[1:])
+    if args[:1] in (["universe"], ["universes"], ["sight"], ["show"], ["look"]) or \
+            (args and not find_source(args[0]) and len(args) > 1):
+        import symbols                                # brick show apple.png as apple, brick universe apple
+        if symbols.handles(args):
+            return symbols.main(args)
     if args[:1] == ["scramble"]:
         import scrambler
         return scrambler.main(args[1:])

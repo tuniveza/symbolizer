@@ -45,6 +45,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import brain  # noqa: E402
+import symbols  # noqa: E402
 import conceptnet  # noqa: E402
 import dictionary  # noqa: E402
 import outliers  # noqa: E402
@@ -417,6 +418,14 @@ class Trial:
         dictionary.clear()
 
 
+def fire_together(roles, source):
+    """The words of a proved direction turned up together: their neurons (texts/universes) link up,
+    each filed under the idea it was read as (red under colour, top under place)."""
+    words = [(word, idea) for word, idea, _ in roles if idea != "words" and re.fullmatch(r"[a-z]+", word or "")]
+    if len(words) > 1:
+        symbols.experience(words, source)
+
+
 # ---------------- the factory ----------------
 
 class Factory:
@@ -525,6 +534,7 @@ class Factory:
                     self.memory.observe(reading.roles())
                     if self.brain:
                         self.brain.learn_proved(line, reading.roles())
+                        fire_together(reading.roles(), "a direction brick proved")
                     return
 
     def learn_words(self, text, problem, where):
@@ -620,6 +630,7 @@ class Factory:
                         self.memory.observe(reading.roles())
                     if self.brain:
                         self.brain.learn_proved(messy, reading.roles())
+                        fire_together(reading.roles(), "a direction brick proved")
                     return True
         return False
 
@@ -702,6 +713,10 @@ class Factory:
             self.add_to_pool(line for line in text.splitlines() if not line.strip().startswith("#"))
             self.digest(text, os.path.basename(path))
         self.digest("\n".join(self.make()), "the sentence maker")
+        if self.brain:
+            changed = symbols.practise()              # each symbol's universe learns a little by itself
+            if changed:
+                self.say(f"neurons: {changed}")
         self.practise()
         self.revisit()
         self.check()
