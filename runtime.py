@@ -8,12 +8,14 @@ A list is stored as: 8-byte count, then up to LIST_LIMIT 8-byte items.
 New texts come from the heap and are never reused, so they start as zeros.
 """
 import screen
-from asm import (ABOVE, BELOW, EQUAL, GREATER, LESS, NOT_EQUAL, NOT_GREATER, NOT_LESS, NOT_NEGATIVE,
-                 R8, R9, R10, R11, R12, R13, R14, R15, RAX, RCX, RDI, RDX, RSI, XMM0, XMM1)
+from asm import (ABOVE, BELOW, EQUAL, GREATER, LESS, NOT_ABOVE, NOT_EQUAL, NOT_GREATER, NOT_LESS, NOT_NEGATIVE,
+                 R8, R9, R10, R11, R12, R13, R14, R15, RAX, RBX, RCX, RDI, RDX, RSI, XMM0, XMM1)
 
 TEXT_LIMIT = 256          # longest typed answer
 LIST_LIMIT = 1000         # most items in a list
 LIST_SIZE = 8 + LIST_LIMIT * 8
+SYMBOL_LIMIT = 2000       # most symbols the brain can hold (links between them are unlimited)
+LIKENESS_NEEDED = 80      # "is like" means a likeness of at least this, until the program changes it
 HEAP_SIZE = 64 * 1024 * 1024
 FILE_LIMIT = 65536        # biggest file we read
 BILLION = 1_000_000_000
@@ -1236,4 +1238,704 @@ def file_delete(a):
     a.ret()
     a.label("fd_keep")
     say_fixed(a, "OK, I kept it.\n")
+    a.ret()
+
+
+# ---- the brain: symbols with weighted links, compared by how alike their links are ----
+#
+# Only programs that use the brain words get these routines (see add_brain).
+# A symbol is a text; capitals don't matter ("Apple" and "apple" are one symbol). The links live in a
+# table of strengths, SYMBOL_LIMIT x SYMBOL_LIMIT whole numbers, in the empty writable area, so it costs
+# nothing in the program file. Links go both ways: the strength from a to b is always the one from b to a.
+
+def add_brain(a):
+    a.space["brain_count"] = 8                                  # how many symbols so far
+    a.space["brain_needed"] = 8                                 # the likeness "is like" needs, minus 80
+    a.space["brain_symbols"] = SYMBOL_LIMIT * 8                 # each symbol's text
+    a.space["brain_weights"] = SYMBOL_LIMIT * SYMBOL_LIMIT * 8  # how strongly each one links to each other one
+    a.space["brain_words"] = SYMBOL_LIMIT * 8                   # the symbols of the words being learned
+    for brick in [brain_find, brain_add, brain_bump, brain_link, brain_unlink, brain_forget, brain_score,
+                  brain_likeness, brain_closest, brain_links, brain_learn, brain_save, brain_load]:
+        brick(a)
+
+
+def keep(a, *regs):
+    for reg in regs:
+        a.push(reg)
+
+
+def give_back(a, *regs):
+    for reg in reversed(regs):
+        a.pop(reg)
+
+
+KEPT = (R12, R13, R14, R15, RBX)
+
+
+def brain_cell(a, out, i, j, scratch):
+    """out = where the strength of the link from symbol i to symbol j is kept."""
+    a.set(out, SYMBOL_LIMIT)
+    a.multiply(out, i)
+    a.op("add", out, j)
+    a.shift_left(out, 3)
+    a.address(scratch, "brain_weights")
+    a.op("add", out, scratch)
+
+
+def brain_symbol(a, out, i, scratch):
+    """out = the text of symbol i."""
+    a.mov(scratch, i)
+    a.shift_left(scratch, 3)
+    a.address(out, "brain_symbols")
+    a.op("add", out, scratch)
+    a.load(out, out)
+
+
+def brain_count(a, out):
+    a.address(out, "brain_count")
+    a.load(out, out)
+
+
+def brain_find(a):
+    """rax = text -> rax = its symbol number, or -1 if the brain hasn't met it. r12-r15 and rbx are kept."""
+    a.label("brain_find")
+    keep(a, R12, R13)
+    a.mov(R12, RAX)
+    a.set(R13, 0)
+    a.label("bf_next")
+    brain_count(a, RCX)
+    a.op("cmp", R13, RCX)
+    a.jump_if(NOT_LESS, "bf_none")
+    brain_symbol(a, RCX, R13, RDX)
+    a.mov(RAX, R12)
+    a.call("text_equal")
+    a.op("test", RAX, RAX)
+    a.jump_if(NOT_EQUAL, "bf_found")
+    a.op_n("add", R13, 1)
+    a.jump("bf_next")
+    a.label("bf_found")
+    a.mov(RAX, R13)
+    give_back(a, R12, R13)
+    a.ret()
+    a.label("bf_none")
+    a.set(RAX, -1)
+    give_back(a, R12, R13)
+    a.ret()
+
+
+def brain_add(a):
+    """rax = text -> rax = its symbol number, made if it's new; -1 for an empty text.
+    When the brain is full the program stops with a message. r12-r15 and rbx are kept."""
+    a.label("brain_add")
+    a.load(RCX, RAX)
+    a.op("test", RCX, RCX)
+    a.jump_if(EQUAL, "ba_empty")
+    a.push(RAX)
+    a.call("brain_find")
+    a.pop(RCX)
+    a.op("test", RAX, RAX)
+    a.jump_if(NOT_NEGATIVE, "ba_done")
+    a.address(RDX, "brain_count")
+    a.load(R8, RDX)
+    a.op_n("cmp", R8, SYMBOL_LIMIT)
+    a.jump_if(NOT_LESS, "brain_full")
+    a.mov(R9, R8)
+    a.shift_left(R9, 3)
+    a.address(R10, "brain_symbols")
+    a.op("add", R9, R10)
+    a.store(R9, 0, RCX)
+    a.mov(R9, R8)
+    a.op_n("add", R9, 1)
+    a.store(RDX, 0, R9)
+    a.mov(RAX, R8)
+    a.label("ba_done")
+    a.ret()
+    a.label("ba_empty")
+    a.set(RAX, -1)
+    a.ret()
+    a.label("brain_full")
+    say_fixed(a, f"{RESET}\n(The brain is full: {SYMBOL_LIMIT:,} symbols is the most it can hold.)\n")
+    finish(a, 1)
+
+
+def brain_bump(a):
+    """rax, rcx = two different symbol numbers, rdx = how much stronger their link gets (0: no link at all).
+    Only changes rax, rcx, rdx, r8, r9, r10."""
+    a.label("brain_bump")
+    brain_cell(a, R8, RAX, RCX, R9)
+    brain_cell(a, R10, RCX, RAX, R9)
+    a.op("test", RDX, RDX)
+    a.jump_if(EQUAL, "bb_clear")
+    a.load(R9, R8)
+    a.op("add", R9, RDX)
+    a.store(R8, 0, R9)
+    a.store(R10, 0, R9)
+    a.ret()
+    a.label("bb_clear")
+    a.set(R9, 0)
+    a.store(R8, 0, R9)
+    a.store(R10, 0, R9)
+    a.ret()
+
+
+def brain_link(a):
+    """rax, rcx = two texts, rdx = how much stronger -> they're linked, both ways (new symbols are made).
+    An empty text, or a text linked to itself, does nothing."""
+    a.label("brain_link")
+    a.push(RDX)
+    a.push(RCX)
+    a.call("brain_add")
+    a.pop(RCX)
+    a.push(RAX)
+    a.mov(RAX, RCX)
+    a.call("brain_add")
+    a.pop(RCX)
+    a.pop(RDX)
+    a.label("bl_numbers")
+    a.op("test", RAX, RAX)
+    a.jump_if(LESS, "bl_none")
+    a.op("test", RCX, RCX)
+    a.jump_if(LESS, "bl_none")
+    a.op("cmp", RAX, RCX)
+    a.jump_if(EQUAL, "bl_none")
+    a.jump("brain_bump")
+    a.label("bl_none")
+    a.ret()
+
+
+def brain_unlink(a):
+    """rax, rcx = two texts -> the link between them is gone (if there was one)."""
+    a.label("brain_unlink")
+    a.push(RCX)
+    a.call("brain_find")
+    a.pop(RCX)
+    a.push(RAX)
+    a.mov(RAX, RCX)
+    a.call("brain_find")
+    a.pop(RCX)
+    a.set(RDX, 0)
+    a.jump("bl_numbers")
+
+
+def brain_forget(a):
+    """rax = text -> every link it has is gone."""
+    a.label("brain_forget")
+    a.call("brain_find")
+    a.op("test", RAX, RAX)
+    a.jump_if(LESS, "bfo_done")
+    a.mov(R11, RAX)
+    a.set(RSI, 0)
+    a.label("bfo_next")
+    brain_count(a, RCX)
+    a.op("cmp", RSI, RCX)
+    a.jump_if(NOT_LESS, "bfo_done")
+    a.mov(RAX, R11)
+    a.mov(RCX, RSI)
+    a.set(RDX, 0)
+    a.op("cmp", RAX, RCX)
+    a.jump_if(EQUAL, "bfo_skip")
+    a.call("brain_bump")
+    a.label("bfo_skip")
+    a.op_n("add", RSI, 1)
+    a.jump("bfo_next")
+    a.label("bfo_done")
+    a.ret()
+
+
+def brain_score(a):
+    """rax, rcx = two different symbol numbers -> rax = how alike they are, 0 to 100: the weighted overlap
+    of their links as shares, leaving out the two symbols themselves. With Ta and Tb the two totals,
+    100 x sum of min(wa x Tb, wb x Ta) / sum of max(wa x Tb, wb x Ta), rounded down; 0 if either total is 0.
+    The products fit in 64 bits while Ta x Tb stays under 2^62 (totals up to about 2 billion each);
+    the x 100 is done in 128 bits. Keeps r12-r15 and rbx."""
+    a.label("brain_score")
+    keep(a, *KEPT)
+    a.mov(R10, RAX)
+    a.mov(R11, RCX)
+    a.set(R8, SYMBOL_LIMIT * 8)
+    a.address(R9, "brain_weights")
+    a.mov(R14, RAX)
+    a.multiply(R14, R8)
+    a.op("add", R14, R9)                 # symbol i's row of strengths
+    a.mov(R15, RCX)
+    a.multiply(R15, R8)
+    a.op("add", R15, R9)                 # symbol j's row
+    brain_count(a, RDX)
+
+    def each(name, body):
+        """Go through every other symbol k (not i or j): rsi, rdi point at the strengths i-k and j-k."""
+        a.mov(RSI, R14)
+        a.mov(RDI, R15)
+        a.set(R8, 0)
+        a.label(f"{name}_next")
+        a.op("cmp", R8, RDX)
+        a.jump_if(NOT_LESS, f"{name}_end")
+        a.op("cmp", R8, R10)
+        a.jump_if(EQUAL, f"{name}_skip")
+        a.op("cmp", R8, R11)
+        a.jump_if(EQUAL, f"{name}_skip")
+        body()
+        a.label(f"{name}_skip")
+        a.op_n("add", RSI, 8)
+        a.op_n("add", RDI, 8)
+        a.op_n("add", R8, 1)
+        a.jump(f"{name}_next")
+        a.label(f"{name}_end")
+
+    def totals():
+        a.load(R9, RSI)
+        a.op("add", RAX, R9)
+        a.load(R9, RDI)
+        a.op("add", RCX, R9)
+
+    def shares():
+        a.load(R9, RSI)
+        a.multiply(R9, R13)              # wa x Tb
+        a.load(RBX, RDI)
+        a.multiply(RBX, R12)             # wb x Ta
+        a.op("cmp", R9, RBX)
+        a.jump_if(GREATER, "bs_swap")
+        a.op("add", RAX, R9)
+        a.op("add", RCX, RBX)
+        a.jump("bs_skip")
+        a.label("bs_swap")
+        a.op("add", RAX, RBX)
+        a.op("add", RCX, R9)
+
+    a.set(RAX, 0)                        # Ta
+    a.set(RCX, 0)                        # Tb
+    each("bst", totals)
+    a.op("test", RAX, RAX)
+    a.jump_if(EQUAL, "bs_zero")
+    a.op("test", RCX, RCX)
+    a.jump_if(EQUAL, "bs_zero")
+    a.mov(R12, RAX)
+    a.mov(R13, RCX)
+    a.set(RAX, 0)                        # the smaller ones, added up
+    a.set(RCX, 0)                        # the bigger ones
+    each("bs", shares)
+    a.op("test", RCX, RCX)
+    a.jump_if(EQUAL, "bs_zero")
+    a.set(R9, 100)
+    a.multiply_wide(R9)
+    a.divide(RCX)
+    give_back(a, *KEPT)
+    a.ret()
+    a.label("bs_zero")
+    a.set(RAX, 0)
+    give_back(a, *KEPT)
+    a.ret()
+
+
+def brain_likeness(a):
+    """rax, rcx = two texts -> rax = how alike they are, 0 to 100. The same text is 100;
+    a text the brain hasn't met is 0."""
+    a.label("brain_likeness")
+    keep(a, R12, R13)
+    a.mov(R12, RAX)
+    a.mov(R13, RCX)
+    a.call("text_equal")
+    a.op("test", RAX, RAX)
+    a.jump_if(NOT_EQUAL, "bli_same")
+    a.mov(RAX, R12)
+    a.call("brain_find")
+    a.mov(R12, RAX)
+    a.mov(RAX, R13)
+    a.call("brain_find")
+    a.mov(RCX, RAX)
+    a.mov(RAX, R12)
+    give_back(a, R12, R13)
+    a.op("test", RAX, RAX)
+    a.jump_if(LESS, "bli_zero")
+    a.op("test", RCX, RCX)
+    a.jump_if(LESS, "bli_zero")
+    a.jump("brain_score")
+    a.label("bli_zero")
+    a.set(RAX, 0)
+    a.ret()
+    a.label("bli_same")
+    a.set(RAX, 100)
+    give_back(a, R12, R13)
+    a.ret()
+
+
+def brain_closest(a):
+    """rax = text -> rax = the symbol most like it (not itself), or an empty text if none is at all alike.
+    On a tie, the one the brain met first."""
+    a.label("brain_closest")
+    keep(a, *KEPT)
+    a.call("brain_find")
+    a.mov(R12, RAX)
+    a.set(R14, 0)                        # the best likeness so far
+    a.set(R15, -1)                       # and which symbol it was
+    a.op("test", R12, R12)
+    a.jump_if(LESS, "bc_done")
+    a.set(R13, 0)
+    a.label("bc_next")
+    brain_count(a, RCX)
+    a.op("cmp", R13, RCX)
+    a.jump_if(NOT_LESS, "bc_done")
+    a.op("cmp", R13, R12)
+    a.jump_if(EQUAL, "bc_skip")
+    a.mov(RAX, R12)
+    a.mov(RCX, R13)
+    a.call("brain_score")
+    a.op("cmp", RAX, R14)
+    a.jump_if(NOT_GREATER, "bc_skip")
+    a.mov(R14, RAX)
+    a.mov(R15, R13)
+    a.label("bc_skip")
+    a.op_n("add", R13, 1)
+    a.jump("bc_next")
+    a.label("bc_done")
+    a.address(RAX, a.text(""))
+    a.op("test", R15, R15)
+    a.jump_if(LESS, "bc_end")
+    brain_symbol(a, RAX, R15, RCX)
+    a.label("bc_end")
+    give_back(a, *KEPT)
+    a.ret()
+
+
+def brain_links(a):
+    """rax = text, rcx = list -> the list is emptied, then gets every symbol linked to the text,
+    in the order the brain met them."""
+    a.label("brain_links")
+    keep(a, *KEPT)
+    a.mov(R13, RCX)
+    a.set(RDX, 0)
+    a.store(R13, 0, RDX)
+    a.call("brain_find")
+    a.mov(R12, RAX)
+    a.op("test", R12, R12)
+    a.jump_if(LESS, "blk_done")
+    a.set(R14, 0)
+    a.label("blk_next")
+    brain_count(a, RCX)
+    a.op("cmp", R14, RCX)
+    a.jump_if(NOT_LESS, "blk_done")
+    brain_cell(a, R8, R12, R14, R9)
+    a.load(R8, R8)
+    a.op("test", R8, R8)
+    a.jump_if(EQUAL, "blk_skip")
+    brain_symbol(a, RCX, R14, RDX)
+    a.mov(RAX, R13)
+    a.call("push")
+    a.label("blk_skip")
+    a.op_n("add", R14, 1)
+    a.jump("blk_next")
+    a.label("blk_done")
+    give_back(a, *KEPT)
+    a.ret()
+
+
+def word_letter(a, reg, yes):
+    """Jump to yes if the byte in reg belongs in a word: a letter, a digit, or part of a letter like é."""
+    a.op_n("cmp", reg, 0x80)
+    a.jump_if(NOT_LESS, yes)
+    a.mov(R10, reg)
+    a.op_n("sub", R10, ord("0"))
+    a.op_n("cmp", R10, 9)
+    a.jump_if(NOT_ABOVE, yes)
+    a.mov(R10, reg)
+    a.op_n("or", R10, 0x20)
+    a.op_n("sub", R10, ord("a"))
+    a.op_n("cmp", R10, 25)
+    a.jump_if(NOT_ABOVE, yes)
+
+
+def brain_learn(a):
+    """rax = text, rcx = 0 -> every two different words in it are linked (one stronger each time).
+    rcx = a symbol instead -> that symbol is linked to each different word in the text.
+    Words are runs of letters and digits ("don't" is one word), in small letters; the rest is skipped."""
+    to = a.reserve(8, "brain_learn_to")
+    a.label("brain_learn")
+    keep(a, *KEPT)
+    a.address(RDX, to)
+    a.store(RDX, 0, RCX)
+    a.mov(R12, RAX)
+    a.set(R13, 0)                        # where we are in the text
+    a.set(R14, 0)                        # how many different words so far
+    a.label("bln_look")
+    a.load(RCX, R12)
+    a.op("cmp", R13, RCX)
+    a.jump_if(NOT_LESS, "bln_pairs")
+    a.mov(RSI, R12)
+    a.op("add", RSI, R13)
+    a.load_byte(RDX, RSI, 8)
+    word_letter(a, RDX, "bln_word")
+    a.op_n("add", R13, 1)
+    a.jump("bln_look")
+    a.label("bln_word")
+    a.mov(R15, R13)                      # the word starts here
+    a.label("bln_more")
+    a.op_n("add", R13, 1)
+    a.load(RCX, R12)
+    a.op("cmp", R13, RCX)
+    a.jump_if(NOT_LESS, "bln_cut")
+    a.mov(RSI, R12)
+    a.op("add", RSI, R13)
+    a.load_byte(RDX, RSI, 8)
+    word_letter(a, RDX, "bln_more")
+    a.op_n("cmp", RDX, ord("'"))         # an apostrophe with a letter after it stays in the word
+    a.jump_if(NOT_EQUAL, "bln_cut")
+    a.mov(RAX, R13)
+    a.op_n("add", RAX, 1)
+    a.op("cmp", RAX, RCX)
+    a.jump_if(NOT_LESS, "bln_cut")
+    a.load_byte(RDX, RSI, 9)
+    word_letter(a, RDX, "bln_more")
+    a.label("bln_cut")
+    a.mov(RCX, R13)
+    a.op("sub", RCX, R15)
+    a.call("new_text")
+    a.mov(RCX, R13)
+    a.op("sub", RCX, R15)
+    a.mov(RSI, R12)
+    a.op("add", RSI, R15)
+    a.op_n("add", RSI, 8)
+    a.lea(RDI, RAX, 8)
+    a.label("bln_copy")                  # copied in small letters
+    a.op("test", RCX, RCX)
+    a.jump_if(EQUAL, "bln_copied")
+    a.load_byte(RDX, RSI)
+    a.mov(R10, RDX)
+    a.op_n("sub", R10, ord("A"))
+    a.op_n("cmp", R10, 25)
+    a.jump_if(ABOVE, "bln_small")
+    a.op_n("add", RDX, 32)
+    a.label("bln_small")
+    a.store_byte(RDI, 0, RDX)
+    a.op_n("add", RSI, 1)
+    a.op_n("add", RDI, 1)
+    a.op_n("sub", RCX, 1)
+    a.jump("bln_copy")
+    a.label("bln_copied")
+    a.call("brain_add")
+    a.set(R8, 0)                         # met already in this text? Then it's not counted again
+    a.address(R9, "brain_words")
+    a.label("bln_seen")
+    a.op("cmp", R8, R14)
+    a.jump_if(NOT_LESS, "bln_new")
+    a.load(R10, R9)
+    a.op("cmp", R10, RAX)
+    a.jump_if(EQUAL, "bln_look")
+    a.op_n("add", R9, 8)
+    a.op_n("add", R8, 1)
+    a.jump("bln_seen")
+    a.label("bln_new")
+    a.store(R9, 0, RAX)
+    a.op_n("add", R14, 1)
+    a.jump("bln_look")
+    a.label("bln_pairs")                 # now link every two of them, or each to the symbol
+    a.address(RAX, to)
+    a.load(RAX, RAX)
+    a.op("test", RAX, RAX)
+    a.jump_if(EQUAL, "bln_every")
+    a.call("brain_add")
+    a.mov(R13, RAX)
+    a.op("test", R13, R13)
+    a.jump_if(LESS, "bln_done")
+    a.set(R12, 0)
+    a.label("bln_each")
+    a.op("cmp", R12, R14)
+    a.jump_if(NOT_LESS, "bln_done")
+    a.address(R9, "brain_words")
+    a.mov(R10, R12)
+    a.shift_left(R10, 3)
+    a.op("add", R10, R9)
+    a.load(RCX, R10)
+    a.op_n("add", R12, 1)
+    a.op("cmp", RCX, R13)
+    a.jump_if(EQUAL, "bln_each")
+    a.mov(RAX, R13)
+    a.set(RDX, 1)
+    a.call("brain_bump")
+    a.jump("bln_each")
+    a.label("bln_every")
+    a.set(R12, 0)
+    a.label("bln_first")
+    a.op("cmp", R12, R14)
+    a.jump_if(NOT_LESS, "bln_done")
+    a.mov(R13, R12)
+    a.label("bln_second")
+    a.op_n("add", R13, 1)
+    a.op("cmp", R13, R14)
+    a.jump_if(NOT_LESS, "bln_next_first")
+    a.address(R9, "brain_words")
+    a.mov(R10, R12)
+    a.shift_left(R10, 3)
+    a.op("add", R10, R9)
+    a.load(RAX, R10)
+    a.mov(R10, R13)
+    a.shift_left(R10, 3)
+    a.op("add", R10, R9)
+    a.load(RCX, R10)
+    a.set(RDX, 1)
+    a.call("brain_bump")
+    a.jump("bln_second")
+    a.label("bln_next_first")
+    a.op_n("add", R12, 1)
+    a.jump("bln_first")
+    a.label("bln_done")
+    give_back(a, *KEPT)
+    a.ret()
+
+
+def brain_save(a):
+    """rax = file name -> every link saved in it, one per line: the two symbols and the strength,
+    with a tab between."""
+    v = a.reserve(8, "brain_save_how")
+    a.label("brain_save")
+    keep(a, *KEPT)
+    a.mov(R15, RAX)
+    a.address(RBX, v)
+    a.set(RCX, 0o1101)                   # the first line replaces what was in the file
+    a.store(RBX, 0, RCX)
+    a.set(R13, 0)
+    a.label("bsv_first")
+    brain_count(a, RCX)
+    a.op("cmp", R13, RCX)
+    a.jump_if(NOT_LESS, "bsv_end")
+    a.mov(R14, R13)
+    a.label("bsv_second")
+    a.op_n("add", R14, 1)
+    brain_count(a, RCX)
+    a.op("cmp", R14, RCX)
+    a.jump_if(NOT_LESS, "bsv_next_first")
+    brain_cell(a, R12, R13, R14, R9)
+    a.load(R12, R12)
+    a.op("test", R12, R12)
+    a.jump_if(EQUAL, "bsv_second")
+    brain_symbol(a, RAX, R13, RCX)
+    a.address(RCX, a.text("\t"))
+    a.call("join")
+    brain_symbol(a, RCX, R14, RDX)
+    a.call("join")
+    a.address(RCX, a.text("\t"))
+    a.call("join")
+    a.push(RAX)
+    a.mov(RAX, R12)
+    a.call("number_to_text")
+    a.mov(RCX, RAX)
+    a.pop(RAX)
+    a.call("join")
+    a.mov(RCX, RAX)
+    a.mov(RAX, R15)
+    a.address(RBX, v)
+    a.load(RDX, RBX)
+    a.call("file_save")
+    a.address(RBX, v)
+    a.set(RCX, 0o2101)                   # the rest go on the end
+    a.store(RBX, 0, RCX)
+    a.jump("bsv_second")
+    a.label("bsv_next_first")
+    a.op_n("add", R13, 1)
+    a.jump("bsv_first")
+    a.label("bsv_end")
+    a.address(RBX, v)                    # no links: the file is emptied
+    a.load(RDX, RBX)
+    a.op_n("cmp", RDX, 0o1101)
+    a.jump_if(NOT_EQUAL, "bsv_done")
+    a.mov(RAX, R15)
+    a.address(RCX, a.text(""))
+    a.call("file_save")
+    a.label("bsv_done")
+    give_back(a, *KEPT)
+    a.ret()
+
+
+def brain_load(a):
+    """rax = file name -> every link in it (as brain_save writes them) is added to the brain.
+    Lines that don't fit are skipped. If there's no such file, nothing changes."""
+    def field_to(stop, end_label):
+        """Step r13 on to the next tab or line end (or the end of the text); r14 = where the field started."""
+        top = a.new_label("bld_field")
+        a.mov(R14, R13)
+        a.label(top)
+        a.load(RCX, R12)
+        a.op("cmp", R13, RCX)
+        a.jump_if(NOT_LESS, end_label)
+        a.mov(RSI, R12)
+        a.op("add", RSI, R13)
+        a.load_byte(RDX, RSI, 8)
+        a.op_n("cmp", RDX, stop)
+        a.jump_if(EQUAL, end_label)
+        a.op_n("cmp", RDX, 10)
+        a.jump_if(EQUAL, end_label)
+        a.op_n("add", R13, 1)
+        a.jump(top)
+
+    def field_text():
+        """rax = the field from r14 up to r13, as a new text."""
+        a.mov(RCX, R13)
+        a.op("sub", RCX, R14)
+        a.call("new_text")
+        a.load(RCX, RAX)
+        a.mov(RSI, R12)
+        a.op("add", RSI, R14)
+        a.op_n("add", RSI, 8)
+        a.lea(RDI, RAX, 8)
+        a.copy_bytes()
+
+    def at_tab(otherwise):
+        """Go to otherwise unless r13 is at a tab; then step past it."""
+        a.load(RCX, R12)
+        a.op("cmp", R13, RCX)
+        a.jump_if(NOT_LESS, otherwise)
+        a.mov(RSI, R12)
+        a.op("add", RSI, R13)
+        a.load_byte(RDX, RSI, 8)
+        a.op_n("cmp", RDX, 9)
+        a.jump_if(NOT_EQUAL, otherwise)
+        a.op_n("add", R13, 1)
+
+    a.label("brain_load")
+    keep(a, *KEPT)
+    a.call("file_load")
+    a.op("test", RAX, RAX)
+    a.jump_if(EQUAL, "bld_done")
+    a.mov(R12, RAX)
+    a.set(R13, 0)
+    a.label("bld_line")
+    a.load(RCX, R12)
+    a.op("cmp", R13, RCX)
+    a.jump_if(NOT_LESS, "bld_done")
+    field_to(9, "bld_a")
+    a.label("bld_a")
+    at_tab("bld_skip")
+    a.op_n("sub", R13, 1)
+    field_text()
+    a.op_n("add", R13, 1)
+    a.mov(R15, RAX)                      # the first symbol
+    field_to(9, "bld_b")
+    a.label("bld_b")
+    at_tab("bld_skip")
+    a.op_n("sub", R13, 1)
+    field_text()
+    a.op_n("add", R13, 1)
+    a.mov(RBX, RAX)                      # the second symbol
+    field_to(10, "bld_n")
+    a.label("bld_n")
+    field_text()
+    a.call("text_to_number")
+    a.mov(RDX, RAX)
+    a.op("test", RDX, RDX)
+    a.jump_if(NOT_GREATER, "bld_skip")
+    a.mov(RAX, R15)
+    a.mov(RCX, RBX)
+    a.call("brain_link")
+    a.label("bld_skip")                  # on to the start of the next line
+    a.load(RCX, R12)
+    a.op("cmp", R13, RCX)
+    a.jump_if(NOT_LESS, "bld_done")
+    a.mov(RSI, R12)
+    a.op("add", RSI, R13)
+    a.load_byte(RDX, RSI, 8)
+    a.op_n("add", R13, 1)
+    a.op_n("cmp", RDX, 10)
+    a.jump_if(NOT_EQUAL, "bld_skip")
+    a.jump("bld_line")
+    a.label("bld_done")
+    give_back(a, *KEPT)
     a.ret()

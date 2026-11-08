@@ -151,6 +151,10 @@ class Asm:
     def multiply(self, dst, src):
         self.reg_reg(b"\x0f\xaf", dst, src)
 
+    def multiply_wide(self, reg):
+        """rdx:rax = rax x reg, unsigned, all 128 bits (so a divide after it can't overflow)."""
+        self.reg_reg(0xF7, 4, reg)
+
     def divide(self, reg, signed=False):
         """rax = rdx:rax / reg, rdx = what's left over."""
         self.reg_reg(0xF7, 7 if signed else 6, reg)

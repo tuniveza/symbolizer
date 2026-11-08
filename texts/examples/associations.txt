@@ -1,0 +1,15 @@
+# A word-association game: brick links words, learns from what you type, and finds the closest match.
+# What it learns is kept in links.txt, so it remembers it next time.
+load the links from links.txt
+link apple with fruit, sweet, red and tree
+link cherry with fruit, sweet, red and tree
+link car with wheels, road, fast and engine
+link bike with wheels, road and pedals
+ask "Describe a cat in a few words:" and link cat with the words in answer
+ask "Describe a dog in a few words:" and link dog with the words in answer
+write cat and dog are how alike cat and dog are percent alike
+ask "Pick a word:" as word
+set match to the closest match to word
+if match is empty, write I don't know anything like word yet, otherwise write word reminds me of match
+if word is like apple, write word sounds tasty! in green
+save the links to links.txt

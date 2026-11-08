@@ -23,7 +23,7 @@ import review
 import runtime
 import teach
 import universe
-from actions import EXAMPLES, RESET, STARTERS, Actions, case_at_end, colour_words, file_name, plain_name, split_at
+from actions import BRAIN_WORDS, EXAMPLES, RESET, STARTERS, Actions, case_at_end, colour_words, file_name, plain_name, split_at
 from window import WINDOW_HELP, Window
 from asm import Asm, EQUAL, GREATER, LESS, NOT_GREATER, NOT_LESS, R8, RAX, RCX, RDX
 from elf import wrap
@@ -164,6 +164,7 @@ class Compiler(Actions, Window):
         self.uses_window = False       # does it move its own window? Then it needs one of its own.
         self.erases = False            # does it make text disappear? Then text put on the screen is remembered.
         self.written = False           # has anything been shown yet? Until then a background colours the whole screen
+        self.uses_brain = False        # does it link symbols? Then it carries the brain's routines too
         self.last_shown = None         # what "make it disappear" means: "placed" text, a "line", or nothing yet
         self.known_names = set()       # for "did you mean ...?"
         self.words_file = words_file
@@ -364,6 +365,8 @@ class Compiler(Actions, Window):
             self.show(RESET)
         runtime.finish(self.a)
         runtime.add_all(self.a)
+        if self.uses_brain:
+            runtime.add_brain(self.a)
         return wrap(self.a)
 
     def compile_items(self, items, problems):
@@ -538,6 +541,8 @@ class Compiler(Actions, Window):
         w = words[i].word
         if w in ("name", "call") and not self.names_something(words[i + 1:]):
             return False                        # "write hello, name" is just a name
+        if w in BRAIN_WORDS and i and not self.brain_word_fits(words, i):
+            return False                        # "write live, laugh, learn" is just words
         if w in STARTERS or any(d.first_word() == w for d in self.definitions):
             return True
         if self.dictionary_action(words, i):
