@@ -6,7 +6,7 @@
   <img alt="Linux x86-64" src="https://img.shields.io/badge/makes-Linux%20x86--64%20programs-e2402a?style=flat-square">
   <img alt="Python 3, standard library only" src="https://img.shields.io/badge/python-3%20·%20standard%20library%20only-ff8a3d?style=flat-square">
   <img alt="No C compiler, no libc" src="https://img.shields.io/badge/no%20C%20compiler-no%20libc-ffb15c?style=flat-square">
-  <img alt="121 tests passing" src="https://img.shields.io/badge/tests-121%20passing-4fa84f?style=flat-square">
+  <img alt="168 tests passing" src="https://img.shields.io/badge/tests-168%20passing-4fa84f?style=flat-square">
 </p>
 
 <p align="center">
@@ -339,6 +339,10 @@ Nothing else is needed on the computer that runs it.
 | [`universe.py`](universe.py) | The textual universe: reading a line by what it's about |
 | [`wordnet.py`](wordnet.py), [`conceptnet.py`](conceptnet.py) | Ready-made knowledge of English |
 | [`synchronicity.py`](synchronicity.py) | Which ideas tend to turn up together |
+| [`brain.py`](brain.py) | The digital brain: symbols, links, and how alike two symbols are |
+| [`symbols.py`](symbols.py) | A universe for each symbol: neurons in `texts/universes/` that keep learning |
+| [`eye.py`](eye.py), [`sight.py`](sight.py) | The eye: quick filters that turn a picture into symbols, and naming it |
+| [`senses.py`](senses.py) | `brick learn`: learning from any file, folder, picture or words |
 | [`neural.py`](neural.py) | The optional local language model |
 | [`factory.py`](factory.py), [`scrambler.py`](scrambler.py) | Self-learning: made-up and scrambled directions |
 | [`review.py`](review.py), [`outliers.py`](outliers.py) | "Did it do what you meant?" and the Decisions list |
@@ -397,6 +401,94 @@ They wait in the Decisions tab for a person. What you decide is kept in [`texts/
 
 ---
 
+## 🧠 The digital brain: symbols, associations and an eye
+
+brick has a brain made of symbols.
+A symbol is anything: a letter, a word, a context like `in _ at`, a picture, a scene.
+Each symbol is linked to other symbols, and every link has a strength.
+Two symbols are alike when their links are alike. When they are alike enough, brick treats them as the same and acts.
+
+**How alike** is measured the same way everywhere (brick's understanding, the eye, and your programs):
+each symbol's links are taken as shares, a link to a broad symbol (one linked to many things) counts for less
+than a link to a specific one, and the score is the overlap of the two patterns, from 0 (nothing shared) to 1 (the same).
+
+### It learns by itself
+
+- **From what you write.** Every word is known by how it's used: the words around it, its context, and its letters.
+  Little words are symbols too: they're broad, so they reach many things.
+- **From what the factory proves.** The words of every direction that builds fire together and link up.
+- **From pictures.** `brick show apple.png as apple` teaches a symbol by showing it (see the eye, below).
+- **From anything.** `brick learn notes.txt`, `brick learn ~/Pictures` or `brick learn "red apples are sweet"`.
+  `brick learn watch FOLDER` keeps learning from new files there while brick runs.
+- **On its own.** Each symbol has its own universe, a file in `texts/universes/`, that acts like a neuron.
+  While brick runs, a few neurons fire every round, follow their strongest links, pick up new links through them
+  (apple → fruit → seed gives apple a weak link to seed), look themselves up in WordNet and ConceptNet once, and
+  let unused links fade. Anything you write in a universe file by hand is never faded or deleted.
+
+### It understands words brick doesn't know
+
+When nothing else knows a word (not the universe, the dictionary, spelling, WordNet or ConceptNet), brick asks
+the brain which word it knows is used most like it, and reads the line that way. The reading is built and checked
+like every other, only after every other reading has failed, and the note says what happened:
+
+```text
+Note: line 1 read as: write hi in red ('zorp' is used like 'red')
+```
+
+`brick brain` says how much it knows; `brick brain like red` shows the words used most like red;
+`brick brain links red` shows its links; `brick brain off` turns it off.
+
+### The eye
+
+`brick look photo.jpg` names what's in a picture, and `brick show photo.jpg as apple` teaches it.
+The eye runs several quick filters, each turning pixels into symbols:
+
+| Filter | What it finds |
+|---|---|
+| objects | how many things, where, how big, what's left of what |
+| colour | main colours, warm or cool, bright or dark, vivid or pale |
+| shape | round, oval, ring, triangle, square, star, long; corners, holes, symmetry |
+| edges | straight or curved, horizontal, vertical, diagonal |
+| texture | smooth, grainy, striped, dotted, checked |
+| layout | a centred thing or a scene; sky above, ground below |
+| text | words written in the picture (if `tesseract` is installed) |
+| memory | which known symbol the picture is most like |
+| model | a local vision model, only when memory isn't sure |
+
+Then it adds what is known about the thing (WordNet, ConceptNet) to its universe, so a picture of an apple also
+brings in fruit, seeds, trees and pie. Without the model, looking takes about a tenth of a second.
+The vision model is optional: `brick sight setup` downloads it once (qwen2.5vl:3b, about 3 GB), and it runs on
+your own graphics card. **Nothing is sent anywhere.**
+
+### In your programs
+
+Your programs can link symbols, learn links, and act on likeness, all in their own machine code:
+
+```text
+link apple with fruit, sweet, red and tree
+link cherry with fruit, sweet, red and tree
+ask "Pick a word:" as word
+set match to the closest match to word
+write word reminds me of match
+if word is like apple, write word sounds tasty! in green
+```
+
+| Wording | What it does |
+|---|---|
+| `link apple to fruit`, `link apple with fruit, sweet and tree` | link symbols (again: stronger). `associate`, `connect`, `relate` too |
+| `learn from answer`, `learn "red apples are sweet"` | link the words of a text by themselves, with their contexts |
+| `how alike apple and pear are`, `the likeness of apple and pear` | a number from 0 to 100 |
+| `if thing is like apple`, `is not like`, `is similar to` | true when the likeness reaches 50 |
+| `set the likeness needed to 70` | change that |
+| `the closest match to thing`, `what thing is like` | the most alike symbol |
+| `the links of apple`, `unlink apple from fruit`, `forget apple` | look at or remove links |
+| `save the links to brain.txt`, `load the links from brain.txt` | keep them for next time |
+
+A program holds up to 2,000 symbols. Programs that don't use these words stay exactly the same size.
+See [`texts/examples/associations.txt`](texts/examples/associations.txt).
+
+---
+
 ## 🪨 Brick materials: your program as sand, clay, shale and cement
 
 `brick bits game.txt` writes your program in four forms, next to `game.txt`:
@@ -447,14 +539,17 @@ $ python3 tests/test_director.py
 | Test file | Tests |
 |---|---|
 | [`test_director.py`](tests/test_director.py) | 76 |
+| [`test_sight.py`](tests/test_sight.py) | 24 |
 | [`test_forgiving.py`](tests/test_forgiving.py) | 17 |
 | [`test_steps.py`](tests/test_steps.py) | 10 |
 | [`test_console.py`](tests/test_console.py) | 8 |
+| [`test_brain_words.py`](tests/test_brain_words.py) | 16 |
 | [`test_universe.py`](tests/test_universe.py) | 8 |
+| [`test_brain_universe.py`](tests/test_brain_universe.py) | 7 |
 | [`test_messy.py`](tests/test_messy.py) | 1 |
 | [`test_neural.py`](tests/test_neural.py) | 1 |
 
-All 121 passed on 2 November 2026, on CachyOS Linux with Python 3.14.
+All 168 passed on 8 November 2026, on CachyOS Linux with Python 3.14.
 
 ---
 
@@ -464,7 +559,7 @@ All 121 passed on 2 November 2026, on CachyOS Linux with Python 3.14.
 brick/
 ├── brick.py ... window.py     the compiler, toolbox, assembler and window (see "Where things live")
 ├── gui.html                   the brick kiln page
-├── tests/                     121 tests that build and run real programs
+├── tests/                     168 tests that build and run real programs
 ├── texts/
 │   ├── examples/              finished example programs
 │   ├── dictionary.txt         765 everyday words and what they mean here
