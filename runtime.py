@@ -9,7 +9,7 @@ New texts come from the heap and are never reused, so they start as zeros.
 """
 import screen
 from asm import (ABOVE, BELOW, EQUAL, GREATER, LESS, NOT_ABOVE, NOT_EQUAL, NOT_GREATER, NOT_LESS, NOT_NEGATIVE,
-                 R8, R9, R10, R11, R12, R13, R14, R15, RAX, RBX, RCX, RDI, RDX, RSI, XMM0, XMM1)
+                 R8, R9, R10, R11, R12, R13, R14, R15, RAX, RBX, RCX, RDI, RDX, RSI, RSP, XMM0, XMM1)
 
 TEXT_LIMIT = 256          # longest typed answer
 LIST_LIMIT = 1000         # most items in a list
@@ -1253,6 +1253,7 @@ def add_brain(a):
     a.space["brain_needed"] = 8                                 # the likeness "is like" needs, minus 80
     a.space["brain_symbols"] = SYMBOL_LIMIT * 8                 # each symbol's text
     a.space["brain_weights"] = SYMBOL_LIMIT * SYMBOL_LIMIT * 8  # how strongly each one links to each other one
+    a.space["brain_breadth"] = SYMBOL_LIMIT * 8                 # how many different symbols each one links to
     a.space["brain_words"] = SYMBOL_LIMIT * 8                   # the symbols of the words being learned
     for brick in [brain_find, brain_add, brain_bump, brain_link, brain_unlink, brain_forget, brain_score,
                   brain_likeness, brain_closest, brain_links, brain_learn, brain_save, brain_load]:
@@ -1360,21 +1361,40 @@ def brain_add(a):
 
 def brain_bump(a):
     """rax, rcx = two different symbol numbers, rdx = how much stronger their link gets (0: no link at all).
-    Only changes rax, rcx, rdx, r8, r9, r10."""
+    Keeps each symbol's breadth up to date. Only changes rax, rcx, rdx, r8, r9, r10, r11."""
+    def breadth(reg, change):
+        a.address(R11, "brain_breadth")
+        a.mov(R9, reg)
+        a.shift_left(R9, 3)
+        a.op("add", R11, R9)
+        a.load(R9, R11)
+        a.op_n("add", R9, change)
+        a.store(R11, 0, R9)
+
     a.label("brain_bump")
     brain_cell(a, R8, RAX, RCX, R9)
     brain_cell(a, R10, RCX, RAX, R9)
+    a.load(R9, R8)                       # how strong it was
     a.op("test", RDX, RDX)
     a.jump_if(EQUAL, "bb_clear")
-    a.load(R9, R8)
+    a.mov(R11, R9)
     a.op("add", R9, RDX)
     a.store(R8, 0, R9)
     a.store(R10, 0, R9)
+    a.op("test", R11, R11)
+    a.jump_if(NOT_EQUAL, "bb_done")
+    breadth(RAX, 1)                      # a new link: both are a little broader
+    breadth(RCX, 1)
+    a.label("bb_done")
     a.ret()
     a.label("bb_clear")
+    a.op("test", R9, R9)
+    a.jump_if(EQUAL, "bb_done")
     a.set(R9, 0)
     a.store(R8, 0, R9)
     a.store(R10, 0, R9)
+    breadth(RAX, -1)
+    breadth(RCX, -1)
     a.ret()
 
 
@@ -1420,100 +1440,190 @@ def brain_unlink(a):
 def brain_forget(a):
     """rax = text -> every link it has is gone."""
     a.label("brain_forget")
+    keep(a, R12, R13)
     a.call("brain_find")
     a.op("test", RAX, RAX)
     a.jump_if(LESS, "bfo_done")
-    a.mov(R11, RAX)
-    a.set(RSI, 0)
+    a.mov(R12, RAX)
+    a.set(R13, 0)
     a.label("bfo_next")
     brain_count(a, RCX)
-    a.op("cmp", RSI, RCX)
+    a.op("cmp", R13, RCX)
     a.jump_if(NOT_LESS, "bfo_done")
-    a.mov(RAX, R11)
-    a.mov(RCX, RSI)
+    a.mov(RAX, R12)
+    a.mov(RCX, R13)
     a.set(RDX, 0)
     a.op("cmp", RAX, RCX)
     a.jump_if(EQUAL, "bfo_skip")
     a.call("brain_bump")
     a.label("bfo_skip")
-    a.op_n("add", RSI, 1)
+    a.op_n("add", R13, 1)
     a.jump("bfo_next")
     a.label("bfo_done")
+    give_back(a, R12, R13)
     a.ret()
 
 
+SCALE = 1 << 20           # fixed point for the shares in brain_score, when the exact one would be too big
+SCALE_LIMIT = 1 << 24     # the exact scale: the lcm of the breadths involved, if it's at most this
+SHARE_LIMIT = 1 << 30     # totals are halved (with their parts) until they're below this, so products fit
+
+
 def brain_score(a):
-    """rax, rcx = two different symbol numbers -> rax = how alike they are, 0 to 100: the weighted overlap
-    of their links as shares, leaving out the two symbols themselves. With Ta and Tb the two totals,
-    100 x sum of min(wa x Tb, wb x Ta) / sum of max(wa x Tb, wb x Ta), rounded down; 0 if either total is 0.
-    The products fit in 64 bits while Ta x Tb stays under 2^62 (totals up to about 2 billion each);
-    the x 100 is done in 128 bits. Keeps r12-r15 and rbx."""
+    """rax, rcx = two different symbol numbers a, b -> rax = how alike they are, 0 to 100.
+    Every other symbol s (not a or b) linked to either counts in proportion to w(a,s) / breadth(s): a link
+    to a broad symbol (linked to many) says less than a link to a specific one. With p_a(s) = w(a,s) / breadth(s)
+    and P_a their total: 100 x sum of min(p_a(s) x P_b, p_b(s) x P_a) / sum of max(...), rounded down;
+    0 if either total is 0. In whole numbers: p is kept times the lcm of the breadths involved, so it's exact
+    (times 2^20 if that lcm is over 2^24); each side is halved until its total is below 2^30, so every product
+    stays below 2^60 and the sums below 2^62; the x 100 is done in 128 bits. Exact while each side's total
+    p stays below 2^30 / scale. (A link strength must stay below 2^39.) Keeps r12-r15 and rbx."""
+    v = a.reserve(72, "brain_score_vars")   # 0 Pa, 8 Pb, 16 a's halvings, 24 b's, 32 the smaller ones, 40 the bigger,
+                                            # 48 row a, 56 row b, 64 the scale
     a.label("brain_score")
     keep(a, *KEPT)
+    a.address(R14, v)
     a.mov(R10, RAX)
     a.mov(R11, RCX)
     a.set(R8, SYMBOL_LIMIT * 8)
     a.address(R9, "brain_weights")
-    a.mov(R14, RAX)
-    a.multiply(R14, R8)
-    a.op("add", R14, R9)                 # symbol i's row of strengths
-    a.mov(R15, RCX)
-    a.multiply(R15, R8)
-    a.op("add", R15, R9)                 # symbol j's row
-    brain_count(a, RDX)
+    a.mov(RDX, RAX)
+    a.multiply(RDX, R8)
+    a.op("add", RDX, R9)
+    a.store(R14, 48, RDX)                # a's row of strengths
+    a.mov(RDX, RCX)
+    a.multiply(RDX, R8)
+    a.op("add", RDX, R9)
+    a.store(R14, 56, RDX)                # b's row
+    a.set(RDX, 0)
+    for at in (0, 8, 32, 40):
+        a.store(R14, at, RDX)
+    a.set(RDX, 1)
+    a.store(R14, 64, RDX)
+    brain_count(a, R13)
 
     def each(name, body):
-        """Go through every other symbol k (not i or j): rsi, rdi point at the strengths i-k and j-k."""
-        a.mov(RSI, R14)
-        a.mov(RDI, R15)
+        """Go through every other symbol s linked to a or b: r9, rbx = w(a,s), w(b,s); r15 = breadth(s)."""
+        a.load(RSI, R14, 48)
+        a.load(RDI, R14, 56)
+        a.address(R12, "brain_breadth")
         a.set(R8, 0)
         a.label(f"{name}_next")
-        a.op("cmp", R8, RDX)
+        a.op("cmp", R8, R13)
         a.jump_if(NOT_LESS, f"{name}_end")
         a.op("cmp", R8, R10)
         a.jump_if(EQUAL, f"{name}_skip")
         a.op("cmp", R8, R11)
         a.jump_if(EQUAL, f"{name}_skip")
+        a.load(R9, RSI)
+        a.load(RBX, RDI)
+        a.mov(RAX, R9)
+        a.op("or", RAX, RBX)
+        a.jump_if(EQUAL, f"{name}_skip")
+        a.load(R15, R12)
         body()
         a.label(f"{name}_skip")
         a.op_n("add", RSI, 8)
         a.op_n("add", RDI, 8)
+        a.op_n("add", R12, 8)
         a.op_n("add", R8, 1)
         a.jump(f"{name}_next")
         a.label(f"{name}_end")
 
-    def totals():
-        a.load(R9, RSI)
-        a.op("add", RAX, R9)
-        a.load(R9, RDI)
-        a.op("add", RCX, R9)
+    def share(weight):
+        """rax = weight x 2^20 / breadth(s)."""
+        a.mov(RAX, weight)
+        a.load(RDX, R14, 64)
+        a.multiply(RAX, RDX)
+        a.set(RDX, 0)
+        a.divide(R15)
 
-    def shares():
-        a.load(R9, RSI)
-        a.multiply(R9, R13)              # wa x Tb
-        a.load(RBX, RDI)
-        a.multiply(RBX, R12)             # wb x Ta
+    def add_to(at, reg):
+        a.load(RDX, R14, at)
+        a.op("add", RDX, reg)
+        a.store(R14, at, RDX)
+
+    def scale():
+        """The scale so far = lcm(scale, breadth(s)); 0 once it's over SCALE_LIMIT."""
+        a.load(RAX, R14, 64)
+        a.op("test", RAX, RAX)
+        a.jump_if(EQUAL, "bsl_done")
+        a.mov(RCX, R15)
+        a.label("bsl_gcd")
+        a.op("test", RCX, RCX)
+        a.jump_if(EQUAL, "bsl_gcd_done")
+        a.set(RDX, 0)
+        a.divide(RCX)
+        a.mov(RAX, RCX)
+        a.mov(RCX, RDX)
+        a.jump("bsl_gcd")
+        a.label("bsl_gcd_done")
+        a.mov(RCX, RAX)
+        a.load(RAX, R14, 64)
+        a.set(RDX, 0)
+        a.divide(RCX)
+        a.multiply(RAX, R15)
+        a.op_n("cmp", RAX, SCALE_LIMIT)
+        a.jump_if(NOT_ABOVE, "bsl_keep")
+        a.set(RAX, 0)
+        a.label("bsl_keep")
+        a.store(R14, 64, RAX)
+        a.label("bsl_done")
+
+    def totals():
+        share(R9)
+        add_to(0, RAX)
+        share(RBX)
+        add_to(8, RAX)
+
+    def parts():
+        share(R9)                        # p_a(s), halved like P_a, times P_b
+        a.load(RCX, R14, 16)
+        a.shift_right_cl(RAX)
+        a.load(RDX, R14, 8)
+        a.multiply(RAX, RDX)
+        a.mov(R9, RAX)
+        share(RBX)                       # p_b(s), halved like P_b, times P_a
+        a.load(RCX, R14, 24)
+        a.shift_right_cl(RAX)
+        a.load(RDX, R14, 0)
+        a.multiply(RAX, RDX)
+        a.mov(RBX, RAX)
         a.op("cmp", R9, RBX)
-        a.jump_if(GREATER, "bs_swap")
-        a.op("add", RAX, R9)
-        a.op("add", RCX, RBX)
+        a.jump_if(ABOVE, "bs_swap")
+        add_to(32, R9)
+        add_to(40, RBX)
         a.jump("bs_skip")
         a.label("bs_swap")
-        a.op("add", RAX, RBX)
-        a.op("add", RCX, R9)
+        add_to(32, RBX)
+        add_to(40, R9)
 
-    a.set(RAX, 0)                        # Ta
-    a.set(RCX, 0)                        # Tb
-    each("bst", totals)
+    each("bsl", scale)
+    a.load(RAX, R14, 64)
     a.op("test", RAX, RAX)
-    a.jump_if(EQUAL, "bs_zero")
-    a.op("test", RCX, RCX)
-    a.jump_if(EQUAL, "bs_zero")
-    a.mov(R12, RAX)
-    a.mov(R13, RCX)
-    a.set(RAX, 0)                        # the smaller ones, added up
-    a.set(RCX, 0)                        # the bigger ones
-    each("bs", shares)
+    a.jump_if(NOT_EQUAL, "bs_scaled")
+    a.set(RAX, SCALE)
+    a.store(R14, 64, RAX)
+    a.label("bs_scaled")
+    each("bst", totals)
+    for total, halvings in ((0, 16), (8, 24)):
+        a.load(RAX, R14, total)
+        a.op("test", RAX, RAX)
+        a.jump_if(EQUAL, "bs_zero")
+        a.set(RCX, 0)
+        top, done = a.new_label("bs_halve"), a.new_label("bs_halved")
+        a.label(top)
+        a.op_n("cmp", RAX, SHARE_LIMIT)
+        a.jump_if(BELOW, done)
+        a.shift_right(RAX, 1)
+        a.op_n("add", RCX, 1)
+        a.jump(top)
+        a.label(done)
+        a.store(R14, total, RAX)
+        a.store(R14, halvings, RCX)
+    each("bs", parts)
+    a.load(RAX, R14, 32)
+    a.load(RCX, R14, 40)
     a.op("test", RCX, RCX)
     a.jump_if(EQUAL, "bs_zero")
     a.set(R9, 100)
@@ -1647,12 +1757,20 @@ def word_letter(a, reg, yes):
 def brain_learn(a):
     """rax = text, rcx = 0 -> every two different words in it are linked (one stronger each time).
     rcx = a symbol instead -> that symbol is linked to each different word in the text.
-    Words are runs of letters and digits ("don't" is one word), in small letters; the rest is skipped."""
+    Words are runs of letters and digits ("don't" is one word), in small letters; the rest is skipped.
+    When learning (rcx = 0), each word is also linked to its frame, the words around it: in "a cherry is",
+    cherry is linked to the symbol "a _ is" (the first word gets "_ cherry", the last one "sweet _").
+    A frame is a symbol like any other: its links are the words that filled it."""
     to = a.reserve(8, "brain_learn_to")
+    frames = a.reserve(16, "brain_frames")     # 0 the word before the last one, 8 the last one
     a.label("brain_learn")
     keep(a, *KEPT)
     a.address(RDX, to)
     a.store(RDX, 0, RCX)
+    a.address(RDX, frames)
+    a.set(RCX, 0)
+    a.store(RDX, 0, RCX)
+    a.store(RDX, 8, RCX)
     a.mov(R12, RAX)
     a.set(R13, 0)                        # where we are in the text
     a.set(R14, 0)                        # how many different words so far
@@ -1711,6 +1829,38 @@ def brain_learn(a):
     a.op_n("sub", RCX, 1)
     a.jump("bln_copy")
     a.label("bln_copied")
+    a.address(RDX, to)                   # the word before this one gets its frame: "a _ is"
+    a.load(RDX, RDX)
+    a.op("test", RDX, RDX)
+    a.jump_if(NOT_EQUAL, "bln_add")
+    a.address(R8, frames)
+    a.load(RCX, R8, 8)
+    a.op("test", RCX, RCX)
+    a.jump_if(EQUAL, "bln_shift")
+    a.push(RAX)
+    a.load(RAX, R8, 0)
+    a.op("test", RAX, RAX)
+    a.jump_if(EQUAL, "bln_lone")
+    a.address(RCX, a.text(" _ "))
+    a.call("join")
+    a.jump("bln_framed")
+    a.label("bln_lone")
+    a.address(RAX, a.text("_ "))
+    a.label("bln_framed")
+    a.load(RCX, RSP, 0)
+    a.call("join")
+    a.mov(RCX, RAX)
+    a.address(R8, frames)
+    a.load(RAX, R8, 8)
+    a.set(RDX, 1)
+    a.call("brain_link")
+    a.pop(RAX)
+    a.label("bln_shift")
+    a.address(R8, frames)
+    a.load(RCX, R8, 8)
+    a.store(R8, 0, RCX)
+    a.store(R8, 8, RAX)
+    a.label("bln_add")
     a.call("brain_add")
     a.set(R8, 0)                         # met already in this text? Then it's not counted again
     a.address(R9, "brain_words")
@@ -1727,7 +1877,23 @@ def brain_learn(a):
     a.store(R9, 0, RAX)
     a.op_n("add", R14, 1)
     a.jump("bln_look")
-    a.label("bln_pairs")                 # now link every two of them, or each to the symbol
+    a.label("bln_pairs")                 # the last word's frame: "sweet _"
+    a.address(RAX, to)
+    a.load(RAX, RAX)
+    a.op("test", RAX, RAX)
+    a.jump_if(NOT_EQUAL, "bln_framed_all")
+    a.address(R8, frames)
+    a.load(RAX, R8, 0)
+    a.op("test", RAX, RAX)
+    a.jump_if(EQUAL, "bln_framed_all")
+    a.address(RCX, a.text(" _"))
+    a.call("join")
+    a.mov(RCX, RAX)
+    a.address(R8, frames)
+    a.load(RAX, R8, 8)
+    a.set(RDX, 1)
+    a.call("brain_link")
+    a.label("bln_framed_all")            # now link every two of them, or each to the symbol
     a.address(RAX, to)
     a.load(RAX, RAX)
     a.op("test", RAX, RAX)

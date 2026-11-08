@@ -518,11 +518,15 @@ class Actions:
         except Problem:
             node = None
         if node and node[0] not in ("number", "decimal", "text"):
+            if node[0] != "name":
+                self.worked_out.add(self.line_number)
             return [("value", node)]
         pieces, typed, i = [], "", 0
         while i < len(body):
             end, node = self.value_inside(body, i)
             if node:
+                if node[0] != "name":           # worked out, not just a name: the line isn't echoed words
+                    self.worked_out.add(self.line_number)
                 space = " " if i else ""
                 if typed + space + body[i].before:
                     pieces.append(("text", typed + space + body[i].before))
@@ -592,7 +596,7 @@ class Actions:
         the = body[start].word == "the"
         lead = body[start].word in ("the", "your", "my", "our")
         name = [w.word for w in body[start + lead:end]]
-        if not name or not self.find("_".join(name)):
+        if not name or None in name or not self.find("_".join(name)):       # None: quoted words
             return False
         said = [w.word for w in body]
         named = (end < len(body) and said[end] in ("is", "was", "are", "were", "equals")

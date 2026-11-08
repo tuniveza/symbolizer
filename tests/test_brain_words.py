@@ -33,7 +33,7 @@ def test_link_and_likeness():
                   "write the links of fruit\n"
                   "link apple to red\nwrite how alike apple and pear are\n"
                   "link pear to fruit\nwrite how alike apple and pear are") == \
-        "100\n0\n100\n0\napple, pear\n60\n60\n"        # shares: 9/15 (apple has red too), then 12/20
+        "100\n0\n100\n0\napple, pear\n42\n42\n"        # red is specific (breadth 1), so it weighs most
 
 
 def test_is_like_and_is_not_like():
@@ -46,10 +46,10 @@ def test_is_like_and_is_not_like():
 def test_changing_the_likeness_needed():
     assert output(FRUIT + "link apple to red\nwrite the likeness needed\n"
                   "if apple is like pear write like at 80 otherwise write not like at 80\n"
-                  "set the likeness needed to 70\nif apple is like pear write wrong at 70\n"
-                  "set the likeness needed to 60\nif apple is like pear write like at 60\n"
+                  "set the likeness needed to 50\nif apple is like pear write wrong at 50\n"
+                  "set the likeness needed to 40\nif apple is like pear write like at 40\n"
                   "change the likeness needed to 100%\nwrite the likeness needed\n"
-                  "if apple is like pear write wrong") == "80\nnot like at 80\nlike at 60\n100\n"
+                  "if apple is like pear write wrong") == "80\nnot like at 80\nlike at 40\n100\n"
 
 
 def test_closest_match():
@@ -65,7 +65,31 @@ def test_learning_from_a_text():
                   "write how alike apples and cherries are\n"
                   "learn \"don't stop, it's 'fine' - ok ok\"\nwrite the links of don't\n"
                   "set s to \"dogs chase cats\"\nlearn from the words in s\nwrite the links of cats") == \
-        "red, are, sweet\napples, are, sweet, cherries, too\n60\nstop, it's, fine, ok\ndogs, chase\n"
+        "red, red _ are, are, sweet\n_ apples, apples, are, sweet, _ cherries, cherries, too\n69\n" \
+        "_ stop, stop, it's, fine, ok\ndogs, chase, chase _\n"
+
+
+def test_breadth_weighting():
+    """A shared link to a broad symbol (linked to many) counts for less than one to a specific symbol."""
+    assert output("link hub with a, b, c, d, e and f\nlink a with pa and x\nlink b with pb and x\n"
+                  "link c to s\nlink d to s\n"
+                  "write how alike a and b are\nwrite how alike c and d are\nwrite how alike a and c are\n"
+                  "write the closest match to a") == "25\n100\n5\nb\n"     # with plain counts a~b would be 50
+
+
+def test_little_words_and_frames_are_symbols():
+    """Every word is a symbol, little ones too, and so is each word's frame: 'a _ is' in 'a cherry is'."""
+    assert output("link apple with fruit, sweet, tree and round\nlink pear with fruit, sweet, tree and green\n"
+                  "link car with wheels, engine and road\n"
+                  "learn \"a cherry is a sweet round fruit from a tree\"\n"
+                  "write how alike apple and pear are\nwrite the closest match to cherry\n"
+                  "write how alike cherry and apple are\nwrite how alike cherry and a are\n"
+                  "write the links of cherry\nwrite the links of \"_ cherry\"\n"
+                  "learn \"a plum is a sweet fruit\"\nwrite the links of \"a _ is\"\n"
+                  "write the closest match to \"a _ is\"\nwrite how alike cherry and plum are\n"
+                  "link a to b\nif car is not like apple, write a car is not an apple") == \
+        "13\nis\n13\n9\nfruit, sweet, tree, round, a, a _ is, is, from\na\ncherry, plum\nis\n55\n" \
+        "a car is not an apple\n"
 
 
 def test_links_with_variables_from_ask():
@@ -76,7 +100,7 @@ def test_links_with_variables_from_ask():
                     "ask \"Say something:\" and learn from answer\nwrite the links of cats",
                     [("Word?", "Kiwi\n"), ("something:", "Cats chase mice\n")])
     assert screen == ("Word? Kiwi\napple, Kiwi\n100\nKiwi is like apple\n"
-                      "Say something: Cats chase mice\nchase, mice\n"), repr(screen)
+                      "Say something: Cats chase mice\n_ chase, chase, mice\n"), repr(screen)
 
 
 def test_linking_a_symbol_with_each_word():
@@ -85,7 +109,7 @@ def test_linking_a_symbol_with_each_word():
                     "write the links of cat\nwrite the links of furry\nwrite how alike cat and dog are",
                     [("cat:", "Small and FURRY, with whiskers\n"), ("dog:", "furry and loyal; it barks\n")])
     assert screen == ("Describe a cat: Small and FURRY, with whiskers\nDescribe a dog: furry and loyal; it barks\n"
-                      "small, and, furry, with, whiskers\ncat, dog\n25\n"), repr(screen)
+                      "small, and, furry, with, whiskers\ncat, dog\n14\n"), repr(screen)
 
 
 def test_the_brain_full_message():
@@ -126,7 +150,7 @@ def test_saving_and_loading_links():
         assert f.read() == "apple\tfruit\t2\napple\tsweet\t1\n"
     assert output("load the links from brain.txt\nwrite the links of apple\nwrite how alike fruit and sweet are\n"
                   "link pear to fruit\nwrite how alike apple and pear are", where=where) == \
-        "fruit, sweet\n100\n50\n"           # fruit (apple 2) v sweet (apple 1): the same share; pear v apple: 2/4
+        "fruit, sweet\n100\n33\n"           # fruit (apple 2) v sweet (apple 1): the same share; pear v apple: 1/3
 
 
 def test_only_programs_with_brain_words_carry_the_brain():
