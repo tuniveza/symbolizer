@@ -16,6 +16,8 @@ import zlib
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ["BRICK_SIGHT"] = "off"         # the vision model is only ever pretended here
+os.environ["BRICK_EYE_TEXT"] = "off"      # and tesseract too, so the tests are the same everywhere
+import eye  # noqa: E402
 import sight  # noqa: E402
 import symbols  # noqa: E402
 
@@ -140,6 +142,9 @@ def test_loose_show_wordings():
         assert sight.show_request(said) == ("apple.png", "apple"), (said, sight.show_request(said))
     assert sight.show_request("show photos/red-apple.JPG as a green apple") == ("photos/red-apple.JPG", "green apple")
     assert sight.show_request('show "my pics/apple.png" as apple') == ("my pics/apple.png", "apple")
+    for said in ("what is this.png", "look at this.png", "look this.png", "brick look this.png",
+                 "what do you see in this.png"):
+        assert sight.show_request(said) == ("this.png", ""), (said, sight.show_request(said))
     assert sight.show_request("show game.txt") is None
     assert sight.show_request("write hello in red") is None
 
@@ -266,17 +271,21 @@ def test_practise_learns_an_indirect_link_and_fades_an_unused_one():
     assert "fruit (" in text, text                                   # strong links fade slowly, still there
 
 
+def words_only():
+    return [n for n in symbols.names() if not n.startswith(("letter:", "context:"))]
+
+
 def test_new_neurons_are_born_a_few_at_a_time():
     fresh()
     for _ in range(4):
         symbols.experience(["kiwi", "mango", "plum", "lime"], "a direction")
-    assert symbols.names() == []                                     # waiting, no files yet
+    assert words_only() == []                                        # waiting, no files yet (letters have some)
     said = symbols.practise()
-    assert len(symbols.names()) == symbols.MAX_BIRTHS, (symbols.names(), said)
     assert said.count("got a neuron") == symbols.MAX_BIRTHS, said
+    assert len(words_only()) == symbols.MAX_BIRTHS, (symbols.names(), said)
     symbols.practise()
     symbols.practise()
-    assert len(symbols.names()) == 4, symbols.names()
+    assert {"kiwi", "mango", "plum", "lime"} <= set(words_only()), symbols.names()
 
 
 def test_hand_written_lines_survive_practise_and_relearning():
@@ -292,6 +301,186 @@ def test_hand_written_lines_survive_practise_and_relearning():
     text = text_of("kettle")
     assert "uses: boil water (5, yours), tea (1, a direction)" in text, text
     assert "\nshape:" not in text, text                              # learned, unused, faded away
+
+
+# ---------------- the eye: each filter ----------------
+
+def eyed(name, test, size=(120, 120)):
+    return eye.see(picture(name, test, size), model=False)
+
+
+def said(found, facet):
+    return [v for v, _ in found["facets"].get(facet, [])]
+
+
+def test_eye_shapes():
+    import math
+    shapes = {
+        "triangle": lambda x, y: (255, 160, 0) if 15 <= y < 105 and abs(x - 60) <= (y - 15) * 0.577 else WHITE,
+        "square": lambda x, y: (0, 0, 255) if 30 <= x < 90 and 30 <= y < 90 else WHITE,
+        "ring": lambda x, y: (0, 0, 0) if 25 ** 2 <= (x - 60) ** 2 + (y - 60) ** 2 <= 45 ** 2 else WHITE,
+        "round": lambda x, y: RED if (x - 60) ** 2 + (y - 60) ** 2 <= 40 ** 2 else WHITE,
+        "star": lambda x, y: (240, 200, 0) if math.hypot(x - 60, y - 60) <= 25 + 22 * max(
+            0, math.cos(5 * (math.atan2(y - 60, x - 60) + math.pi / 2))) ** 3 else WHITE,
+    }
+    for shape, test in shapes.items():
+        found = eyed(f"eye-{shape}.png", test)
+        assert said(found, "shape")[0] == shape, (shape, found["facets"])
+    ring = eyed("eye-ring.png", shapes["ring"])
+    assert "has a hole" in said(ring, "shape") and said(ring, "colour")[0] == "black", ring["facets"]
+    assert "5-pointed" in said(eyed("eye-star.png", shapes["star"]), "shape")
+    assert "4 corners" in said(eyed("eye-square.png", shapes["square"]), "mathematics")
+
+
+def test_eye_texture_and_pattern():
+    stripes = eyed("eye-stripes.png", lambda x, y: (0, 0, 0) if (x // 6) % 2 else WHITE)
+    dots = eyed("eye-dots.png", lambda x, y: (0, 0, 0) if ((x % 12) - 6) ** 2 + ((y % 12) - 6) ** 2 <= 9 else WHITE)
+    checks = eyed("eye-checks.png", lambda x, y: (0, 0, 0) if ((x // 10) + (y // 10)) % 2 else WHITE)
+    plain = eyed("eye-plain.png", lambda x, y: RED if (x - 60) ** 2 + (y - 60) ** 2 <= 40 ** 2 else WHITE)
+    assert "striped" in said(stripes, "pattern") and "vertical stripes" in said(stripes, "pattern"), stripes["facets"]
+    assert "dotted" in said(dots, "pattern"), dots["facets"]
+    assert "checked" in said(checks, "pattern"), checks["facets"]
+    assert not said(plain, "pattern") and "smooth" in said(plain, "texture"), plain["facets"]
+    assert "vertical lines" in said(stripes, "edges") and "straight lines" in said(stripes, "edges")
+
+
+def test_eye_two_things_left_and_right():
+    found = eyed("eye-two.png", lambda x, y: RED if (x - 30) ** 2 + (y - 60) ** 2 <= 18 ** 2 else
+                 (0, 0, 255) if 75 <= x < 105 and 45 <= y < 75 else WHITE)
+    objects = said(found, "objects")
+    assert "two things" in objects and "red round thing left of blue square" in objects, objects
+    assert [t.position for t in found["things"]] == ["left", "right"]
+
+
+def test_eye_horizon_scene():
+    found = eyed("eye-horizon.png", lambda x, y: (110, 170, 235) if y < 60 else (60, 150, 40))
+    layout = said(found, "layout")
+    assert "spread-out scene" in layout and "sky-like top" in layout and "ground-like bottom" in layout, layout
+    assert "horizon in the middle" in layout, layout
+    assert "sky above ground" in found["contexts"]
+
+
+def test_eye_colour_and_tone():
+    found = eyed("eye-pale.png", lambda x, y: (200, 225, 255) if (x - 60) ** 2 + (y - 60) ** 2 <= 40 ** 2 else
+                 (40, 40, 40))
+    assert said(found, "colour")[0] == "blue" and "pale" in said(found, "tone"), \
+        found["facets"]
+    assert "vivid" in said(eyed("eye-red.png", lambda x, y: RED if x > 30 and y > 30 and x < 90 and y < 90
+                                else WHITE), "tone")
+
+
+def test_eye_is_fast():
+    import random
+    random.seed(4)
+    noise = [(random.randrange(256), random.randrange(256), random.randrange(256)) for _ in range(160 * 120)]
+    path = picture("eye-busy.png", lambda x, y: noise[y * 160 + x] if (x - 80) ** 2 + (y - 60) ** 2 > 900 else RED,
+                   (160, 120))
+    found = eye.see(path, model=False)
+    assert found["seconds"] < 1.5, found["seconds"]                  # usually about 0.1 s
+
+
+# ---------------- memory: naming without the model ----------------
+
+def test_memory_names_a_new_picture_without_the_model():
+    fresh()
+    quietly(symbols.main, ["show", picture("apple.png", lambda x, y: RED if (x - 60) ** 2 + (y - 60) ** 2 <= 40 ** 2
+                                                   else WHITE), "as", "apple"])
+    import math
+    quietly(symbols.main, ["show", picture("banana.png", lambda x, y: (240, 220, 40) if 70 <= math.hypot(x - 60, y - 10)
+                                                    <= 88 and abs(x - 60) < 55 else WHITE), "as", "banana"])
+    asked = []
+    saved = eye.ask_model
+    os.environ.pop("BRICK_SIGHT")
+    try:
+        eye.ask_model = lambda pic: asked.append(pic) or (None, {}, "pretend")
+        new = picture("another.png", lambda x, y: (200, 30, 40) if (x - 55) ** 2 + (y - 62) ** 2 <= 33 ** 2 else WHITE)
+        seen = sight.look(new, learn=True)
+        assert seen["name"] == "apple" and seen["how"] == "memory" and not asked, seen
+        assert seen["sure"] >= eye.SURE and not seen["errors"], seen
+        assert "another.png" in text_of("apple")                     # seeing it taught apple's neuron
+        # nothing it knows looks like this: the model is asked, and its name is taken
+        eye.ask_model = lambda pic: ("cup", {"shape": [("round", 1.5)]}, "pretend model says: cup")
+        odd = sight.look(picture("odd.png", lambda x, y: (0, 0, 0) if ((x // 10) + (y // 10)) % 2 else WHITE))
+        assert odd["name"] == "cup" and odd["how"] == "model", odd
+        assert symbols.exists("cup")
+    finally:
+        eye.ask_model = saved
+        os.environ["BRICK_SIGHT"] = "off"
+
+
+def test_look_never_raises_on_odd_files():
+    fresh()
+    broken = os.path.join(PICTURES, "broken.png")
+    with open(broken, "w") as f:
+        f.write("not a picture at all")
+    for path in (broken, os.path.join(PICTURES, "missing.jpg")):
+        seen = sight.look(path)
+        assert seen["errors"] and seen["how"] == "unknown" and seen["name"] is None, seen
+    seen = sight.look(red_circle(), "ball", learn=False)
+    assert seen["how"] == "told" and seen["sure"] == 1.0 and not symbols.exists("ball"), seen
+    assert set(seen) >= {"name", "sure", "how", "symbols", "channels", "objects", "text", "errors"}
+    assert ("round", "shape", 1.0) in seen["symbols"] and seen["channels"]["shape"][0], seen
+    assert seen["objects"][0]["position"] == "middle", seen["objects"]
+
+
+# ---------------- little words, letters, contexts ----------------
+
+def test_little_words_fire_and_breadth_weighs():
+    fresh()
+    symbols.learn("the", {"goes with": ["cat", "dog", "sun"]}, "test")
+    new = symbols.experience(["the", "apple"], "a direction")
+    assert ("the", "goes with", "apple") in new, new                 # little words are symbols too
+    assert "# breadth: 4 (a specific symbol)" in text_of("the"), text_of("the")
+    assert symbols.breadth("the") == 5 and symbols.weight("the") == 1 / 3      # 1 / (1 + floor(log2 5))
+    assert symbols.breadth("the", {"cat", "dog"}) == 3 and symbols.weight("the", {"cat", "dog"}) == 1 / 2
+    assert symbols.breadth("nothing here") == 1 and symbols.weight("nothing here") == 1.0
+
+
+def test_letters_in_context():
+    fresh()
+    symbols.learn("cat", {"is": ["animal"]}, "test")
+    symbols.spell(["cat", "act", "a"], "test")
+    c = text_of("letter:c")
+    assert os.path.isfile(os.path.join(symbols.FOLDER, "letter-c.txt")) and c.startswith("# letter:c: brick's neuron")
+    assert "consonant" in c and "start (1" in c and "middle (1" in c and "cat (1" in c and "act (1" in c, c
+    a = text_of("letter:a")
+    assert "vowel" in a and "alone (1" in a and "after: t (1, test), c (1, test)" in a and "before: c (1" in a, a
+    cat = text_of("cat")
+    assert "letters: c (1, spelling), a (1, spelling), t (1, spelling)" in cat, cat
+    assert "starts with c" in cat and "ends with t" in cat, cat
+    assert ("letter:c", "letters", 0.2) in symbols.links_for("cat")
+
+
+def test_contexts_are_symbols_of_their_own():
+    fresh()
+    for colour in ("red", "red", "blue", "red", "green", "red", "red"):
+        symbols.experience(["write", "hi", "in", colour, "at", "the", "top"], "a direction")
+    waiting = open(os.path.join(symbols.FOLDER, "_waiting.txt")).read()
+    assert "context:in _ at / fills: red (5, a direction)" in waiting, waiting
+    for _ in range(15):
+        symbols.practise()
+    assert os.path.isfile(os.path.join(symbols.FOLDER, "context-in-_-at.txt")), os.listdir(symbols.FOLDER)
+    frame = text_of("context:in _ at")
+    assert "fills: red (5" in frame and "blue (1" in frame, frame
+    # the eye's contexts: a thing seen in a scene links to it, and the scene links back
+    quietly(symbols.main, ["show", picture("field.png", lambda x, y: (110, 170, 235) if y < 60 else (60, 150, 40)),
+                           "as", "field"])
+    assert "contexts: sky above ground (" in text_of("field"), text_of("field")
+    waiting = open(os.path.join(symbols.FOLDER, "_waiting.txt")).read()
+    assert "context:sky above ground / fills: field (1" in waiting, waiting
+
+
+def test_words_read_in_a_picture_teach_letters():
+    fresh()
+    saved = eye.Reader.words
+    try:
+        eye.Reader.words = lambda self, density: ({"text": [("has writing", 2.0), ("stop", 1.5)]}, "read: stop",
+                                                   ["stop", "here"])
+        seen = sight.look(red_circle(), learn=True)
+        assert seen["text"] == "stop here", seen
+        assert symbols.exists("letter:s") and "stop (1, written in circle.png)" in text_of("letter:s")
+    finally:
+        eye.Reader.words = saved
 
 
 if __name__ == "__main__":
