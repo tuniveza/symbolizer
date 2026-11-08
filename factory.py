@@ -45,7 +45,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import brain  # noqa: E402
-import senses  # noqa: E402
+import senses as brick_senses  # noqa: E402 (wordnet.senses is another thing)
 import symbols  # noqa: E402
 import conceptnet  # noqa: E402
 import dictionary  # noqa: E402
@@ -718,7 +718,7 @@ class Factory:
             changed = symbols.practise()              # each symbol's universe learns a little by itself
             if changed:
                 self.say(f"neurons: {changed}")
-            sensed = senses.watch_round(self.brain)   # new files in the folders you asked it to watch
+            sensed = brick_senses.watch_round(self.brain)   # new files in the folders you asked it to watch
             if sensed:
                 self.say(f"senses: {sensed}")
         self.practise()
