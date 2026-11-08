@@ -163,10 +163,12 @@ Everything on it is drawn with letters, kept in `~/.local/share/symbolizer/desig
 - **Octagons**, or shapes (double-click the board, or **Alt + N**, **S**): a header, text and a footer. Drag to move, the ◢ corner resizes.
 - **Pictures** of any format go into an octagon: **img** on the toolbar and a file name, or drop the file on the terminal. They are drawn with half-blocks.
 - **Drag and drop:** in kitty (0.47 or later), drag files from your file manager onto the board. What is under the pointer lights up (a ✚ shows on the empty board), and each file goes where you let go: a picture into the octagon under it, or a new octagon there; a text file into the page or note under it, into the cabinet as a page, or a new page there. Several files land side by side. Dragged text becomes a page. Other terminals paste dropped files as their paths, and sy puts those in too, one file or several.
-- **Layouts:** the icon on an octagon's top edge shows its layout. Click it (or **Alt + L**) for the next one: `¶` text · `▀` picture above · `◧` left · `◨` right · `■` picture only · `‖` two columns.
+- **Layouts:** the icon on an octagon's top edge shows its layout. Click it for the next one: `¶` text · `▀` picture above · `◧` left · `◨` right · `■` picture only · `‖` two columns.
 - **Pages** (**Alt + N**, **P**) hold text of any length and scroll. **Notes** (**Alt + N**, **N**) hold one page. Both take only text and text-like media, and both have a title and a footer.
 - **Cabinets** (**Alt + N**, **C**) keep a stack each of pages, books, slides, notes and drawings. Drop a page or note on one to file it. Click a stack to pull it out, and drag a page back out onto the board. A cabinet can bring in your **Diary** pages and the files open in **Text** mode.
-- **Drawers:** every structure has one. The **▾** on its bottom edge pulls it out: a small cabinet of its own.
+- **Drawers** (**Alt + N**, **D**) hold anything, in no order: drop a page, note or shape on one; drag a row out to take it out. (Drawers used to hang under every structure; an old board gets each as a drawer of its own, beside its structure and linked to it.)
+- **Racks** (**Alt + N**, **R**) are a stack of anything, a row each with its icon and name. Click a row and that structure opens in the middle of the view; **Alt** tapped twice (or a click on the board) puts it back in its place.
+- **Labels:** **Alt + L** turns label mode on. On the chosen structure, **L** gives it a label and goes round the styles (icon + title, title + icon, icon, title, none), **C** its colour, **I** its icon (symbols, then the pictures in `design/images`, drawn small), **T** its own words. **G** gives it a **name plate**: everything with the same name is a group. **AltGr + P** lists the name plates and what has each. **Alt** tapped twice leaves label mode.
 - **Links** (**⛓ link** on the toolbar), a **highlighter pen** with 8 colours (**1–8**; the rubber is **⌫** on the toolbar), and the wheel zooms, toward the pointer (**Shift + wheel** scrolls a chosen page). All text in Design mode is centred, the bars above and below the board too.
 - **Top bar:** over the board, it names the board and what is chosen.
 - **Mini map:** **AltGr + M** shows the whole board in a corner: each structure as a small box of its shape and colour with its symbol and title, links as dotted lines, a frame for what the screen shows. Press it again for the next corner, and once more after the last to hide it.
@@ -284,8 +286,9 @@ Press **F1** inside Symbolizer for the full, scrollable list, or **AltGr + K** t
 | Alt + Tab (Design mode, sy term) | the other split: the editor ↔ sy term (a kitty map in `~/.config/kitty/panes.conf`) |
 | Alt + R, then arrows | resize mode: each arrow moves the line between the panes that way; any other key stops (not in Text mode: there it is Emmet's remove tag) |
 | Alt + M | switch modes: Text, Design, Slides, Diary, Book, Draw |
-| Design: Alt + N, then P · N · C · S | new page · note · cabinet · shape (F1 in Design mode lists all its keys) |
-| Design: Alt + L | the chosen shape's next layout (Alt + Shift + L: the one before) |
+| Design: Alt + N, then P · N · S · C · D · R | new page · note · shape · cabinet · drawer · rack (F1 in Design mode lists all its keys) |
+| Design: Alt + L, then L · C · I · T · G | label mode: label style · colour · icon · words · name plate |
+| Design: AltGr + P | the list of name plates and what has each |
 | Design: X X or ✕ | delete the chosen structure or link |
 | Design: img on the toolbar | a picture (or text file) for the chosen structure: type its path |
 | Design: Ctrl + Z · Ctrl + Y | undo · redo any change on the board (also Ctrl + Shift + Z, and ↶ ↷ on the toolbar) |

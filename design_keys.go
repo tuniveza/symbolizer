@@ -655,6 +655,12 @@ func (m *Model) designEscape() {
 	case d.placing:
 		d.placing = false
 		m.say("Nothing placed.")
+	case d.platesOpen:
+		d.platesOpen = false
+	case d.opened.active:
+		m.designRackClose()
+	case d.labelMode:
+		m.designLabelMode()
 	case d.linkMode:
 		m.designLinkToggle()
 	case d.pen >= 0:

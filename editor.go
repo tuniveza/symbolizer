@@ -29,13 +29,15 @@ const (
 	pOpen
 	pSaveAs
 	pConfirm
-	pName       // Ctrl+S on a session: what to call it
-	pRename     // file manager
-	pNewFile    // file manager
-	pNewFolder  // file manager
-	pWrap       // Emmet: wrap with an abbreviation (web.go)
-	pUpdateTag  // Emmet: update the tag at the cursor
-	pDesignFile // Design mode: a picture or text file to put in (design_image.go)
+	pName        // Ctrl+S on a session: what to call it
+	pRename      // file manager
+	pNewFile     // file manager
+	pNewFolder   // file manager
+	pWrap        // Emmet: wrap with an abbreviation (web.go)
+	pUpdateTag   // Emmet: update the tag at the cursor
+	pDesignFile  // Design mode: a picture or text file to put in (design_image.go)
+	pDesignLabel // Design mode: a label's words (design_labels.go)
+	pDesignPlate // Design mode: a name plate
 )
 
 // Model is the whole editor, as Bubble Tea wants it.
@@ -426,6 +428,11 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			return m.syTerm()
 		case "ĸ", "altgr+k":
 			return m.openKeys() // help.go
+		case "þ", "altgr+p":
+			if m.inDesign() && m.learn == nil && !m.help && m.prompt == pNone {
+				m.designPlatesToggle() // the list of name plates (design_labels.go)
+				return tea.Batch(m.designFrameCmd(), m.designSaveCmd())
+			}
 		case "ł", "altgr+l":
 			if m.inDesign() && m.learn == nil && !m.help {
 				return nil // Design mode has no AltGr+L: ⛓ link on its toolbar (design.go)
@@ -488,7 +495,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		return m.mouseClick(msg.Mouse())
 	case tea.MouseMotionMsg:
-		if m.inDesign() && m.design != nil && m.design.drag != dragNone {
+		if m.inDesign() && m.design != nil && (m.design.drag != dragNone || m.design.rackPress != nil) {
 			return m.designMotion(msg.Mouse())
 		}
 		if m.dragMargin != "" {
@@ -497,7 +504,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		return m.mouseDrag(msg.Mouse())
 	case tea.MouseReleaseMsg:
-		if m.inDesign() && m.design != nil && m.design.drag != dragNone {
+		if m.inDesign() && m.design != nil && (m.design.drag != dragNone || m.design.rackPress != nil) {
 			return m.designRelease()
 		}
 		if m.dragMargin != "" {

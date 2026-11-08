@@ -80,6 +80,15 @@ type dOct struct {
 	Scroll     int     `json:"scroll,omitempty"`     // a page: the first line shown
 	From       string  `json:"from,omitempty"`       // where it came from (a diary page, a file)
 
+	// Its label (design_labels.go): how it shows (0 none, labelIconTitle …),
+	// its colour, its icon (a symbol, or "img:" and a picture in
+	// design/images), and its own words (else the structure's title).
+	LabelStyle int    `json:"labelStyle,omitempty"`
+	LabelColor string `json:"labelColor,omitempty"`
+	LabelIcon  string `json:"labelIcon,omitempty"`
+	LabelTitle string `json:"labelTitle,omitempty"`
+	Plate      string `json:"plate,omitempty"` // its name plate: all with the same one are a group
+
 	// The body wrapped at wrapW columns, kept so a long page is not wrapped
 	// again on every frame while it scrolls. wrapParas keeps each paragraph's
 	// wrap, so typing re-wraps only the paragraph that changed.
@@ -215,6 +224,10 @@ type designState struct {
 	spacePanned    bool         // the view moved while Space was held: when it is let go, the view snaps
 	mapCorner      int          // where the mini map is: 0 hidden, 1–4 the corners (design_map.go)
 	altTapAt       time.Time    // when Alt was last tapped on its own: tapped again soon, it is Esc
+	opened         rackOpen     // a rack's thing opened over the view (design_containers.go)
+	rackPress      *rackPress   // a rack row pressed: a click opens it, a drag takes it out
+	labelMode      bool         // Alt+L: L, C, I, T, G label the chosen structure (design_labels.go)
+	platesOpen     bool         // AltGr+P: the list of name plates shows
 	maxH           int          // board rows no structure is taller than: the screen at 100% (0: not known yet)
 	inked          map[int]bool // the board rows that have ink (tint), for inkedVer
 	inkedVer       int
@@ -289,6 +302,7 @@ func loadDesign(path string) *designState {
 		d.zoom = f.Zoom
 	}
 	d.nextID = max(d.nextID, f.NextID)
+	d.detachDrawers() // drawers are containers of their own now (design_containers.go)
 	return d.startUndo()
 }
 
@@ -351,7 +365,8 @@ func copyOcts(os []*dOct) []*dOct {
 			continue
 		}
 		c := dOct{X: o.X, Y: o.Y, ID: o.ID, W: o.W, H: o.H, Header: o.Header, Body: o.Body, Footer: o.Footer, Color: o.Color,
-			Kind: o.Kind, Layout: o.Layout, Image: o.Image, DrawerOpen: o.DrawerOpen, OpenStack: o.OpenStack, Scroll: o.Scroll, From: o.From}
+			Kind: o.Kind, Layout: o.Layout, Image: o.Image, DrawerOpen: o.DrawerOpen, OpenStack: o.OpenStack, Scroll: o.Scroll, From: o.From,
+			LabelStyle: o.LabelStyle, LabelColor: o.LabelColor, LabelIcon: o.LabelIcon, LabelTitle: o.LabelTitle, Plate: o.Plate}
 		c.Items = copyOcts(o.Items)
 		out[i] = &c
 	}
@@ -694,9 +709,9 @@ const xTwice = 600 * time.Millisecond
 
 // placeKeys are the keys after Alt+N, and what each places.
 var placeKeys = map[string]string{
-	"p": kPage, "n": kNote, "c": kCabinet, "s": kOct,
-	"P": kPage, "N": kNote, "C": kCabinet, "S": kOct,
-	"shift+p": kPage, "shift+n": kNote, "shift+c": kCabinet, "shift+s": kOct,
+	"p": kPage, "n": kNote, "c": kCabinet, "s": kOct, "d": kDrawer, "r": kRack,
+	"P": kPage, "N": kNote, "C": kCabinet, "S": kOct, "D": kDrawer, "R": kRack,
+	"shift+p": kPage, "shift+n": kNote, "shift+c": kCabinet, "shift+s": kOct, "shift+d": kDrawer, "shift+r": kRack,
 }
 
 func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
@@ -728,9 +743,14 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 			d.editing = partHeader
 			m.say(newHint(kind))
 		} else {
-			m.say("Nothing placed. Alt+N, then P page · N note · C cabinet · S shape.")
+			m.say("Nothing placed. Alt+N, then P page · N note · S shape · C cabinet · D drawer · R rack.")
 		}
 		return nil
+	}
+	if d.labelMode { // L C I T G label the chosen structure
+		if ok, cmd := m.designLabelKey(name); ok {
+			return cmd
+		}
 	}
 	if name == "X" || name == "shift+x" {
 		name = "x"
@@ -753,17 +773,9 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		m.designZoomTo(designZoom100)
 	case "alt+n":
 		d.placing = true
-		m.say("Place: P page · N note · C cabinet · S shape (any other key: nothing).")
+		m.say("Place: P page · N note · S shape · C cabinet · D drawer · R rack (any other key: nothing).")
 	case "alt+l", "alt+shift+l", "alt+L":
-		if o := d.byID(d.sel); o != nil && o.Kind == kOct {
-			step := 1
-			if name != "alt+l" {
-				step = -1
-			}
-			m.designLayout(o, step)
-		} else {
-			m.say("Alt+L changes the layout of a chosen shape.")
-		}
+		m.designLabelMode() // label mode (design_labels.go); a shape's layout: its [¶]
 	case "x":
 		// X twice, quickly, deletes what is chosen.
 		o := d.byID(d.sel)
@@ -968,6 +980,11 @@ func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 		return nil
 	}
 	d.selLink = -1
+	if o == nil && d.opened.active && !double { // a click on the board closes what a rack opened
+		m.designRackClose()
+		d.drag = dragNone
+		return nil
+	}
 	if o == nil {
 		d.sel, d.editing = -1, partNone
 		if i := d.linkAt(sx, sy, m.width, m.boardH()); i >= 0 && !double {
@@ -1059,6 +1076,14 @@ func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 	sx, sy := ms.X, ms.Y-m.boardTop()
 	z := d.z()
 	dx, dy := float64(sx-d.pressX)/z, float64(sy-d.pressY)/z
+	if rp := d.rackPress; rp != nil && (abs(sx-rp.sx) >= 2 || abs(sy-rp.sy) >= 1) {
+		// A rack's row dragged: it comes out, under the mouse, like a cabinet's.
+		d.rackPress = nil
+		if r := d.byID(rp.rack); r != nil {
+			m.designRow(r, fmt.Sprintf("item:%d", rp.at), rp.sx, rp.sy)
+			dx, dy = float64(sx-d.pressX)/z, float64(sy-d.pressY)/z
+		}
+	}
 	switch d.drag {
 	case dragPan:
 		d.camX, d.camY = d.origCX-dx, d.origCY-dy
@@ -1066,7 +1091,7 @@ func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 		if o := d.byID(d.sel); o != nil {
 			o.X, o.Y = d.snapNearest(o, d.origX+int(math.Round(dx)), d.origY+int(math.Round(dy)))
 			d.dropOn = -1
-			if textual(o.Kind) {
+			if !isContainer(o.Kind) {
 				if t := d.dropTarget(o, sx, sy); t != nil {
 					d.dropOn = t.ID
 				}
@@ -1093,6 +1118,15 @@ func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 
 func (m *Model) designRelease() tea.Cmd {
 	d := m.ds()
+	if rp := d.rackPress; rp != nil { // a click on a rack's row: open it over the view
+		d.rackPress = nil
+		if r := d.byID(rp.rack); r != nil {
+			m.designRackOpen(r, rp.at)
+		}
+		d.drag, d.dropOn = dragNone, -1
+		d.save()
+		return nil
+	}
 	if d.drag == dragMove && d.dropOn >= 0 {
 		m.designFileInto(d.byID(d.sel), d.byID(d.dropOn))
 	}
@@ -1215,7 +1249,9 @@ func (m *Model) designCanvas() *boardCanvas {
 	}
 	d.drawn = seen
 	d.tint(c)
-	m.paintMap(c) // the mini map, over the board (design_map.go)
+	m.paintLabels(c) // labels and name plates (design_labels.go)
+	m.paintMap(c)    // the mini map, over the board (design_map.go)
+	m.paintPlates(c) // AltGr+P: the list of name plates
 	// Something dragged over the empty board: a ✚ where it would land.
 	if dr := d.drop; dr.over && d.dropOn < 0 {
 		if x, y := dr.x, dr.y-m.boardTop(); x >= 0 && y >= 0 && x < c.Width() && y < c.Height() {
@@ -2179,7 +2215,7 @@ func (m *Model) designToolbar() string {
 	}
 	bar := st(cDim, cBarBG)
 	put(" "+modes[designMode].Icon()+" ", st(cEmber, cBarBG).Bold(true), "")
-	put("pen", bar, "")
+	put(" ", bar, "")
 	for i, c := range penColors {
 		label := fmt.Sprintf(" %d ", i+1)
 		if d.pen == i {
@@ -2206,8 +2242,8 @@ func (m *Model) designToolbar() string {
 	}
 	put(" ", bar, "")
 	put("img", st(cStatusText, cBarBG), "file")
-	put(" new ", bar, "")
-	for _, k := range []string{kOct, kPage, kNote, kCabinet} {
+	put(" ", bar, "")
+	for _, k := range []string{kOct, kPage, kNote, kCabinet, kDrawer, kRack} {
 		if d.place == k {
 			put("["+kindIcons[k]+"]", st(cBG, cAccent).Bold(true), "place:"+k)
 		} else {
@@ -2270,7 +2306,12 @@ func (m *Model) designTopBar() string {
 	right := ""
 	switch {
 	case d.placing:
-		right = "Place: P page · N note · C cabinet · S shape "
+		right = "Place: P page · N note · S shape · C cabinet · D drawer · R rack "
+	case d.labelMode:
+		right = "Label mode"
+		if o := d.byID(d.sel); o != nil {
+			right += " · " + octName(o)
+		}
 	case d.byID(d.sel) != nil:
 		right = "Chosen: " + octName(d.byID(d.sel)) + " "
 	}
@@ -2296,6 +2337,12 @@ func (m *Model) designStatus() string {
 			part = map[int]string{partHeader: "title", partBody: "text", partFooter: "footer"}[d.editing]
 		}
 		hint = "Writing the " + part + "  ·  Tab: next part  ·  arrows: done"
+	case d.platesOpen:
+		hint = "Name plates  ·  AltGr+P or Alt twice: close"
+	case d.opened.active:
+		hint = "Opened from a rack  ·  Alt twice or a click on the board: put it back"
+	case d.labelMode:
+		hint = "Label mode  ·  L label  ·  C colour  ·  I icon  ·  T words  ·  G name plate  ·  Alt twice: leave"
 	case d.linkMode && d.linkFrom >= 0:
 		hint = "Link mode  ·  click structures to link them  ·  ⛓ link: leave"
 	case d.linkMode:

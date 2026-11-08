@@ -41,13 +41,13 @@ func isModifierOnly(k tea.Key) bool {
 	return false
 }
 
-// altGrName is keyName, except that M, T, L or K with AltGr held is "altgr+m",
-// "altgr+t", "altgr+l" or "altgr+k" (kitty says when AltGr is held; the key
-// itself comes with no modifier).
+// altGrName is keyName, except that M, T, L, K or P with AltGr held is
+// "altgr+m", "altgr+t", "altgr+l", "altgr+k" or "altgr+p" (kitty says when
+// AltGr is held; the key itself comes with no modifier).
 func (m *Model) altGrName(k tea.Key) string {
 	if m.altGr.down && k.Mod == 0 {
 		switch k.Code {
-		case 'm', 't', 'l', 'k':
+		case 'm', 't', 'l', 'k', 'p':
 			return "altgr+" + string(k.Code)
 		}
 	}

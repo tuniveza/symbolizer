@@ -153,31 +153,20 @@ func TestDesignCabinetAndDrawers(t *testing.T) {
 		t.Fatalf("not taken out: cabinet %d", len(cab.Items))
 	}
 
-	// Every structure has a drawer: its ▾ pulls it out.
-	oc := d.newKind(kOct, 0, 0)
+	// A drawer is a container of its own: drop the page on it.
+	oc := d.newKind(kDrawer, 0, 0)
 	oc.X, oc.Y = 2, 14
 	d.editing = partNone
-	x, y, w, h := d.rect(oc)
-	hx, hy, _, ok := d.handleSpot(oc, x, y, w, h)
-	if !ok {
-		t.Fatal("no drawer handle")
-	}
-	click(m, hx+1, hy+m.boardTop(), tea.MouseLeft)
-	if !oc.DrawerOpen || !strings.Contains(screenOf(m), "drawer") {
-		t.Fatal("drawer did not open")
-	}
-	// Drop the page into the open drawer.
+	m.View()
 	pg.X, pg.Y = 40, 4
 	px, py, _, _ = d.rect(pg)
-	dx, dy, _, _ := d.drawerRect(oc)
+	dx, dy, _, _ := d.rect(oc)
 	dragTo(m, px+3, py+m.boardTop()+1, dx+4, dy+m.boardTop()+2, tea.MouseLeft)
 	if len(oc.Items) != 1 || oc.Items[0] != pg {
 		t.Fatalf("page not in the drawer: %d items", len(oc.Items))
 	}
-	d.sel = oc.ID
-	m.designDrawer(oc) // ▾ closes the chosen structure's drawer
-	if oc.DrawerOpen {
-		t.Fatal("the drawer did not close")
+	if !strings.Contains(screenOf(m), "Draft") {
+		t.Fatalf("the drawer does not show the page:\n%s", screenOf(m))
 	}
 
 	// It all comes back after a save.
@@ -836,9 +825,11 @@ func TestDesignDelete(t *testing.T) {
 		t.Fatal("the picture's ✕ did not take out just the picture")
 	}
 
-	// A thing in an octagon's open drawer, by the ✕ on its row.
-	b = d.byID(bID)
-	b.Items, b.DrawerOpen, b.OpenStack = []*dOct{{ID: 201, Kind: kNote, Body: "In the drawer"}}, true, kNote
+	// A thing in a drawer, by the ✕ on its row.
+	dr := d.newKind(kDrawer, 0, 0)
+	dr.X, dr.Y = 70, 20
+	dr.Items = []*dOct{{ID: 201, Kind: kNote, Body: "In the drawer"}}
+	bID = dr.ID
 	d.sel, d.drawn = -1, nil
 	d.dirty = true
 	d.save()
@@ -1886,17 +1877,20 @@ func TestDesignShortcutsKept(t *testing.T) {
 		t.Fatal("Ctrl+Y did not redo placing the shape")
 	}
 
-	// Alt+L on a shape changes its layout; Alt+Shift+L goes back.
+	// Alt+L turns label mode on; L there labels the chosen shape; Alt+L again: off.
 	shape = d.byID(shape.ID) // undo and redo put back a copy
 	d.sel = shape.ID
-	l := shape.Layout
 	press(m, "alt+l")
-	if shape.Layout == l {
-		t.Fatal("Alt+L did not change the layout")
+	if !d.labelMode {
+		t.Fatal("Alt+L did not turn label mode on")
 	}
-	press(m, "alt+shift+l")
-	if shape.Layout != l {
-		t.Fatalf("Alt+Shift+L: layout %d, want %d back", shape.Layout, l)
+	press(m, "l")
+	if shape.LabelStyle != labelIconTitle {
+		t.Fatalf("L in label mode: style %d", shape.LabelStyle)
+	}
+	press(m, "alt+l")
+	if d.labelMode {
+		t.Fatal("Alt+L again did not turn label mode off")
 	}
 
 	// X, a pause, X: nothing. X X: gone, and Ctrl+Z brings it back.
@@ -2379,5 +2373,214 @@ func TestDesignAltTwiceIsEsc(t *testing.T) {
 	tap()
 	if d.sel != -1 {
 		t.Fatal("Alt tapped twice did not let go of the chosen structure")
+	}
+}
+
+// A board saved with drawers under structures gets each as a drawer of its
+// own, beside its structure, linked to it, holding the same things.
+func TestDesignDetachDrawers(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	o := d.newKind(kOct, 0, 0)
+	o.Header = "Holder"
+	o.Items = []*dOct{{ID: 900, Kind: kPage, Header: "Inside"}}
+	o.DrawerOpen = true
+	d.nextID = 901
+	d.dirty = true
+	d.save()
+	d2 := loadDesign(d.loadedFrom)
+	var holder, drawer *dOct
+	for _, x := range d2.octs {
+		switch {
+		case x.ID == o.ID:
+			holder = x
+		case x.Kind == kDrawer:
+			drawer = x
+		}
+	}
+	if holder == nil || drawer == nil || len(holder.Items) != 0 || len(drawer.Items) != 1 || drawer.Items[0].Header != "Inside" {
+		t.Fatalf("drawer not detached: holder %+v, drawer %+v", holder, drawer)
+	}
+	linked := false
+	for _, l := range d2.links {
+		if (l.A == holder.ID && l.B == drawer.ID) || (l.B == holder.ID && l.A == drawer.ID) {
+			linked = true
+		}
+	}
+	if !linked {
+		t.Fatal("the new drawer is not linked to its structure")
+	}
+}
+
+// A drawer takes anything (a shape too), a cabinet only sheets; a rack's
+// row opens its thing over the view, and Alt tapped twice puts it back.
+func TestDesignDrawerAndRack(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	cab := d.newKind(kCabinet, 0, 0)
+	dr := d.newKind(kDrawer, 0, 0)
+	shape := d.newKind(kOct, 0, 0)
+	if accepts(cab, shape) || !accepts(dr, shape) || accepts(dr, cab) {
+		t.Fatal("accepts: a cabinet takes sheets, a drawer anything but containers")
+	}
+	m.designFileInto(shape, dr)
+	if len(dr.Items) != 1 || d.byID(shape.ID) != nil {
+		t.Fatal("the shape did not go into the drawer")
+	}
+
+	// Alt+N, R: a rack. Two pages go in.
+	d.sel = -1
+	placeKey(m, "r")
+	press(m, "esc")
+	var rack *dOct
+	for _, o := range d.octs {
+		if o.Kind == kRack {
+			rack = o
+		}
+	}
+	if rack == nil {
+		t.Fatal("Alt+N, R placed no rack")
+	}
+	p1, p2 := d.newKind(kPage, 0, 0), d.newKind(kPage, 0, 0)
+	p1.Header, p2.Header = "One", "Two"
+	m.designFileInto(p1, rack)
+	m.designFileInto(p2, rack)
+	rack.X, rack.Y = 2, 2
+	m.View()
+	if s := screenOf(m); !strings.Contains(s, "≡ One") || !strings.Contains(s, "≡ Two") {
+		t.Fatalf("the rack does not show its rows:\n%s", s)
+	}
+
+	// A click on the second row opens it in the middle of the view.
+	x, y, _, _ := d.rect(rack)
+	click(m, x+5, y+3+1+m.boardTop(), tea.MouseLeft)
+	if !d.opened.active || d.byID(p2.ID) == nil || len(rack.Items) != 1 || d.sel != p2.ID {
+		t.Fatalf("the row did not open: opened %+v, rack holds %d", d.opened, len(rack.Items))
+	}
+	if px, py, pw, ph := d.rect(p2); abs(px+pw/2-m.width/2) > 1 || abs(py+ph/2-m.boardH()/2) > 1 {
+		t.Fatalf("the opened page is not in the middle: %d,%d %d×%d", px, py, pw, ph)
+	}
+	// Alt tapped twice puts it back, in its place.
+	tap := func() {
+		m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyLeftAlt}))
+		m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyLeftAlt}))
+	}
+	tap()
+	tap()
+	if d.opened.active || d.byID(p2.ID) != nil || len(rack.Items) != 2 || rack.Items[1].ID != p2.ID {
+		t.Fatalf("not put back: opened %v, rack holds %d", d.opened.active, len(rack.Items))
+	}
+
+	// A drag on a row takes it out onto the board.
+	m.View()
+	x, y, _, _ = d.rect(rack)
+	dragTo(m, x+5, y+3+m.boardTop(), x+40, y+15+m.boardTop(), tea.MouseLeft)
+	if d.byID(p1.ID) == nil || len(rack.Items) != 1 || d.opened.active {
+		t.Fatalf("dragging the row did not take it out: rack holds %d", len(rack.Items))
+	}
+}
+
+// Label mode: L C I T G on the chosen structure; labels and name plates
+// are drawn; AltGr+P lists the plates; Alt tapped twice leaves.
+func TestDesignLabels(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	a := d.newKind(kPage, 0, 0)
+	a.X, a.Y, a.Header = 4, 3, "Alpha"
+	b := d.newKind(kOct, 0, 0)
+	b.X, b.Y, b.Header = 50, 3, "Beta"
+	d.sel, d.editing = a.ID, partNone
+
+	press(m, "alt+l")
+	if !d.labelMode {
+		t.Fatal("Alt+L: no label mode")
+	}
+	for want := labelIconTitle; want < labelStyles; want++ {
+		press(m, "l")
+		if a.LabelStyle != want {
+			t.Fatalf("L: style %d, want %d", a.LabelStyle, want)
+		}
+	}
+	press(m, "l") // round to none
+	press(m, "l") // icon + title again
+	if !strings.Contains(screenOf(m), labelIcons[0]+" Alpha") {
+		t.Fatalf("label not drawn:\n%s", screenOf(m))
+	}
+	c0, i0 := a.LabelColor, a.LabelIcon
+	press(m, "c")
+	press(m, "i")
+	if a.LabelColor == c0 || a.LabelIcon == i0 {
+		t.Fatalf("C / I did not change the colour / icon: %q %q", a.LabelColor, a.LabelIcon)
+	}
+	// A picture icon: I goes on round to the pictures in design/images.
+	os.MkdirAll(d.imagesDir(), 0o700)
+	writePNG(t, d.imagesDir())
+	for range len(labelIcons) {
+		press(m, "i")
+		if strings.HasPrefix(a.LabelIcon, "img:") {
+			break
+		}
+	}
+	if !strings.HasPrefix(a.LabelIcon, "img:") {
+		t.Fatalf("I never reached the picture: %q", a.LabelIcon)
+	}
+	m.View()
+
+	// T: the label's own words.
+	press(m, "t")
+	if m.prompt != pDesignLabel {
+		t.Fatal("T did not ask for the words")
+	}
+	m.input.SetValue("Read me")
+	press(m, "enter")
+	if a.LabelTitle != "Read me" || !strings.Contains(screenOf(m), "Read me") {
+		t.Fatalf("label words: %q", a.LabelTitle)
+	}
+
+	// G: name plates; both get "Team".
+	for _, o := range []*dOct{a, b} {
+		d.sel = o.ID
+		press(m, "g")
+		if m.prompt != pDesignPlate {
+			t.Fatal("G did not ask for a name plate")
+		}
+		m.input.SetValue("Team")
+		press(m, "enter")
+	}
+	if a.Plate != "Team" || b.Plate != "Team" || len(d.plates()["Team"]) != 2 {
+		t.Fatalf("plates: %q %q", a.Plate, b.Plate)
+	}
+	if strings.Count(screenOf(m), "▪ Team") != 2 {
+		t.Fatalf("the plates are not drawn:\n%s", screenOf(m))
+	}
+	// AltGr+P lists them.
+	m.Update(tea.KeyPressMsg(tea.Key{Code: 'þ', Text: "þ"}))
+	if s := screenOf(m); !d.platesOpen || !strings.Contains(s, "Name plates") || !strings.Contains(s, "Alpha") || !strings.Contains(s, "Beta") {
+		t.Fatalf("AltGr+P did not list the plates:\n%s", s)
+	}
+	m.Update(tea.KeyPressMsg(tea.Key{Code: 'þ', Text: "þ"}))
+	if d.platesOpen {
+		t.Fatal("AltGr+P again did not close the list")
+	}
+
+	// Alt tapped twice leaves label mode; the labels stay, and are saved.
+	tap := func() {
+		m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyLeftAlt}))
+		m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyLeftAlt}))
+	}
+	tap()
+	tap()
+	if d.labelMode {
+		t.Fatal("Alt tapped twice did not leave label mode")
+	}
+	d.dirty = true
+	d.save()
+	d2 := loadDesign(d.loadedFrom)
+	for _, o := range d2.octs {
+		if o.ID == a.ID && (o.LabelTitle != "Read me" || o.Plate != "Team" || !strings.HasPrefix(o.LabelIcon, "img:")) {
+			t.Fatalf("label not saved: %+v", o)
+		}
 	}
 }

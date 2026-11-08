@@ -133,5 +133,8 @@ func itemDeleteAct(act string, col, w int) string {
 	if strings.HasPrefix(act, "item:") && col == w-2 {
 		return "del:" + strings.TrimPrefix(act, "item:")
 	}
+	if strings.HasPrefix(act, "open:") && col == w-2 {
+		return "del:" + strings.TrimPrefix(act, "open:")
+	}
 	return act
 }

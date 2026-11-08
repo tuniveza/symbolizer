@@ -150,6 +150,12 @@ func (m *Model) promptEnter(_ bool) tea.Cmd {
 		return nil
 	case pGoto:
 		return m.gotoLine(value)
+	case pDesignLabel:
+		m.designSetLabelWords(value)
+		return nil
+	case pDesignPlate:
+		m.designSetPlate(value)
+		return nil
 	case pDesignFile:
 		path := expandPath(strings.Trim(strings.TrimSpace(value), `'"`))
 		if path == "" {
