@@ -65,7 +65,7 @@ def test_learning_from_a_text():
                   "write how alike apples and cherries are\n"
                   "learn \"don't stop, it's 'fine' - ok ok\"\nwrite the links of don't\n"
                   "set s to \"dogs chase cats\"\nlearn from the words in s\nwrite the links of cats") == \
-        "red, red _ are, are, sweet\n_ apples, apples, are, sweet, _ cherries, cherries, too\n78\n" \
+        "red, red _ are, are, sweet\n_ apples, apples, are, sweet, _ cherries, cherries, too\n75\n" \
         "_ stop, stop, it's, fine, ok\ndogs, chase, chase _\n"
 
 
@@ -74,7 +74,7 @@ def test_breadth_weighting():
     assert output("link hub with a, b, c, d, e and f\nlink a with pa and x\nlink b with pb and x\n"
                   "link c to s\nlink d to s\n"
                   "write how alike a and b are\nwrite how alike c and d are\nwrite how alike a and c are\n"
-                  "write the closest match to a") == "37\n100\n6\nb\n"     # with plain shares a~b would be 50
+                  "write the closest match to a") == "40\n100\n10\nb\n"     # with plain shares a~b would be 50
 
 
 def test_little_words_and_frames_are_symbols():
@@ -88,7 +88,7 @@ def test_little_words_and_frames_are_symbols():
                   "learn \"a plum is a sweet fruit\"\nwrite the links of \"a _ is\"\n"
                   "write the closest match to \"a _ is\"\nwrite how alike cherry and plum are\n"
                   "link a to b\nif car is not like apple, write a car is not an apple") == \
-        "14\nis\n14\n11\nfruit, sweet, tree, round, a, a _ is, is, from\na\ncherry, plum\nis\n67\n" \
+        "27\nis\n22\n21\nfruit, sweet, tree, round, a, a _ is, is, from\na\ncherry, plum\nis\n57\n" \
         "a car is not an apple\n"
 
 
