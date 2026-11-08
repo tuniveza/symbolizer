@@ -9,7 +9,7 @@ import re
 import dictionary
 import runtime
 from asm import ABOVE, EQUAL, R8, RAX, RCX, RDI, RDX, XMM0, XMM1
-from expressions import DECIMALS, FILE_NAME, Problem, item_kind, read_value
+from expressions import DECIMALS, FILE_NAME, Problem, as_symbol, item_kind, read_value
 from reader import Word, read_number
 from window import WINDOW_HELP, about_window, read_spot, spot_at_end
 
@@ -114,16 +114,41 @@ EXAMPLES = {
     "count": ['count to 10', 'count from 1 to 10', 'count down from 10 to 1', 'count down from 10'],
     "for each": ['for each name in names write hello name', 'for each letter in word write letter',
                  'for each line in names.txt write line'],
+    "link": ['link apple to fruit', 'link apple with fruit, sweet and tree', 'associate apple with fruit',
+             'link apple, pear and plum together', 'ask a word as w, then link w to fruit',
+             'ask "Describe a cat:" and link cat with the words in answer',
+             'save the links to brain.txt', 'load the links from brain.txt'],
+    "learn": ['learn "red apples are sweet"', 'learn from answer', 'learn from the words in s', 'learn from notes.txt'],
+    "forget": ['forget apple', 'unlink apple from fruit', 'forget the link between apple and fruit'],
+    "how alike": ['write how alike apple and pear are', 'write the likeness of apple and pear',
+                 'if thing is like apple, write yum', 'if thing is not like apple, write hmm',
+                 'set the likeness needed to 60', 'write the closest match to thing', 'write what thing is like',
+                 'write the links of apple'],
     "teach": ['to greet someone means write hi someone in green', 'a turn means move left then beep',
               'when I say hi, write hello', 'to greet someone means:  (then the lines below it, indented)'],
 }
-for verb, same in {"write": "say show print display tell output", "set": "let change", "take": "subtract",
+for verb, same in {"link": "associate connect relate", "forget": "unlink disconnect",
+                   "write": "say show print display tell output", "set": "let change", "take": "subtract",
                    "make": "create remember", "wait": "pause sleep press", "save": "store keep",
                    "load": "open read get", "delete": "erase", "move": "go", "stop": "end quit exit",
                    "window": "place resize maximise maximize centre center shrink grow name call",
                    "add": "push increase decrease append", "clear": "empty"}.items():
     for word in same.split():
         EXAMPLES.setdefault(word, EXAMPLES[verb])
+
+
+BRAIN_WORDS = ("link", "associate", "connect", "relate", "learn", "forget", "unlink", "disconnect")
+LIKENESS_SETTINGS = ("the likeness needed", "likeness needed", "the likeness threshold", "likeness threshold",
+                     "the likeness level", "the likeness it needs", "the threshold for likeness",
+                     "the threshold for is like", "the likeness for is like")
+THE_BRAIN = (["the", "links"], ["all", "the", "links"], ["links"], ["the", "brain"], ["brain"], ["its", "brain"],
+             ["my", "links"], ["the", "associations"], ["what", "it", "learned"], ["what", "it", "learnt"],
+             ["everything", "it", "learned"], ["everything", "it", "learnt"])
+EVERY_WORD = ("the words in", "the words of", "the words from", "every word in", "every word of", "each word in",
+              "each word of", "all the words in", "all the words of", "all words in", "words in")
+ENDS_ACTION = ("and", "then", "otherwise", "else", "or")
+ANSWER = (["answer"], ["reply"], ["their", "answer"], ["the", "reply"], ["their", "reply"], ["what", "they", "said"],
+          ["what", "they", "typed"], ["what", "was", "typed"], ["what", "was", "said"])
 
 
 def ends_with(words, *phrases):
@@ -849,6 +874,9 @@ class Actions:
         behind = self.writing_colour(body, "the background colour", "the background color", "the background")
         if behind:
             return self.do_colour(words[:1] + body[behind:], behind=True)
+        needed = self.likeness_setting(body)
+        if needed:
+            return self.set_likeness_needed(body[needed:])
         if body[:1] and body[0].word == "it" and self.made_before:      # "make a variable called x and set it to 5"
             body = [Word(self.made_before)] + body[1:]
         into = next((i for i, w in enumerate(body) if w.word == "into" and i), None)
@@ -1202,6 +1230,8 @@ class Actions:
 
     def do_save(self, words):
         before, after = split_at(words[1:], "to", "in", "into", last=True)
+        if after and file_name(after) and self.is_the_brain(before):     # "save the links to brain.txt"
+            return self.brain_file(file_name(after), "brain_save")
         if after and file_name(after) and before:
             return self.save_file(before, file_name(after), REPLACE_FILE)
         if words[0].word in ("store", "keep") and after and before:
@@ -1255,6 +1285,8 @@ class Actions:
         before, after = rest[:spot], rest[spot + 1:]
         before = before[:len(before) - ends_with(before, "from the file", "from file", "from", "the file", "file")]
         after = after[starts_with(after, "as", "into", "called", "named"):]
+        if self.is_the_brain(after) or not after and self.is_the_brain(before):    # "load the links from brain.txt"
+            return self.brain_file(name, "brain_load")
         target = self.load_target(after) if after else self.load_target(before) if before else "it"
         self.load_file(name, target)
 
@@ -1361,6 +1393,170 @@ class Actions:
             a.store(RCX, 0, RAX)
         self.count_through("number", low, high, show_number)
 
+    # ---- the brain: linking symbols, learning, and how alike two symbols are ----
+    # A symbol is any text. A name in the program gives what it holds ("link w to fruit" links what's in w);
+    # any other words are the symbol itself, as typed, the same as "add apple to fruits" does for a list.
+    # Put words in quotes to keep them as they are even when there's a name like them: link "w" to fruit
+
+    def brain_call(self, routine):
+        self.uses_brain = True
+        self.a.call(routine)
+
+    def brain_word_fits(self, words, i):
+        """Does a brain word (link, learn, forget ...) at words[i], partway through a line, start an action?
+        It needs something to act on: 'write live, laugh, learn' is just words."""
+        verb, rest = words[i], words[i + 1:]
+        if verb.after.strip() or not rest or rest[0].word in ENDS_ACTION + ("to", "too", "how", "a", "an"):
+            return False
+        said = [w.word for w in rest[:12]]
+        if verb.word in ("link", "associate", "connect", "relate"):
+            return any(w in ("to", "with", "and", "together") for w in said) or rest[0].after.startswith(",")
+        if rest[0].quoted or rest[0].word in ("from", "about", "the", "everything") or self.find(rest[0].word):
+            return True
+        if verb.word in ("unlink", "disconnect") and any(w in ("from", "and", "with") for w in said):
+            return True
+        return len(rest) == 1 or bool(rest[0].after.strip()) or rest[1].word in ENDS_ACTION
+
+    def symbol_node(self, words):
+        """What a symbol is: a value ('w', 'the first word of s'), or else the words themselves."""
+        if not words:
+            raise Problem("Link what? Try: link apple to fruit")
+        return as_symbol(self.value_or_text(words))
+
+    def symbol_text(self, words):
+        """Code that leaves the symbol in rax, as a text."""
+        self.emitter.text(self.emitter.emit(self.symbol_node(words)))
+
+    def brain_pair(self, left, right, routine, amount=None):
+        self.symbol_text(left)
+        self.a.push(RAX)
+        self.symbol_text(right)
+        self.a.mov(RCX, RAX)
+        self.a.pop(RAX)
+        if amount is not None:
+            self.a.set(RDX, amount)
+        self.brain_call(routine)
+
+    def do_link(self, words):
+        """'link apple to fruit', 'link apple with fruit, sweet and tree', 'link apple and pear to fruit',
+        'link apple, pear and plum together' (each with each). Linking again makes the link stronger."""
+        rest = words[1:]
+        rest = rest[:len(rest) - ends_with(rest, "together", "to each other", "with each other", "all together",
+                                           "to one another", "with one another")]
+        rest = rest[starts_with(rest, "up"):]                 # "link up apple with fruit"
+        before, after = split_at(rest, "to", "with", "onto")
+        if after and before:
+            pairs = [(left, right) for left in list_items(before) for right in list_items(after)]
+        else:
+            items = list_items(rest)
+            if len(items) < 2:
+                raise Problem(f"{words[0].text.capitalize()} it to what? Try: link apple to fruit")
+            pairs = [(items[i], items[j]) for i in range(len(items)) for j in range(i + 1, len(items))]
+        for left, right in pairs:
+            for one, other in ((left, right), (right, left)):
+                n = starts_with(other, *EVERY_WORD)
+                if n and len(other) > n:            # "link cat with the words in answer": with each word in it
+                    self.text_to_learn(other[n:])
+                    self.a.push(RAX)
+                    self.symbol_text(one)
+                    self.a.mov(RCX, RAX)
+                    self.a.pop(RAX)
+                    self.brain_call("brain_learn")
+                    break
+            else:
+                self.brain_pair(left, right, "brain_link", 1)
+
+    do_associate = do_connect = do_relate = do_link
+
+    def do_unlink(self, words):
+        """'unlink apple from fruit', 'disconnect apple and fruit': the link is gone, both ways."""
+        rest = words[1:]
+        rest = rest[starts_with(rest, "the link between", "the links between", "the link from", "the link of"):]
+        before, after = split_at(rest, "from", "and", "with", "to")
+        if not after or not before:
+            raise Problem(f"{words[0].text.capitalize()} what from what? Try: unlink apple from fruit")
+        for left in list_items(before):
+            for right in list_items(after):
+                self.brain_pair(left, right, "brain_unlink")
+
+    do_disconnect = do_unlink
+
+    def do_forget(self, words):
+        """'forget apple' (all its links), 'forget the link between apple and fruit'."""
+        rest = words[1:]
+        n = starts_with(rest, "the link between", "the links between", "the link from", "the link of",
+                        "the link with", "the connection between", "about the link between")
+        if n:
+            return self.do_unlink(words[:1] + rest[n:])
+        rest = rest[starts_with(rest, "everything about", "all about", "about"):]
+        rest = rest[:len(rest) - ends_with(rest, "completely", "entirely")]
+        if not rest:
+            raise Problem("Forget what? Try: forget apple")
+        for item in list_items(rest):
+            self.symbol_text(item)
+            self.brain_call("brain_forget")
+
+    def do_learn(self, words):
+        """'learn "red apples are sweet"', 'learn from answer', 'learn from the words in s', 'learn from notes.txt':
+        every two different words in it are linked, in small letters."""
+        rest = words[1:]
+        rest = rest[starts_with(rest, "from the words in", "from the words of", "from the words", "the words in",
+                                "the words of", "all the words in", "from all the words in", "from", "about"):]
+        if not rest:
+            raise Problem("Learn from what? Try: learn from answer")
+        self.text_to_learn(rest)
+        self.a.set(RCX, 0)
+        self.brain_call("brain_learn")
+
+    def text_to_learn(self, rest):
+        """Code that leaves the text to learn from in rax: a name's value, a file's words, the latest answer,
+        or the words as typed."""
+        said = [w.word for w in rest]
+        if file_name(rest):
+            node = ("file", file_name(rest))
+        elif said in ANSWER and not self.find("_".join(said[-1:])):
+            node = ("name", "it")                       # "ask ... and learn from answer": the latest answer
+        elif len(rest) <= 2:
+            node = self.value_or_text(rest)
+        else:
+            try:
+                node = read_value(rest, self.kind_of)
+            except Problem:
+                node = ("text", " ".join(w.text + w.after if w.quoted else w.raw for w in rest))
+        self.emitter.text(self.emitter.emit(as_symbol(node)))
+
+    def likeness_setting(self, body):
+        """'the likeness needed to 60' -> how many words come before 60; 0 if it isn't that,
+        or if the program has its own name for it."""
+        for phrase in LIKENESS_SETTINGS:
+            n = starts_with(body, *[f"{phrase} {to}" for to in ("to", "be", "=", "at", "back to")])
+            if n:
+                name = "_".join(w.word for w in body[:n - 1 - (body[n - 2].word == "back")] if w.word != "the")
+                return 0 if self.find(name) else n
+        return 0
+
+    def set_likeness_needed(self, value_words):
+        """'is like' means a likeness of at least this from now on."""
+        if value_words and value_words[-1].raw.endswith("%"):
+            value_words = value_words[:-1] + [Word(value_words[-1].raw[:-1])]
+        value_words = value_words[:len(value_words) - ends_with(value_words, "percent", "per cent", "%")]
+        if not value_words:
+            raise Problem("Set it to what? Try: set the likeness needed to 60")
+        self.emitter.whole(self.emitter.emit(read_value(value_words, self.kind_of)))
+        self.a.op_n("sub", RAX, runtime.LIKENESS_NEEDED)
+        self.a.address(RCX, "brain_needed")
+        self.a.store(RCX, 0, RAX)
+        self.uses_brain = True
+
+    def is_the_brain(self, words):
+        """'the links', 'the brain', 'what it learned': everything linked, for saving and loading."""
+        said = [w.word for w in words]
+        return said in THE_BRAIN and not self.find("_".join(w for w in said if w not in ("the", "my", "its")))
+
+    def brain_file(self, name, routine):
+        self.a.address(RAX, self.a.text(name))
+        self.brain_call(routine)
+
     def do_repeat(self, words):
         raise Problem("Repeat how many times, and what?")
 
@@ -1385,9 +1581,11 @@ def help_text():
               "    a random item from list, how long since t, the time, shout x, x as a number,",
               "    the second letter of x, the first word of x, how many words in x, the contents of notes.txt,",
               "    word backwards, the biggest in scores, the smallest in scores, the total of scores,",
-              "    the average of scores, the biggest of a and b, name in capitals",
+              "    the average of scores, the biggest of a and b, name in capitals,",
+              "    how alike apple and pear are (0 to 100), the closest match to thing, the links of apple,",
+              "    the likeness needed",
               "Checks: is, is not, is more than, is less than, is at least, contains, is in,",
-              "    starts with, ends with, is empty, notes.txt exists, and, or, not",
+              "    starts with, ends with, is empty, notes.txt exists, is like, is not like, and, or, not",
               "Blocks: a line ending in ':' (repeat, if, for each, otherwise) takes the lines indented under it",
               "Colours: " + ", ".join(sorted(set(COLOURS))) + "  (in green, in light blue, on a blue background, in bold red)",
               f"    and {len(dictionary.of_kind('colour'))} more from the dictionary, like crimson, navy, teal and sea green",

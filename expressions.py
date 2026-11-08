@@ -9,11 +9,12 @@ Kinds of value:
 """
 import difflib
 import re
+import struct
 
 import dictionary
 from asm import ABOVE, BELOW, EQUAL, GREATER, LESS, NOT_EQUAL, NOT_LESS, RAX, RCX, RDX, R8, XMM0, XMM1
 from reader import Word, read_number
-from runtime import LIST_SIZE
+from runtime import LIKENESS_NEEDED, LIST_SIZE
 
 
 class Problem(Exception):
@@ -143,6 +144,9 @@ class Parser:
         ("contains", ["contains", "has", "includes", "contain", "include"]),
         ("starts", ["starts with", "begins with"]),
         ("ends", ["ends with"]),
+        ("not like", ["is not like", "isn't like", "is unlike", "is nothing like", "is not similar to",
+                      "isn't similar to", "does not look like", "doesn't look like", "is not alike to"]),
+        ("like", ["is like", "is similar to", "looks like", "resembles", "is alike to"]),
         (">=", ["is at least", "is more than or equal to", "is greater than or equal to",
                 "is bigger than or equal to", "is not less than", ">="]),
         ("<=", ["is at most", "is less than or equal to", "is smaller than or equal to",
@@ -174,7 +178,12 @@ class Parser:
         found = self.file_check()
         if found:
             return found
-        left = self.expression()
+        try:
+            left = self.expression()
+        except Problem:
+            left = self.bare_symbol()                   # "if apple is like pear": apple is the symbol itself
+            if left is None:
+                raise
         if self.peek() in ("are", "aren't"):            # "lives are more than 0" reads like "is"
             plain = "is" if self.peek() == "are" else "isn't"
             self.words = self.words[:self.at] + [Word(plain)] + self.words[self.at + 1:]
@@ -187,6 +196,18 @@ class Parser:
                     return ("compare", name, left, self.contained())
                 return ("compare", name, left, self.right_side())
         return ("truth", left)
+
+    def bare_symbol(self):
+        """Plain words straight before 'is like' (or 'is not like') -> ("symbol", the words); else None."""
+        likes = [p.split() for name, phrases in self.COMPARISONS if name in ("like", "not like") for p in phrases]
+        for k in range(self.at + 1, min(len(self.words), self.at + 4)):
+            if any([w.word for w in self.words[k:k + len(p)]] == p for p in likes):
+                if all(w.word and not w.quoted for w in self.words[self.at:k]):
+                    text = " ".join(w.text for w in self.words[self.at:k])
+                    self.at = k
+                    return ("symbol", text)
+                return None
+        return None
 
     def contained(self):
         """What 'contains' looks for: 'the letter a', 'an a in it', '"nan"'."""
@@ -310,6 +331,9 @@ class Parser:
             name, size = self.long_name(0)
             self.at += size
             return ("name", name)
+        found = self.brain_value()
+        if found:
+            return found
         start, problem = self.at, None
         for phrases, read in self.ATOMS:
             if self.take(*phrases):
@@ -342,6 +366,79 @@ class Parser:
             if all(parts) and self.kind_of("_".join(parts)):
                 return "_".join(parts), size
         return None
+
+    # the brain: how alike two symbols are, the closest match, the links of a symbol
+
+    LIKENESS = ["the likeness of", "the likeness between", "likeness of", "likeness between",
+                "the similarity of", "the similarity between", "similarity of", "similarity between",
+                "how alike", "how similar", "how much alike"]
+    CLOSEST = ["the closest match to", "the closest match for", "the closest match of", "closest match to",
+               "closest match for", "the best match for", "the best match to", "best match for", "best match to",
+               "the nearest match to", "the nearest match for", "the closest thing to", "the most like",
+               "what's most like", "whats most like", "what is most like", "the thing most like"]
+    LINKS = ["the links of", "the links to", "the links for", "the links from", "links of", "all the links of",
+             "everything linked to", "what's linked to", "whats linked to", "what is linked to",
+             "the things linked to", "the words linked to", "the associations of", "the links with"]
+    NEEDED = ["the likeness needed", "likeness needed", "the likeness threshold", "the likeness level",
+              "the likeness it needs"]
+    LIKE_WHAT = ["is most like", "is like", "is closest to", "is most similar to", "is similar to", "looks like",
+                 "resembles", "is nearest to"]
+    LINKED_WHAT = ["is linked to", "is linked with", "is connected to", "links to", "is associated with"]
+
+    def brain_value(self):
+        """'how alike apple and pear are', 'the closest match to thing', 'what thing is like',
+        'the links of apple', 'the likeness needed' -> a value; None if it isn't one of those.
+        A name in the program comes first: if 'likeness' is one, 'the likeness of ...' is about it."""
+        start = self.at
+        if self.kind_of(self.peek(1 if self.peek() == "the" else 0)):
+            return None
+        try:
+            found = self.read_brain()
+        except Problem:
+            found = None
+        if found is None:
+            self.at = start
+        return found
+
+    def read_brain(self):
+        if self.take(*self.LIKENESS):
+            self.take("are", "is")                     # "how alike are apple and pear"
+            first = self.symbol()
+            self.need("and", "to", "with")
+            second = self.symbol()
+            self.take("are", "is", "be")
+            return ("likeness", first, second)
+        if self.take(*self.CLOSEST):
+            return ("closest", self.symbol())
+        if self.take(*self.LINKS):
+            return ("links", self.symbol())
+        if self.take(*self.NEEDED):
+            return ("likeness needed",)
+        if self.take("what"):                          # "what thing is like", "what apple is linked to"
+            w = self.words[self.at] if not self.done() else None
+            named = w is not None and (w.quoted or w.word != "it" and bool(self.kind_of(w.word) or self.long_name(0)))
+            thing = self.symbol()
+            if self.take(*self.LINKED_WHAT):
+                return ("links", thing)
+            if named and self.take(*self.LIKE_WHAT):
+                self.take("most")
+                return ("closest", thing)
+        return None
+
+    def symbol(self):
+        """A symbol: a value ('w', 'the first word of s', '"red apple"'), or else one plain word, as typed."""
+        if self.done():
+            raise Problem("Which symbol? Like: the closest match to apple")
+        start = self.at
+        try:
+            return self.unary()
+        except Problem:
+            self.at = start
+        w = self.words[self.at]
+        if not w.word or w.word in ("and", "to", "with", "is", "are"):
+            raise Problem("Which symbol? Like: the closest match to apple")
+        self.at += 1
+        return ("symbol", w.text)
 
     # each of these runs after its words have been read
 
@@ -920,6 +1017,51 @@ class Emitter:
         a.address(RAX, place)
         return "list of text"
 
+    # the brain
+
+    def brain(self, routine):
+        self.c.uses_brain = True
+        self.a.call(routine)
+
+    def emit_symbol(self, s):
+        """A symbol typed in the program: kept like a fixed text, but apart from the texts the program shows,
+        so brick doesn't take 'write the links of red' for showing the word red."""
+        raw = s.encode()
+        label = self.a.new_label("symbol")
+        self.a.data[label] = struct.pack("<Q", len(raw)) + raw + b"\0"
+        self.a.address(RAX, label)
+        return "text"
+
+    def emit_likeness(self, first, second):
+        """How alike two symbols are: a whole number from 0 to 100."""
+        self.text(self.emit(first))
+        self.a.push(RAX)
+        self.text(self.emit(second))
+        self.a.mov(RCX, RAX)
+        self.a.pop(RAX)
+        self.brain("brain_likeness")
+        return "number"
+
+    def emit_closest(self, thing):
+        self.text(self.emit(thing))
+        self.brain("brain_closest")
+        return "text"
+
+    def emit_links(self, thing):
+        place = self.a.reserve(LIST_SIZE, "links_list")
+        self.text(self.emit(thing))
+        self.a.address(RCX, place)
+        self.brain("brain_links")
+        self.a.address(RAX, place)
+        return "list of text"
+
+    def emit_likeness_needed(self):
+        self.c.uses_brain = True
+        self.a.address(RAX, "brain_needed")
+        self.a.load(RAX, RAX)
+        self.a.op_n("add", RAX, LIKENESS_NEEDED)
+        return "number"
+
     # conditions: leave 1 (yes) or 0 (no) in rax
 
     def emit_truth(self, value):
@@ -956,6 +1098,12 @@ class Emitter:
             self.emit_compare(how[4:], left, right)
             a.op_n("xor", RAX, 1)
             return "yes/no"
+        if how in ("like", "not like"):                 # a likeness of at least the likeness needed
+            self.emit_likeness(*(as_symbol(side) for side in (left, right)))
+            a.address(RCX, "brain_needed")
+            a.load(RCX, RCX)
+            a.op_n("add", RCX, LIKENESS_NEEDED)
+            return self.flag_if(lambda: a.op("cmp", RAX, RCX), NOT_LESS if how == "like" else LESS)
         if how == "in":
             left, right, how = right, left, "contains"
         kind_left = self.emit(left)
@@ -1088,6 +1236,11 @@ class Emitter:
             raise Problem("Only 'start a timer' can make a timer.")
         else:
             raise Problem(f"That doesn't fit: it holds {wanted}, not {kind}.")
+
+
+def as_symbol(node):
+    """Typed text used as a symbol is kept apart from the texts the program shows (see emit_symbol)."""
+    return ("symbol", node[1]) if node[0] == "text" else node
 
 
 def item_kind(kind):
