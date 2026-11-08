@@ -6,7 +6,7 @@
   <img alt="Linux x86-64" src="https://img.shields.io/badge/makes-Linux%20x86--64%20programs-e2402a?style=flat-square">
   <img alt="Python 3, standard library only" src="https://img.shields.io/badge/python-3%20·%20standard%20library%20only-ff8a3d?style=flat-square">
   <img alt="No C compiler, no libc" src="https://img.shields.io/badge/no%20C%20compiler-no%20libc-ffb15c?style=flat-square">
-  <img alt="168 tests passing" src="https://img.shields.io/badge/tests-168%20passing-4fa84f?style=flat-square">
+  <img alt="172 tests passing" src="https://img.shields.io/badge/tests-172%20passing-4fa84f?style=flat-square">
 </p>
 
 <p align="center">
@@ -546,10 +546,11 @@ $ python3 tests/test_director.py
 | [`test_brain_words.py`](tests/test_brain_words.py) | 16 |
 | [`test_universe.py`](tests/test_universe.py) | 8 |
 | [`test_brain_universe.py`](tests/test_brain_universe.py) | 7 |
+| [`test_senses.py`](tests/test_senses.py) | 4 |
 | [`test_messy.py`](tests/test_messy.py) | 1 |
 | [`test_neural.py`](tests/test_neural.py) | 1 |
 
-All 168 passed on 8 November 2026, on CachyOS Linux with Python 3.14.
+All 172 passed on 8 November 2026, on CachyOS Linux with Python 3.14.
 
 ---
 
@@ -559,7 +560,7 @@ All 168 passed on 8 November 2026, on CachyOS Linux with Python 3.14.
 brick/
 ├── brick.py ... window.py     the compiler, toolbox, assembler and window (see "Where things live")
 ├── gui.html                   the brick kiln page
-├── tests/                     168 tests that build and run real programs
+├── tests/                     172 tests that build and run real programs
 ├── texts/
 │   ├── examples/              finished example programs
 │   ├── dictionary.txt         765 everyday words and what they mean here
