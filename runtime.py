@@ -15,7 +15,8 @@ TEXT_LIMIT = 256          # longest typed answer
 LIST_LIMIT = 1000         # most items in a list
 LIST_SIZE = 8 + LIST_LIMIT * 8
 SYMBOL_LIMIT = 2000       # most symbols the brain can hold (links between them are unlimited)
-LIKENESS_NEEDED = 80      # "is like" means a likeness of at least this, until the program changes it
+LIKENESS_NEEDED = 50      # "is like" means at least half alike, until the program changes it (same-kind pairs
+                          # with mostly shared links score 50-70; different kinds 0-30)
 HEAP_SIZE = 64 * 1024 * 1024
 FILE_LIMIT = 65536        # biggest file we read
 BILLION = 1_000_000_000
@@ -1250,7 +1251,7 @@ def file_delete(a):
 
 def add_brain(a):
     a.space["brain_count"] = 8                                  # how many symbols so far
-    a.space["brain_needed"] = 8                                 # the likeness "is like" needs, minus 80
+    a.space["brain_needed"] = 8                                 # the likeness "is like" needs, minus LIKENESS_NEEDED
     a.space["brain_symbols"] = SYMBOL_LIMIT * 8                 # each symbol's text
     a.space["brain_weights"] = SYMBOL_LIMIT * SYMBOL_LIMIT * 8  # how strongly each one links to each other one
     a.space["brain_breadth"] = SYMBOL_LIMIT * 8                 # how many different symbols each one links to
@@ -1471,8 +1472,10 @@ SHARE_LIMIT = 1 << 30     # totals are halved (with their parts) until they're b
 
 def brain_score(a):
     """rax, rcx = two different symbol numbers a, b -> rax = how alike they are, 0 to 100.
-    Every other symbol s (not a or b) linked to either counts in proportion to w(a,s) / breadth(s): a link
-    to a broad symbol (linked to many) says less than a link to a specific one. With p_a(s) = w(a,s) / breadth(s)
+    Every other symbol s (not a or b) linked to either counts in proportion to w(a,s) / breadth'(s): a link
+    to a broad symbol (linked to many) says less than a link to a specific one. breadth'(s) is 1 + how many
+    symbols s links to other than a and b, so a link only a and b share is fully specific.
+    With p_a(s) = w(a,s) / breadth'(s)
     and P_a their total: 100 x sum of min(p_a(s) x P_b, p_b(s) x P_a) / sum of max(...), rounded down;
     0 if either total is 0. In whole numbers: p is kept times the lcm of the breadths involved, so it's exact
     (times 2^20 if that lcm is over 2^24); each side is halved until its total is below 2^30, so every product
@@ -1503,7 +1506,7 @@ def brain_score(a):
     brain_count(a, R13)
 
     def each(name, body):
-        """Go through every other symbol s linked to a or b: r9, rbx = w(a,s), w(b,s); r15 = breadth(s)."""
+        """Go through every other symbol s linked to a or b: r9, rbx = w(a,s), w(b,s); r15 = breadth'(s)."""
         a.load(RSI, R14, 48)
         a.load(RDI, R14, 56)
         a.address(R12, "brain_breadth")
@@ -1520,7 +1523,13 @@ def brain_score(a):
         a.mov(RAX, R9)
         a.op("or", RAX, RBX)
         a.jump_if(EQUAL, f"{name}_skip")
-        a.load(R15, R12)
+        a.load(R15, R12)                 # breadth'(s) = 1 + the symbols s links to other than a and b
+        a.op_n("add", R15, 1)
+        for w in (R9, RBX):
+            a.op("test", w, w)
+            a.jump_if(EQUAL, f"{name}_{w}_not")
+            a.op_n("sub", R15, 1)
+            a.label(f"{name}_{w}_not")
         body()
         a.label(f"{name}_skip")
         a.op_n("add", RSI, 8)
