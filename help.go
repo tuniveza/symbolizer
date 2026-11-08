@@ -143,7 +143,7 @@ var helpGroups = []helpGroup{
 		{"  ◆ ≡ ✎ ≣ on the toolbar", "  what a double-click on the empty board places"},
 		{"img on the toolbar", "a picture (any format) for the chosen shape, or a text file for the chosen page; type its path"},
 		{"Drag files onto the board", "in kitty: each goes where you let go (into what is under it, or a new structure there)"},
-		{"[¶] on the top edge", "the shape's layout: text · picture above · left · right · picture only · two columns"},
+		{"AltGr + L  (ł) · [¶] on the top edge", "the chosen shape's next layout: text · picture above · left · right · picture only · two columns"},
 		{"Cabinet: click a stack", "pull out Pages, Books, Slides, Notes or Drawings; drag a thing out onto the board"},
 		{"  Drop a page or note", "  on a cabinet: it is filed in its stack"},
 		{"Drawer · rack", "drop anything on it (a page, note or shape); drag a row out to take it out"},

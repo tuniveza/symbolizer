@@ -111,10 +111,13 @@ func TestDesignBoard(t *testing.T) {
 	if a.Color == b.Color {
 		t.Fatal("two structures got the same colour")
 	}
+	d.sel = a.ID
+	l0 := a.Layout
 	m.Update(tea.KeyPressMsg(tea.Key{Code: 'ł', Text: "ł"}))
-	if d.linkMode || m.learn != nil {
-		t.Fatal("AltGr+L did something in Design mode: it has no shortcut there now")
+	if d.linkMode || m.learn != nil || a.Layout == l0 {
+		t.Fatalf("AltGr+L in Design mode: link %v, learn open %v, layout %d → %d (want the next layout)", d.linkMode, m.learn != nil, l0, a.Layout)
 	}
+	d.sel = -1
 	toolClick(m, "link")
 	if !d.linkMode {
 		t.Fatal("⛓ link on the toolbar did not start link mode")

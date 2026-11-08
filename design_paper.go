@@ -157,7 +157,7 @@ func newHint(kind string) string {
 func selHint(o *dOct) string {
 	switch o.Kind {
 	case kOct:
-		return "Tab: write  ·  Alt+arrows: move  ·  [¶]: layout  ·  X X: delete"
+		return "Tab: write  ·  Alt+arrows: move  ·  AltGr+L: layout  ·  X X: delete"
 	case kCabinet:
 		return "Click a stack to open it  ·  Tab: next stack  ·  X X: delete"
 	case kDrawer:

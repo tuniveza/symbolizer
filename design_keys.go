@@ -671,3 +671,16 @@ func (m *Model) designEscape() {
 	}
 	d.dirty = true
 }
+
+// designLayoutKey is AltGr+L: the chosen shape's next layout (its [¶] does
+// the same with the mouse).
+func (m *Model) designLayoutKey() {
+	d := m.ds()
+	o := d.byID(d.sel)
+	if o == nil || o.Kind != kOct {
+		m.say("AltGr+L changes the layout of a chosen shape.")
+		return
+	}
+	m.designLayout(o, 1)
+	d.save()
+}

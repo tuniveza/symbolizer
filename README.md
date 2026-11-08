@@ -163,7 +163,7 @@ Everything on it is drawn with letters, kept in `~/.local/share/symbolizer/desig
 - **Octagons**, or shapes (double-click the board, or **Alt + N**, **S**): a header, text and a footer. Drag to move, the ◢ corner resizes.
 - **Pictures** of any format go into an octagon: **img** on the toolbar and a file name, or drop the file on the terminal. They are drawn with half-blocks.
 - **Drag and drop:** in kitty (0.47 or later), drag files from your file manager onto the board. What is under the pointer lights up (a ✚ shows on the empty board), and each file goes where you let go: a picture into the octagon under it, or a new octagon there; a text file into the page or note under it, into the cabinet as a page, or a new page there. Several files land side by side. Dragged text becomes a page. Other terminals paste dropped files as their paths, and sy puts those in too, one file or several.
-- **Layouts:** the icon on an octagon's top edge shows its layout. Click it for the next one: `¶` text · `▀` picture above · `◧` left · `◨` right · `■` picture only · `‖` two columns.
+- **Layouts:** the icon on an octagon's top edge shows its layout. Click it (or press **AltGr + L**) for the next one: `¶` text · `▀` picture above · `◧` left · `◨` right · `■` picture only · `‖` two columns.
 - **Pages** (**Alt + N**, **P**) hold text of any length and scroll. **Notes** (**Alt + N**, **N**) hold one page. Both take only text and text-like media, and both have a title and a footer.
 - **Cabinets** (**Alt + N**, **C**) keep a stack each of pages, books, slides, notes and drawings. Drop a page or note on one to file it. Click a stack to pull it out, and drag a page back out onto the board. A cabinet can bring in your **Diary** pages and the files open in **Text** mode.
 - **Drawers** (**Alt + N**, **D**) hold anything, in no order: drop a page, note or shape on one; drag a row out to take it out. (Drawers used to hang under every structure; an old board gets each as a drawer of its own, beside its structure and linked to it.)
@@ -289,6 +289,7 @@ Press **F1** inside Symbolizer for the full, scrollable list, or **AltGr + K** t
 | Design: Alt + N, then P · N · S · C · D · R | new page · note · shape · cabinet · drawer · rack (F1 in Design mode lists all its keys) |
 | Design: Alt + L, then L · C · I · T · G | label mode: label style · colour · icon · words · name plate |
 | Design: AltGr + P | the list of name plates and what has each |
+| Design: AltGr + L | the chosen shape's next layout |
 | Design: X X or ✕ | delete the chosen structure or link |
 | Design: img on the toolbar | a picture (or text file) for the chosen structure: type its path |
 | Design: Ctrl + Z · Ctrl + Y | undo · redo any change on the board (also Ctrl + Shift + Z, and ↶ ↷ on the toolbar) |

@@ -435,7 +435,8 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			}
 		case "ł", "altgr+l":
 			if m.inDesign() && m.learn == nil && !m.help {
-				return nil // Design mode has no AltGr+L: ⛓ link on its toolbar (design.go)
+				m.designLayoutKey() // in Design mode AltGr+L is the chosen shape's next layout
+				return tea.Batch(m.designFrameCmd(), m.designSaveCmd())
 			}
 			return m.openLearn()
 		}
