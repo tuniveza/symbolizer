@@ -42,6 +42,7 @@ texts/factory/brain-settings.txt. The factory teaches it, only while brick runs.
     python3 brain.py learn           learn from everything now
 """
 import glob
+import math
 import os
 import re
 import sys
@@ -52,10 +53,10 @@ PATH = os.path.join(HERE, "texts", "factory", "brain.txt")
 SETTINGS = os.path.join(HERE, "texts", "factory", "brain-settings.txt")
 UNIVERSES = os.path.join(HERE, "texts", "universes")
 POOL = os.path.join(HERE, "texts", "sentences.txt")
-THRESHOLD = 0.55             # how alike a word must be used to stand for another: measured with measure() (brick brain measure)
+THRESHOLD = 0.6              # how alike a word must be used to stand for another: measured with measure() (brick brain measure)
 FORM_THRESHOLD = 0.25        # how alike two words must be built (letters, shape) for that to choose between
-                             # words used about as alike. Checked by hand: bluish~blue 0.34, greenish~green
-                             # 0.29, against 0.01 for unrelated colours; and the best must still stand out
+                             # words used about as alike. Checked by hand: bluish~blue 0.36, greenish~green
+                             # 0.40, reddish~red 0.34, against about 0.05 for teal; the best must still stand out
 CLOSE = 0.1                  # a runner-up meaning something else this close to the best: too close to call.
 # How a word is used says what kind of thing it is (a colour) far better than which one (fawn is used much
 # like aquamarine, chartreuse and cerulean, 0.78 to 0.74): only a word that stands out is taken.
@@ -65,6 +66,25 @@ LEND = {"colour", "place", "window", "background", "screen", "size", "style", "t
 # an unknown verb is never quietly read as 'write' or 'clear'
 IDEA_WEIGHT = 3.0            # word -> its idea, from universe.txt: one line there is worth a few sightings
 MEANS_WEIGHT = 2.0           # dictionary: word <-> what it means
+
+
+BREADTH = "log"              # how a link's breadth b' weighs it: none, inverse (1/b'), isqrt (1/isqrt(b')),
+                             # log (1/(1 + floor(log2 b'))). Measured on the same brain, the best wrong match
+                             # (choices~seconds) against the best ordinary right one (moment~minute):
+                             # none 0.63/0.81, inverse 0.48/0.42 (wrong above right), isqrt 0.56/0.63,
+                             # log 0.56/0.64. log keeps 'broad counts less' and separates nearly as well as none
+
+
+def spread(b):
+    """What a link's weight is divided by, for its breadth b' (1 + the symbols other than the two being
+    compared that have it). Whole-number maths only, as compiled brick programs do it."""
+    if BREADTH == "none":
+        return 1
+    if BREADTH == "isqrt":
+        return math.isqrt(b)
+    if BREADTH == "log":
+        return b.bit_length()               # 1 + floor(log2 b), for b >= 1
+    return b
 
 
 def overlap(pa, pb):
@@ -439,7 +459,7 @@ class Brain:
         for k, w in (extra or {}).items():
             found[k] = found.get(k, 0.0) + w
         pair = {symbol, other} - {None}
-        weighed = {k: w / (1 + self.breadth(k) - sum(k in self.full(x) for x in pair))
+        weighed = {k: w / spread(1 + self.breadth(k) - sum(k in self.full(x) for x in pair))
                    for k, w in found.items() if k not in leave_out}
         return shares(weighed)
 
@@ -468,29 +488,29 @@ class Brain:
         # less 1 if the symbol has it. Against a given other, links the other has too weigh a little more
         # (one fewer to share with), and the other itself is left out: both put right below, on shared links.
         weigh = {k: 1 + self.breadth(k) - (k in own) for k in mine}
-        mine_base = sum(w / weigh[k] for k, w in mine.items())
+        mine_base = sum(w / spread(weigh[k]) for k, w in mine.items())
         scores = []
         for other in among:
             if other == symbol:
                 continue
             theirs, their_own = self.raw(other, route), self.full(other)
-            mine_total = mine_base - (mine[other] / weigh[other] if other in mine else 0.0)
+            mine_total = mine_base - (mine[other] / spread(weigh[other]) if other in mine else 0.0)
             their_total, shared = self.base(other, route), []
             if symbol in theirs:
-                their_total -= theirs[symbol] / (1 + self.breadth(symbol) - 1)
+                their_total -= theirs[symbol] / spread(self.breadth(symbol))
             small, big = (mine, their_own) if len(mine) < len(their_own) else (their_own, mine)
             for k in small:
                 if k in big and k != other and k != symbol:
                     d = weigh[k] - 1                                 # the other has it too
-                    mine_total += mine[k] / d - mine[k] / weigh[k]
+                    mine_total += mine[k] / spread(d) - mine[k] / spread(weigh[k])
                     if k in theirs:
                         if k in own:
-                            their_total += theirs[k] / d - theirs[k] / (d + 1)
+                            their_total += theirs[k] / spread(d) - theirs[k] / spread(d + 1)
                         shared.append((k, d))
             if mine_total <= 0 or their_total <= 0:
                 continue
             # with both patterns as shares (each adding up to 1), sum of max = 2 - sum of min: m / (2 - m)
-            m = sum(min(mine[k] / d / mine_total, theirs[k] / d / their_total) for k, d in shared)
+            m = sum(min(mine[k] / spread(d) / mine_total, theirs[k] / spread(d) / their_total) for k, d in shared)
             score = m / (2 - m) if m < 2 else 1.0
             if score > 1e-12:
                 scores.append((other, score))
@@ -502,7 +522,7 @@ class Brain:
         key = (symbol, route, "base")
         if key not in self._raw:
             own = self.full(symbol)
-            self._raw[key] = sum(w / (1 + self.breadth(k) - (k in own)) for k, w in self.raw(symbol, route).items())
+            self._raw[key] = sum(w / spread(1 + self.breadth(k) - (k in own)) for k, w in self.raw(symbol, route).items())
         return self._raw[key]
 
     def understand(self, word, before=None, after=None, world=None, threshold=None):
