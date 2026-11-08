@@ -35,11 +35,22 @@ Each file is a neuron that learns by itself, only while brick runs:
   links_for(name)               for the brain: [(symbol, facet, weight 0..1)], e.g. ("round", "shape", 1.0);
                                 weight = strength / 5, at most 1 (5 is a hand-written link's strength)
 
+Little words are symbols too ('the', 'in'): broad ones. Each file's header says its breadth (how many
+symbols it links to: "# breadth: 340 (a broad symbol)"), and in spreading and in recognising pictures a link
+counts 1 / (1 + floor(log2(breadth))), breadth counted leaving out the symbols being compared (as brain.py).
+Letters have neurons of their own, letter:a in letter-a.txt (never the word 'a'): the letters before and
+after them, where they sit in words, the words they're in, vowel or consonant (spell()); a word's neuron gets
+"letters:" and "spelled:" lines. A context is a symbol of itself: context:in _ at (context-in-_-at.txt) is
+what fills 'in _ at' in directions, and a scene the eye sees ('sky above ground') is what is seen in it
+(experience() and contextualise() make them; they're born like any neuron, from _waiting.txt).
+
 When each link was last used is brick's own bookkeeping, in texts/universes/_times.json (delete it any time).
 
 Commands (main(args); handles(args) says whether a brick command line is one of these):
     brick show apple.png as apple        look at a picture and learn what it shows (also: this is an apple:
                                          apple.png / apple.png is an apple)
+    brick look photo.jpg                 the eye names it itself: memory first, then the vision model (also:
+                                         what is photo.jpg / look at photo.jpg)
     brick universe apple                 print apple's universe, filled from WordNet and ConceptNet if new
     brick universe apple forget          delete it
     brick universes                      list them
@@ -62,11 +73,15 @@ MAX_NEURONS = 2000          # and in all
 PER_ROUND = 3               # neurons practised per round
 SPREAD = 6                  # strongest links a firing neuron sends activation along
 DECAY = 0.8                 # activation lost at each step
-ANSWERS = 0.4               # activation that counts as a strong answer
+ANSWERS = 0.15              # activation that counts as a strong answer (after the breadth weights)
 NEW_PER_ROUND = 2           # indirect links a neuron may gain in one round
 FADE_AFTER = 2 * 86400      # a link unused this long (seconds) fades a little each time its neuron practises
 FADE = 0.9
 GONE = 0.2                  # a learned link weaker than this is let go
+BROAD, NARROW = 40, 8       # breadth that makes a symbol broad / specific (said in its header)
+IN_WORDS = 20               # words kept on a letter's "in words" line (the strongest)
+VOWELS = set("aeiou")
+FORM = {"letters", "spelled"}   # how a word is written, not what it's linked to: left out of its breadth
 WAITING_MOST = 3000         # links kept for symbols with no neuron yet
 META = ("not", "seen in", "looked up")
 ORDER = ("is", "same as", "shape", "size", "colour", "texture", "taste", "mathematics", "biology", "parts",
@@ -98,14 +113,58 @@ now = time.time             # a function, so the tests can move the clock
 # ---------------- names and files ----------------
 
 def clean(name):
-    """'An Apple!' -> 'apple'; the words of a symbol, lower case, no articles in front."""
+    """'An Apple!' -> 'apple'; the words of a symbol, lower case, no articles in front.
+    'letter:a' (the letter, not the word 'a') and 'context:in _ at' (a context) keep their kind in front."""
+    kind = re.match(r"^\s*(letter|context)\s*:\s*(.*)$", str(name).lower())
+    if kind:
+        rest = kind.group(2)
+        if kind.group(1) == "letter":
+            rest = re.sub(r"[^a-z0-9]", "", rest)[:1]
+        else:
+            rest = re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 _'\-]+", " ", rest)).strip()
+        return f"{kind.group(1)}:{rest}" if rest else ""
     name = re.sub(r"[^a-z0-9 '\-.]+", " ", str(name).lower().replace("_", " "))
     name = re.sub(r"\s+", " ", name).strip(" .'-")
     return re.sub(r"^(?:a|an|the) ", "", name)
 
 
 def slug(name):
-    return re.sub(r"[^a-z0-9]+", "-", clean(name)).strip("-")
+    """'apple tree' -> apple-tree, 'letter:a' -> letter-a, 'context:in _ at' -> context-in-_-at."""
+    return re.sub(r"[^a-z0-9_]+", "-", clean(name)).strip("-")
+
+
+def target(facet, value):
+    """The neuron a link points to: letters (and the letters before / after one) are 'letter:x', contexts are
+    'context:...', everything else is the symbol itself."""
+    if facet in ("letters", "before", "after"):
+        return f"letter:{value}"
+    if facet == "contexts":
+        return f"context:{value}"
+    return value
+
+
+_breadths = {}
+
+
+def breadth(name, leave_out=()):
+    """1 + how many distinct symbols a neuron links to, leaving out the ones being compared (leave_out): broad
+    symbols ('the', 'red') link to many. A symbol with no neuron has breadth 1."""
+    path = path_of(name) if slug(name) else ""
+    try:
+        when = os.path.getmtime(path)
+    except OSError:
+        return 1
+    if _breadths.get(path, (None,))[0] != when:
+        _breadths[path] = (when, {target(f, v) for v, f, _ in Neuron(name).links() if f not in FORM})
+    linked = _breadths[path][1]
+    return 1 + len(linked) - len(linked & {clean(n) for n in leave_out})
+
+
+def weight(name, leave_out=()):
+    """How much a link to this symbol counts, in spreading and in recognising: 1 / (1 + floor(log2(breadth))),
+    with breadth counted leaving out the symbols being compared (the same form as brain.py and the compiled
+    programs). A symbol linked to nothing else counts 1; to 3 others, 1/2; to 1,000, 1/10."""
+    return 1.0 / breadth(name, leave_out).bit_length()
 
 
 def path_of(name):
@@ -208,9 +267,12 @@ class Neuron:
         found = re.match(r"#\s*(.+?): brick's neuron", first)
         return found.group(1).strip() if found else None
 
-    def header(self):
+    def header(self, with_breadth=True):
+        wide = len({target(f, v) for v, f, _ in self.links() if f not in FORM})
+        kind = "a broad symbol" if wide >= BROAD else "a specific symbol" if wide <= NARROW else \
+            "between broad and specific"
         return [f"# {self.name}: brick's neuron for this symbol: what it's linked to, how strongly, and where "
-                "each link came from.",
+                "each link came from."] + ([f"# breadth: {wide} ({kind})"] if with_breadth else []) + [
                 "# round (3.5, ConceptNet) means: linked to round with strength 3.5, learned from ConceptNet. "
                 "Links grow when",
                 "# they turn up together and fade when unused. Anything you write by hand (no brackets, or "
@@ -219,11 +281,11 @@ class Neuron:
                 "add it back."]
 
     def parse(self, text):
-        standard = {line.strip() for line in self.header()[1:]}
+        standard = {line.strip() for line in self.header(False)[1:]}
         for line in text.splitlines():
             stripped = line.strip()
             if stripped.startswith("#"):
-                if stripped in standard or re.match(r"#\s*.+?: brick's neuron", stripped):
+                if stripped in standard or re.match(r"#\s*.+?: brick's neuron|#\s*breadth:", stripped):
                     continue             # the header is written fresh each time
                 self.lines.append(("text", line))
                 continue
@@ -651,6 +713,10 @@ def conceptnet_facets(name):
 def lookup(name):
     """[(source, {facet: [(value, strength)]})] from the knowledge on this computer."""
     name = clean(name)
+    if name.startswith("letter:"):
+        return [("WordNet", letter_facets(name[-1])), ("ConceptNet", {})]
+    if name.startswith("context:"):
+        return [("WordNet", {}), ("ConceptNet", {})]      # a context is known by what fills it, nothing else
     return [("WordNet", wordnet_facets(name)), ("ConceptNet", conceptnet_facets(name))]
 
 
@@ -691,50 +757,177 @@ def fill(name, only_missing=False, times=None):
     return new
 
 
-def experience(symbols, source="together", amount=1.0, centre=None, centre_learns=True):
+class Linker:
+    """Strengthens links on neurons, or, for symbols with no neuron yet, in _waiting.txt; saves at the end."""
+    def __init__(self, times=None):
+        self.times = times or Times()
+        self.neurons, self.waiting, self.new = {}, None, []
+
+    def neuron(self, name):
+        if name not in self.neurons:
+            self.neurons[name] = Neuron(name)
+        return self.neurons[name]
+
+    def link(self, owner, facet, value, amount, source, given_facet=False):
+        owner = clean(owner)
+        if not owner or owner == clean(value):
+            return
+        if exists(owner) or owner in self.neurons:
+            neuron = self.neuron(owner)
+            if not given_facet:
+                facet = neuron.find(tidy(value)) or facet
+            if neuron.add(facet, value, amount, source, times=self.times) == "new":
+                self.new.append((owner, facet, tidy(value)))
+            return
+        if self.waiting is None:
+            self.waiting = read_waiting()
+        links = self.waiting.setdefault(owner, {}).setdefault(facet, {})
+        link = links.setdefault(tidy(value), Link(0, []))
+        link.strength = round(link.strength + amount, 2)
+        if source and plain(source) not in link.sources:
+            link.sources = (link.sources + [plain(source)])[-6:]
+
+    def save(self):
+        for neuron in self.neurons.values():
+            if neuron.changed or not os.path.isfile(neuron.path):
+                neuron.save()
+        if self.waiting is not None:
+            write_waiting(self.waiting)
+        self.times.save()
+        return self.new
+
+
+def experience(symbols, source="together", amount=1.0, centre=None, centre_learns=True, spelling=True):
     """Symbols that turned up together fire together, and their links grow ("fire together, wire together").
-    symbols: words, or (word, facet) pairs when the facet is known (an image's ("round", "shape")).
+    symbols: words in order (a direction, a line), or (word, facet) pairs when the facet is known (an image's
+    ("round", "shape")). Little words fire too: they're symbols like any other, just broad ones.
     centre: only links between it and the others (a picture of an apple: apple <-> round, red ...);
     centre_learns=False: only the others learn (the centre was taught already).
+    Words in order also make contexts: in 'write hi in red at the top', 'red' fills the context 'in _ at',
+    which is a symbol of its own (context:in _ at). Each word's letters are learned too (spell).
     A symbol with no neuron yet keeps its links in _waiting.txt until practise() gives it one.
     -> [(symbol, facet, other)] links that are new."""
+    ordered = [clean(item) for item in symbols if isinstance(item, str)]
+    ordered = [w for w in ordered if w][:24]
     items, seen = [], set()
     for item in symbols:
         word, facet = item if isinstance(item, tuple) else (item, None)
         word = clean(word)
-        if not word or word in seen or word in STOP or len(word) < 2 or re.fullmatch(r"[\d.]+", word):
+        if not word or word in seen or len(word) < 1 or re.fullmatch(r"[\d.]+", word):
             continue
         seen.add(word)
         items.append((word, facet))
     items = items[:12]
     centre = clean(centre) if centre else None
-    times, waiting, new = Times(), None, []
+    linker = Linker()
     for word, _ in items:
         others = [(o, f) for o, f in items if o != word and (centre is None or centre in (word, o))]
         if not others or re.search(r"\d", word) or word == centre and not centre_learns:
             continue                     # 'ratio 1.04' can be linked to, but needs no neuron of its own
-        if exists(word):
-            neuron = Neuron(word)
-            for other, facet in others:
-                facet = facet if word == centre or centre is None else None
-                facet = facet or neuron.find(other) or guess_facet(other) or "goes with"
-                if neuron.add(facet, other, amount, source, times=times) == "new":
-                    new.append((word, facet, other))
-            if neuron.changed:
-                neuron.save()
-        else:
-            waiting = read_waiting() if waiting is None else waiting
-            for other, facet in others:
-                facet = (facet if word == centre or centre is None else None) or guess_facet(other) or "goes with"
-                links = waiting.setdefault(word, {}).setdefault(facet, {})
-                link = links.setdefault(other, Link(0, []))
-                link.strength = round(link.strength + amount, 2)
-                if source and plain(source) not in link.sources:
-                    link.sources = (link.sources + [plain(source)])[-6:]
-    if waiting is not None:
-        write_waiting(waiting)
-    times.save()
+        for other, facet in others:
+            given = facet if word == centre or centre is None else None
+            linker.link(word, given or guess_facet(other) or "goes with", other, amount, source,
+                        given_facet=bool(given))
+    if len(ordered) >= 3 and len(ordered) == len(symbols):          # a line of words: its contexts
+        for k in range(1, len(ordered) - 1):
+            frame = f"{ordered[k - 1]} _ {ordered[k + 1]}"
+            if re.search(r"\d", frame) or ordered[k] in ordered[k - 1:k] + ordered[k + 1:k + 2]:
+                continue
+            linker.link(f"context:{frame}", "fills", ordered[k], amount, source, given_facet=True)
+            linker.link(ordered[k], "contexts", frame, amount, source, given_facet=True)
+    new = linker.save()
+    if spelling:
+        spell([w for w in ordered if re.fullmatch(r"[a-z]+", w)] if ordered else
+              [w for w, _ in items if re.fullmatch(r"[a-z]+", w)], source)
     return new
+
+
+def contextualise(thing, contexts, source, appears=(), amount=1.0):
+    """A thing seen in a context ('sky above ground', 'a picture with red and round'): the thing links to the
+    context, and the context links back to what fills it and what it appears with."""
+    thing = clean(thing)
+    linker = Linker()
+    for context in contexts:
+        context = clean(f"context:{context}")
+        if not context:
+            continue
+        frame = context.split(":", 1)[1]
+        if thing:
+            linker.link(thing, "contexts", frame, amount, source, given_facet=True)
+            linker.link(context, "fills", thing, amount, source, given_facet=True)
+        for other in appears:
+            linker.link(context, "appears with", other, amount / 2, source)
+    return linker.save()
+
+
+def letter_facets(letter):
+    """What brick knows about a letter by itself, and what WordNet says -> {facet: [(value, strength)]}."""
+    found = {"is": [("letter", 3.0), ("vowel" if letter in VOWELS else "consonant", 3.0)]}
+    if letter == "y":
+        found["is"].append(("sometimes a vowel", 1.5))
+    known = wn_index(letter, "n") if os.path.isdir(WORDNET) else None
+    for offset in (known[1] if known else [])[:12]:
+        words, pointers, meaning = wn_synset(offset, "n")
+        if "letter" not in meaning.lower():
+            continue
+        for w in words:
+            if len(w) > 1 and w.lower() != letter:
+                found.setdefault("same as", []).append((w.lower(), 2.0))
+        for symbol, up, _ in pointers:
+            if symbol == "@":
+                found["is"].append((wn_synset(up, "n")[0][0].lower(), 2.0))
+        break
+    return found
+
+
+def spell(words, source="spelling", amount=1.0):
+    """Letters in context: each letter's neuron (letter:a) learns the letters before and after it, where it
+    sits in words (start, middle, end) and the words it's in; a word's neuron learns its letters and how it
+    is spelled (starts with, ends with). Letters get a neuron the first time they're seen (26 at most)."""
+    words = [w for w in (clean(w) for w in words) if re.fullmatch(r"[a-z]+", w)][:40]
+    if not words:
+        return
+    linker = Linker()
+    for word in words:
+        for k, ch in enumerate(word):
+            name = f"letter:{ch}"
+            fresh = not exists(name) and name not in linker.neurons
+            neuron = linker.neuron(name)
+            if fresh:
+                for facet, values in letter_facets(ch).items():
+                    for value, strength in values:
+                        neuron.add(facet, value, strength, "brick" if facet == "is" and value in
+                                   ("letter", "vowel", "consonant", "sometimes a vowel") else "WordNet",
+                                   times=linker.times)
+                neuron.add("looked up", "WordNet", 0, "")
+                neuron.add("looked up", "ConceptNet", 0, "")
+            place = "alone" if len(word) == 1 else "start" if k == 0 else "end" if k == len(word) - 1 else "middle"
+            neuron.add("place", place, amount, source, times=linker.times)
+            if k:
+                neuron.add("before", word[k - 1], amount, source, times=linker.times)
+            if k < len(word) - 1:
+                neuron.add("after", word[k + 1], amount, source, times=linker.times)
+            if len(word) > 1:
+                neuron.add("in words", word, amount, source, times=linker.times)
+                kept = neuron.facets["in words"]
+                if len(kept) > IN_WORDS:              # keep the strongest words (and any you wrote)
+                    for value, link in sorted(kept.items(), key=lambda kv: kv[1].strength)[:len(kept) - IN_WORDS]:
+                        if not link.yours:
+                            del kept[value]
+        if exists(word) and len(word) > 1:
+            neuron = linker.neuron(word)
+            if not neuron.facets.get("spelled"):
+                for ch in dict.fromkeys(word):
+                    neuron.add("letters", ch, 1.0, "spelling", times=linker.times)
+                neuron.add("spelled", f"starts with {word[0]}", 1.0, "spelling", times=linker.times)
+                neuron.add("spelled", f"ends with {word[-1]}", 1.0, "spelling", times=linker.times)
+    linker.save()
+
+
+def real_word(word):
+    """Is this a word WordNet (or brick's little words) knows? For words read off a picture."""
+    word = word.lower()
+    return word in STOP or os.path.isdir(WORDNET) and any(wn_index(word, pos) for pos in "nvar")
 
 
 def born(name, links, reason, times):
@@ -761,8 +954,9 @@ def practise(budget=0.5, neurons=PER_ROUND):
     ready = []
     for symbol, facets in waiting.items():
         strengths = [link.strength for links in facets.values() for link in links.values()]
-        if strengths and not re.search(r"\d", symbol):
-            ready.append((max(strengths), symbol))
+        if strengths and not re.search(r"\d", symbol.split(":")[-1]):
+            many = sum(strengths) / 2 if symbol.startswith("context:") else 0      # a context filled by many
+            ready.append((max(max(strengths), many), symbol))
     for strength, symbol in sorted(ready, reverse=True):
         if strength < BIRTH or births >= MAX_BIRTHS or births >= room:
             break
@@ -790,19 +984,22 @@ def practise(budget=0.5, neurons=PER_ROUND):
                 said.append(f"{name} looked itself up ({len(new)} links)")
             neuron = Neuron(name)
         # (a) fire: spread activation along the strongest links, and link to what answers strongly
+        # (letters learn only from spelling: activation doesn't spread from or through them)
         answers = {}
-        for value, facet, link in neuron.strongest(SPREAD):
-            if not exists(value):
+        for value, facet, link in ([] if neuron.name.startswith("letter:") else neuron.strongest(SPREAD)):
+            via = target(facet, value)
+            if not exists(via) or via.startswith("letter:"):
                 continue
-            first = min(1.0, link.strength / YOURS)
-            for further, further_facet, further_link in Neuron(value).strongest(SPREAD):
-                if further == neuron.name:
+            first = min(1.0, link.strength / YOURS) * weight(via, {neuron.name})
+            for further, further_facet, further_link in Neuron(via).strongest(SPREAD):
+                if target(further_facet, further) == neuron.name or further_facet in ("letters", "before", "after"):
                     continue
-                activation = first * min(1.0, further_link.strength / YOURS) * DECAY
+                activation = first * min(1.0, further_link.strength / YOURS) * DECAY * \
+                    weight(target(further_facet, further), {neuron.name})
                 if activation >= ANSWERS and activation > answers.get(further, (0,))[0]:
                     # what fruit is and has, apple is and has (apple is a fruit); red's 'is' isn't apple's
                     keep = further_facet in TRANSITIVE and facet in ("is", further_facet)
-                    answers[further] = (activation, value, further_facet if keep else "goes with")
+                    answers[further] = (activation, via, further_facet if keep else "goes with")
         gained = 0
         for further, (activation, via, further_facet) in sorted(answers.items(), key=lambda kv: -kv[1][0]):
             known = neuron.find(further)
@@ -827,13 +1024,16 @@ def practise(budget=0.5, neurons=PER_ROUND):
         if faded:
             said.append(f"{neuron.name}: {faded} unused link{'s' * (faded > 1)} faded")
         # strong links to symbols with no neuron: give them one (a few per round)
-        for value, facet, link in neuron.strongest(SPREAD):
-            if births >= MAX_BIRTHS or births >= room or link.strength < BIRTH or exists(value) or \
-                    re.search(r"\d", value):
+        for value, facet, link in ([] if neuron.name.startswith("letter:") else neuron.strongest(SPREAD)):
+            new = target(facet, value)          # (a letter's links are how words are written: no births)
+            if births >= MAX_BIRTHS or births >= room or link.strength < BIRTH or exists(new) or \
+                    re.search(r"\d", value) or new.startswith("letter:"):
                 continue
-            born(value, [("goes with", neuron.name, Link(link.strength / 2, [f"born from {neuron.name}"]))],
-                 neuron.name, times)
-            said.append(f"{value} got a neuron (from {neuron.name})")
+            back = ("fills" if new.startswith("context:") else
+                    "contexts" if neuron.name.startswith("context:") else "goes with")
+            mine = neuron.name.split(":", 1)[1] if back == "contexts" else neuron.name
+            born(new, [(back, mine, Link(link.strength / 2, [f"born from {neuron.name}"]))], neuron.name, times)
+            said.append(f"{new} got a neuron (from {neuron.name})")
             births += 1
         if neuron.changed:
             neuron.save()
@@ -847,7 +1047,8 @@ def links_for(name):
     if not exists(name):
         return []
     neuron = Neuron(name)
-    found = [(value, facet, round(min(1.0, link.strength / YOURS), 3)) for value, facet, link in neuron.links()]
+    found = [(target(facet, value), facet, round(min(1.0, link.strength / YOURS), 3))
+             for value, facet, link in neuron.links()]
     found += [(value, "is", 1.0) for value in neuron.said_is if value not in neuron.facets.get("is", {})]
     return sorted(found, key=lambda t: -t[2])
 
@@ -914,36 +1115,21 @@ def main(args):
     return show(*request)
 
 
-def show(path, name):
-    """brick show apple.png as apple: look, learn, and say what was learned."""
+def show(path, name=""):
+    """brick show apple.png as apple (teach it), or brick look photo.jpg (the eye names it): look, learn, say."""
     import sight
-    name = clean(name)
+    name = clean(name) if name else ""
     if not os.path.isfile(path):
         print(f"I can't find {path} in {os.getcwd()}.")
         return 1
-    if not slug(name):
-        print(f"What does {os.path.basename(path)} show? For example: brick show {path} as apple")
-        return 1
-    try:
-        seen = sight.look(path, name)
-    except sight.CantSee as problem:
-        print(f"I couldn't look at {path}: {problem}")
-        return 1
-    times = Times()
-    for source, facets in seen["groups"]:
-        learn(name, facets, source, times)
-    neuron = Neuron(name)
-    neuron.add("seen in", os.path.basename(path), 0, "")
-    neuron.save()
-    measured = [(value, facet) for facet, values in seen["groups"][0][1].items() for value, _ in values]
-    experience([(name, None)] + measured, f"seen in {os.path.basename(path)}", centre=name, centre_learns=False)
-    times.save()
-    known = fill(name)
-    print(f"Looked at {path} ({seen['width']} by {seen['height']} pixels): {name}.")
-    print("  seen:   " + ", ".join([v for v, f in measured if f in ("shape", "colour")] +
-                                   [seen["measures"]["wording"]]))
-    print("  model:  " + seen["model note"])
-    print(f"  known:  {len(known)} new links from WordNet and ConceptNet" if known else
-          "  known:  nothing new from WordNet and ConceptNet")
-    print(f"Wrote {path_of(name)} (brick universe {name} shows it).")
-    return 0
+    seen = sight.look(path, name or None, learn=True)
+    print(seen["summary"])
+    for line in seen["learned"]:
+        print(f"  learned: {line}")
+    for problem in seen["errors"]:
+        print(f"  problem: {problem}")
+    if seen["name"]:
+        print(f"brick universe {seen['name']} shows what brick knows about it ({path_of(seen['name'])}).")
+    elif not seen["errors"]:
+        print(f"Teach me what it is: brick show {path} as NAME")
+    return 1 if seen["errors"] and not seen["symbols"] else 0

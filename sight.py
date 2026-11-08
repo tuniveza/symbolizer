@@ -1,5 +1,15 @@
 """brick's sight: look at a picture of a thing, and say what it is like as symbols, for its universe.
 
+    look(path, name=None, learn=True) -> dict    the stable way in, for anything that brings brick a picture:
+      the eye (eye.py) looks with all its filters; name given ("told"), or named from memory, or by the vision
+      model when memory isn't sure; learn=True feeds the neurons (the thing's universe, its contexts, the
+      words read in it with their letters). Never raises: problems go in "errors". Keys: name, sure (0-1),
+      how (told / memory / model / unknown), symbols [(symbol, facet, weight)], channels {channel: (symbols,
+      ms)}, objects [{name, shape, colour, position, share, box}], text, errors, contexts, summary, learned,
+      ms, decode ms.
+
+The older, simpler measuring below (measure, symbols) is kept for the tests that use it:
+
     look(path, name)   -> what was found, in three parts, each a source and its {facet: [(symbol, strength)]}:
       measured from the pixels (standard library only): the thing apart from its background (found by the
           border's colour), how wide it is for how tall, how round (how close its outline is to an ellipse,
@@ -450,23 +460,93 @@ def article(name):
 
 # ---------------- looking ----------------
 
-def look(path, name):
-    """Look at a picture of name -> {"groups": [(source, facets)], "width", "height", "measures", "model note"}.
-    groups: what was measured, what the vision model saw (if it could), and what WordNet and ConceptNet know."""
-    import symbols as brain_symbols
+def look(path, name=None, learn=True, model=True):
+    """Look at a picture with the eye (eye.py), name it, and (learn=True) feed the neurons what was seen.
+    Never raises: anything that goes wrong is listed in "errors".
+    -> {"name", "sure" (0-1), "how" ("told" / "memory" / "model" / "unknown"), "symbols" [(symbol, facet,
+        weight)], "channels" {channel: ([(symbol, facet)], ms)}, "objects" [{...}], "text" (words read, or ""),
+        "errors" [], "contexts" [], "summary" (in words), "learned" [], "ms" (all), "decode ms"}"""
+    import eye
+    import symbols as brain
+    result = {"name": None, "sure": 0.0, "how": "unknown", "symbols": [], "channels": {}, "objects": [], "text": "",
+              "errors": [], "contexts": [], "summary": "", "learned": [], "ms": 0, "decode ms": 0, "path": path}
+    told = brain.clean(name) if name else None
+    try:
+        found = eye.see(path, name=told, model=model)
+    except CantSee as problem:
+        result["errors"].append(f"couldn't look at {path}: {problem}")
+        result["summary"] = result["errors"][-1]
+        return result
+    except Exception as problem:                       # an odd file must never stop brick
+        result["errors"].append(f"couldn't look at {path}: {type(problem).__name__}: {problem}")
+        result["summary"] = result["errors"][-1]
+        return result
     where = os.path.basename(path)
-    width, height, pixels, shown = read_image(path)
-    measures = measure(width, height, pixels)
-    measured, measures["wording"] = symbols(measures, where)
-    groups = [(f"seen in {where}", measured)]
-    model, note = model_sees(shown, name)
-    if model:
-        groups.append((f"seen by {(vision_model(installed_models()) or 'the vision model').split(':')[0]} in {where}",
-                       model))
-    return {"groups": groups, "width": width, "height": height, "measures": measures, "model note": note}
+    model_facets, model_note = found["model facets"], found["model note"]
+    if told and model:
+        try:
+            model_facets, model_note = model_sees(eye.model_image(found["picture"]), told)
+            model_facets = model_facets or {}
+        except Exception as problem:
+            result["errors"].append(f"the vision model: {type(problem).__name__}: {problem}")
+        found["channels"].append(("model", 0.0, model_note, model_facets))
+    result.update(name=found["name"], sure=1.0 if told else found["sure"],
+                  how={"given": "told", None: "unknown"}.get(found["how"], found["how"]),
+                  symbols=[(value, facet, round(min(1.0, strength / 2), 2))
+                           for facet, values in found["facets"].items() for value, strength in values],
+                  channels={channel: ([(value, facet) for facet, values in facets.items() for value, _ in values],
+                                      round(seconds * 1000)) for channel, seconds, _, facets in found["channels"]},
+                  objects=[{"name": t.name(), "shape": t.shape, "colour": t.colour, "position": t.position,
+                            "share": round(t.share, 3), "box": t.box} for t in found["things"]],
+                  text=" ".join(found["words"]), contexts=found["contexts"],
+                  ms=round(found["seconds"] * 1000), **{"decode ms": round(found["channels"][0][1] * 1000)})
+    if result["how"] == "model":
+        result["sure"] = 0.6
+    if learn:
+        try:
+            result["learned"] = teach(found, result["name"], result["how"], model_facets, where)
+        except Exception as problem:
+            result["errors"].append(f"learning from it: {type(problem).__name__}: {problem}")
+    if model_note and found["how"] == "given":
+        found["model note"] = model_note
+    result["summary"] = eye.summary(found)
+    return result
+
+
+def teach(found, name, how, model_facets, where):
+    """Feed the neurons what the eye saw -> [lines saying what was learned]."""
+    import symbols as brain
+    said = []
+    facets = found["facets"]
+    source = f"seen in {where}" if how == "told" else f"looked at {where}"
+    scale = 1.0 if how == "told" else 0.5          # a guess teaches half as much as being told
+    if found["words"]:
+        brain.experience(found["words"], f"written in {where}")          # its words, letters and contexts
+        said.append(f"read {len(found['words'])} words (their letters and contexts learned)")
+    main = [v for f in ("colour", "shape") for v, _ in facets.get(f, [])[:1]]
+    if not name:
+        if found["contexts"]:
+            brain.contextualise("", found["contexts"], source, appears=main)
+        return said
+    brain.learn(name, {f: [(v, round(s * scale, 2)) for v, s in values] for f, values in facets.items()}, source)
+    if model_facets:
+        model = (vision_model(installed_models()) or "the vision model").split(":")[0]
+        brain.learn(name, model_facets, f"seen by {model} in {where}")
+    neuron = brain.Neuron(name)
+    neuron.add("seen in", where, 0, "")
+    neuron.save()
+    measured = [(v, f) for f, values in facets.items() for v, _ in values]
+    brain.experience([(name, None)] + measured, source, centre=name, centre_learns=False, spelling=False)
+    if found["contexts"]:
+        brain.contextualise(name, found["contexts"], source, appears=main)
+    known = brain.fill(name)
+    said.append(f"the universe of {name} learned what was seen" + (f", and {len(known)} links from WordNet and "
+                                                               f"ConceptNet" if known else ""))
+    return said
 
 
 FRONT = {"show", "look", "at", "see", "teach", "learn", "this", "is", "it", "it's", "its", "that", "that's",
+         "identify", "recognise", "recognize", "name", "guess", "tell", "do", "think", "in", "there", "who",
          "thats", "here", "here's", "heres", "picture", "image", "photo", "pic", "of", "as", "a", "an", "the",
          "brick", "please", "called", "named", "means", "me", "you", "what", "what's", "whats", "shows", "showing",
          "file", "and", "to", "be", "are", "these", "those", "i", "my"}
@@ -474,6 +554,7 @@ FRONT = {"show", "look", "at", "see", "teach", "learn", "this", "is", "it", "it'
 
 def show_request(text):
     """'show apple.png as apple', 'this is an apple: apple.png', 'apple.png is an apple' -> (path, name);
+    'look at photo.jpg', 'what is this.png', 'look photo.jpg' -> (path, ''): the eye names it.
     None if there's no picture in it."""
     found = re.search(rf"\"([^\"]+)\"|'([^']+\.(?:{IMAGES}))'|(\S+\.(?:{IMAGES}))(?=[\s:,.;!?]|$)", text, re.I)
     if not found:
