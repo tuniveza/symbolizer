@@ -24,6 +24,9 @@
                               like 'hi in red'). brick brain: is it on, how much it knows; brick brain
                               like red: the words used most like red; brick brain links red: its links;
                               brick brain learn: learn from everything now; brick brain off / on
+  brick learn notes.txt       learn from anything: a file, a folder, pictures, or "some words" in quotes.
+                              brick learn watch ~/Pictures: learn from new files there by itself while
+                              brick runs; brick learn unwatch / watching
   brick show apple.png as apple
                               teach brick a symbol by showing it: brick measures the picture (shape, size,
                               colours, symmetry), asks the vision model what it sees, and adds what it
@@ -242,6 +245,9 @@ def main():
     if args[:1] == ["brain"]:
         import brain
         return brain.command(args[1:])
+    if args[:1] == ["learn"]:
+        import senses                                 # brick learn notes.txt / ~/Pictures / "some words"
+        return senses.command(args[1:])
     if args[:1] in (["universe"], ["universes"], ["sight"], ["show"], ["look"]) or \
             (args and not find_source(args[0]) and len(args) > 1):
         import symbols                                # brick show apple.png as apple, brick universe apple
