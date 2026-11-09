@@ -140,16 +140,53 @@ func TestNavigationKeys(t *testing.T) {
 	want(t, m, m.buf.Text(), Pos{0, 0})
 }
 
+// Alt+Shift+Left / Right dedent and indent the line, or the highlighted lines.
+func TestAltShiftIndent(t *testing.T) {
+	m := newTest(t, "one\ntwo\nthree")
+	m.buf.Indent = "\t"
+	m.buf.Cursor = Pos{1, 1}
+	press(m, "alt+shift+right")
+	want(t, m, "one\n\ttwo\nthree", Pos{1, 2})
+	press(m, "alt+shift+right")
+	want(t, m, "one\n\t\ttwo\nthree", Pos{1, 3})
+	press(m, "alt+shift+left")
+	want(t, m, "one\n\ttwo\nthree", Pos{1, 2})
+	press(m, "alt+shift+left")
+	press(m, "alt+shift+left") // nothing left to take off: stays
+	want(t, m, "one\ntwo\nthree", Pos{1, 1})
+	press(m, "ctrl+z")
+	want(t, m, "one\n\ttwo\nthree", Pos{1, 2})
+
+	// highlighted lines all move, and stay highlighted
+	m = newTest(t, "a\nb\nc")
+	m.buf.Indent = "  "
+	m.buf.Cursor = Pos{0, 0}
+	press(m, "shift+down")
+	press(m, "shift+down")
+	press(m, "alt+shift+right")
+	if got := m.buf.Text(); got != "  a\n  b\nc" && got != "  a\n  b\n  c" {
+		t.Fatalf("indented: %q", got)
+	}
+	if _, _, ok := m.buf.Selection(); !ok {
+		t.Fatal("the highlight was lost")
+	}
+	press(m, "alt+shift+left")
+	if got := m.buf.Text(); got != "a\nb\nc" {
+		t.Fatalf("dedented: %q", got)
+	}
+}
+
+// moveSideways has no key now, but still works.
 func TestAltArrowsMoveText(t *testing.T) {
 	m := newTest(t, "one two three\nfour\nfive")
 	m.buf.Cursor = Pos{0, 1} // in "one"
-	press(m, "alt+shift+right")
+	m.moveSideways(1)
 	want(t, m, "two one three\nfour\nfive", Pos{0, 5})
-	press(m, "alt+shift+right")
+	m.moveSideways(1)
 	want(t, m, "two three one\nfour\nfive", Pos{0, 11})
-	press(m, "alt+shift+right") // last on the line: stays
+	m.moveSideways(1) // last on the line: stays
 	want(t, m, "two three one\nfour\nfive", Pos{0, 11})
-	press(m, "alt+shift+left")
+	m.moveSideways(-1)
 	want(t, m, "two one three\nfour\nfive", Pos{0, 5})
 	press(m, "ctrl+z")
 	want(t, m, "two three one\nfour\nfive", Pos{0, 11})
@@ -159,19 +196,19 @@ func TestAltArrowsMoveText(t *testing.T) {
 	m.buf.Cursor = Pos{0, 1}
 	press(m, "ctrl+shift+right")
 	press(m, "ctrl+shift+right") // "bc" highlighted
-	press(m, "alt+shift+right")
+	m.moveSideways(1)
 	want(t, m, "adbcef", Pos{0, 4})
 	if got := m.buf.SelectedText(); got != "bc" {
 		t.Fatalf("still highlighted: %q", got)
 	}
-	press(m, "alt+shift+left")
-	press(m, "alt+shift+left")
+	m.moveSideways(-1)
+	m.moveSideways(-1)
 	want(t, m, "bcadef", Pos{0, 2})
 
 	// whole words: a name with _ moves as one, and so does an operator
 	m = newTest(t, "x = MAX_PARTS + 1")
 	m.buf.Cursor = Pos{0, 13} // just after MAX_PARTS
-	press(m, "alt+shift+left")
+	m.moveSideways(-1)
 	want(t, m, "x MAX_PARTS = + 1", Pos{0, 11})
 
 	// Alt + Up / Down still move the line
@@ -450,7 +487,7 @@ func TestMoveTextSideways(t *testing.T) {
 	m.buf.Cursor = Pos{0, 1}
 	m.buf.Anchor = &Pos{0, 1}
 	m.buf.Cursor = Pos{0, 2} // "b" highlighted
-	press(m, "alt+shift+right")
+	m.moveSideways(1)
 	want(t, m, "acbd", Pos{0, 3})
 	if m.buf.SelectedText() != "b" {
 		t.Fatalf("selection lost: %q", m.buf.SelectedText())
@@ -845,17 +882,17 @@ func TestOpenFolderAsTabs(t *testing.T) {
 	if !strings.Contains(m.msg, "Opened 5 files") || !strings.Contains(m.msg, "Skipped 2") {
 		t.Fatalf("message = %q", m.msg)
 	}
-	// Again on a file inside sub: its files are open already, so it shows them.
+	// Again on a file inside sub: one project at a time, so nothing opens.
 	press(m, "alt+o")
 	m.tree.reveal(filepath.Join(dir, "sub", "deep.txt"))
 	press(m, "ctrl+enter")
-	if len(m.tabs) != 5 || filepath.Base(m.buf.Path) != "deep.txt" {
-		t.Fatalf("second folder: %d tabs, showing %s", len(m.tabs), m.buf.Path)
+	if len(m.tabs) != 5 || !m.showTree || !strings.Contains(m.msg, "One at a time") {
+		t.Fatalf("second folder: %d tabs, tree %v, message %q", len(m.tabs), m.showTree, m.msg)
 	}
 	// A folder with nothing to open says so and leaves the tabs alone.
 	empty := filepath.Join(dir, "sub", "empty")
 	os.MkdirAll(empty, 0o755)
-	if m.openFolder(empty) || len(m.tabs) != 5 {
+	if m.openFolder(empty, pickText) || len(m.tabs) != 5 {
 		t.Fatal("an empty folder should open no tabs")
 	}
 }
@@ -894,7 +931,7 @@ func TestOpenFolderCodeFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.openFolder(dir)
+	m.openFolder(dir, pickText)
 	var names []string
 	for i := range m.tabs {
 		names = append(names, m.tabName(i))
@@ -943,7 +980,7 @@ func TestOpenFolderStopsAtLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !m.openFolder(dir) || len(m.tabs) != maxFolderTabs || !strings.Contains(m.msg, "Stopped at") {
+	if !m.openFolder(dir, pickText) || len(m.tabs) != maxFolderTabs || !strings.Contains(m.msg, "Stopped at") {
 		t.Fatalf("%d tabs, message %q", len(m.tabs), m.msg)
 	}
 }
@@ -1090,16 +1127,40 @@ func TestTabMode(t *testing.T) {
 	if m.tabMode || strings.ContainsAny(m.buf.Text(), "wasd") || m.showTree {
 		t.Fatalf("Alt tap: mode %v, text %q, file manager %v", m.tabMode, m.buf.Text(), m.showTree)
 	}
-	// Up / Down keep the file and move the cursor as usual.
+	// Up / Down move between rows (one row here: they stay); Down twice
+	// quickly keeps the file.
 	altTab()
 	press(m, "left")
 	at(1)
 	press(m, "right")
+	press(m, "up")
+	if !m.tabMode {
+		t.Fatal("Up should stay in tab mode")
+	}
 	press(m, "down")
-	if m.tabMode {
-		t.Fatal("Down did not leave tab mode")
+	if !m.tabMode {
+		t.Fatal("one Down should stay in tab mode")
+	}
+	m.tabDownAt = m.tabDownAt.Add(-time.Second) // a slow second Down is one Down again
+	press(m, "down")
+	if !m.tabMode {
+		t.Fatal("a slow second Down should stay in tab mode")
+	}
+	press(m, "down")
+	if m.tabMode || m.buf.Cursor.Row != 0 {
+		t.Fatalf("Down twice: mode %v, cursor row %d", m.tabMode, m.buf.Cursor.Row)
 	}
 	at(2)
+	// Enter twice chooses the tab and types no new line.
+	altTab()
+	press(m, "left")
+	press(m, "enter")
+	press(m, "enter")
+	if m.tabMode || strings.Contains(m.buf.Text(), "\n") {
+		t.Fatalf("Enter twice: mode %v, text %q (want no new line)", m.tabMode, m.buf.Text())
+	}
+	at(1)
+	m.switchTab(2)
 	// Alt held with another key is not a tap.
 	altTab()
 	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyLeftAlt}))
@@ -1579,8 +1640,8 @@ func TestAltGrDoubleTap(t *testing.T) {
 	}
 }
 
-// AltGr+C (¢ on a UK keyboard, or c with AltGr held in kitty) closes the file.
-func TestAltGrCCloses(t *testing.T) {
+// Alt+C closes the file. AltGr+C no longer does: it types ¢.
+func TestAltCCloses(t *testing.T) {
 	dir := t.TempDir()
 	a, b := filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")
 	os.WriteFile(a, []byte("a\n"), 0o644)
@@ -1588,20 +1649,16 @@ func TestAltGrCCloses(t *testing.T) {
 	m, _ := NewModel(a, 0)
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m.openPath(b)
+	press(m, "alt+c")
+	if len(m.tabs) != 1 || m.buf.Path != a {
+		t.Fatalf("Alt+C: %d tabs, on %s", len(m.tabs), m.buf.Path)
+	}
+	m.openPath(b)
 	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyIsoLevel3Shift}))
 	m.Update(tea.KeyPressMsg(tea.Key{Code: 'c', Text: "¢"}))
 	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyIsoLevel3Shift}))
-	if len(m.tabs) != 1 || m.buf.Path != a {
-		t.Fatalf("AltGr+C: %d tabs, on %s", len(m.tabs), m.buf.Path)
-	}
-	m.openPath(b)
-	m.Update(tea.KeyPressMsg(tea.Key{Code: 'c', Text: "¢"})) // ¢ typed, no AltGr seen
-	if len(m.tabs) != 1 {
-		t.Fatalf("¢: %d tabs", len(m.tabs))
-	}
-	press(m, "alt+c")
-	if len(m.tabs) != 1 || m.buf.Text() != "a" {
-		t.Fatalf("Alt+C should no longer close: %d tabs, text %q", len(m.tabs), m.buf.Text())
+	if len(m.tabs) != 2 || !strings.Contains(m.buf.Text(), "¢") {
+		t.Fatalf("AltGr+C should type ¢, not close: %d tabs, text %q", len(m.tabs), m.buf.Text())
 	}
 }
 

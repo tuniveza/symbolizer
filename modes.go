@@ -21,7 +21,7 @@ type mode struct {
 
 var modes = []mode{
 	{"", "✎", "Text", "write and edit files: colours, tabs, the file manager", true},
-	{"\U000f03d8", "◧", "Design", "draw with the terminal as the canvas: a palette of colours and characters, and resources to reuse", false},
+	{"\U000f03d8", "◧", "Design", "a board made of text: octagon structures you drag, resize and link, a highlighter pen, zoom", true},
 	{"\U000f0428", "▤", "Slides", "make and show slides made of text, one screen at a time", false},
 	{"\uf02d", "▣", "Diary", "a diary: writing kept by date, a chapter a day, one page in focus", true},
 	{"\U000f05da", "▥", "Book", "write books: chapters, pages and so on", false},
@@ -136,6 +136,11 @@ func (m *Model) setMode(i int) tea.Cmd {
 	m.mode = i
 	if i == diaryMode {
 		m.enterDiary()
+	}
+	if i == designMode {
+		m.ds()
+		m.say(modes[i].Icon() + "  Design mode. Double-click the board to place a structure.")
+		return nil
 	}
 	md := modes[i]
 	if md.ready {

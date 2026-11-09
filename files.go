@@ -19,6 +19,10 @@ import (
 // save is Ctrl+S.
 func (m *Model) save() tea.Cmd {
 	b := m.buf
+	if b.Binary {
+		m.say(filepath.Base(b.Path) + " is not text, so Symbolizer never saves it.")
+		return nil
+	}
 	if b.Draft {
 		return m.askName()
 	}
@@ -161,11 +165,15 @@ func (m *Model) openPath(path string) tea.Cmd {
 		nb.Path = path
 		m.say("New file " + filepath.Base(path) + ". It saves by itself as you type.")
 	}
+	if fileExists(path) && !looksText(path) {
+		nb.Binary = true // its bytes would change if saved as text
+		m.say(fmt.Sprintf("Opened %s. It is not text, so Symbolizer never saves it.", filepath.Base(path)))
+	}
 	nb.Draft = isSession(path)
 	m.saveNow()
 	if m.blankDraft() {
 		m.buf = nb
-		m.top, m.left, m.savePaused, m.saveErr = 0, 0, false, ""
+		m.top, m.topSub, m.left, m.savePaused, m.saveErr = 0, 0, 0, false, ""
 		m.resetHighlighter()
 		m.storeTab()
 		return nil
@@ -179,11 +187,40 @@ func (m *Model) openPath(path string) tea.Cmd {
 const maxFolderTabs = 50
 const folderScan = 2000
 
-// openFolder opens the text files in dir and its subfolders as tabs, the
-// most code-like kinds first (codeRank). Within a kind, each folder's own
-// files come first, then its subfolders, A to Z. It shows the first one and
-// says whether any opened.
-func (m *Model) openFolder(dir string) bool {
+// filePick says which files a folder opens as tabs.
+type filePick int
+
+const (
+	pickText  filePick = iota // text files (Shift+Enter, sy -t)
+	pickAll                   // every file (Right in the file manager)
+	pickWords                 // text with something in it, and no media (Shift+Right)
+)
+
+// mediaEndings are kinds of media that are written as text: pictures,
+// subtitles and playlists. Shift+Right leaves them out.
+var mediaEndings = map[string]bool{"svg": true, "xpm": true, "pbm": true, "pgm": true, "ppm": true,
+	"srt": true, "vtt": true, "ass": true, "ssa": true, "lrc": true, "m3u": true, "m3u8": true, "pls": true}
+
+// picked says whether a file of this size belongs in pick. Files over
+// 8 MB are always left out: they would be too slow to open.
+func picked(path string, size int64, pick filePick) bool {
+	switch {
+	case size > 8<<20:
+		return false
+	case pick == pickAll:
+		return true
+	case pick == pickWords:
+		ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
+		return size > 0 && !mediaEndings[ext] && textFile(path, size) && !blankFile(path)
+	}
+	return textFile(path, size)
+}
+
+// openFolder opens the files in dir and its subfolders that pick chooses
+// as tabs, the most code-like kinds first (codeRank). Within a kind, each
+// folder's own files come first, then its subfolders, A to Z. It shows the
+// first one and says whether any opened.
+func (m *Model) openFolder(dir string, pick filePick) bool {
 	hidden := m.tree != nil && m.tree.showHidden
 	var paths []string
 	skipped, full := 0, false
@@ -211,7 +248,7 @@ func (m *Model) openFolder(dir string) bool {
 				if !skipDirs[name] && e.Type()&fs.ModeSymlink == 0 {
 					subs = append(subs, p)
 				}
-			case !textFile(p, info.Size()):
+			case !picked(p, info.Size(), pick):
 				skipped++
 			case len(paths) == folderScan:
 				full = true
@@ -232,8 +269,10 @@ func (m *Model) openFolder(dir string) bool {
 		m.sayErr("Could not read the folder: " + err.Error())
 		return false
 	}
+	what := map[filePick]string{pickText: "text files", pickAll: "files under 8 MB",
+		pickWords: "text files with something in them"}[pick]
 	if len(paths) == 0 {
-		m.say("No text files in " + shortPath(dir) + ", so no tabs were opened.")
+		m.say("No " + what + " in " + shortPath(dir) + ", so no tabs were opened.")
 		return false
 	}
 	sort.SliceStable(paths, func(i, j int) bool {
@@ -254,7 +293,9 @@ func (m *Model) openFolder(dir string) bool {
 		msg += fmt.Sprintf(" Stopped at %d, the most at once (code first).", maxFolderTabs)
 	}
 	if skipped > 0 {
-		msg += fmt.Sprintf(" Skipped %d that are not text or too big.", skipped)
+		why := map[filePick]string{pickText: "not text or too big", pickAll: "too big",
+			pickWords: "media, empty, not text or too big"}[pick]
+		msg += fmt.Sprintf(" Skipped %d that are %s.", skipped, why)
 	}
 	m.say(msg)
 	return true
@@ -340,9 +381,24 @@ func codeRank(name string) int {
 // textFile says whether a file looks like text worth a tab: not too big,
 // and its start has no zero bytes and is UTF-8.
 func textFile(path string, size int64) bool {
-	if size > 8<<20 {
+	return size <= 8<<20 && looksText(path)
+}
+
+// blankFile says whether a file holds nothing but spaces and new lines
+// (only its first 8 KB is looked at).
+func blankFile(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
 		return false
 	}
+	defer f.Close()
+	head := make([]byte, 8192)
+	n, _ := f.Read(head)
+	return n < len(head) && len(bytes.TrimSpace(head[:n])) == 0
+}
+
+// looksText says whether the start of a file has no zero bytes and is UTF-8.
+func looksText(path string) bool {
 	f, err := os.Open(path)
 	if err != nil {
 		return false
@@ -386,7 +442,7 @@ func (m *Model) reload() tea.Cmd {
 		cur, top := m.buf.Cursor, m.top
 		m.buf = nb
 		m.resetHighlighter()
-		m.buf.Cursor, m.top = nb.Clamp(cur), min(top, len(nb.Lines)-1)
+		m.buf.Cursor, m.top, m.topSub = nb.Clamp(cur), min(top, len(nb.Lines)-1), 0
 		m.saveErr = ""
 		m.storeTab()
 		m.say("Loaded " + filepath.Base(path) + " from disk.")

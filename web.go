@@ -199,7 +199,7 @@ func sentence(s string) string {
 // abbreviation before the cursor, else indent.
 func (m *Model) tabKey() {
 	if _, _, sel := m.buf.Selection(); !sel {
-		if m.nextStop() || m.expand(false) {
+		if m.takeUnitHint() || m.nextStop() || m.expand(false) {
 			return
 		}
 	}
@@ -247,8 +247,11 @@ func (m *Model) expand(force bool) bool {
 		}
 		start, exp = s, e
 	}
-	from := Pos{row, start}
-	m.putExpansion(from, b.Cursor, exp)
+	from, to := Pos{row, start}, b.Cursor
+	if strings.HasSuffix(exp.Text, ";") && col < len(line) && line[col] == ';' {
+		to.Col++ // color:|; expanded: one ; not two
+	}
+	m.putExpansion(from, to, exp)
 	if exp.Note != "" {
 		m.say(sentence(exp.Note))
 	}
@@ -762,6 +765,9 @@ func (m *Model) afterTyped(s string) {
 			b.Cursor = end
 		}
 	case (s == ";" || s == ":") && emmet.IsStylesheet(syn):
+		if s == ":" {
+			m.cssColon() // color:|; (pairs.go), joined to the typing so Ctrl+Z takes back just the fix
+		}
 		m.correctCSS()
 	case s == "\"" || s == "'" || s == ")" || s == "`":
 		m.correctPath()
@@ -857,10 +863,10 @@ func (m *Model) beforeNewline() {
 	m.correctPath()
 }
 
-// splitPair handles Enter between <div>|</div> or {|}: the inside gets its own line.
+// splitPair handles Enter between <div>|</div>, {|}, (|) or [|]: the inside gets its own line.
 func (m *Model) splitPair() bool {
 	syn := m.webSyntax()
-	if syn == "" {
+	if syn == "" && !m.pairsOn() {
 		return false
 	}
 	if _, _, sel := m.buf.Selection(); sel {
@@ -873,7 +879,12 @@ func (m *Model) splitPair() bool {
 	before, after := string(l[:col]), string(l[col:])
 	tag := emmet.IsMarkup(syn) && strings.HasSuffix(before, ">") && strings.HasPrefix(after, "</") &&
 		!strings.HasSuffix(before, "/>") && !strings.HasSuffix(before, "-->")
-	brace := strings.HasSuffix(strings.TrimRight(before, " "), "{") && strings.HasPrefix(after, "}")
+	brace := false
+	if t := strings.TrimRight(before, " "); t != "" {
+		if c, ok := closerOf[[]rune(t[len(t)-1:])[0]]; ok && !isQuote(c) {
+			brace = strings.HasPrefix(after, string(c))
+		}
+	}
 	if !tag && !brace {
 		return false
 	}

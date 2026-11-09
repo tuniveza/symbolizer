@@ -19,7 +19,7 @@ var helpGroups = []helpGroup{
 		{"Home / Alt + B", "start of the line"},
 		{"End", "end of the line"},
 		{"Alt + Left / Right", "start / end of the line"},
-		{"Left / Right", "one step: a word, part of a name (MAX _ PARTS), part of a number (1 234 567, 3 . 14), bracket, operator"},
+		{"Left / Right", "one step: a word, part of a name (MAX _ PARTS), one digit of a number (1 0, 3 . 1 4), bracket, operator"},
 		{"Up / Down", "up or down one line"},
 		{"Alt + Up / Down", "up / down a block: a paragraph, heading, list, element, function or if / for (follows the language). On a line that opens { ( [ or a tag, Down goes to its closing line; Up goes back"},
 		{"Ctrl + arrows", "one character, or a whole number (Up / Down: one line)"},
@@ -30,7 +30,7 @@ var helpGroups = []helpGroup{
 		{"Alt + S / Alt + E", "start / end of the file (also Ctrl + Home / End)"},
 	}},
 	{"Moving text", false, []helpLine{
-		{"Alt + Shift + Left / Right", "move the highlighted text, or else the word at the cursor"},
+		{"Alt + Shift + Left / Right", "indent the line (or the highlighted lines) left / right"},
 		{"Alt + Shift + Up / Down", "move the highlighted text up or down a line (whole lines, or nothing highlighted: the line)"},
 	}},
 	{"Key mode (status bar)", false, []helpLine{
@@ -72,8 +72,12 @@ var helpGroups = []helpGroup{
 		{"sy FOLDER", "open a folder as a project"},
 		{"AltGr + P  or Alt + P", "make the chosen folder the project"},
 		{"type letters", "find a file anywhere in the project"},
-		{"Enter / Right", "open a file, or open / close a folder"},
-		{"Shift + Enter", "open every text file in this folder and its folders as tabs, code first"},
+		{"Enter", "open a file, or open / close a folder"},
+		{"Right", "open a file. On a folder: Right once opens it here, Right twice opens it as a project (its files as tabs)"},
+		{"  Left straight after", "  undo it: its tabs close and you are back where you were"},
+		{"  Left twice on its folder", "  close the project. One project is open at a time"},
+		{"Shift + Right", "the same, but only text with something in it: no pictures, sound, video or empty files"},
+		{"Shift + Enter", "open every text file in this folder and its folders as a project, code first"},
 		{"sy -t FOLDER", "the same from the terminal (sy -t alone: this folder)"},
 		{"Left", "close a folder (on the top row: go up a folder)"},
 		{"Ctrl + N / F7", "new file / new folder here"},
@@ -87,16 +91,68 @@ var helpGroups = []helpGroup{
 	{"Centred lines", false, []helpLine{
 		{"(prose)", "plain text and Markdown lines sit in the middle, like a page"},
 		{"Alt + J", "centre the lines of this file, or put them back on the left"},
+		{"Alt + Z", "word wrap on / off: long lines carry on in the rows under them (on to start with; remembered)"},
+	}},
+	{"Learn", false, []helpLine{
+		{"AltGr + L  (ł)", "the recommended way to write this file's language, open at what the cursor is on (16px → px)"},
+		{"  Up / Down · Left / Right", "  the line before / after · the section before / after"},
+		{"  Tab · Esc", "  another language · close"},
 	}},
 	{"Colours", false, []helpLine{
 		{"µ  (Right Alt + M) or Alt + T", "colour themes: Emberistal, Emberline, Molten, Ash, Cinder, Daybreak"},
 		{"ŧ  (Right Alt + T)", "sy term: show or hide a real kitty terminal under the editor (it keeps running while hidden)"},
+		{"Alt + Tab", "in Design mode and in sy term: the other split (the editor ↔ sy term; kitty does it). In the other modes: tab switch mode"},
+		{"Alt + R, then arrows", "resize mode: each arrow moves the line between the panes that way (Up: up …); any other key leaves (kitty does it; not in Text mode, where Alt + R is Emmet's remove tag)"},
 		{"", "  moving shows it · Enter keeps it · Esc puts it back"},
 	}},
 	{"Modes", false, []helpLine{
-		{"Alt + M", "switch modes: Text, Design, Slides, Diary, Book, Draw (Design, Slides, Book, Draw are empty for now)"},
+		{"Alt + M", "switch modes: Text, Design, Slides, Diary, Book, Draw (Slides, Book, Draw are empty for now)"},
 		{"sy design / slide / diary", "start in that mode (zsh: de, sli, syd or di)"},
 		{"sy book / draw", "start in Book or Draw mode (zsh: bo, dr)"},
+	}},
+	{"Design mode", false, []helpLine{
+		{"(the board)", "kept in ~/.local/share/symbolizer/design/ (board.json, a file per structure in parts/, the ink in marks.json)"},
+		{"Double-click the board", "a new octagon structure (or what the toolbar's new chooses): type the header"},
+		{"  Tab · Enter · an arrow", "  header → text → footer · next part (a new line in the text) · done (no Esc needed)"},
+		{"Drag · its ◢ corner", "move a structure · resize it (double-click one to write in it)"},
+		{"Middle-drag · wheel", "move the board (left-drag on empty board too) · zoom in and out, toward the pointer"},
+		{"⛓ link on the toolbar", "link mode: click a structure, then each one to attach (click again to detach)"},
+		{"Arrows", "jump the view to the closest structure that way and choose it (held: on to the next one); nothing that way: a step"},
+		{"E", "write in the chosen structure's text (a cabinet: its name)"},
+		{"AltGr + M  (µ)", "the mini map: every structure in its own outline and colour with its symbol and title, links as dotted lines, a frame for the screen; again: the next corner, then hidden"},
+		{"Alt tapped twice", "Esc: stop writing, leave link mode, put the pen down, or let go of the chosen structure"},
+		{"Space held + arrows", "move the view freely, a step at a time (held: it glides); let go of Space and the view snaps to the structure nearest the middle"},
+		{"Shift + arrows", "move the view freely (held: it glides on at once, no pause); the structure nearest the middle is chosen as you go"},
+		{"Two arrows held (Up + Right …)", "move the view diagonally (with Alt: the chosen structure)"},
+		{"Alt + arrows (Alt + Shift)", "move the chosen structure (further); near the closest one it snaps a small gap away from it and stops there"},
+		{"Tab · Shift + Tab", "switch areas: write in the chosen structure's header, then its text, then its footer (back), and the view moves to it; on a cabinet: the next stack"},
+		{"+ · − · 0", "zoom in · out · back to 100%, around the chosen structure (it stays in the middle); the keypad's + and − too"},
+		{"1–8", "highlighter pen colours (press the same one again to put it down)"},
+		{"  ⌫ · over/under on the toolbar", "  rubber · pen under the text or over it; right-drag rubs out too"},
+		{"Alt + N, then P · N · S", "place a new page · note · shape in the middle of the screen"},
+		{"Alt + N, then C · D · R", "place a container: cabinet (strictly organised) · drawer (anything, any order) · rack (a stack: click a row to open it inside the rack)"},
+		{"Alt + L", "label mode (again, Esc or Alt tapped twice: off). On the chosen structure:"},
+		{"  L · C · I", "  label: icon + title → title + icon → icon → title → none · its colour · its icon (symbols, then pictures in design/images)"},
+		{"  T · G", "  the label's own words · its name plate: all with the same name are a group"},
+		{"Shift + G", "group mode: click structures (or drag a box round them) to pick them, G picks the chosen one; Enter names them all with one name plate"},
+		{"AltGr + P  (þ)", "the list of name plates and what has each"},
+		{"X X  (X twice, quickly)", "delete what is chosen: a structure or a link (✕ on it does the same)"},
+		{"Ctrl+Z · Ctrl+Y (or Ctrl+Shift+Z)", "undo · redo any change: a move, words, a deletion, ink (also ↶ ↷ on the toolbar)"},
+		{"Click a link", "choose the link (X X deletes it)"},
+		{"✕ on a container's row", "delete that thing"},
+		{"✕ on a picture", "take the picture out of its shape (the structure stays)"},
+		{"  ◆ ≡ ✎ ≣ on the toolbar", "  what a double-click on the empty board places"},
+		{"img on the toolbar", "a picture (any format) for the chosen shape, or a text file for the chosen page; type its path"},
+		{"Drag files onto the board", "in kitty: each goes where you let go (into what is under it, or a new structure there)"},
+		{"AltGr + L  (ł) · [¶] on the top edge", "the chosen shape's next layout: text · picture above · left · right · picture only · two columns"},
+		{"Cabinet: click a stack", "pull out Pages, Books, Slides, Notes or Drawings; drag a thing out onto the board"},
+		{"  Drop a page or note", "  on a cabinet: it is filed in its stack"},
+		{"Drawer · rack", "drop anything on it (a page, note or shape); drag a row out to take it out"},
+		{"  Rack: click a row", "  opens it in the middle of the view; Alt tapped twice (or a click on the board) puts it back"},
+		{"  ⇣ rows in Pages", "  bring in the Diary's pages, or the files open in Text mode"},
+		{"Wheel on a page", "scroll it (Shift + wheel)"},
+		{"(height)", "no structure is drawn taller than the screen, at any zoom: its text scrolls, its picture shrinks to fit"},
+		{"(text)", "all text in Design mode is centred: on the board, and the bars above and below it"},
 	}},
 	{"Diary mode", false, []helpLine{
 		{"(chapters)", "a chapter a day; its pages in ~/.local/share/symbolizer/diary"},
@@ -108,17 +164,27 @@ var helpGroups = []helpGroup{
 	}},
 	{"Open files (tabs)", false, []helpLine{
 		{"Alt + N", "new file in a new tab"},
-		{"AltGr + C", "close this file (it is already saved)"},
+		{"Alt + C", "close this file (it is already saved)"},
 		{"Alt + Tab", "tab mode: the tabs open out into rows"},
 		{"  Left / Right or A / D", "  the file before / after"},
-		{"  W / S", "  the file in the row above / below"},
-		{"  Up / Down", "  keep this file and move the cursor"},
-		{"  Enter or Alt / Esc", "  keep this file (Alt: tap it on its own) / go back to where you were"},
+		{"  Up / Down or W / S", "  the file in the row above / below"},
+		{"  Enter, Down twice or Alt", "  keep this file (Enter twice works too; Alt: tap it on its own)"},
+		{"  Esc", "  go back to where you were"},
 		{"Tab", "a real Tab: indent the line or the highlighted lines (web files: Tab expands Emmet first)"},
 		{"Shift + Tab", "un-indent (Shift + Alt + Tab does too)"},
 		{"Alt + 1 … 9", "go to open file 1 … 9"},
 		{"Ctrl + PgUp / PgDn", "previous / next open file"},
 		{"Click a tab", "go to that file"},
+	}},
+	{"Brackets and suggestions (code files)", false, []helpLine{
+		{"Typing ( [ { \" ' `", "the closer appears after the cursor; with text highlighted: wraps it"},
+		{"Typing ) ] } \" ' `", "in front of the same closer: steps over it"},
+		{"Backspace in ( )", "deletes both halves of an empty pair"},
+		{"Enter in ( ) [ ] { }", "the inside gets its own line"},
+		{"Typing a word", "a list shows ways to finish it: CSS properties and values, HTML tags, words in the file"},
+		{"  Tab / Up, Down / Esc", "  take the chosen one / choose / close the list"},
+		{"Typing : (CSS)", "after a property, the ; appears after the cursor; typing ; steps over it"},
+		{"Dim shadow (CSS)", "the recommended unit: font-size: 1 shows rem; Tab takes it; the message says why"},
 	}},
 	{"Web files: Emmet and auto-correct (HTML, CSS, JSX, XML)", false, []helpLine{
 		{"Tab", "expand the abbreviation before the cursor (ul>li*3, m10, d:f); Tab again: the next empty place"},
@@ -142,8 +208,8 @@ var helpGroups = []helpGroup{
 		{"Closing a path's quote", "a path to no file is fixed to the file it meant (Ctrl + Z puts it back)"},
 		{"Enter between <p></p>", "the inside gets its own line (the same for { })"},
 	}},
-	{"Moving text sideways", true, []helpLine{
-		{"Alt + Shift + Left / Right", "move the highlighted text (or one letter) sideways"},
+	{"Indent", true, []helpLine{
+		{"Alt + Shift + Left / Right", "dedent / indent the line (or the highlighted lines)"},
 	}},
 	{"Editing", true, []helpLine{
 		{"Ctrl + Z / Ctrl + Y", "undo / redo"},
@@ -171,9 +237,13 @@ var helpGroups = []helpGroup{
 	}},
 }
 
+// helpIntro is how many lines come before the first group (helpText).
+const helpIntro = 4
+
 func (m *Model) helpText() []string {
 	var out []string
 	out = append(out, glowText("◆ Symbolizer", cBG)+stHelpText.Render("  ·  keys"))
+	out = append(out, stHelpText.Render("F1 or AltGr + K opens this page; AltGr + K opens it at the keys of the mode you are in."))
 	out = append(out, stHelpNew.Render("Groups marked  ✦ try me  were added by Claude. Keep the ones you like."))
 	out = append(out, "")
 	for _, g := range helpGroups {
@@ -189,8 +259,34 @@ func (m *Model) helpText() []string {
 		}
 		out = append(out, "")
 	}
-	out = append(out, stHelpNew.Render("Esc, F1 or Q closes this page.  Up / Down scrolls."))
+	out = append(out, stHelpNew.Render("Esc, F1, AltGr + K or Q closes this page.  Up / Down scrolls."))
 	return out
+}
+
+// helpLineOf is the line of helpText where the group called title starts, or 0.
+func helpLineOf(title string) int {
+	n := helpIntro
+	for _, g := range helpGroups {
+		if g.title == title {
+			return n
+		}
+		n += 1 + len(g.lines) + 1
+	}
+	return 0
+}
+
+// openKeys opens the keys page at the keys of the mode in use (AltGr + K),
+// or closes it when it is open.
+func (m *Model) openKeys() tea.Cmd {
+	if m.help {
+		m.help = false
+		return nil
+	}
+	m.help, m.helpTop = true, 0
+	if m.mode > 0 && m.mode < len(modes) {
+		m.helpTop = helpLineOf(modes[m.mode].name + " mode")
+	}
+	return nil
 }
 
 func (m *Model) drawHelp(sb *strings.Builder) {

@@ -43,6 +43,19 @@ func (m *Model) View() tea.View {
 		sb.WriteString(paintRow(m.statusBar(), m.height-2, m.width))
 		sb.WriteByte('\n')
 		sb.WriteString(m.bottomLine())
+	case m.inDesign():
+		sb.WriteString(paintRow(m.topPanel(), 0, m.width))
+		sb.WriteByte('\n')
+		sb.WriteString(paintRow(m.tabBar(), 1, m.width))
+		sb.WriteByte('\n')
+		sb.WriteString(paintRow(m.designTopBar(), textTop, m.width))
+		sb.WriteByte('\n')
+		m.designRows(&sb) // design.go
+		sb.WriteString(paintRow(m.designToolbar(), m.height-3, m.width))
+		sb.WriteByte('\n')
+		sb.WriteString(paintRow(m.designStatus(), m.height-2, m.width))
+		sb.WriteByte('\n')
+		sb.WriteString(m.bottomLine())
 	case !modes[m.mode].ready:
 		sb.WriteString(paintRow(m.topPanel(), 0, m.width))
 		sb.WriteByte('\n')
@@ -85,6 +98,12 @@ func (m *Model) View() tea.View {
 	if m.themeOpen {
 		content = m.overlay(content, m.themesBox())
 	}
+	if m.learn != nil {
+		content = m.overlay(content, m.learnBox()) // learn.go
+	}
+	if !m.help && m.picker == nil && !m.modesOpen && !m.themeOpen && m.learn == nil && !m.tabMode && !m.diaryViewer() && !m.inDesign() && !(m.treeFocus && m.showTree) {
+		content = m.overlaySuggest(content) // suggest.go
+	}
 	content = m.overlayPlate(content)
 	v := tea.NewView(content)
 	v.AltScreen = true
@@ -98,7 +117,7 @@ func (m *Model) View() tea.View {
 	v.ForegroundColor = hex(cText)
 	name := m.tabName(m.cur) + " — Symbolizer"
 	v.WindowTitle = name
-	if !m.help && m.picker == nil && !m.modesOpen && !m.themeOpen && !m.tabMode && modes[m.mode].ready && !m.diaryViewer() && !(m.treeFocus && m.showTree && m.prompt == pNone) {
+	if !m.help && m.picker == nil && !m.modesOpen && !m.themeOpen && m.learn == nil && !m.tabMode && modes[m.mode].ready && !m.diaryViewer() && !m.inDesign() && !(m.treeFocus && m.showTree && m.prompt == pNone) {
 		v.Cursor = m.cursor()
 	}
 	return v
@@ -117,10 +136,21 @@ func (m *Model) cursor() *tea.Cursor {
 		return c
 	}
 	b := m.buf
-	y := b.Cursor.Row - m.top + textTop
+	cur := m.rowAt(b.Cursor.Row, b.Cursor.Col)
+	y := -1
+	for i, v := range m.screenRows() {
+		if v == cur {
+			y = i + textTop
+			break
+		}
+	}
 	left, _, _ := m.zone()
 	start := m.treeWidth() + left + m.gutterWidth()
-	x := colToX(m.line(b.Cursor.Row), b.Cursor.Col) - m.left + start + m.lineOffset(b.Cursor.Row)
+	lr := m.rowsOf(cur.r)
+	x := colToX(m.line(b.Cursor.Row), b.Cursor.Col) - lr.x[cur.k] - m.left + start + m.rowOffset(cur.r, cur.k)
+	if m.wrap {
+		x = min(x, start+m.textWidth()-1) // on spaces hanging past the edge
+	}
 	if y < textTop || y >= textTop+m.textHeight() || x < start || x >= start+m.textWidth() {
 		return nil
 	}
@@ -153,6 +183,9 @@ func (m *Model) statusBar() string {
 	case m.saveErr != "":
 		state = lipgloss.NewStyle().Background(hex(cStatusBG)).Foreground(hex(cError)).Bold(true).Render("  ✗ not saved")
 		short = state
+	case b.Binary:
+		state = lipgloss.NewStyle().Background(hex(cStatusBG)).Foreground(hex(cWarning)).Bold(true).Render("  ⊘ not text · never saved")
+		short = state
 	case m.savePaused:
 		state = lipgloss.NewStyle().Background(hex(cStatusBG)).Foreground(hex(cWarning)).Bold(true).Render("  ⏸ saving paused")
 		short = state
@@ -176,16 +209,22 @@ func (m *Model) statusBar() string {
 	parts = append(parts, m.hl.Name)
 	parts = append(parts, fmt.Sprintf("Ln %d, Col %d", b.Cursor.Row+1, b.Cursor.Col+1))
 	parts = append(parts, fmt.Sprintf("%d lines", len(b.Lines)))
-	// On a narrow window, shorten in this order: the saving words, the line
-	// count, the language, the key mode word (its mark stays). The cursor
-	// position always stays.
+	// On a narrow window, shorten in this order: the saving words, the build
+	// number (first its time, then all of it), the line count, the language, the key mode word (its mark
+	// stays). The cursor position always stays.
 	full, small := m.keyModeSign(false), m.keyModeSign(true)
+	withBuild, shortBuild := parts, parts
+	if buildNumber != "" {
+		withBuild = append(parts[:len(parts):len(parts)], buildNumber)
+		// Short: just the commit, without the time it was built.
+		shortBuild = append(parts[:len(parts):len(parts)], strings.Join(strings.Fields(buildNumber)[:2], " "))
+	}
 	tries := []struct {
 		state string
 		sign  string
 		parts []string
 	}{
-		{state, full, parts}, {short, full, parts}, {short, full, parts[:len(parts)-1]},
+		{state, full, withBuild}, {short, full, withBuild}, {short, full, shortBuild}, {short, full, parts}, {short, full, parts[:len(parts)-1]},
 		{short, full, parts[len(parts)-2 : len(parts)-1]}, {short, small, parts[len(parts)-2 : len(parts)-1]},
 	}
 	for _, t := range tries {
@@ -209,8 +248,14 @@ func (m *Model) bottomLine() string {
 		if m.msgErr {
 			st = stError
 		}
+		if m.inDesign() { // Design mode centres all its text
+			return centreBar(st.Render(m.msg), m.width, stMessage)
+		}
 		return fit(st.Render(" "+m.msg), m.width, stMessage)
 	case pConfirm:
+		if m.inDesign() {
+			return centreBar(stPrompt.Render(m.confirmText), m.width, stMessage)
+		}
 		return fit(stPrompt.Render(" "+m.confirmText), m.width, stMessage)
 	case pReplaceAsk:
 		return fit(stPrompt.Render(" Replace this one?  y = yes   n = skip   a = all   Esc = stop"),
@@ -236,7 +281,6 @@ type cell struct {
 
 func (m *Model) drawText(sb *strings.Builder) {
 	b := m.buf
-	h := m.textHeight()
 	gw := m.gutterWidth()
 	fullTW := m.textWidth()
 	selS, selE, hasSel := b.Selection()
@@ -249,9 +293,9 @@ func (m *Model) drawText(sb *strings.Builder) {
 	numFmt := fmt.Sprintf(" %%%dd ", gw-2)
 	blankGutter := strings.Repeat(" ", gw)
 
-	for y := 0; y < h; y++ {
+	for _, v := range m.screenRows() {
 		tw := fullTW
-		r := m.top + y
+		r := v.r
 		if r >= len(b.Lines) {
 			sb.WriteString(sgr(cGutterLine, cBG, false, false, false))
 			sb.WriteString(blankGutter)
@@ -261,6 +305,9 @@ func (m *Model) drawText(sb *strings.Builder) {
 			continue
 		}
 		line := b.Lines[r]
+		lr := m.rowsOf(r)
+		from, to, baseX := lr.start[v.k], m.rowEnd(lr, r, v.k), lr.x[v.k]
+		lastRow := v.k == len(lr.start)-1
 		isCur := r == b.Cursor.Row
 		rowBG := cBG
 		if isCur && !hasSel {
@@ -272,8 +319,12 @@ func (m *Model) drawText(sb *strings.Builder) {
 		} else {
 			sb.WriteString(sgr(cLineNumber, cBG, false, false, false))
 		}
-		sb.WriteString(fmt.Sprintf(numFmt, r+1))
-		if off := m.lineOffset(r); off > 0 { // a centred line: space in front of it
+		if v.k == 0 {
+			sb.WriteString(fmt.Sprintf(numFmt, r+1))
+		} else {
+			sb.WriteString(blankGutter) // a wrapped line carrying on
+		}
+		if off := m.rowOffset(r, v.k); off > 0 { // centred, or a wrapped row: space in front of it
 			sb.WriteString(sgr(cText, rowBG, false, false, false))
 			sb.WriteString(strings.Repeat(" ", off))
 			tw -= off
@@ -293,12 +344,35 @@ func (m *Model) drawText(sb *strings.Builder) {
 		si, mi := 0, 0
 		x := 0
 		last := ""
-		for c := 0; c <= len(line) && x < m.left+tw; c++ {
-			if c == len(line) {
-				break
+		// the dim unit hint, drawn inside the line at its column (ghost.go)
+		ghostCol, ghost := -1, ""
+		if isCur {
+			if h, ok := m.showHint(); ok && h.Ghost != "" && h.End >= from && (h.End < to || h.End == to && lastRow) {
+				ghostCol, ghost = h.End, h.Ghost
+			}
+		}
+		putGhost := func() {
+			if x < m.left {
+				return
+			}
+			g := []rune(ghost)
+			if room := m.left + tw - x; len(g) > room {
+				g = g[:max(room, 0)]
+			}
+			sb.WriteString(sgr(cDim, rowBG, false, true, false))
+			sb.WriteString(string(g))
+			last = ""
+			x += len(g)
+		}
+		for c := from; c < to && x < m.left+tw; c++ {
+			if c == ghostCol {
+				putGhost()
+				if x >= m.left+tw {
+					break
+				}
 			}
 			ch := line[c]
-			w := runeWidth(ch, x)
+			w := runeWidth(ch, baseX+x)
 			// colour from the syntax
 			for si < len(spans) && spans[si].To <= c {
 				si++
@@ -351,10 +425,13 @@ func (m *Model) drawText(sb *strings.Builder) {
 			sb.WriteString(glyph)
 			x += w
 		}
+		if ghostCol == to && x < m.left+tw {
+			putGhost()
+		}
 		// selection reaching past the end of the line shows one cell
 		used := max(x-m.left, 0)
-		if used < tw && hasSel && selS.Row <= r && r < selE.Row && len(line) >= 0 {
-			if colToX(line, len(line)) >= m.left {
+		if used < tw && lastRow && hasSel && selS.Row <= r && r < selE.Row {
+			if x >= m.left {
 				sb.WriteString(sgr(cSelectedText, cSelection, false, false, false))
 				sb.WriteByte(' ')
 				used++

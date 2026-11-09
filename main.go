@@ -57,7 +57,7 @@ func main() {
 		case a == "-t" || a == "--tabs":
 			tabs = true
 		case a == "-v" || a == "--version":
-			fmt.Println("Symbolizer " + version)
+			fmt.Println(strings.TrimSpace("Symbolizer " + version + " " + buildNumber))
 			return
 		case strings.HasPrefix(a, "+"):
 			line, _ = strconv.Atoi(a[1:])
@@ -73,7 +73,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "sy: "+err.Error())
 		os.Exit(1)
 	}
-	if tabs && m.tree != nil && m.openFolder(m.tree.root) {
+	if tabs && m.tree != nil && m.openProject(m.tree.root, pickText) {
 		m.closeTree()
 	}
 	if path == "" && startMode == 0 && !fresh {
@@ -83,8 +83,15 @@ func main() {
 		m.mode = startMode
 		m.say(modes[startMode].Icon() + "  " + modes[startMode].name + " mode. Alt+M switches modes.")
 	}
-	p := tea.NewProgram(m)
+	designFrames, designSaveLater = true, true
+	p := tea.NewProgram(m, tea.WithFPS(120)) // the most Bubble Tea allows: smoother scrolling
 	_, err = p.Run()
+	if m.design != nil {
+		m.design.flushSave() // the board's last changes
+	}
+	if m.dropsOn {
+		fmt.Print(dndStop) // drops go back to being pasted
+	}
 	if !m.quitClean {
 		m.saveNow()
 		if saved := rescue(m.buf); saved != "" {

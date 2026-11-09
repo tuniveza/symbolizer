@@ -103,11 +103,11 @@ func TestCSSAutoCorrect(t *testing.T) {
 	// Ctrl+Z straight after a fix takes back just the fix
 	m = newWebTest(t, "b.css", "a {\n  \n}")
 	m.buf.Cursor = Pos{1, 2}
-	typeStr(m, "dispaly:")
-	want(t, m, lines("a {", "  display:", "}"), Pos{1, 10})
+	typeStr(m, "dispaly:") // the ; comes by itself after a property
+	want(t, m, lines("a {", "  display:;", "}"), Pos{1, 10})
 	press(m, "ctrl+z")
-	want(t, m, lines("a {", "  dispaly:", "}"), Pos{1, 10})
-	typeStr(m, " x;") // taken back once: not fixed again
+	want(t, m, lines("a {", "  dispaly:;", "}"), Pos{1, 10})
+	typeStr(m, " x;") // taken back once: not fixed again; ; steps over the one there
 	want(t, m, lines("a {", "  dispaly: x;", "}"), Pos{1, 13})
 }
 

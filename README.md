@@ -14,7 +14,7 @@
 <br>
 Embers on charcoal. It saves by itself. Every key is meant for your hands.
 
-[Install](#-install) · [Key modes](#-key-modes) · [File manager](#-file-manager) · [Themes](#-colour-themes) · [Diary](#-diary) · [Every key](#-every-key)
+[Install](#-install) · [Key modes](#-key-modes) · [File manager](#-file-manager) · [Themes](#-colour-themes) · [Diary](#-diary) · [Design](#-design-mode) · [Every key](#-every-key)
 
 <br>
 
@@ -29,7 +29,8 @@ Embers on charcoal. It saves by itself. Every key is meant for your hands.
 - **A calm editor.** The text sits in a centred column. The bars glow a little warmer in the middle.
 - **Nothing to lose.** Every change saves itself a moment later. Text with no name is kept as a **session**.
 - **Keys that say what they do.** Hold Shift, Ctrl or Alt and the status bar tells you what the arrows will do.
-- **More than one kind of work.** Text and Diary work today. Design, Slides, Book and Draw are on the way.
+- **More than one kind of work.** Text, Diary and Design work today. Slides, Book and Draw are on the way.
+- **Design mode.** A board made of text: octagons with pictures and six layouts, pages, notes, cabinets and drawers, links and a highlighter pen. Drag files onto it, delete anything, undo and redo, and move around it all by keyboard. Fast with thousands of elements. [See it below](#-design-mode).
 
 ## ✦ Install
 
@@ -41,6 +42,8 @@ cd symbolizer
 go build -o sy .
 ln -s "$PWD/sy" ~/.local/bin/sy     # so `sy` works from anywhere
 ```
+
+For pictures in Design mode in formats other than PNG, JPEG and GIF, install **ImageMagick** (`rsvg-convert` and `ffmpeg` help too).
 
 It runs in any terminal. It looks its best in **[kitty](https://sw.kovidgoyal.net/kitty/)** with a **Nerd Font**: kitty tells Symbolizer when a key goes up, so held keys work exactly.
 
@@ -56,6 +59,7 @@ sy -t ~/notes      open every text file in a folder and its folders as tabs
 sy diary           Diary mode
 sy design          Design mode   (also: slide, book, draw)
 sy --keys          show what each key does
+sy --version       show the version and build number (the status bar shows the build too)
 ```
 
 Inside, press **F1** for every key. **Alt + Q** quits. Everything is already saved.
@@ -72,16 +76,16 @@ Inside, press **F1** for every key. **Alt + Q** quits. Everything is already sav
 
 | Hold | Mode | The arrows… |
 |:---:|:---|:---|
-| nothing | ✎ **text** | step by word: a word, part of a name (`MAX` `_` `PARTS`), part of a number (`1` `234` `567`, `3` `.` `14`), a bracket, an operator like `+=` |
+| nothing | ✎ **text** | step by word: a word, part of a name (`MAX` `_` `PARTS`), one digit of a number (`1` `0`, `3` `.` `1` `4`), a bracket, an operator like `+=` |
 | **Shift** | ▍ **highlighter** | highlight, one step at a time (Ctrl + Shift: one character) |
 | **Ctrl** | ⌶ **position** | move the cursor one character, or past a whole number. Hold two arrows at once to go diagonally |
 | **Alt** | ↔ **line** | Left / Right go to the start / end of the line; Up / Down go a block up / down |
 | **Alt + Shift** | ✥ **movement** | move the highlighted text. Nothing highlighted: the word swaps places with its neighbour, and Up / Down move the whole line |
 
 <div align="center">
-<img src="docs/media/moving.gif" alt="Holding Ctrl steps one letter; holding Alt moves the word 'fire' along the line; Shift highlights 'sparks rise'; Alt moves it down a line and back; then the whole line moves" width="880">
+<img src="docs/media/moving.gif" alt="The arrows step a word; holding Ctrl steps one letter; holding Alt jumps to the end and start of the line; Alt + Shift + Right indents the line twice and Alt + Shift + Left takes one indent off; Shift highlights 'and sparks'; Alt + Shift moves it up a line and back; then the whole line moves" width="880">
 <br>
-<sub>Ctrl steps letter by letter · Alt carries the word “fire” along · Shift highlights · Alt moves the highlight down a line and back · then the whole line moves</sub>
+<sub>Arrows step a word · Ctrl a letter · Alt jumps to the line's end and start · Alt + Shift + Right / Left indent and dedent · Shift highlights · Alt + Shift moves the highlight up a line and back · then the whole line moves</sub>
 </div>
 
 <br>
@@ -95,8 +99,12 @@ A box that floats over the text, with an icon for each kind of file.
 |:---|:---|
 | **Alt + O**, **AltGr + O** (ø), or tap **AltGr** twice | open the file manager |
 | **Alt + E**, **AltGr + E**, or **Esc** | close it |
-| **Enter** / **Right** | open a file, or open a folder |
-| **Shift + Enter** | open every text file in that folder and its folders as tabs: web pages, scripts and other code first, JSON and lock files last |
+| **Enter** | open a file, or open / close a folder |
+| **Right** | open a file. On a folder, **Right** once opens it here in the file manager; **Right twice** opens it as a project: every file in it and its folders as tabs (up to 50; files over 8 MB are left out) |
+| **Left** straight after | undo it: the project's tabs close and the file manager is back where it was |
+| **Left twice** on the project's folder | close the project. Only one project is open at a time, so close it before opening another |
+| **Shift + Right** twice | the same, but only text with something in it: no pictures, sound, video, subtitles or empty files |
+| **Shift + Enter** | open every text file in that folder and its folders as a project: web pages, scripts and other code first, JSON and lock files last |
 | **AltGr + P** (þ) or **Alt + P** | make the chosen folder the project |
 | **Ctrl + N** · **F7** · **F2** · **Del** | new file · new folder · rename · move to the Trash |
 
@@ -110,6 +118,7 @@ A box that floats over the text, with an icon for each kind of file.
 
 **ŧ** (Right Alt + T) opens a real kitty terminal in a pane under the editor, in the same folder.
 Press it again, in the editor or in the terminal, to hide it. Hidden only means out of sight: whatever runs there keeps going, and it comes back at the same size.
+**Alt + Tab** goes between the editor and the terminal, from the terminal or from Design mode (in Text mode Alt + Tab stays tab switch mode). **Alt + R** starts resizing: each arrow then moves the line between the panes that way (Up moves it up), and any other key stops (in Design mode and the terminal; in Text mode Alt + R stays Emmet's remove tag).
 **¢** (Right Alt + C) in the terminal closes just that pane. It needs kitty with `sy_term.py` and its keys in `panes.conf`.
 
 <br>
@@ -146,6 +155,56 @@ Pages are plain text files: `~/.local/share/symbolizer/diary/2026-10-28/001.txt`
 
 <br>
 
+## ✦ Design mode
+
+`sy design` (or **Alt + M** → Design). A board made of text that zooms and moves.
+Everything on it is drawn with letters, kept in `~/.local/share/symbolizer/design/`: `board.json` says what is on the board, each structure has its own file in `parts/`, and the ink is in `marks.json`. A save writes only what changed, so a large project stays quick to save.
+
+- **Octagons**, or shapes (double-click the board, or **Alt + N**, **S**): a header, text and a footer. Drag to move, the ◢ corner resizes.
+- **Pictures** of any format go into an octagon: **img** on the toolbar and a file name, or drop the file on the terminal. They are drawn with half-blocks.
+- **Drag and drop:** in kitty (0.47 or later), drag files from your file manager onto the board. What is under the pointer lights up (a ✚ shows on the empty board), and each file goes where you let go: a picture into the octagon under it, or a new octagon there; a text file into the page or note under it, into the cabinet as a page, or a new page there. Several files land side by side. Dragged text becomes a page. Other terminals paste dropped files as their paths, and sy puts those in too, one file or several.
+- **Layouts:** the icon on an octagon's top edge shows its layout. Click it (or press **AltGr + L**) for the next one: `¶` text · `▀` picture above · `◧` left · `◨` right · `■` picture only · `‖` two columns.
+- **Pages** (**Alt + N**, **P**) hold text of any length and scroll. **Notes** (**Alt + N**, **N**) hold one page. Both take only text and text-like media, and both have a title and a footer.
+- **Cabinets** (**Alt + N**, **C**) keep a stack each of pages, books, slides, notes and drawings. Drop a page or note on one to file it. Click a stack to pull it out, and drag a page back out onto the board. A cabinet can bring in your **Diary** pages and the files open in **Text** mode.
+- **Drawers** (**Alt + N**, **D**) hold anything, in no order: drop a page, note or shape on one; drag a row out to take it out. (Drawers used to hang under every structure; an old board gets each as a drawer of its own, beside its structure and linked to it.)
+- **Racks** (**Alt + N**, **R**) are a stack of anything, a row each with its icon and name. Click a row and that structure opens inside the rack, under its row, as wide as the rack (the rack grows down to hold it). Click its row again, tap **Alt** twice, or click the board to put it back in its place. Drag it to take it out of the rack.
+- **Labels:** **Alt + L** turns label mode on. On the chosen structure, **L** gives it a label and goes round the styles (icon + title, title + icon, icon, title, none), **C** its colour, **I** its icon (symbols, then the pictures in `design/images`, drawn small), **T** its own words. **G** gives it a **name plate**: everything with the same name is a group. To name several at once, press **Shift + G**: click each structure (or drag a box round them on the empty board) to pick it, then press **Enter** and type one name plate for them all. **AltGr + P** lists the name plates and what has each. **Alt** tapped twice leaves label mode.
+- **Links** (**⛓ link** on the toolbar), a **highlighter pen** with 8 colours (**1–8**; the rubber is **⌫** on the toolbar), and the wheel zooms, toward the pointer (**Shift + wheel** scrolls a chosen page). All text in Design mode is centred, the bars above and below the board too.
+- **Top bar:** over the board, it names the board and what is chosen.
+- **Mini map:** **AltGr + M** shows the whole board in a corner: each structure in its own outline (an octagon's cut corners, a note's round ones, a page's folded corner) and colour, with its symbol and title; the map takes the board's own shape; links as dotted lines, a frame for what the screen shows. Press it again for the next corner, and once more after the last to hide it.
+- **Alt tapped twice** is Esc in Design mode: it stops writing, leaves link mode, puts the pen down, or lets go of the chosen structure.
+- **Snapping:** a structure moved near another snaps a small gap away from the closest one (2 columns beside it, 1 row above or below), by mouse or by **Alt + arrows**. By keys it stops at the gap: pressing on toward the other one does nothing, but it can slide along it or go back.
+- **By keyboard:** an **arrow** jumps the view to the closest structure that way, centres it and chooses it (held: on to the next one; nothing that way: a step). **E** writes in the chosen structure's text. Holding **Space**, the arrows move the view freely a step at a time; let go of Space and the view snaps to the structure nearest the middle. **Shift + arrows** move the view freely (held, it glides on at once with no pause; hold two, like **Up + Right**, to go diagonally), and the structure nearest the middle of the screen is chosen as you go. **Tab** writes in the chosen one and steps through its parts: header, text, footer, and the view moves to each one (**Shift + Tab** back; on a cabinet, the next stack). An **arrow** stops writing and does its usual work: nothing in Design mode needs **Esc**. **Alt + arrows** move the chosen structure (**Alt + Shift**: further; two held: diagonally). **+** and **−** zoom around the chosen structure, which stays in the middle (the keypad's too), **0** goes back to 100%. **Alt + N**, then **P**, **N**, **C** or **S**, places a page, note, cabinet or shape in the middle of the screen. **Alt + L** changes a shape's layout. Those are all of Design mode's keys; the rest is on the toolbar and the mouse.
+- **Structures fit what they hold:** while you write, a structure grows taller (never wider) so all its words show, and the view follows the typing. It stops a gap above a structure under it (unless you made it reach further yourself), and at the screen's height; a page scrolls beyond that. No structure is ever drawn taller than the screen, at any zoom: a taller one is drawn to fit, narrower by as much so it keeps its shape (its text scrolls, its picture shrinks), and keeps its own size.
+- **AltGr + K** shows every keyboard shortcut, opened at the keys of the mode you are in. Press it again (or **Esc**) to close.
+- **Deleting:** everything can go. Click a structure and its red **✕** (or press **X** twice, quickly). Click a link's line, then **X X**. A drawer or cabinet row has its own **✕**, and so does a chosen picture (it takes out just the picture). A structure that holds things asks first.
+- **Undo and redo:** **Ctrl + Z** undoes any change (a move, a resize, words, a deletion, a link, ink) and **Ctrl + Y** (or **Ctrl + Shift + Z**) does it again; **↶ ↷** on the toolbar too. Writing in one part is one step, a drag is one step, and moving or zooming the board is not a step. Up to 100 steps, until you quit.
+- **Big boards stay smooth:** only what is on the screen is drawn, each structure is drawn once and then moved (and kept at the last few zoom sizes), pictures are laid in as cells, and the board is saved in the background a moment after a change. With 5,000 structures, 2,000 links and 20,000 ink marks, panning, clicking, dragging, typing and zooming each take 2–3 ms a frame.
+
+<div align="center">
+<img src="docs/media/design.gif" alt="An octagon gets a sunset picture (img on the toolbar) and its layout toggle is clicked through the layouts; a cabinet is made with Alt + N, C and moved; a page called Ideas (Alt + N, P) is dropped into the cabinet; a note's drawer is pulled out and the page goes from the cabinet into the drawer" width="880">
+<br>
+<sub>A picture in an octagon (img) · its layout toggle · Alt + N places a cabinet, a page, a note · a page filed in it · a note's drawer · the page moves from the cabinet into the drawer</sub>
+</div>
+
+<br>
+
+<div align="center">
+<img src="docs/media/design2.gif" alt="The arrows move the view and choose the structure in the middle, two arrows held go diagonally; Tab writes in the page Ideas, which grows to fit, and steps to its parts; Alt + arrows move it; X pressed twice deletes the note, Ctrl+Z brings it back and Ctrl+Y deletes it again; Alt + L changes the sunset octagon's layout and back; Alt + N, S places a new shape; minus and plus zoom; AltGr + K shows Design mode's keys" width="880">
+<br>
+<sub>Arrows move the view and choose · two held: diagonally · Tab writes and the page grows to fit · Alt + arrows move it · X X deletes, Ctrl+Z / Ctrl+Y · Alt + L layouts · Alt + N, S a shape · − + zoom · AltGr + K: the keys</sub>
+</div>
+
+<br>
+
+<div align="center">
+<img src="docs/media/design3.gif" alt="A rack called Shelf: clicking its row Plan opens the page inside the rack, under its row, and the rack grows to hold it; its row again puts it back; the shape Bell opens inside, is dragged out of the rack, and Ctrl+Z puts it back open in the rack; AltGr + M shows the mini map with each structure in its own outline, top right then bottom right; Shift + G picks Lantern with a click, Call Ana with a box dragged round it and Ideas with a click; Enter and the name Crew give all three the name plate; AltGr + P lists the group" width="880">
+<br>
+<sub>A rack's row opens inside the rack · drag it out, Ctrl+Z · AltGr + M: the mini map in true outlines · Shift + G: click or box to pick, Enter names the group · AltGr + P: the groups</sub>
+</div>
+
+<br>
+
 ## ✦ Web files: Emmet and auto-correct
 
 In HTML, CSS, SCSS, Sass, Stylus, LESS, JSX / TSX and XML files, Symbolizer speaks [Emmet](https://emmet.io).
@@ -157,17 +216,38 @@ In HTML, CSS, SCSS, Sass, Stylus, LESS, JSX / TSX and XML files, Symbolizer spea
 - **CSS auto-correct:** typing `;` or `:` fixes slips: `colour` → `color`, `dispaly: flx` → `display: flex`, `10xp` → `10px`.
 - **Path auto-correct:** finish a path in `src`, `href`, `url()`, `@import` or a JS `import` and a path to no file is fixed to the one it meant (`Images/Logo.PNG` → `images/logo.png`). **Alt + P** lists the files that fit. **Ctrl + Z** takes back any auto-correct.
 
+## ✦ Brackets and suggestions
+
+In code files (not plain text or Markdown):
+
+- **Brackets and quotes close themselves.** Type `(` and `)` appears after the cursor. Type `)` in front of it and the cursor steps over it. Backspace in an empty `()` deletes both. Highlight text and type `(` to wrap it.
+- **A list of suggestions** shows while you type a word: CSS properties (3 letters or more), the values a property takes, pseudo-classes, HTML tags after `<`, and words already in the file. **Tab** takes the chosen one, **Up / Down** choose, **Esc** closes the list.
+- **CSS:** choosing a property gives `display: ;` and opens its values. Typing `color:` adds the `;` after the cursor.
+- Short Emmet words (`fl`, `ta`, `m10`) show no list, so Tab still expands them.
+- **Unit hints (CSS):** a dim shadow shows the recommended unit as you type. `font-size: 1` shows `rem`; an empty `height:` shows `auto`. **Tab** takes it. The message line says why.
+
+## ✦ Learn
+
+Press **AltGr + L** (ł) for a card with the recommended way to write the file's language today.
+
+- **It opens at what the cursor is on.** On `16px` it opens the Units section at `px`. On `?.` in JavaScript it opens that line.
+- **The card follows the file's ending:** `.css` → CSS, `.go` → Go, `.md` → Markdown. **Tab** shows another language.
+- **Each line says three things:** what to use, what it is (from the specification), and what it is like in the real world.
+- **The layout never moves:** language, section, the list of lines, then the chosen line in full. **Up / Down** choose a line, **Left / Right** a section, **Esc** closes.
+- Cards: CSS, HTML, JavaScript, TypeScript, Markdown, JSON / YAML / TOML, XML / SVG, Go, Python, Rust, C / C++, Java, Kotlin, C#, PHP, SQL, Lua and Shell. Every fact was checked against the language's specification; each card names the ones it used.
+
 ## ✦ Saving and sessions
 
 - Everything saves by itself a moment after each change.
 - Text with no name is a **session**, kept in `~/.local/share/symbolizer/sessions`. Its tab gets a made-up file name from its text (first function, heading or words, like `tidy_room.py`), or an ember name like `molten-lantern.txt`.
 - `sy` carries on with the session changed in the last 24 hours. After 24 hours with no change, `sy` starts a new one. The old one waits in the **Alt + L** list.
 - **Ctrl + S** on a session asks for a name. The ending comes from what the text looks like: `hello` becomes `hello.py`, `hello.c` …
-- If another program changes an open file, saving pauses instead of writing over it.
+- If another program changes an open file (git, a formatter, another editor), the new text comes in by itself within a second. Only the changed lines change. **Ctrl + Z** takes it back.
+- If you have changes not saved yet at that moment, saving pauses instead of writing over either side.
 
 ## ✦ Every key
 
-Press **F1** inside Symbolizer for the full, scrollable list.
+Press **F1** inside Symbolizer for the full, scrollable list, or **AltGr + K** to open it at the keys of the mode you are in.
 
 <div align="center">
 <img src="docs/media/help.png" alt="The F1 keys page" width="880">
@@ -180,7 +260,7 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 
 | Keys | What it does |
 |:---|:---|
-| Left / Right | cursor one step: a word, part of a name, part of a number (1 234 567, 3 . 14), bracket, or operator |
+| Left / Right | cursor one step: a word, part of a name, one digit of a number (1 0, 3 . 1 4), bracket, or operator |
 | Up / Down | up / down a line |
 | Alt + Up / Down | up / down a block, by the file's language: Markdown headings, lists and code fences; HTML elements; Python blocks; code from a { ( [ to the bracket that closes it; plain paragraphs. On a line that opens a bracket or tag, Down goes to its closing line and Up goes back |
 | Home / Alt + B · End | start / end of the line |
@@ -190,7 +270,7 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 | Ctrl + Left + Up (hold both), and the other 3 pairs | one line and one letter at once |
 | Shift + Left / Right | highlight one step |
 | Ctrl + Shift + arrows | highlight one character, or a whole number (Up / Down: one line) |
-| Alt + Shift + Left / Right | move the highlighted text one letter, or swap the word with the next one |
+| Alt + Shift + Left / Right | dedent / indent the line, or every highlighted line |
 | Alt + Shift + Up / Down | move the highlighted text a line, in its column; whole lines or nothing highlighted: the line moves |
 | Ctrl + C · Ctrl + X · Ctrl + V / Ctrl + P | copy · cut · paste |
 | Ctrl + Z · Ctrl + Y | undo · redo |
@@ -200,18 +280,33 @@ Press **F1** inside Symbolizer for the full, scrollable list.
 | Ctrl + S or ß (Right Alt + S) | save now (a session is asked for a name) |
 | Alt + A | save under a new name |
 | Alt + L | load: sessions, or this file again from disk |
-| Alt + N / AltGr + C | new file in a new tab / close this file |
+| Alt + N / Alt + C | new file in a new tab / close this file |
 | Alt + 1 … 9 · Ctrl + PgUp / PgDn | go to open file 1 … 9 · previous / next |
-| Alt + Tab | tab mode: the tabs open out into rows. Left / Right or A / D = the file before / after, W / S = the row above / below, Up / Down = keep it and move the cursor, Enter or a tap of Alt keeps it, Esc goes back |
+| Alt + Tab | tab mode: the tabs open out into rows. Left / Right or A / D = the file before / after, Up / Down or W / S = the row above / below, Enter (once or twice), Down twice quickly or a tap of Alt keeps it, Esc goes back |
 | Tab · Shift + Tab | a real Tab (indent) · un-indent (web files: Tab expands an Emmet abbreviation first) |
 | Ctrl + E · Alt + W | Emmet: expand (highlighted: wrap) · every web action |
 | Alt + U / D · Alt + G · Alt + R · Alt + K · Alt + Y | tag around / inside · matching tag · remove · split / join · update |
 | Alt + . / , · Alt + ] / [ · Alt + X · Alt + = / - · Alt + I · Alt + P | next / previous empty place · next / previous item · sum · number up / down · image size · file paths |
 | Alt + J | centre the lines of this file, or put them back on the left |
+| Alt + Z | word wrap on / off: long lines carry on in the rows under them, broken between words and indented like their line. On to start with; remembered |
 | Alt + T or µ | colour themes |
 | ŧ (Right Alt + T) | sy term: show or hide a kitty terminal under the editor |
+| Alt + Tab (Design mode, sy term) | the other split: the editor ↔ sy term (a kitty map in `~/.config/kitty/panes.conf`) |
+| Alt + R, then arrows | resize mode: each arrow moves the line between the panes that way; any other key stops (not in Text mode: there it is Emmet's remove tag) |
 | Alt + M | switch modes: Text, Design, Slides, Diary, Book, Draw |
+| Design: Alt + N, then P · N · S · C · D · R | new page · note · shape · cabinet · drawer · rack (F1 in Design mode lists all its keys) |
+| Design: Alt + L, then L · C · I · T · G | label mode: label style · colour · icon · words · name plate |
+| Design: Shift + G | group mode: pick structures (click, drag a box, or G), Enter gives them one name plate |
+| Design: AltGr + P | the list of name plates and what has each |
+| Design: AltGr + L | the chosen shape's next layout |
+| Design: X X or ✕ | delete the chosen structure or link |
+| Design: img on the toolbar | a picture (or text file) for the chosen structure: type its path |
+| Design: Ctrl + Z · Ctrl + Y | undo · redo any change on the board (also Ctrl + Shift + Z, and ↶ ↷ on the toolbar) |
+| Design: arrows · Shift + arrows · Tab | jump to the closest structure that way · move the view freely · write in the chosen structure, then its next part |
+| Design: Alt + arrows · + − 0 | move the chosen structure · zoom the view in, out, back to 100% |
+| Design: 1–8 | pen colours (rubber and over/under are on the toolbar) |
 | F1 or Alt + H | every key |
+| AltGr + K (ĸ) | every key, opened at the mode you are in |
 | Alt + Q | quit (everything is already saved) |
 
 </details>
@@ -267,8 +362,13 @@ map --when-focus-on title:Symbolizer kitty_mod+down
 | `tree.go` · `fileview.go` | the file manager |
 | `autosave.go` · `sessions.go` · `files.go` | saving, sessions and naming |
 | `diary.go` · `modes.go` | Diary mode and the modes box |
+| `design.go` · `design_paper.go` · `design_image.go` · `design_delete.go` · `design_undo.go` · `design_store.go` · `design_dnd.go` · `design_keys.go` | Design mode: the board · pages, notes, cabinets and drawers · pictures and layouts · deleting · undo and redo · the board on disk, in parts · drag and drop · moving around by keyboard |
 | `help.go` · `keycheck.go` | the F1 page and `sy --keys` |
 | `web.go` · `emmet/` | Emmet, closing tags and auto-correct in web files |
+| `pairs.go` · `suggest.go` | brackets that close themselves and the suggestion list |
+| `reload.go` | files another program changed come in by themselves |
+| `ghost.go` · `emmet/units.go` | CSS unit hints: the dim shadow and its rules |
+| `learn.go` · `learn_*.go` | the Learn box (AltGr + L) and its cards |
 | `lamps.go` · `lockplate.go` | lock keys and the lock plate |
 
 </details>
@@ -276,8 +376,9 @@ map --when-focus-on title:Symbolizer kitty_mod+down
 ## ✦ Tests
 
 ```sh
-go test ./...            # every key and command
-python3 tests/e2e.py     # runs the real sy in a test terminal (needs: pip install pyte)
+go test ./...                              # every key and command
+python3 tests/e2e.py                       # runs the real sy in a test terminal (needs: pip install pyte)
+go test -run x -bench 'Design|BigBoard|Huge'  # how fast Design mode is, on large made-up projects
 ```
 
 <br>

@@ -11,7 +11,7 @@ import (
 // does with it. For finding out why a shortcut does not work.
 
 var keyMeaning = map[string]string{
-	"alt+shift+left": "move the highlighted text (or the word) left", "alt+shift+right": "move the highlighted text (or the word) right",
+	"alt+shift+left": "dedent: the line (or the highlighted lines) one indent left", "alt+shift+right": "indent: the line (or the highlighted lines) one indent right",
 	"alt+shift+up": "move the highlighted text (or the line) up", "alt+shift+down": "move the highlighted text (or the line) down",
 	"alt+q": "quit to the terminal",
 	"alt+l": "load list (sessions, this file from disk)", "alt+o": "open a file (file manager)",
@@ -30,7 +30,7 @@ var keyMeaning = map[string]string{
 	"alt+left": "start of line", "alt+right": "end of line",
 	"ctrl+z": "undo", "ctrl+y": "redo", "ctrl+x": "cut", "ctrl+a": "highlight all",
 	"ctrl+d": "duplicate", "ctrl+k": "delete line", "ctrl+/": "comment", "ctrl+g": "go to line",
-	"alt+m": "switch modes", "alt+j": "centre lines (or back to the left)", "µ": "colour themes (Right Alt+M on a UK keyboard)", "altgr+m": "colour themes", "ŧ": "sy term: show or hide a kitty terminal under the editor (Right Alt+T on a UK keyboard)", "altgr+t": "sy term: show or hide a kitty terminal under the editor", "”": "diary: new page (Right Alt+N on a UK keyboard)", "æ": "diary: all pages (Right Alt+A on a UK keyboard)", "alt+t": "colour themes", "alt+n": "new file in a new tab", "¢": "close this file (Right Alt+C on a UK keyboard)", "altgr+c": "close this file",
+	"alt+m": "switch modes", "alt+j": "centre lines (or back to the left)", "alt+z": "word wrap on / off", "µ": "colour themes (Right Alt+M on a UK keyboard)", "altgr+m": "colour themes", "ł": "learn: the recommended way to write this language, at what the cursor is on (Right Alt+L on a UK keyboard)", "altgr+l": "learn: the recommended way to write this language", "ŧ": "sy term: show or hide a kitty terminal under the editor (Right Alt+T on a UK keyboard)", "altgr+t": "sy term: show or hide a kitty terminal under the editor", "”": "diary: new page (Right Alt+N on a UK keyboard)", "æ": "diary: all pages (Right Alt+A on a UK keyboard)", "alt+t": "colour themes", "alt+n": "new file in a new tab", "alt+c": "close this file",
 	"alt+tab": "tab switch mode", "alt+shift+tab": "un-indent", "shift+tab": "un-indent",
 	"ctrl+r": "replace", "ctrl+n": "new session in a new tab", "alt+a": "save as", "f1": "help", "f3": "next match",
 	"up": "cursor up", "down": "cursor down", "left": "cursor left one step (word, number, bracket or operator)", "right": "cursor right one step (word, number, bracket or operator)",
