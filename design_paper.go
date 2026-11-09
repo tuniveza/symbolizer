@@ -97,7 +97,11 @@ func (d *designState) size(o *dOct) (int, int) {
 	case kCabinet:
 		w, h = max(o.W, cabinetMinW), 3+stackRowCount(o, false)+1
 	case kDrawer, kRack:
-		w, h = max(o.W, cabinetMinW), 3+max(1, len(containerRows(o)))+1
+		w, h = max(o.W, cabinetMinW), 3+max(1, len(d.containerRows(o)))+1
+		if it := d.openIn(o); it != nil { // the rack grows to hold what is open in it
+			iw, ih := d.size(it)
+			w, h = max(w, iw+2), h+ih
+		}
 	case kOct:
 	default:
 		h = max(o.H, pageMinH) // older, shorter pages get room for their footer
@@ -333,6 +337,8 @@ func drawRows(rows []stackRow, w int, fill, edge string) []string {
 		switch {
 		case r.act == "":
 			out[i] = st(edge, fill).Render(strings.Repeat("─", w))
+		case r.act == "shut": // a rack's thing, open under this row
+			out[i] = centreLine(st(cAccent, fill).Bold(true).Render(ansi.Truncate(r.text, w-1, "…")), w, fill)
 		case strings.HasPrefix(r.act, "stack:"):
 			left, count, _ := strings.Cut(r.text, "\x00")
 			left = ansi.Truncate(" "+left, max(w-len(count)-2, 1), "…")
@@ -720,8 +726,15 @@ func (d *designState) hit(sx, sy int) hitInfo {
 			}
 		}
 		if isContainer(o.Kind) && w >= 6 && h >= 4 {
-			rows := containerRows(o)
-			if r := sy - y - 3; r >= 0 && r < len(rows) && rows[r].act != "" && sx > x && sx < x+w-1 {
+			rows := d.containerRows(o)
+			r := sy - y - 3
+			if at, gap := d.openGap(o); at >= 0 && r > at { // below the open thing's room
+				r -= gap
+				if r <= at {
+					r = -1
+				}
+			}
+			if r >= 0 && r < len(rows) && rows[r].act != "" && sx > x && sx < x+w-1 {
 				return hitInfo{o, hitRow, itemDeleteAct(rows[r].act, sx-x-1, w-2)}
 			}
 		}
@@ -743,6 +756,8 @@ func (m *Model) designRow(o *dOct, act string, sx, sy int) tea.Cmd {
 		} else {
 			o.OpenStack = k
 		}
+	case act == "shut": // the open thing's row: put it back
+		m.designRackClose()
 	case strings.HasPrefix(act, "open:"):
 		// A click opens it over the view; a drag takes it out (designMotion).
 		var i int

@@ -4,10 +4,12 @@ package main
 //
 // AltGr+M shows a small map of the whole board in a corner of the screen,
 // and moves it on round the corners (top right, bottom right, bottom left,
-// top left), then hides it. Each structure is its kind's symbol (◆ shape,
-// ≡ page, ✎ note, ≣ cabinet …) in its colour, the chosen one picked out;
-// links are dotted lines between them, and a frame shows what the screen
-// shows now.
+// top left), then hides it. The map is the board's own shape (wide board,
+// wide map). Each structure is drawn in its own outline and colour (an
+// octagon's cut corners, a note's round ones, a sheet's title line, a
+// container's name line), with its symbol and title; the chosen one is
+// picked out; links are dotted lines between them, and a frame shows what
+// the screen shows now.
 
 import (
 	"math"
@@ -39,10 +41,39 @@ func (m *Model) paintMap(c *boardCanvas) {
 		return
 	}
 	cw, ch := c.Width(), c.Height()
-	mw, mh := min(60, cw*9/20), min(22, ch*2/3)
-	if mw < 12 || mh < 6 {
+	maxIW, maxIH := min(60, cw*9/20)-2, min(22, ch*2/3)-2
+	if maxIW < 10 || maxIH < 4 {
 		return // the screen is too small for it
 	}
+
+	// What the map covers: every structure and the screen, with a margin.
+	z := d.z()
+	vx0, vy0 := d.camX, d.camY
+	vx1, vy1 := d.camX+float64(cw)/z, d.camY+float64(ch)/z
+	bx0, by0, bx1, by1 := vx0, vy0, vx1, vy1
+	for _, o := range d.octs {
+		if o == nil {
+			continue
+		}
+		w, h := d.size(o)
+		ox, oy := o.X, o.Y
+		if x, y, ok := d.openPlace(o); ok { // open inside a rack
+			ox, oy = x, y
+		}
+		bx0, by0 = math.Min(bx0, float64(ox)), math.Min(by0, float64(oy))
+		bx1, by1 = math.Max(bx1, float64(ox+w)), math.Max(by1, float64(oy+h))
+	}
+	pad := math.Max(bx1-bx0, by1-by0) * 0.03
+	bx0, by0, bx1, by1 = bx0-pad, by0-pad, bx1+pad, by1+pad
+
+	// Half cells: iw across, ih*2 down, each about square, so one scale
+	// both ways keeps every shape (a board row is two half cells high).
+	// The map is as big as fits, in the board's own shape: a wide board
+	// makes a wide, low map, a tall one a narrow, high one.
+	s := math.Min(float64(maxIW)/(bx1-bx0), float64(maxIH*2)/((by1-by0)*2))
+	iw := min(maxIW, max(14, int(math.Ceil((bx1-bx0)*s))))
+	ih := min(maxIH, max(4, int(math.Ceil((by1-by0)*s))))
+	mw, mh := iw+2, ih+2
 	x0, y0 := cw-mw-1, 1 // top right
 	switch d.mapCorner {
 	case 2:
@@ -52,7 +83,6 @@ func (m *Model) paintMap(c *boardCanvas) {
 	case 4:
 		x0, y0 = 1, 1
 	}
-	iw, ih := mw-2, mh-2
 	bgHex := mixHex(cBG, cBarBG, 0.6)
 	bg := rgbaOf(bgHex)
 	edge := mixHex(cDim, cBG, 0.2)
@@ -92,26 +122,7 @@ func (m *Model) paintMap(c *boardCanvas) {
 		}
 	}
 
-	// What the map covers: every structure and the screen, with a margin.
-	z := d.z()
-	vx0, vy0 := d.camX, d.camY
-	vx1, vy1 := d.camX+float64(cw)/z, d.camY+float64(ch)/z
-	bx0, by0, bx1, by1 := vx0, vy0, vx1, vy1
-	for _, o := range d.octs {
-		if o == nil {
-			continue
-		}
-		w, h := d.size(o)
-		bx0, by0 = math.Min(bx0, float64(o.X)), math.Min(by0, float64(o.Y))
-		bx1, by1 = math.Max(bx1, float64(o.X+w)), math.Max(by1, float64(o.Y+h))
-	}
-	pad := math.Max(bx1-bx0, by1-by0) * 0.03
-	bx0, by0, bx1, by1 = bx0-pad, by0-pad, bx1+pad, by1+pad
-
-	// Half cells: iw across, ih*2 down, each about square, so one scale
-	// both ways keeps every shape (a board row is two half cells high).
 	pw, ph := iw, ih*2
-	s := math.Min(float64(pw)/(bx1-bx0), float64(ph)/((by1-by0)*2))
 	offX := (float64(pw) - (bx1-bx0)*s) / 2
 	offY := (float64(ph) - (by1-by0)*2*s) / 2
 	px := func(wx float64) int { return int(math.Floor((wx-bx0)*s + offX)) }
@@ -136,27 +147,55 @@ func (m *Model) paintMap(c *boardCanvas) {
 			continue
 		}
 		w, h := d.size(o)
-		b := box{o: o, x0: px(float64(o.X)), y0: py(float64(o.Y))}
-		b.x1, b.y1 = max(b.x0, px(float64(o.X+w))-1), max(b.y0, py(float64(o.Y+h))-1)
+		ox, oy := o.X, o.Y
+		if x, y, ok := d.openPlace(o); ok { // open inside a rack
+			ox, oy = x, y
+		}
+		b := box{o: o, x0: px(float64(ox)), y0: py(float64(oy))}
+		b.x1, b.y1 = max(b.x0, px(float64(ox+w))-1), max(b.y0, py(float64(oy+h))-1)
 		b.fill = mixHex(o.Color, bgHex, 0.55)
 		boxes = append(boxes, b)
 	}
 
-	// The structures: filled boxes of their colour with a brighter edge
-	// (the chosen one's edge bright).
+	// The structures, each in its own outline: filled with its colour,
+	// a brighter rim (the chosen one's bright) and its inner lines. Each
+	// half cell is looked at where it falls on the board, so the outline
+	// is the structure's own at any scale.
 	for _, b := range boxes {
-		rim := mixHex(b.o.Color, cText, 0.2)
-		if b.o.ID == d.sel {
+		o := b.o
+		w, h := d.size(o)
+		rim := mixHex(o.Color, cText, 0.2)
+		if o.ID == d.sel {
 			rim = cAccent
 		}
+		line := mixHex(b.fill, rim, 0.6)
+		bw, bh := b.x1-b.x0+1, b.y1-b.y0+1
+		in := func(x, y int) int { // 0 out, 1 in, 2 on an inner line
+			if x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1 {
+				return 0
+			}
+			return mapShape(o, w, h, s, x-b.x0, y-b.y0, bw, bh)
+		}
+		drawn := false
 		for y := b.y0; y <= b.y1; y++ {
 			for x := b.x0; x <= b.x1; x++ {
+				k := in(x, y)
+				if k == 0 {
+					continue
+				}
+				drawn = true
 				col := b.fill
-				if x == b.x0 || x == b.x1 || y == b.y0 || y == b.y1 {
+				switch {
+				case in(x-1, y) == 0 || in(x+1, y) == 0 || in(x, y-1) == 0 || in(x, y+1) == 0:
 					col = rim
+				case k == 2:
+					col = line
 				}
 				dot(x, y, col)
 			}
+		}
+		if !drawn { // a sliver between half cells: still a dot
+			dot((b.x0+b.x1)/2, (b.y0+b.y1)/2, rim)
 		}
 	}
 
@@ -305,4 +344,57 @@ func (m *Model) paintMap(c *boardCanvas) {
 	for i, r := range " map " {
 		put(x0+2+i, y0, string(r), mixHex(cDim, cText, 0.4), "", false)
 	}
+}
+
+// mapShape is whether half cell (i, j) of a structure's box on the map,
+// bw × bh half cells big, is inside its outline (1), on one of its inner
+// lines (2), or out (0). w and h are its size on the board, s the map's
+// half cells to a board cell. The outline is worked out on the box itself,
+// so it comes out the same on each side.
+func mapShape(o *dOct, w, h int, s float64, i, j, bw, bh int) int {
+	if bw <= 2 || bh <= 2 {
+		return 1 // too small for a shape: all of it
+	}
+	dx, dy := min(i, bw-1-i), min(j, bh-1-j) // from the nearest side
+	// cut is whether a corner cuts this half cell off: a diagonal c board
+	// cells across and c rows down from each corner, at least a half cell.
+	cut := func(c float64) bool {
+		cx, cy := math.Max(1, c*s), math.Max(1, c*2*s)
+		return float64(dx)/cx+float64(dy)/cy < 1
+	}
+	// row is whether this half cell is on board row r of it (from the
+	// bottom when r < 0).
+	row := func(r int) bool {
+		if r < 0 {
+			return bh-1-j == int((float64(-r)-0.5)*2*s)
+		}
+		return j == int((float64(r)+0.5)*2*s)
+	}
+	lines := bh >= 10
+	switch o.Kind {
+	case kOct:
+		c := 2.5 // the big octagon's corners: two cells and two rows
+		if h < octMinH || w < octMinW {
+			c = 1.2
+		}
+		if bw >= 5 && bh >= 4 && cut(c) {
+			return 0
+		}
+	case kNote:
+		if bw >= 4 && bh >= 4 && cut(0.6) { // round corners
+			return 0
+		}
+	case kCabinet, kDrawer, kRack:
+		if lines && dx > 0 && row(2) { // the line under its name
+			return 2
+		}
+	default: // a sheet: its folded corner, the line under its title, over its footer
+		if bw >= 4 && bh >= 4 && float64(bw-1-i)/math.Max(1, 1.3*s)+float64(j)/math.Max(1, 2.6*s) < 1 {
+			return 0
+		}
+		if lines && dx > 0 && (row(2) || (h >= 7 && row(-3))) {
+			return 2
+		}
+	}
+	return 1
 }

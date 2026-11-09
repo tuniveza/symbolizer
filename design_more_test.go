@@ -2452,14 +2452,34 @@ func TestDesignDrawerAndRack(t *testing.T) {
 		t.Fatalf("the rack does not show its rows:\n%s", s)
 	}
 
-	// A click on the second row opens it in the middle of the view.
-	x, y, _, _ := d.rect(rack)
+	// A click on the second row opens it inside the rack, under its row,
+	// as wide as the rack; the rack grows down to hold it.
+	p2W, p2H := p2.W, p2.H
+	x, y, w0, h0 := d.rect(rack)
 	click(m, x+5, y+3+1+m.boardTop(), tea.MouseLeft)
 	if !d.opened.active || d.byID(p2.ID) == nil || len(rack.Items) != 1 || d.sel != p2.ID {
 		t.Fatalf("the row did not open: opened %+v, rack holds %d", d.opened, len(rack.Items))
 	}
-	if px, py, pw, ph := d.rect(p2); abs(px+pw/2-m.width/2) > 1 || abs(py+ph/2-m.boardH()/2) > 1 {
-		t.Fatalf("the opened page is not in the middle: %d,%d %d×%d", px, py, pw, ph)
+	rx, ry, rw, rh := d.rect(rack)
+	px, py, pw, ph := d.rect(p2)
+	if px != rx+1 || py != ry+3+1+1 || pw != rw-2 || rw != w0 {
+		t.Fatalf("the opened page is not inside the rack under its row: page %d,%d %d×%d, rack %d,%d %d×%d", px, py, pw, ph, rx, ry, rw, rh)
+	}
+	if rh != h0+ph || py+ph > ry+rh-1 {
+		t.Fatalf("the rack did not grow to hold it: rack %d high (was %d), page %d high", rh, h0, ph)
+	}
+	m.View()
+	if s := screenOf(m); !strings.Contains(s, "▾ ≡ Two") {
+		t.Fatalf("the open page's row is not shown:\n%s", s)
+	}
+	// Its row again puts it back, its own size again.
+	click(m, x+5, y+3+1+m.boardTop(), tea.MouseLeft)
+	if d.opened.active || d.byID(p2.ID) != nil || len(rack.Items) != 2 || p2.W != p2W || p2.H != p2H {
+		t.Fatalf("its row did not put it back: opened %v, rack holds %d, size %d×%d (was %d×%d)", d.opened.active, len(rack.Items), p2.W, p2.H, p2W, p2H)
+	}
+	click(m, x+5, y+3+1+m.boardTop(), tea.MouseLeft)
+	if !d.opened.active {
+		t.Fatal("the row did not open again")
 	}
 	// Alt tapped twice puts it back, in its place.
 	tap := func() {
@@ -2478,6 +2498,49 @@ func TestDesignDrawerAndRack(t *testing.T) {
 	dragTo(m, x+5, y+3+m.boardTop(), x+40, y+15+m.boardTop(), tea.MouseLeft)
 	if d.byID(p1.ID) == nil || len(rack.Items) != 1 || d.opened.active {
 		t.Fatalf("dragging the row did not take it out: rack holds %d", len(rack.Items))
+	}
+
+	// Dragging what is open takes it out of the rack, its own size again.
+	m.View()
+	x, y, _, _ = d.rect(rack)
+	click(m, x+5, y+3+m.boardTop(), tea.MouseLeft)
+	if !d.opened.active || d.sel != p2.ID {
+		t.Fatal("the row did not open")
+	}
+	px, py, _, _ = d.rect(p2)
+	dragTo(m, px+3, py+2+m.boardTop(), px+40, py+4+m.boardTop(), tea.MouseLeft)
+	if d.opened.active || d.byID(p2.ID) == nil || len(rack.Items) != 0 || p2.W != p2W || p2.H != p2H {
+		t.Fatalf("dragging the open page did not take it out: opened %v, rack holds %d, size %d×%d", d.opened.active, len(rack.Items), p2.W, p2.H)
+	}
+
+	// Ctrl+Z: open in the rack again (not stuck on the board at the rack's
+	// size); Ctrl+Z again: back in the rack, its own size.
+	press(m, "ctrl+z")
+	if !d.opened.active || d.openIn(d.byID(rack.ID)) == nil {
+		t.Fatalf("undo did not bring back the open page: opened %+v", d.opened)
+	}
+	// Saved while open, it is saved in its rack, its own size.
+	_, f := d.snapshot()
+	var saved *dOct
+	for _, o := range f.Octs {
+		if o.ID == p2.ID {
+			t.Fatal("saved on the board while open in its rack")
+		}
+		if o.ID == rack.ID {
+			for _, it := range o.Items {
+				if it.ID == p2.ID {
+					saved = it
+				}
+			}
+		}
+	}
+	if saved == nil || saved.W != p2W || saved.H != p2H {
+		t.Fatalf("not saved in its rack at its own size: %+v", saved)
+	}
+	press(m, "ctrl+z")
+	r2 := d.byID(rack.ID)
+	if d.opened.active || d.byID(p2.ID) != nil || len(r2.Items) != 1 || r2.Items[0].W != p2W || r2.Items[0].H != p2H {
+		t.Fatalf("second undo: opened %v, rack holds %d", d.opened.active, len(r2.Items))
 	}
 }
 
@@ -2582,5 +2645,84 @@ func TestDesignLabels(t *testing.T) {
 		if o.ID == a.ID && (o.LabelTitle != "Read me" || o.Plate != "Team" || !strings.HasPrefix(o.LabelIcon, "img:")) {
 			t.Fatalf("label not saved: %+v", o)
 		}
+	}
+}
+
+// Shift+G: group mode. Clicks pick structures, a box dragged on the empty
+// board picks what it touches, G picks the chosen one; Enter gives them
+// all one name plate, and AltGr+P lists it.
+func TestDesignGroupPick(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	a, b, c, e := d.newKind(kNote, 0, 0), d.newKind(kNote, 0, 0), d.newKind(kNote, 0, 0), d.newKind(kNote, 0, 0)
+	a.X, a.Y = 2, 2
+	b.X, b.Y = 30, 2
+	c.X, c.Y = 60, 2
+	e.X, e.Y = 2, 15
+	a.Header, b.Header, c.Header, e.Header = "A", "B", "C", "E"
+	d.sel = -1
+	m.View()
+
+	press(m, "shift+g")
+	if !d.groupMode || len(d.picked) != 0 {
+		t.Fatalf("Shift+G: group mode %v, %d picked", d.groupMode, len(d.picked))
+	}
+	// A click picks; a second click unpicks; a third picks again.
+	ax, ay, _, _ := d.rect(a)
+	for range 3 {
+		click(m, ax+3, ay+3+m.boardTop(), tea.MouseLeft)
+		m.lastClick = time.Time{}
+		d.lastClick = time.Time{}
+	}
+	if !d.picked[a.ID] || len(d.picked) != 1 {
+		t.Fatalf("clicks: picked %v", d.picked)
+	}
+	// A box from the empty board touching B and C picks both, not E.
+	bx, by, _, _ := d.rect(b)
+	cx, cy, _, _ := d.rect(c)
+	dragTo(m, bx-1, by-1+m.boardTop(), cx+2, cy+2+m.boardTop(), tea.MouseLeft)
+	if !d.picked[b.ID] || !d.picked[c.ID] || d.picked[e.ID] || len(d.picked) != 3 {
+		t.Fatalf("the box picked %v", d.picked)
+	}
+	if s := screenOf(m); !strings.Contains(s, "┏") || !strings.Contains(s, "3 structures picked") {
+		t.Fatalf("the picked ones are not framed, or the count is not said:\n%s", s)
+	}
+	// G picks the chosen one.
+	d.sel = e.ID
+	press(m, "g")
+	if !d.picked[e.ID] || len(d.picked) != 4 {
+		t.Fatalf("G did not pick the chosen one: %v", d.picked)
+	}
+	// Enter asks for one name plate; all four get it.
+	press(m, "enter")
+	if m.prompt != pDesignGroup {
+		t.Fatal("Enter did not ask for a name plate")
+	}
+	m.input.SetValue("Crew")
+	press(m, "enter")
+	for _, o := range []*dOct{a, b, c, e} {
+		if o.Plate != "Crew" {
+			t.Fatalf("%s has plate %q", o.Header, o.Plate)
+		}
+	}
+	if d.groupMode || len(d.plates()["Crew"]) != 4 {
+		t.Fatalf("after naming: group mode %v, %d in Crew", d.groupMode, len(d.plates()["Crew"]))
+	}
+	m.Update(tea.KeyPressMsg(tea.Key{Code: 'þ', Text: "þ"}))
+	if s := screenOf(m); !strings.Contains(s, "Crew") || !strings.Contains(s, "A, ") {
+		t.Fatalf("AltGr+P does not list the group:\n%s", s)
+	}
+	m.Update(tea.KeyPressMsg(tea.Key{Code: 'þ', Text: "þ"}))
+
+	// Shift+G with one chosen starts with it picked; Esc leaves, naming nothing.
+	d.sel = a.ID
+	press(m, "shift+g")
+	if !d.picked[a.ID] {
+		t.Fatal("Shift+G did not pick the chosen structure")
+	}
+	press(m, "esc")
+	if d.groupMode || a.Plate != "Crew" {
+		t.Fatalf("Esc: group mode %v, plate %q", d.groupMode, a.Plate)
 	}
 }

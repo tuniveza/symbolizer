@@ -38,6 +38,7 @@ const (
 	pDesignFile  // Design mode: a picture or text file to put in (design_image.go)
 	pDesignLabel // Design mode: a label's words (design_labels.go)
 	pDesignPlate // Design mode: a name plate
+	pDesignGroup // Design mode: a name plate for everything picked (design_groups.go)
 )
 
 // Model is the whole editor, as Bubble Tea wants it.

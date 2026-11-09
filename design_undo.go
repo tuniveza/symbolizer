@@ -23,6 +23,7 @@ type boardState struct {
 	marks    map[[2]int]dMark // a copy, never changed once made
 	marksVer int              // designState.marksVer when it was copied
 	nextID   int
+	opened   rackOpen      // what was open in a rack then (undo brings that back too)
 	byID     map[int]*dOct // octs by ID, made when first needed
 }
 
@@ -43,7 +44,7 @@ func (s *boardState) index() map[int]*dOct {
 // project copies one page, not all of them, nor all the ink.
 func (d *designState) state() *boardState {
 	prev := d.undoBase
-	st := &boardState{links: append([]dLink(nil), d.links...), nextID: d.nextID, marksVer: d.marksVer}
+	st := &boardState{links: append([]dLink(nil), d.links...), nextID: d.nextID, marksVer: d.marksVer, opened: d.opened}
 	if prev != nil && prev.marksVer == d.marksVer && len(prev.marks) == len(d.marks) {
 		st.marks = prev.marks
 	} else {
@@ -196,6 +197,7 @@ func (d *designState) restore(s *boardState) {
 	}
 	d.marksVer = s.marksVer // the ink is as s has it again
 	d.nextID = max(d.nextID, s.nextID)
+	d.opened = s.opened
 	if d.byID(d.sel) == nil {
 		d.sel = -1
 	}

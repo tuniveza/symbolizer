@@ -138,6 +138,7 @@ const (
 	dragResize
 	dragPaint
 	dragRub
+	dragBand // group mode: a box dragged out on the empty board (design_groups.go)
 )
 
 // Parts of a structure that can be written in.
@@ -228,6 +229,9 @@ type designState struct {
 	rackPress      *rackPress   // a rack row pressed: a click opens it, a drag takes it out
 	labelMode      bool         // Alt+L: L, C, I, T, G label the chosen structure (design_labels.go)
 	platesOpen     bool         // AltGr+P: the list of name plates shows
+	groupMode      bool         // Shift+G: picking structures to give one name plate (design_groups.go)
+	picked         map[int]bool // in group mode: the structures picked, by ID
+	band           *groupBand   // in group mode: the box being dragged out on the empty board
 	maxH           int          // board rows no structure is taller than: the screen at 100% (0: not known yet)
 	inked          map[int]bool // the board rows that have ink (tint), for inkedVer
 	inkedVer       int
@@ -348,7 +352,7 @@ func (d *designState) snapshot() (int, designFile) {
 	// The copy undo keeps (state) shares what has not changed since the
 	// last one, so taking it costs little even on a large board.
 	st := d.state()
-	f := designFile{Octs: st.octs, Links: st.links, CamX: d.camX, CamY: d.camY, Zoom: d.zoom, NextID: d.nextID,
+	f := designFile{Octs: d.openPutBack(st.octs), Links: st.links, CamX: d.camX, CamY: d.camY, Zoom: d.zoom, NextID: d.nextID,
 		marksMap: st.marks, marksVer: st.marksVer}
 	d.snapGen++
 	d.lastSnap = &f
@@ -495,6 +499,11 @@ func (d *designState) z() float64 { return designZooms[d.zoom] }
 
 // rect is where a structure is on the screen (canvas cells).
 func (d *designState) rect(o *dOct) (x, y, w, h int) {
+	if d.opened.active && o.ID == d.opened.id { // open inside its rack
+		if x, y, w, h, ok := d.openRect(o); ok {
+			return x, y, w, h
+		}
+	}
 	z := d.z()
 	ow, oh := d.size(o)
 	x = int(math.Floor((float64(o.X) - d.camX) * z))
@@ -551,8 +560,11 @@ func (d *designState) toFront(o *dOct) {
 	for i, p := range d.octs {
 		if p == o {
 			d.octs = append(append(d.octs[:i:i], d.octs[i+1:]...), o)
-			return
+			break
 		}
+	}
+	if it := d.openIn(o); it != nil { // what is open in a rack stays on top of it
+		d.toFront(it)
 	}
 }
 
@@ -745,6 +757,14 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		} else {
 			m.say("Nothing placed. Alt+N, then P page · N note · S shape · C cabinet · D drawer · R rack.")
 		}
+		return nil
+	}
+	if d.groupMode { // G picks, Enter names (design_groups.go)
+		if ok, cmd := m.designGroupKey(name); ok {
+			return cmd
+		}
+	} else if name == "G" || name == "shift+g" {
+		m.designGroupMode(true)
 		return nil
 	}
 	if d.labelMode { // L C I T G label the chosen structure
@@ -979,6 +999,10 @@ func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 		}
 		return nil
 	}
+	if d.groupMode { // a click picks, a drag on the board picks what its box touches
+		m.groupPress(o, sx, sy)
+		return nil
+	}
 	d.selLink = -1
 	if o == nil && d.opened.active && !double { // a click on the board closes what a rack opened
 		m.designRackClose()
@@ -1089,6 +1113,13 @@ func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 		d.camX, d.camY = d.origCX-dx, d.origCY-dy
 	case dragMove:
 		if o := d.byID(d.sel); o != nil {
+			if d.opened.active && o.ID == d.opened.id {
+				if sx == d.pressX && sy == d.pressY {
+					break // not moved yet: it stays open in its rack
+				}
+				d.detachOpened(o) // dragged out of its rack: it is out for good
+				m.say(kindIcons[o.Kind] + " " + itemTitle(o) + " taken out of the rack.")
+			}
 			o.X, o.Y = d.snapNearest(o, d.origX+int(math.Round(dx)), d.origY+int(math.Round(dy)))
 			d.dropOn = -1
 			if !isContainer(o.Kind) {
@@ -1104,6 +1135,10 @@ func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 			if d.maxH > 0 {
 				o.H = min(o.H, max(mh, d.maxH)) // no taller than the screen
 			}
+		}
+	case dragBand:
+		if d.band != nil {
+			d.band.x1, d.band.y1 = sx, sy
 		}
 	case dragPaint:
 		d.stroke(sx, sy, false)
@@ -1129,6 +1164,9 @@ func (m *Model) designRelease() tea.Cmd {
 	}
 	if d.drag == dragMove && d.dropOn >= 0 {
 		m.designFileInto(d.byID(d.sel), d.byID(d.dropOn))
+	}
+	if d.drag == dragBand {
+		m.bandPick()
 	}
 	d.drag, d.dropOn = dragNone, -1
 	d.save()
@@ -1249,6 +1287,7 @@ func (m *Model) designCanvas() *boardCanvas {
 	}
 	d.drawn = seen
 	d.tint(c)
+	m.paintPicked(c) // group mode: frames round what is picked (design_groups.go)
 	m.paintLabels(c) // labels and name plates (design_labels.go)
 	m.paintMap(c)    // the mini map, over the board (design_map.go)
 	m.paintPlates(c) // AltGr+P: the list of name plates
@@ -1267,7 +1306,7 @@ func (m *Model) designCanvas() *boardCanvas {
 type drawKey struct {
 	w, h                                    int
 	kind, header, body, footer, color       string
-	image, openStack, items                 string
+	image, openStack, items, opened         string
 	layout, scroll, editing                 int
 	drawerOpen, sel, source, drop           bool
 	linkMode                                bool
@@ -1332,6 +1371,9 @@ func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
 	}
 	if k.sel {
 		k.editing = d.editing
+	}
+	if it := d.openIn(o); it != nil {
+		k.opened = fmt.Sprintf("%d\x00%s\x00%s", d.opened.at, it.Kind, itemTitle(it))
 	}
 	if len(o.Items) > 0 {
 		var sb strings.Builder
@@ -2307,6 +2349,8 @@ func (m *Model) designTopBar() string {
 	switch {
 	case d.placing:
 		right = "Place: P page · N note · S shape · C cabinet · D drawer · R rack "
+	case d.groupMode:
+		right = "Group mode · " + plural(len(d.pickedIDs()), "structure") + " picked"
 	case d.labelMode:
 		right = "Label mode"
 		if o := d.byID(d.sel); o != nil {
@@ -2339,8 +2383,10 @@ func (m *Model) designStatus() string {
 		hint = "Writing the " + part + "  ·  Tab: next part  ·  arrows: done"
 	case d.platesOpen:
 		hint = "Name plates  ·  AltGr+P or Alt twice: close"
+	case d.groupMode:
+		hint = "Group mode  ·  click or drag a box: pick  ·  G: pick the chosen one  ·  Enter: name them  ·  Esc: leave"
 	case d.opened.active:
-		hint = "Opened from a rack  ·  Alt twice or a click on the board: put it back"
+		hint = "Open in its rack  ·  its row or Alt twice: put it back  ·  drag it: take it out"
 	case d.labelMode:
 		hint = "Label mode  ·  L label  ·  C colour  ·  I icon  ·  T words  ·  G name plate  ·  Alt twice: leave"
 	case d.linkMode && d.linkFrom >= 0:

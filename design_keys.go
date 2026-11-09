@@ -657,6 +657,8 @@ func (m *Model) designEscape() {
 		m.say("Nothing placed.")
 	case d.platesOpen:
 		d.platesOpen = false
+	case d.groupMode:
+		m.designGroupMode(false)
 	case d.opened.active:
 		m.designRackClose()
 	case d.labelMode:

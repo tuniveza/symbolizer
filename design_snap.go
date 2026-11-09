@@ -115,6 +115,7 @@ func (d *designState) snapAhead(o *dOct, x0, y0, x, y int) (int, int, bool) {
 // moveByKeys moves o by (dx, dy) cells (Alt + arrows), snapping ahead.
 // Sitting a gap away from the closest structure, it goes no closer to it.
 func (d *designState) moveByKeys(o *dOct, dx, dy int) {
+	d.detachOpened(o) // moved out of its rack: it is out for good
 	if p, vert, toward, ok := d.snapGap(o, o.X, o.Y); ok {
 		if !vert && o.X == p && dx*toward > 0 {
 			dx = 0
