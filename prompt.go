@@ -159,6 +159,9 @@ func (m *Model) promptEnter(_ bool) tea.Cmd {
 	case pDesignGroup:
 		m.designSetGroup(value)
 		return nil
+	case pDesignTransform:
+		m.designSetTransform(value)
+		return nil
 	case pDesignFile:
 		path := expandPath(strings.Trim(strings.TrimSpace(value), `'"`))
 		if path == "" {

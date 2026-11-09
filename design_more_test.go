@@ -122,33 +122,63 @@ func TestDesignCabinetAndDrawers(t *testing.T) {
 	pg := d.newKind(kPage, 0, 0)
 	pg.X, pg.Y, pg.W, pg.H, pg.Header = 2, 2, 20, 8, "Draft"
 	d.sel, d.editing = -1, partNone
+	// Shut: its name and two doors with their knobs.
 	s := screenOf(m)
-	for _, w := range []string{"≣ Archive", "Pages", "Books", "Slides", "Notes", "Drawings"} {
+	if !strings.Contains(s, "≣ Archive") || strings.Count(s, "●") != 2 || cab.DrawerOpen {
+		t.Fatalf("the shut cabinet does not show its name and two doors:\n%s", s)
+	}
+	// A click on the doors opens them: a shelf for each kind behind them.
+	cx, cy, cw, _ := d.rect(cab)
+	click(m, cx+cw/2-3, cy+4+m.boardTop(), tea.MouseLeft)
+	d.lastClick = time.Time{}
+	s = screenOf(m)
+	if !cab.DrawerOpen {
+		t.Fatal("a click on the doors did not open them")
+	}
+	for _, w := range []string{"Pages", "Books", "Slides", "Notes", "Drawings", "⇣ diary"} {
 		if !strings.Contains(s, w) {
-			t.Fatalf("cabinet is missing %q:\n%s", w, s)
+			t.Fatalf("the open cabinet is missing %q:\n%s", w, s)
 		}
 	}
+	// Open, it is the same size, its doors swung open inside its frame;
+	// nothing is drawn beside it; a click on a door shuts them.
+	if _, _, w2, h2 := d.rect(cab); h2 != cabinetLines(cab) || w2 != cw {
+		t.Fatalf("the open cabinet changed size: %d×%d, want %d×%d", w2, h2, cw, cabinetLines(cab))
+	}
+	if row := strings.Split(s, "\n")[cy+6+m.boardTop()]; ansi.Strip(row) != "" {
+		if r := []rune(ansi.Strip(row)); cx-1 >= 0 && cx-1 < len(r) && r[cx-1] != ' ' {
+			t.Fatalf("something is drawn just left of the open cabinet: %q", string(r[cx-1]))
+		}
+	}
+	click(m, cx+1, cy+6+m.boardTop(), tea.MouseLeft)
+	d.lastClick = time.Time{}
+	if cab.DrawerOpen {
+		t.Fatal("a click on a door did not shut them")
+	}
 
-	// Drag the page onto the cabinet: it is filed in the Pages stack.
+	// Drag the page onto the shut cabinet: it goes on the Pages shelf, and
+	// the doors open on it.
 	px, py, _, _ := d.rect(pg)
-	cx, cy, _, _ := d.rect(cab)
-	dragTo(m, px+5, py+m.boardTop()+1, cx+8, cy+m.boardTop()+5, tea.MouseLeft)
-	if d.byID(pg.ID) != nil || len(cab.Items) != 1 || cab.Items[0] != pg || cab.OpenStack != kPage {
-		t.Fatalf("not filed: board %d, cabinet %d", len(d.octs), len(cab.Items))
+	m.View()
+	cx, cy, _, _ = d.rect(cab)
+	dragTo(m, px+5, py+m.boardTop()+1, cx+8, cy+m.boardTop()+4, tea.MouseLeft)
+	if d.byID(pg.ID) != nil || len(cab.Items) != 1 || cab.Items[0] != pg || !cab.DrawerOpen {
+		t.Fatalf("not filed: board %d, cabinet %d, doors open %v", len(d.octs), len(cab.Items), cab.DrawerOpen)
 	}
-	if s := screenOf(m); !strings.Contains(s, "≡ Draft") {
-		t.Fatalf("the open stack does not show the page:\n%s", s)
+	s = screenOf(m)
+	if !strings.Contains(s, "≡ Draft") {
+		t.Fatalf("the Pages shelf does not show the page:\n%s", s)
 	}
 
-	// Drag it out again by its row.
-	rows := stackRows(cab, false)
-	row := -1
-	for i, r := range rows {
-		if r.act == "item:0" {
-			row = i
+	// Drag it out again from its shelf.
+	tx, ty := -1, -1
+	for i, r := range strings.Split(s, "\n") {
+		if j := strings.Index(r, "≡ Draft"); j >= 0 && i > m.boardTop() && i < m.boardTop()+m.boardH() {
+			tx, ty = len([]rune(r[:j])), i
+			break // on the board, not the message under it
 		}
 	}
-	dragTo(m, cx+5, cy+m.boardTop()+3+row, 20, 20, tea.MouseLeft)
+	dragTo(m, tx+2, ty, 20, 20, tea.MouseLeft)
 	if d.byID(pg.ID) == nil || len(cab.Items) != 0 {
 		t.Fatalf("not taken out: cabinet %d", len(cab.Items))
 	}
@@ -748,11 +778,11 @@ func TestDesignDelete(t *testing.T) {
 		t.Fatal("Ctrl+Z did not bring back the link")
 	}
 
-	// A thing in a cabinet, by the ✕ on its row.
-	cab := d.newKind(kCabinet, 0, 0)
+	// A thing in a rack, by the ✕ on its row.
+	cab := d.newKind(kRack, 0, 0)
 	cab.X, cab.Y, cab.Header = 30, 14, "Archive"
 	cabID := cab.ID
-	cab.Items, cab.OpenStack = []*dOct{{ID: 101, Kind: kPage, Header: "First"}, {ID: 102, Kind: kPage, Header: "Second"}}, kPage
+	cab.Items = []*dOct{{ID: 101, Kind: kPage, Header: "First"}, {ID: 102, Kind: kPage, Header: "Second"}}
 	d.sel = -1
 	d.dirty = true
 	d.save()
@@ -825,8 +855,8 @@ func TestDesignDelete(t *testing.T) {
 		t.Fatal("the picture's ✕ did not take out just the picture")
 	}
 
-	// A thing in a drawer, by the ✕ on its row.
-	dr := d.newKind(kDrawer, 0, 0)
+	// A thing in a rack, by the ✕ on its row.
+	dr := d.newKind(kRack, 0, 0)
 	dr.X, dr.Y = 70, 20
 	dr.Items = []*dOct{{ID: 201, Kind: kNote, Body: "In the drawer"}}
 	bID = dr.ID
@@ -835,7 +865,7 @@ func TestDesignDelete(t *testing.T) {
 	d.save()
 	cx, cy = rowX("In the drawer")
 	if cx < 0 {
-		t.Fatalf("no ✕ on the drawer's row:\n%s", screenOf(m))
+		t.Fatalf("no ✕ on the rack's row:\n%s", screenOf(m))
 	}
 	click(m, cx, cy, tea.MouseLeft)
 	if len(d.byID(bID).Items) != 0 {
@@ -975,6 +1005,9 @@ func TestDesignUndoSeesEveryField(t *testing.T) {
 			v.SetInt(7)
 		case reflect.Bool:
 			v.SetBool(true)
+		case reflect.Pointer: // a pin's transform: turned
+			v.Set(reflect.New(v.Type().Elem()))
+			v.Elem().Field(0).SetFloat(7)
 		default:
 			t.Fatalf("field %s: a kind this test does not know", f.Name)
 		}
@@ -1601,14 +1634,13 @@ func TestDesignTab(t *testing.T) {
 
 	cab := d.newKind(kCabinet, 0, 0)
 	d.sel, d.editing = cab.ID, partNone
-	cab.OpenStack = ""
-	var seen []string
-	for range stackKinds {
-		press(m, "tab")
-		seen = append(seen, cab.OpenStack)
+	press(m, "tab")
+	if !cab.DrawerOpen {
+		t.Fatal("Tab on a cabinet did not open its doors")
 	}
-	if strings.Join(seen, ",") != strings.Join(stackKinds, ",") {
-		t.Fatalf("Tab on a cabinet pulled out %v, want each stack in turn %v", seen, stackKinds)
+	press(m, "tab")
+	if cab.DrawerOpen {
+		t.Fatal("Tab again did not shut them")
 	}
 }
 
@@ -2468,15 +2500,21 @@ func TestDesignDrawerAndRack(t *testing.T) {
 	if rh != h0+ph || py+ph > ry+rh-1 {
 		t.Fatalf("the rack did not grow to hold it: rack %d high (was %d), page %d high", rh, h0, ph)
 	}
+	// The view moves so the whole rack, the open page and its other rows,
+	// is in the middle of the screen.
+	if abs(rx+rw/2-m.width/2) > 1 || abs(ry+rh/2-m.boardH()/2) > 1 || ry < 0 || ry+rh > m.boardH() {
+		t.Fatalf("the rack is not whole in the middle of the view: %d,%d %d×%d, screen %d×%d", rx, ry, rw, rh, m.width, m.boardH())
+	}
 	m.View()
 	if s := screenOf(m); !strings.Contains(s, "▾ ≡ Two") {
 		t.Fatalf("the open page's row is not shown:\n%s", s)
 	}
 	// Its row again puts it back, its own size again.
-	click(m, x+5, y+3+1+m.boardTop(), tea.MouseLeft)
+	click(m, rx+5, ry+3+1+m.boardTop(), tea.MouseLeft)
 	if d.opened.active || d.byID(p2.ID) != nil || len(rack.Items) != 2 || p2.W != p2W || p2.H != p2H {
 		t.Fatalf("its row did not put it back: opened %v, rack holds %d, size %d×%d (was %d×%d)", d.opened.active, len(rack.Items), p2.W, p2.H, p2W, p2H)
 	}
+	x, y, _, _ = d.rect(rack)
 	click(m, x+5, y+3+1+m.boardTop(), tea.MouseLeft)
 	if !d.opened.active {
 		t.Fatal("the row did not open again")
@@ -2659,7 +2697,7 @@ func TestDesignGroupPick(t *testing.T) {
 	a.X, a.Y = 2, 2
 	b.X, b.Y = 30, 2
 	c.X, c.Y = 60, 2
-	e.X, e.Y = 2, 15
+	e.X, e.Y = 2, 17
 	a.Header, b.Header, c.Header, e.Header = "A", "B", "C", "E"
 	d.sel = -1
 	m.View()
@@ -2709,8 +2747,20 @@ func TestDesignGroupPick(t *testing.T) {
 	if d.groupMode || len(d.plates()["Crew"]) != 4 {
 		t.Fatalf("after naming: group mode %v, %d in Crew", d.groupMode, len(d.plates()["Crew"]))
 	}
+	// The plate is on A's bottom edge, part of it: a click on it chooses A.
+	ax, ay, _, ah := d.rect(a)
+	rows := strings.Split(screenOf(m), "\n")
+	if edge := []rune(rows[ay+ah-1+m.boardTop()]); len(edge) < ax+8 || !strings.Contains(string(edge[ax:ax+12]), "▪ Crew") {
+		t.Fatalf("the plate is not on A's bottom edge: %q", string(edge))
+	}
+	d.sel = -1
+	click(m, ax+5, ay+ah-1+m.boardTop(), tea.MouseLeft)
+	d.lastClick = time.Time{}
+	if d.sel != a.ID {
+		t.Fatalf("a click on the plate chose %d, not A", d.sel)
+	}
 	m.Update(tea.KeyPressMsg(tea.Key{Code: 'þ', Text: "þ"}))
-	if s := screenOf(m); !strings.Contains(s, "Crew") || !strings.Contains(s, "A, ") {
+	if s := screenOf(m); !strings.Contains(s, "Name plates") || !strings.Contains(s, "Crew") || !strings.Contains(s, "A") {
 		t.Fatalf("AltGr+P does not list the group:\n%s", s)
 	}
 	m.Update(tea.KeyPressMsg(tea.Key{Code: 'þ', Text: "þ"}))
@@ -2724,5 +2774,639 @@ func TestDesignGroupPick(t *testing.T) {
 	press(m, "esc")
 	if d.groupMode || a.Plate != "Crew" {
 		t.Fatalf("Esc: group mode %v, plate %q", d.groupMode, a.Plate)
+	}
+}
+
+// At every zoom, a rack's row opens its thing inside the rack, under its
+// row, the rack's other rows still shown, and the view has the whole rack
+// in the middle (or, if the rack is taller than the screen, the open thing
+// whole on screen); its row again puts it back.
+func TestDesignRackOpenEveryZoom(t *testing.T) {
+	for zi := range designZooms {
+		m := newTest(t, "x")
+		m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+		m.setMode(designMode)
+		d := m.ds()
+		d.camX, d.camY, d.zoom = 0, 0, zi
+		r := d.newKind(kRack, 0, 0)
+		r.X, r.Y, r.Header = 2, 2, "Shelf"
+		p := d.newKind(kPage, 0, 0)
+		p.Header, p.W, p.H = "Plan", 34, 14
+		b := d.newKind(kOct, 0, 0)
+		b.Header = "Bell"
+		m.designFileInto(p, r)
+		m.designFileInto(b, r)
+		m.centreOn(r)
+		m.View()
+		x, y, w, h := d.rect(r)
+		if w < 12 || h < 6 {
+			continue // zoomed so far out the rack is too small for its rows: it scales like everything else
+		}
+		click(m, x+w/2, y+3+m.boardTop(), tea.MouseLeft)
+		d.lastClick = time.Time{}
+		if !d.opened.active {
+			t.Fatalf("zoom %.2f: the row did not open", d.z())
+		}
+		rx, ry, rw, rh := d.rect(r)
+		px, py, pw, ph := d.rect(p)
+		if px != rx+1 || py != ry+4 || pw != rw-2 || py+ph > ry+rh-2 {
+			t.Fatalf("zoom %.2f: not inside the rack under its row: page %d,%d %d×%d, rack %d,%d %d×%d", d.z(), px, py, pw, ph, rx, ry, rw, rh)
+		}
+		if rh > m.boardH()-2 {
+			t.Fatalf("zoom %.2f: the open rack is taller than the screen: %d rows, screen %d", d.z(), rh, m.boardH())
+		}
+		{
+			if ry < 0 || ry+rh > m.boardH() || abs(ry+rh/2-m.boardH()/2) > 1 || abs(rx+rw/2-m.width/2) > 1 {
+				t.Fatalf("zoom %.2f: the rack is not whole in the middle: %d,%d %d×%d, screen %d×%d", d.z(), rx, ry, rw, rh, m.width, m.boardH())
+			}
+			if s := screenOf(m); !strings.Contains(s, "▾ ≡ Plan") || !strings.Contains(s, "◆ Bell") || !strings.Contains(s, "╚") {
+				t.Fatalf("zoom %.2f: the rack's rows are not all shown:\n%s", d.z(), s)
+			}
+		}
+		m.View()
+		click(m, rx+3, ry+3+m.boardTop(), tea.MouseLeft)
+		d.lastClick = time.Time{}
+		if d.opened.active || len(r.Items) != 2 {
+			t.Fatalf("zoom %.2f: its row did not put it back", d.z())
+		}
+	}
+}
+
+// With something open in a rack, Tab opens the rack's next thing and
+// Shift+Tab the one before, round from the last to the first; the rack
+// keeps its order. While writing in it, Tab still goes to the next part.
+func TestDesignRackTab(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	r := d.newKind(kRack, 0, 0)
+	r.X, r.Y = 2, 2
+	var ps []*dOct
+	for _, name := range []string{"One", "Two", "Three"} {
+		p := d.newKind(kPage, 0, 0)
+		p.Header = name
+		m.designFileInto(p, r)
+		ps = append(ps, p)
+	}
+	m.View()
+	m.designRackOpen(r, 0)
+	want := func(i int, what string) {
+		t.Helper()
+		if !d.opened.active || d.opened.id != ps[i].ID || d.opened.at != i || d.sel != ps[i].ID {
+			t.Fatalf("%s: open %+v, want %s", what, d.opened, ps[i].Header)
+		}
+		if len(r.Items) != 2 {
+			t.Fatalf("%s: the rack holds %d besides the open one", what, len(r.Items))
+		}
+	}
+	want(0, "opened")
+	press(m, "tab")
+	want(1, "Tab")
+	press(m, "tab")
+	want(2, "Tab again")
+	press(m, "tab")
+	want(0, "Tab from the last")
+	press(m, "shift+tab")
+	want(2, "Shift+Tab from the first")
+	press(m, "shift+tab")
+	want(1, "Shift+Tab")
+	if !strings.Contains(screenOf(m), "▾ ≡ Two") {
+		t.Fatal("the open one's row is not shown")
+	}
+	// Writing in it, Tab goes to its next part, not the next thing.
+	d.editing = partHeader
+	press(m, "tab")
+	if !d.opened.active || d.opened.id != ps[1].ID || d.editing == partHeader {
+		t.Fatalf("Tab while writing: open %+v, writing %d", d.opened, d.editing)
+	}
+	d.editing = partNone
+	m.designRackClose()
+	for i, it := range r.Items {
+		if it.ID != ps[i].ID {
+			t.Fatalf("the rack's order changed: %d is %s", i, it.Header)
+		}
+	}
+}
+
+// At every zoom, no container covers another structure: zoomed out, a
+// container grows only where there is room, and the rows that do not fit
+// are "+N more" (a click on it zooms to 100%, where all of them show).
+func TestDesignContainersNoOverlap(t *testing.T) {
+	sawMore := false
+	for zi := range designZooms {
+		m := newTest(t, "x")
+		m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+		m.setMode(designMode)
+		d := m.ds()
+		d.zoom = zi
+		r := d.newKind(kRack, 0, 0)
+		r.X, r.Y, r.Header = 2, 2, "Shelf"
+		for i := range 5 {
+			p := d.newKind(kPage, 0, 0)
+			p.Header = "P" + itoa(i)
+			m.designFileInto(p, r)
+		}
+		below := d.newKind(kPage, 0, 0) // right under the rack
+		below.X, below.Y, below.W, below.Header = 2, 2+9+1, cabinetNewW, "Below"
+		dr := d.newKind(kDrawer, 0, 0) // right of the rack
+		dr.X, dr.Y, dr.Header = 2+cabinetNewW+1, 2, "Box"
+		for i := range 4 {
+			n := d.newKind(kNote, 0, 0)
+			n.Header = "N" + itoa(i)
+			m.designFileInto(n, dr)
+		}
+		cab := d.newKind(kCabinet, 0, 0) // under the drawer
+		cab.X, cab.Y, cab.Header = 2+cabinetNewW+1, 2+drawerLines(dr)+1, "Cab"
+		right := d.newKind(kOct, 0, 0) // right of the drawer
+		right.X, right.Y, right.Header = 2+cabinetNewW+1+drawerNewW+1, 2, "Right"
+		d.sel = -1
+		d.camX, d.camY = 0, 0
+		s := screenOf(m)
+		all := []*dOct{r, below, dr, cab, right}
+		for i, a := range all {
+			for _, b := range all[i+1:] {
+				if !isContainer(a.Kind) && !isContainer(b.Kind) {
+					continue
+				}
+				ax, ay, aw, ah := d.rect(a)
+				bx, by, bw, bh := d.rect(b)
+				if ax < bx+bw && bx < ax+aw && ay < by+bh && by < ay+ah {
+					t.Fatalf("zoom %.2f: %s %d,%d %d×%d covers %s %d,%d %d×%d:\n%s", d.z(), a.Header, ax, ay, aw, ah, b.Header, bx, by, bw, bh, s)
+				}
+			}
+		}
+		if zi == designZoom100 && strings.Contains(s, "more") {
+			t.Fatalf("at 100%% every row should show:\n%s", s)
+		}
+		if strings.Contains(s, " more") && !sawMore {
+			// "+N more" zooms to 100% on its container.
+			for _, o := range []*dOct{r, dr, cab} {
+				x, y, w, h := d.rect(o)
+				if h >= 5 && d.containerLines(o) > h {
+					click(m, x+w/2, y+h-2+m.boardTop(), tea.MouseLeft)
+					d.lastClick = time.Time{}
+					if d.zoom != designZoom100 || d.sel != o.ID {
+						t.Fatalf("zoom %.2f: \"+N more\" on %s did not zoom to 100%% (zoom %d, chosen %d)", designZooms[zi], o.Header, d.zoom, d.sel)
+					}
+					sawMore = true
+					break
+				}
+			}
+		}
+	}
+	if !sawMore {
+		t.Fatal("no zoom needed \"+N more\": the test board is not tight enough")
+	}
+}
+
+// Choosing several: Space on (or over) a structure with a name plate
+// chooses its whole group; Ctrl + drag on the empty board draws a shaded
+// box and chooses what it touches; Ctrl + click adds or takes one away.
+// Dragging one moves them all, Alt + arrows too; X X deletes them all;
+// Esc lets go.
+func TestDesignChooseSeveral(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	mk := func(name string, x, y int, plate string) *dOct {
+		o := d.newKind(kNote, 0, 0)
+		o.Header, o.X, o.Y, o.Plate = name, x, y, plate
+		return o
+	}
+	a := mk("A", 2, 1, "Crew")
+	b := mk("B", 40, 1, "Crew")
+	c := mk("C", 70, 1, "")
+	e := mk("E", 70, 17, "Band")
+	d.sel = a.ID
+	m.View()
+
+	// Space on A: A and B (the "Crew" group) are chosen.
+	press(m, "space")
+	if !d.multi[a.ID] || !d.multi[b.ID] || len(d.multiIDs()) != 2 {
+		t.Fatalf("Space did not choose the group: %v", d.multi)
+	}
+	if s := screenOf(m); !strings.Contains(s, "2 chosen") || strings.Count(s, "┏") < 2 {
+		t.Fatalf("the two chosen are not framed, or the status bar does not say so:\n%s", s)
+	}
+	// The mouse over E (the "Band" group), then Space: E's group instead.
+	ex, ey, _, _ := d.rect(e)
+	m.Update(tea.MouseMotionMsg(tea.Mouse{X: ex + 3, Y: ey + 2 + m.boardTop()}))
+	d.spaceAt = time.Time{}
+	press(m, "space")
+	if !d.multi[e.ID] || len(d.multiIDs()) != 1 || d.sel != e.ID {
+		t.Fatalf("Space over E did not choose E's group: %v", d.multi)
+	}
+	press(m, "esc")
+	if len(d.multi) != 0 {
+		t.Fatal("Esc did not let go")
+	}
+
+	// Ctrl + drag from the empty board round A and B: a shaded box while
+	// dragging, then both chosen.
+	ax, ay, _, _ := d.rect(a)
+	bx, by, bw, _ := d.rect(b)
+	top := m.boardTop()
+	d.sel = -1
+	m.Update(tea.MouseClickMsg(tea.Mouse{X: ax + 30, Y: ay + 16 + top, Button: tea.MouseLeft, Mod: tea.ModCtrl}))
+	m.Update(tea.MouseMotionMsg(tea.Mouse{X: ax + 1, Y: ay + 1 + top, Button: tea.MouseLeft, Mod: tea.ModCtrl}))
+	if s := screenOf(m); !strings.Contains(s, "░") {
+		t.Fatalf("no shaded box while dragging:\n%s", s)
+	}
+	m.Update(tea.MouseMotionMsg(tea.Mouse{X: bx + 2, Y: by + 1 + top, Button: tea.MouseLeft, Mod: tea.ModCtrl}))
+	m.Update(tea.MouseReleaseMsg(tea.Mouse{X: bx + 2, Y: by + 1 + top, Button: tea.MouseLeft, Mod: tea.ModCtrl}))
+	if !d.multi[a.ID] || !d.multi[b.ID] || d.multi[c.ID] || len(d.multiIDs()) != 2 {
+		t.Fatalf("the box chose %v", d.multi)
+	}
+	// Ctrl + click on C: chosen too; again: no longer.
+	cx, cy, _, _ := d.rect(c)
+	m.Update(tea.MouseClickMsg(tea.Mouse{X: cx + 3, Y: cy + 3 + top, Button: tea.MouseLeft, Mod: tea.ModCtrl}))
+	m.Update(tea.MouseReleaseMsg(tea.Mouse{X: cx + 3, Y: cy + 3 + top, Button: tea.MouseLeft, Mod: tea.ModCtrl}))
+	if !d.multi[c.ID] {
+		t.Fatal("Ctrl + click did not choose C too")
+	}
+	m.Update(tea.MouseClickMsg(tea.Mouse{X: cx + 3, Y: cy + 3 + top, Button: tea.MouseLeft, Mod: tea.ModCtrl}))
+	m.Update(tea.MouseReleaseMsg(tea.Mouse{X: cx + 3, Y: cy + 3 + top, Button: tea.MouseLeft, Mod: tea.ModCtrl}))
+	if d.multi[c.ID] || len(d.multiIDs()) != 2 {
+		t.Fatalf("Ctrl + click again did not take C away: %v", d.multi)
+	}
+
+	// Dragging A moves B as much.
+	a0x, a0y, b0x, b0y := a.X, a.Y, b.X, b.Y
+	m.View()
+	ax, ay, _, _ = d.rect(a)
+	dragTo(m, ax+3, ay+3+top, ax+7, ay+5+top, tea.MouseLeft)
+	if a.X-a0x == 0 || b.X-b0x != a.X-a0x || b.Y-b0y != a.Y-a0y || c.X != 70 {
+		t.Fatalf("drag: A moved %d,%d, B %d,%d", a.X-a0x, a.Y-a0y, b.X-b0x, b.Y-b0y)
+	}
+	if len(d.multiIDs()) != 2 {
+		t.Fatal("dragging one let go of the others")
+	}
+	// Alt + Right moves both.
+	a1x, b1x := a.X, b.X
+	press(m, "alt+right")
+	if a.X == a1x || b.X-b1x != a.X-a1x {
+		t.Fatalf("Alt+Right: A %d→%d, B %d→%d", a1x, a.X, b1x, b.X)
+	}
+	_ = bw
+
+	// X X deletes both; Ctrl+Z brings them back.
+	press(m, "x")
+	press(m, "x")
+	if d.byID(a.ID) != nil || d.byID(b.ID) != nil || d.byID(c.ID) == nil {
+		t.Fatal("X X did not delete the two chosen (and only them)")
+	}
+	press(m, "ctrl+z")
+	if d.byID(a.ID) == nil || d.byID(b.ID) == nil {
+		t.Fatal("Ctrl+Z did not bring them back")
+	}
+
+	// A click on the empty board lets go.
+	d.multi = map[int]bool{a.ID: true, b.ID: true}
+	click(m, 1, m.boardH()-2+top, tea.MouseLeft)
+	if len(d.multi) != 0 {
+		t.Fatal("a click on the board did not let go")
+	}
+}
+
+// An open cabinet's shelf shows what fits; "+N ▸" shows the rest, and
+// "◂ first" goes back; the shelf board's + makes a new one beside it.
+func TestDesignCabinetShelves(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	cab := d.newKind(kCabinet, 0, 0)
+	cab.X, cab.Y, cab.Header, cab.DrawerOpen = 2, 1, "Archive", true
+	for i := range 8 {
+		cab.Items = append(cab.Items, &dOct{ID: 500 + i, Kind: kPage, Header: "Page" + itoa(i)})
+	}
+	d.sel = -1
+	s := screenOf(m)
+	if !strings.Contains(s, "≡ Page0") || strings.Contains(s, "≡ Page7") || !strings.Contains(s, "▸") {
+		t.Fatalf("the Pages shelf should show the first ones and \"+N ▸\":\n%s", s)
+	}
+	find := func(word string) (int, int) {
+		for i, r := range strings.Split(screenOf(m), "\n") {
+			if i <= m.boardTop() || i >= m.boardTop()+m.boardH() {
+				continue
+			}
+			if j := strings.Index(r, word); j >= 0 {
+				return len([]rune(r[:j])), i
+			}
+		}
+		return -1, -1
+	}
+	x, y := find("▸")
+	for range 10 {
+		if x < 0 || !strings.Contains(screenOf(m), "▸") {
+			break
+		}
+		click(m, x, y, tea.MouseLeft)
+		d.lastClick = time.Time{}
+		if strings.Contains(screenOf(m), "≡ Page7") {
+			break
+		}
+		x, y = find("▸")
+	}
+	if !strings.Contains(screenOf(m), "≡ Page7") {
+		t.Fatalf("\"+N ▸\" never showed the last page:\n%s", screenOf(m))
+	}
+	// The shelf board's +: a new page beside the cabinet.
+	before := len(d.octs)
+	x, y = find(" + ")
+	click(m, x+1, y, tea.MouseLeft)
+	d.lastClick = time.Time{}
+	if len(d.octs) != before+1 || d.octs[len(d.octs)-1].Kind != kPage {
+		t.Fatalf("+ on the Pages shelf did not make a new page: %d → %d", before, len(d.octs))
+	}
+}
+
+// A drawer shows its front and handle; a click on the handle pulls it out:
+// each thing small in its tray, with its one label; a click on one takes it
+// out; the handle (or Tab) pushes it in.
+func TestDesignDrawerHandle(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	dr := d.newKind(kDrawer, 0, 0)
+	dr.X, dr.Y, dr.Header = 2, 1, "Box"
+	dr.Items = []*dOct{{ID: 301, Kind: kNote, Header: "Call Ana", Color: "#98c379"}, {ID: 302, Kind: kPage, Header: "Plan", Color: "#c678dd"},
+		{ID: 303, Kind: kOct, Header: "Bell", Color: "#e5c07b", W: 26, H: 10}}
+	d.sel = -1
+	s := screenOf(m)
+	if !strings.Contains(s, "⊔ Box · 3") || !strings.Contains(s, "○") || strings.Contains(s, "Call Ana") || dr.DrawerOpen {
+		t.Fatalf("the pushed-in drawer should show its front and handle only:\n%s", s)
+	}
+	x, y, w, _ := d.rect(dr)
+	click(m, x+w/2, y+2+m.boardTop(), tea.MouseLeft) // the handle
+	d.lastClick = time.Time{}
+	s = screenOf(m)
+	if !dr.DrawerOpen || !strings.Contains(s, "Call Ana") || !strings.Contains(s, "Plan") || !strings.Contains(s, "Bell") || !strings.Contains(s, "◹") {
+		t.Fatalf("pulled out, the tray should show each thing small with its label:\n%s", s)
+	}
+	// A click on the second miniature takes "Plan" out.
+	mx := x + 1 + 1 + (miniW + 1) + 3
+	dragTo(m, mx, y+5+m.boardTop(), 60, 22, tea.MouseLeft)
+	if len(dr.Items) != 2 || d.byID(302) == nil {
+		t.Fatalf("the miniature did not take Plan out: drawer holds %d", len(dr.Items))
+	}
+	// Tab with it chosen pushes it in.
+	d.sel = dr.ID
+	press(m, "tab")
+	if dr.DrawerOpen {
+		t.Fatal("Tab did not push the drawer in")
+	}
+}
+
+// A board (Alt+N, B): a page dropped on it is pinned where it is let go,
+// drawn small with its one label and a pin; a click opens it full size,
+// Esc pins it back; Tab chooses a pin; R, S, K, F and T (typed words)
+// transform it, and it is drawn so; dragging moves it; X X takes it off;
+// the transform is saved.
+func TestDesignBoardPins(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	d.sel = -1
+	placeKey(m, "b")
+	press(m, "esc")
+	var b *dOct
+	for _, o := range d.octs {
+		if o.Kind == kBoard {
+			b = o
+		}
+	}
+	if b == nil {
+		t.Fatal("Alt+N, B placed no board")
+	}
+	b.X, b.Y, b.Header = 2, 1, "Wall"
+	pg := d.newKind(kPage, 0, 0)
+	pg.Header, pg.X, pg.Y = "Plan", 70, 4
+	d.sel = -1
+	m.View()
+
+	// Drag the page onto the board: pinned where it was let go.
+	px, py, _, _ := d.rect(pg)
+	bx, by, _, _ := d.rect(b)
+	dragTo(m, px+2, py+1+m.boardTop(), bx+12, by+5+m.boardTop(), tea.MouseLeft)
+	if len(b.Items) != 1 || d.byID(pg.ID) != nil {
+		t.Fatalf("not pinned: board holds %d", len(b.Items))
+	}
+	s := screenOf(m)
+	if !strings.Contains(s, "Plan") || !strings.Contains(s, "●") || !strings.Contains(s, "⊞ Wall · 1 pin") {
+		t.Fatalf("the pin should show small with its label and a pin:\n%s", s)
+	}
+	pinX, pinY := pg.X, pg.Y
+
+	// A click on it opens it full size; Esc pins it back where it was.
+	j := -1
+	var cx, cy int
+	for yy := 1; yy < 17 && j < 0; yy++ {
+		for xx := 1; xx < 50; xx++ {
+			if d.pinAt(b, xx, yy) == 0 {
+				j, cx, cy = 0, bx+xx, by+yy
+				break
+			}
+		}
+	}
+	if j < 0 {
+		t.Fatal("no cell of the board finds the pin")
+	}
+	click(m, cx, cy+m.boardTop(), tea.MouseLeft)
+	d.lastClick = time.Time{}
+	if !d.opened.active || d.byID(pg.ID) == nil || !strings.Contains(screenOf(m), "double-click to write") {
+		t.Fatalf("a click on the pin did not open it full size: %+v", d.opened)
+	}
+	press(m, "esc")
+	if d.opened.active || len(b.Items) != 1 || pg.X != pinX || pg.Y != pinY {
+		t.Fatalf("Esc did not pin it back at %d,%d: %d,%d", pinX, pinY, pg.X, pg.Y)
+	}
+
+	// Tab with the board chosen chooses the pin; R turns it, S scales it,
+	// K skews it, F flips it.
+	d.sel = b.ID
+	press(m, "tab")
+	if !d.pin.active || d.pin.at != 0 {
+		t.Fatal("Tab did not choose the pin")
+	}
+	flat := screenOf(m)
+	press(m, "r")
+	press(m, "r")
+	press(m, "s")
+	press(m, "k")
+	press(m, "f")
+	rot, sx, sy, kx, _ := pg.Tf.get()
+	if rot != 30 || math.Abs(sx+1.1) > 1e-9 || math.Abs(sy-1.1) > 1e-9 || math.Abs(kx-0.15) > 1e-9 {
+		t.Fatalf("R R S K F: %+v", *pg.Tf)
+	}
+	if screenOf(m) == flat {
+		t.Fatal("the transformed pin is drawn the same")
+	}
+	// T: the transform as words, typed.
+	press(m, "t")
+	if m.prompt != pDesignTransform || !strings.Contains(m.input.Value(), "rotate 30") {
+		t.Fatalf("T did not ask with the transform as words: %q", m.input.Value())
+	}
+	m.input.SetValue("rotate(90deg) scale(2) skewy 0.5 move 3 1")
+	press(m, "enter")
+	rot, sx, sy, _, ky := pg.Tf.get()
+	if rot != 90 || sx != -2 || sy != 2 || ky != 0.5 || pg.X != pinX+3 || pg.Y != pinY+1 { // still flipped (F)
+		t.Fatalf("typed transform: %+v at %d,%d", *pg.Tf, pg.X, pg.Y)
+	}
+	// Alt + Right moves it.
+	press(m, "alt+right")
+	if pg.X != pinX+4 {
+		t.Fatalf("Alt+Right: x %d, want %d", pg.X, pinX+4)
+	}
+	// Saved and read again, it keeps its transform.
+	d.dirty = true
+	d.save()
+	d2 := loadDesign(d.loadedFrom)
+	var b2 *dOct
+	for _, o := range d2.octs {
+		if o.ID == b.ID {
+			b2 = o
+		}
+	}
+	if b2 == nil || len(b2.Items) != 1 || b2.Items[0].Tf == nil || b2.Items[0].Tf.Rot != 90 {
+		t.Fatal("the pin's transform was not saved")
+	}
+	// T with "reset" puts it straight.
+	press(m, "t")
+	m.input.SetValue("reset")
+	press(m, "enter")
+	if pg.Tf != nil {
+		t.Fatalf("reset left %+v", *pg.Tf)
+	}
+	// X X takes it off the board; Ctrl+Z brings it back.
+	press(m, "x")
+	press(m, "x")
+	if len(b.Items) != 0 {
+		t.Fatal("X X did not take the pin off")
+	}
+	press(m, "ctrl+z")
+	if b := d.byID(b.ID); b == nil || len(b.Items) != 1 {
+		t.Fatal("Ctrl+Z did not bring the pin back")
+	}
+}
+
+// A pulled-out drawer, chosen, shows all it holds at any zoom (wider when
+// they would not fit the screen's height); not chosen, it is its board
+// size times the zoom, like everything else.
+func TestDesignDrawerShownWhole(t *testing.T) {
+	for _, zi := range []int{0, 2, designZoom100, 8} {
+		m := designTest(t)
+		d := m.ds()
+		d.zoom = zi
+		dr := d.newKind(kDrawer, 0, 0)
+		dr.X, dr.Y, dr.Header = 2, 1, "Box"
+		for i := range 24 {
+			dr.Items = append(dr.Items, &dOct{ID: 700 + i, Kind: kNote, Header: "N" + itoa(i), Color: "#e5c07b"})
+		}
+		d.sel = dr.ID
+		m.designPull(dr) // pulled out: chosen, and the view on it
+		x, y, w, h := d.rect(dr)
+		if x < 0 || y < 0 || x+w > m.width || y+h > m.boardH() {
+			t.Fatalf("zoom %.2f: the pulled-out drawer is not all on screen: %d,%d %d×%d, screen %d×%d", d.z(), x, y, w, h, m.width, m.boardH())
+		}
+		s := screenOf(m)
+		for i := range 24 {
+			if !strings.Contains(s, "N"+itoa(i)+" ") && !strings.Contains(s, "N"+itoa(i)+"│") {
+				t.Fatalf("zoom %.2f: N%d does not show:\n%s", d.z(), i, s)
+			}
+		}
+		// Not chosen: its board size times the zoom.
+		d.sel = -1
+		bx, by, bw, bh := d.baseRect(dr)
+		if rx, ry, rw, rh := d.rect(dr); rx != bx || ry != by || rw != bw || rh != bh {
+			t.Fatalf("zoom %.2f: not chosen, the drawer is %d×%d, want its scaled size %d×%d", d.z(), rw, rh, bw, bh)
+		}
+	}
+}
+
+// A pin made bigger (S, or zoomed in) is drawn at its size: its edges and
+// its label once each, never stretched letter by letter.
+func TestDesignPinNotStretched(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	b := d.newKind(kBoard, 0, 0)
+	b.X, b.Y, b.W, b.H = 2, 1, 80, 24
+	pg := &dOct{ID: 900, Kind: kPage, Header: "Hello there", Color: "#c678dd", X: 4, Y: 2}
+	pg.setTf(0, 3, 3, 0, 0)
+	b.Items = []*dOct{pg}
+	d.sel = -1
+	s := screenOf(m)
+	if strings.Count(s, "Hello there") != 1 || strings.Contains(s, "HH") || strings.Contains(s, "ll ll") {
+		t.Fatalf("the scaled pin's label should show once, unstretched:\n%s", s)
+	}
+	if strings.Contains(s, "┌┌") || strings.Contains(s, "◹◹") {
+		t.Fatalf("the scaled pin's corners are drawn more than once:\n%s", s)
+	}
+	pg.setTf(90, 2, 2, 0, 0) // on its side: the label still reads across
+	if s := screenOf(m); strings.Count(s, "Hello there") != 1 {
+		t.Fatalf("turned on its side, the label should still read once:\n%s", s)
+	}
+}
+
+// Space on a container that opens and shuts opens it, and again shuts it.
+func TestDesignSpaceOpens(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY = 0, 0
+	cab := d.newKind(kCabinet, 0, 0)
+	cab.X, cab.Y = 2, 1
+	dr := d.newKind(kDrawer, 0, 0)
+	dr.X, dr.Y = 50, 1
+	rk := d.newKind(kRack, 0, 0)
+	rk.X, rk.Y = 2, 20
+	pg := d.newKind(kPage, 0, 0)
+	pg.Header = "Plan"
+	d.remove(pg.ID)
+	rk.Items = append(rk.Items, pg)
+	space := func() {
+		d.hover, d.spaceAt = 0, time.Time{}
+		press(m, "space")
+	}
+	for _, o := range []*dOct{cab, dr} {
+		d.sel, d.editing = o.ID, partNone
+		m.View()
+		space()
+		if !o.DrawerOpen {
+			t.Fatalf("Space did not open the %s", o.Kind)
+		}
+		space()
+		if o.DrawerOpen {
+			t.Fatalf("Space did not shut the %s", o.Kind)
+		}
+	}
+	d.sel = rk.ID
+	m.View()
+	space()
+	if !d.opened.active || d.opened.id != pg.ID {
+		t.Fatal("Space did not open the rack's first thing")
+	}
+	space()
+	if d.opened.active {
+		t.Fatal("Space did not put the rack's thing back")
+	}
+}
+
+// A new structure placed where another is moves to the nearest free spot.
+func TestDesignNewClearSpot(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	a := d.newKind(kDrawer, 20, 10)
+	if d.clearSpot(a) {
+		t.Fatal("the first structure moved, with nothing in its way")
+	}
+	b := d.newKind(kCabinet, 20, 10)
+	if !d.clearSpot(b) {
+		t.Fatal("the cabinet was not moved off the drawer")
+	}
+	ax, ay, aw, ah := a.X, a.Y, 0, 0
+	aw, ah = d.size(a)
+	bw, bh := d.size(b)
+	if b.X < ax+aw && ax < b.X+bw && b.Y < ay+ah && ay < b.Y+bh {
+		t.Fatalf("the cabinet still covers the drawer: %d,%d %d×%d and %d,%d %d×%d", b.X, b.Y, bw, bh, ax, ay, aw, ah)
 	}
 }
