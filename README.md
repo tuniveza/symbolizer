@@ -197,6 +197,14 @@ Everything on it is drawn with letters, kept in `~/.local/share/symbolizer/desig
 
 <br>
 
+<div align="center">
+<img src="docs/media/design3.gif" alt="A rack called Shelf: clicking its row Plan opens the page inside the rack, under its row, and the rack grows to hold it; its row again puts it back; the shape Bell opens inside, is dragged out of the rack, and Ctrl+Z puts it back open in the rack; AltGr + M shows the mini map with each structure in its own outline, top right then bottom right; Shift + G picks Lantern with a click, Call Ana with a box dragged round it and Ideas with a click; Enter and the name Crew give all three the name plate; AltGr + P lists the group" width="880">
+<br>
+<sub>A rack's row opens inside the rack · drag it out, Ctrl+Z · AltGr + M: the mini map in true outlines · Shift + G: click or box to pick, Enter names the group · AltGr + P: the groups</sub>
+</div>
+
+<br>
+
 ## ✦ Web files: Emmet and auto-correct
 
 In HTML, CSS, SCSS, Sass, Stylus, LESS, JSX / TSX and XML files, Symbolizer speaks [Emmet](https://emmet.io).
