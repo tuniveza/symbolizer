@@ -108,6 +108,9 @@ func (m *Model) View() tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
+	if m.inDesign() {
+		v.MouseMode = tea.MouseModeAllMotion // the mouse moving with no button: what it is over (Space)
+	}
 	v.ReportFocus = true // the lock plate only shows in the window being typed in
 	v.KeyboardEnhancements.ReportEventTypes = true
 	// Every key as a code (with its text), so AltGr on its own can be seen.

@@ -12,8 +12,9 @@ package main
 //	G  its name plate: everything with the same name plate is a group
 //
 // A label sits on top of the structure's top edge, at its left; a picture
-// icon is drawn small in half cells. A name plate sits under the bottom
-// edge. AltGr+P lists the name plates and what has each.
+// icon is drawn small in half cells. A name plate sits on the bottom edge,
+// at its left, part of the structure (a click on it chooses it).
+// AltGr+P lists the name plates and what has each.
 
 import (
 	"hash/fnv"
@@ -25,7 +26,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -308,10 +308,18 @@ func (m *Model) paintLabels(c *boardCanvas) {
 			text(cx, row, " ", fg, col, false)
 		}
 		if o.Plate != "" {
+			// On the bottom edge, at its left (past an octagon's cut corner);
+			// a structure too small for that has it just under it.
 			col := plateColor(o.Plate)
-			name := " ▪ " + ansi.Truncate(o.Plate, max(4, w-6), "…") + " "
-			px := x + max(0, (w-lipgloss.Width(name))/2)
-			text(px, y+h, name, mixHex(col, "#101010", 0.85), col, true)
+			px, py := x+2, y+h-1
+			if o.Kind == kOct {
+				px = x + 3
+			}
+			if h < 3 || w < 10 {
+				px, py = x, y+h
+			}
+			name := " ▪ " + ansi.Truncate(o.Plate, max(4, w-(px-x)-7), "…") + " "
+			text(px, py, name, mixHex(col, "#101010", 0.85), col, true)
 		}
 	}
 }

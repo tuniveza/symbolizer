@@ -156,7 +156,7 @@ func sameOct(a, b *dOct) bool {
 		a.Header == b.Header && a.Body == b.Body && a.Footer == b.Footer && a.Color == b.Color &&
 		a.Kind == b.Kind && a.Layout == b.Layout && a.Image == b.Image && a.From == b.From &&
 		a.LabelStyle == b.LabelStyle && a.LabelColor == b.LabelColor && a.LabelIcon == b.LabelIcon &&
-		a.LabelTitle == b.LabelTitle && a.Plate == b.Plate
+		a.LabelTitle == b.LabelTitle && a.Plate == b.Plate && sameTf(a.Tf, b.Tf)
 }
 
 // recordUndo makes a step of what changed since the last one. It runs each

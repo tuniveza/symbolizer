@@ -128,7 +128,9 @@ func (d *designState) moveByKeys(o *dOct, dx, dy int) {
 		}
 	}
 	x, y, snapped := d.snapAhead(o, o.X, o.Y, o.X+dx, o.Y+dy)
+	fromX, fromY := o.X, o.Y
 	o.X, o.Y = x, y
+	d.followMulti(o, fromX, fromY) // chosen with others: they move as much (design_select.go)
 	if snapped {
 		d.snapAt = time.Now()
 	}

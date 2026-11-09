@@ -163,8 +163,8 @@ func arrowDir(name string) string {
 // ---- Tab: from part to part ---------------------------------------------------------
 
 // designTab, with a structure chosen and nothing being written, starts
-// writing in its first part (Shift+Tab: its last); in a cabinet it opens the
-// next stack. While writing, Tab goes on to the next part (designWrite).
+// writing in its first part (Shift+Tab: its last); on a cabinet it opens
+// its doors, or shuts them. While writing, Tab goes on to the next part (designWrite).
 func (m *Model) designTab(back bool) {
 	d := m.ds()
 	o := d.byID(d.sel)
@@ -172,23 +172,12 @@ func (m *Model) designTab(back bool) {
 		m.say("Nothing chosen. Use the arrows, or click one.")
 		return
 	}
-	if o.Kind == kCabinet {
-		i, step := -1, 1
-		if back {
-			step = -1
-		}
-		for j, k := range stackKinds {
-			if k == o.OpenStack {
-				i = j
-			}
-		}
-		if i < 0 && back {
-			i = 0
-		}
-		o.OpenStack = stackKinds[(i+step+len(stackKinds))%len(stackKinds)]
-		d.dirty = true
-		m.viewToPart(o, partHeader)
-		m.say(stackNames[o.OpenStack] + " pulled out.")
+	if o.Kind == kCabinet { // Tab opens its doors, or shuts them (design_cabinet.go)
+		m.designDoors(o)
+		return
+	}
+	if o.Kind == kDrawer { // Tab pulls it out, or pushes it in (design_drawer.go)
+		m.designPull(o)
 		return
 	}
 	ps := partsOf(o)
@@ -571,13 +560,30 @@ func (d *designState) nextThatWay(from *dOct, fx, fy float64, dx, dy int) *dOct 
 func (m *Model) centreOn(o *dOct) {
 	d := m.ds()
 	z := d.z()
+	if isContainer(o.Kind) || (d.opened.active && o.ID == d.opened.id) {
+		// Its size on the screen is not its board size times the zoom (a
+		// container's rows are one screen row each): centre what shows.
+		x, y, w, h := d.rect(o)
+		d.camX += (float64(x) + float64(w)/2 - float64(m.width)/2) / z
+		if h > m.boardH()-2 {
+			d.camY += float64(y-1) / z
+		} else {
+			d.camY += (float64(y) + float64(h)/2 - float64(m.boardH())/2) / z
+		}
+		d.dirty = true
+		return
+	}
 	w, h := d.size(o)
+	ox, oy := o.X, o.Y
+	if x, y, ok := d.openPlace(o); ok { // open inside a rack: where it shows
+		ox, oy = x, y
+	}
 	screenW, screenH := float64(m.width)/z, float64(m.boardH())/z
-	d.camX = float64(o.X) + float64(w)/2 - screenW/2
+	d.camX = float64(ox) + float64(w)/2 - screenW/2
 	if float64(h) > screenH-2 {
-		d.camY = float64(o.Y) - 1
+		d.camY = float64(oy) - 1
 	} else {
-		d.camY = float64(o.Y) + float64(h)/2 - screenH/2
+		d.camY = float64(oy) + float64(h)/2 - screenH/2
 	}
 	d.dirty = true
 }
@@ -655,6 +661,9 @@ func (m *Model) designEscape() {
 	case d.placing:
 		d.placing = false
 		m.say("Nothing placed.")
+	case len(d.multi) > 0:
+		d.clearMulti()
+		m.say("Let go of them.")
 	case d.platesOpen:
 		d.platesOpen = false
 	case d.groupMode:

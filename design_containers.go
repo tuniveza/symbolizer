@@ -30,7 +30,9 @@ import (
 // structureDrawers: structures no longer have drawers of their own.
 const structureDrawers = false
 
-func isContainer(kind string) bool { return kind == kCabinet || kind == kDrawer || kind == kRack }
+func isContainer(kind string) bool {
+	return kind == kCabinet || kind == kDrawer || kind == kRack || kind == kBoard
+}
 
 // accepts is whether container c takes o: a cabinet its kinds of sheet, a
 // drawer or rack anything but another container.
@@ -41,7 +43,7 @@ func accepts(c, o *dOct) bool {
 	switch c.Kind {
 	case kCabinet:
 		return textual(o.Kind)
-	case kDrawer, kRack:
+	case kDrawer, kRack, kBoard:
 		return true
 	}
 	return false
@@ -93,6 +95,12 @@ func rowIcon(o *dOct) string {
 // containerLayers draws a drawer (a light frame with a pull at the bottom)
 // or a rack (a double frame, a row per thing).
 func (d *designState) containerLayers(o *dOct) []*lipgloss.Layer {
+	if o.Kind == kBoard {
+		return d.boardLayers(o) // design_board.go
+	}
+	if o.Kind == kDrawer {
+		return d.drawerLayers(o) // design_drawer.go
+	}
 	x, y, w, h := d.rect(o)
 	selected := d.sel == o.ID
 	edge, fill := o.Color, mixHex(cBG, o.Color, 0.16)
@@ -105,8 +113,7 @@ func (d *designState) containerLayers(o *dOct) []*lipgloss.Layer {
 	icon := kindIcons[o.Kind]
 	if w < 6 || h < 4 {
 		pill := mixHex(cBG, o.Color, 0.55)
-		return []*lipgloss.Layer{lipgloss.NewLayer(st(cBG, pill).Bold(true).Width(w).MaxWidth(w).
-			Render(ansi.Truncate(icon+o.Header, w, ""))).X(x).Y(y)}
+		return []*lipgloss.Layer{pillLayer(x, y, w, h, ansi.Truncate(icon+o.Header, w, ""), pill)}
 	}
 	tl, tr, bl, br, hz, vt, ml, mr := "┌", "┐", "└", "┘", "─", "│", "├", "┤"
 	if o.Kind == kRack {
@@ -146,9 +153,9 @@ func (d *designState) containerLayers(o *dOct) []*lipgloss.Layer {
 		bottom = bl + strings.Repeat(hz, left) + "═○═" + strings.Repeat(hz, max(iw-3-left, 0)) + br
 	}
 	lines = append(lines, e.Render(bottom))
-	if len(lines) > h {
-		lines = append(lines[:h-1], lines[len(lines)-1])
-	}
+	lines = moreLines(lines, h, func(n int) string { // the rows that do not fit
+		return e.Render(vt) + fitBlockLine(centreLine(st(mixHex(cDim, cText, 0.4), fill).Italic(true).Render(ansi.Truncate("+"+itoa(n)+" more", iw, "…")), iw, fill), iw, fill) + e.Render(vt)
+	}, blank)
 	layers := []*lipgloss.Layer{lipgloss.NewLayer(strings.Join(lines, "\n")).X(x).Y(y)}
 	return d.octExtras(layers, o, x, y, w, h, edge, fill, false, d.linkMode && d.linkFrom == o.ID)
 }
@@ -163,7 +170,7 @@ func (d *designState) detachDrawers() {
 			continue
 		}
 		w, _ := d.size(o)
-		dr := &dOct{ID: d.nextID, Kind: kDrawer, X: o.X + w + 3, Y: o.Y, W: cabinetNewW, H: 5,
+		dr := &dOct{ID: d.nextID, Kind: kDrawer, X: o.X + w + 3, Y: o.Y, W: drawerNewW, H: 4,
 			Header: strings.TrimSpace(itemTitle(o) + " drawer"), Color: mixHex(o.Color, cBG, 0.25), Items: o.Items}
 		d.nextID++
 		o.Items, o.DrawerOpen = nil, false
@@ -184,6 +191,7 @@ type rackOpen struct {
 	rack         int // the rack it came from
 	at           int // its place in the rack
 	origW, origH int // its own size: open, it is as wide as the rack
+	pinX, pinY   int // from a board: where it was pinned (and its own size is kept)
 	active       bool
 }
 
@@ -211,6 +219,56 @@ func (d *designState) openGap(r *dOct) (int, int) {
 	return -1, 0
 }
 
+// containerLines is how many screen rows a container's frame and rows take
+// when all of them show (at 100%, where a board row is a screen row).
+func (d *designState) containerLines(o *dOct) int {
+	switch o.Kind {
+	case kCabinet:
+		return cabinetLines(o)
+	case kDrawer:
+		return drawerLines(o)
+	}
+	return 3 + max(1, len(d.containerRows(o))) + 1
+}
+
+// moreLines fits a container's drawn lines (its frame's top three, its
+// rows, its bottom) into its h screen rows. A container is drawn at its
+// board size times the zoom, like every structure, so it keeps its shape
+// and its place beside its neighbours at any zoom: zoomed out, the rows
+// that do not fit become one "+N more" row, drawn by more(N) (a click on
+// it zooms to 100%); zoomed in, blank rows (blank) fill it to its bottom.
+func moreLines(lines []string, h int, more func(n int) string, blank string) []string {
+	if len(lines) < h && len(lines) > 0 {
+		pad := make([]string, 0, h)
+		pad = append(pad, lines[:len(lines)-1]...)
+		for len(pad) < h-1 {
+			pad = append(pad, blank)
+		}
+		return append(pad, lines[len(lines)-1])
+	}
+	if len(lines) <= h {
+		return lines
+	}
+	if h < 5 {
+		return append(lines[:max(h-1, 0):max(h-1, 0)], lines[len(lines)-1])
+	}
+	keep := h - 2
+	hidden := len(lines) - 1 - keep
+	return append(append(lines[:keep:keep], more(hidden)), lines[len(lines)-1])
+}
+
+// openItemH is how many screen rows the thing open in a rack takes: what
+// the rack (at its board size times the zoom) has left under its rows.
+func (d *designState) openItemH(it *dOct) int {
+	r := d.byID(d.opened.rack)
+	if r == nil {
+		_, ih := d.size(it)
+		return max(1, int(math.Round(float64(ih)*d.z())))
+	}
+	_, _, _, rh := d.rect(r)
+	return max(1, rh-(3+len(d.containerRows(r))+1))
+}
+
 // openRow is the row of rack r that the open thing sits under.
 func (d *designState) openRow(r *dOct) int {
 	for i, row := range d.containerRows(r) {
@@ -225,13 +283,12 @@ func (d *designState) openRow(r *dOct) int {
 // under its row, as wide as the rack inside.
 func (d *designState) openRect(it *dOct) (x, y, w, h int, ok bool) {
 	r := d.byID(d.opened.rack)
-	if r == nil {
+	if r == nil || r.Kind == kBoard { // from a board: where it is, its own size
 		return 0, 0, 0, 0, false
 	}
 	at := d.openRow(r)
 	rx, ry, rw, _ := d.rect(r)
-	_, ih := d.size(it)
-	return rx + 1, ry + 3 + at + 1, max(rw-2, 1), max(int(math.Round(float64(ih)*d.z())), 1), true
+	return rx + 1, ry + 3 + at + 1, max(rw-2, 1), d.openItemH(it), true
 }
 
 // openPlace is where the open thing is on the board (for the map): its
@@ -242,7 +299,7 @@ func (d *designState) openPlace(o *dOct) (x, y int, ok bool) {
 		return 0, 0, false
 	}
 	r := d.byID(d.opened.rack)
-	if r == nil {
+	if r == nil || r.Kind == kBoard {
 		return 0, 0, false
 	}
 	return r.X + 1, r.Y + 3 + d.openRow(r) + 1, true
@@ -259,6 +316,17 @@ func (m *Model) designRackOpen(r *dOct, i int) {
 	it := r.Items[i]
 	r.Items = append(r.Items[:i:i], r.Items[i+1:]...)
 	op := rackOpen{id: it.ID, rack: r.ID, at: i, origW: it.W, origH: it.H, active: true}
+	if r.Kind == kBoard {
+		// From a board: full size, where it is pinned, on top.
+		op.pinX, op.pinY = it.X, it.Y
+		it.X, it.Y = r.X+1+it.X, r.Y+1+it.Y
+		d.octs = append(d.octs, it)
+		d.sel, d.editing, d.selLink = it.ID, partNone, -1
+		d.opened = op
+		d.dirty = true
+		m.say(kindIcons[it.Kind] + " " + itemTitle(it) + " open · Esc (or a click on the board) pins it back · Tab: the next pin")
+		return
+	}
 	if resizable(it) {
 		// As wide as the rack inside, keeping its shape, and short enough
 		// that the rack, with it, still fits on the screen.
@@ -270,15 +338,47 @@ func (m *Model) designRackOpen(r *dOct, i int) {
 			nh = int(math.Round(float64(it.H) * float64(nw) / float64(it.W)))
 		}
 		if d.maxH > 0 {
-			nh = min(nh, d.maxH-rh-1)
+			nh = min(nh, int(float64(d.maxH)/d.z())-rh-1) // the rack, with it, fits the screen at this zoom
 		}
 		it.W, it.H = nw, max(nh, mh)
 	}
 	d.octs = append(d.octs, it)
 	d.sel, d.editing, d.selLink = it.ID, partNone, -1
 	d.opened = op
+	// The view moves so the whole rack (with it open, and the rest of the
+	// rack's rows) is in the middle of the screen, at any zoom; a rack too
+	// tall for the screen has what is open in the middle instead.
+	if _, _, _, rh := d.rect(r); rh <= m.boardH()-2 {
+		m.centreOn(r)
+	} else {
+		m.centreOn(it)
+	}
 	d.dirty = true
 	m.say(kindIcons[it.Kind] + " " + itemTitle(it) + " open in " + octName(r) + " · its row again (or Alt tapped twice) puts it back · drag it to take it out")
+}
+
+// designRackStep puts what is open back and opens the rack's next thing
+// (step 1, Tab) or the one before it (step -1, Shift+Tab), round from the
+// last to the first.
+func (m *Model) designRackStep(step int) {
+	d := m.ds()
+	op := d.opened
+	r := d.byID(op.rack)
+	if !op.active || r == nil || d.byID(op.id) == nil {
+		return
+	}
+	if len(r.Items) == 0 {
+		m.say("Nothing else in " + octName(r) + ".")
+		return
+	}
+	m.designRackClose()
+	n := len(r.Items)
+	next := ((op.at+step)%n + n) % n
+	m.designRackOpen(r, next)
+	if d.opened.active {
+		it := d.byID(d.opened.id)
+		m.say(kindIcons[it.Kind] + " " + itemTitle(it) + " open (" + itoa(next+1) + " of " + itoa(n) + ") · Tab: next · Shift+Tab: back")
+	}
 }
 
 // designRackClose puts the opened thing back in its rack, in its place. It
@@ -296,6 +396,9 @@ func (m *Model) designRackClose() bool {
 	}
 	d.remove(it.ID)
 	it.X, it.Y = 0, 0
+	if r.Kind == kBoard {
+		it.X, it.Y = op.pinX, op.pinY // back on its pin
+	}
 	it.W, it.H = op.origW, op.origH
 	at := min(max(op.at, 0), len(r.Items))
 	r.Items = append(r.Items[:at:at], append([]*dOct{it}, r.Items[at:]...)...)
@@ -335,6 +438,9 @@ func (d *designState) openPutBack(octs []*dOct) []*dOct {
 			rc := *r
 			ic := *it
 			ic.X, ic.Y, ic.W, ic.H = 0, 0, op.origW, op.origH
+			if r.Kind == kBoard {
+				ic.X, ic.Y = op.pinX, op.pinY
+			}
 			at := min(max(op.at, 0), len(r.Items))
 			rc.Items = append(append(append([]*dOct(nil), r.Items[:at]...), &ic), r.Items[at:]...)
 			o = &rc

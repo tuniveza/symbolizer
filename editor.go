@@ -29,16 +29,17 @@ const (
 	pOpen
 	pSaveAs
 	pConfirm
-	pName        // Ctrl+S on a session: what to call it
-	pRename      // file manager
-	pNewFile     // file manager
-	pNewFolder   // file manager
-	pWrap        // Emmet: wrap with an abbreviation (web.go)
-	pUpdateTag   // Emmet: update the tag at the cursor
-	pDesignFile  // Design mode: a picture or text file to put in (design_image.go)
-	pDesignLabel // Design mode: a label's words (design_labels.go)
-	pDesignPlate // Design mode: a name plate
-	pDesignGroup // Design mode: a name plate for everything picked (design_groups.go)
+	pName            // Ctrl+S on a session: what to call it
+	pRename          // file manager
+	pNewFile         // file manager
+	pNewFolder       // file manager
+	pWrap            // Emmet: wrap with an abbreviation (web.go)
+	pUpdateTag       // Emmet: update the tag at the cursor
+	pDesignFile      // Design mode: a picture or text file to put in (design_image.go)
+	pDesignLabel     // Design mode: a label's words (design_labels.go)
+	pDesignPlate     // Design mode: a name plate
+	pDesignGroup     // Design mode: a name plate for everything picked (design_groups.go)
+	pDesignTransform // Design mode: a pin's transform, as words (design_board.go)
 )
 
 // Model is the whole editor, as Bubble Tea wants it.
@@ -265,6 +266,9 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			panic(r)
 		}
 	}()
+	if m.design != nil {
+		m.design.hoverOnly = false // set again below if this is only the mouse moving (designHover)
+	}
 	if c, ok := m.dndMsg(msg); ok { // kitty's drag and drop (design_dnd.go)
 		return m, tea.Batch(c, m.designFrameCmd(), m.designSaveCmd(), m.dropsCmd())
 	}
@@ -382,6 +386,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.arrowRelease(msg.Key())
 		if msg.Key().Code == tea.KeySpace && m.design != nil {
 			m.design.spaceHeld = false // the arrows jump again, and the view snaps (design_keys.go)
+			m.designSpaceRelease()     // a tap: the whole group (design_select.go)
 			m.designSpaceUp()
 			return tea.Batch(m.designFrameCmd(), m.designSaveCmd())
 		}
@@ -497,8 +502,12 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		return m.mouseClick(msg.Mouse())
 	case tea.MouseMotionMsg:
-		if m.inDesign() && m.design != nil && (m.design.drag != dragNone || m.design.rackPress != nil) {
+		if m.inDesign() && m.design != nil && (m.design.drag != dragNone || m.design.rackPress != nil || m.design.pinPress != nil) {
 			return m.designMotion(msg.Mouse())
+		}
+		if m.inDesign() && m.design != nil && msg.Mouse().Button == tea.MouseNone {
+			m.designHover(msg.Mouse()) // what is under the mouse, for Space (design_select.go)
+			return nil
 		}
 		if m.dragMargin != "" {
 			m.marginDrag(msg.Mouse().X)
@@ -506,7 +515,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		return m.mouseDrag(msg.Mouse())
 	case tea.MouseReleaseMsg:
-		if m.inDesign() && m.design != nil && (m.design.drag != dragNone || m.design.rackPress != nil) {
+		if m.inDesign() && m.design != nil && (m.design.drag != dragNone || m.design.rackPress != nil || m.design.pinPress != nil) {
 			return m.designRelease()
 		}
 		if m.dragMargin != "" {

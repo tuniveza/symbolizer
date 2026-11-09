@@ -42,6 +42,10 @@ func (m *Model) designGroupMode(on bool) {
 	if d.byID(d.sel) != nil {
 		d.picked[d.sel] = true
 	}
+	for _, id := range d.multiIDs() { // chosen together: all picked
+		d.picked[id] = true
+	}
+	d.multi = nil
 	m.sayPicked()
 }
 
@@ -219,6 +223,6 @@ func (m *Model) paintPicked(c *boardCanvas) {
 		frame(x-1, y-1, x+w, y+h, cAccent)
 	}
 	if b := d.band; b != nil {
-		frame(min(b.x0, b.x1), min(b.y0, b.y1), max(b.x0, b.x1), max(b.y0, b.y1), mixHex(cAccent, cText, 0.4))
+		paintBand(c, b) // shaded, like the Ctrl + drag box (design_select.go)
 	}
 }
