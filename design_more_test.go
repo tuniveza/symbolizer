@@ -3449,3 +3449,47 @@ func TestDesignZoomKeepsGaps(t *testing.T) {
 		}
 	}
 }
+
+// Zoomed in, a board taller than the screen is drawn shorter; what sits
+// beside it and below it closes up, leaving no hole under it (the real
+// board: a rack beside a board's lower part, cabinets in a row under both).
+func TestDesignZoomNoHoleUnderTallBoard(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	bd := d.newKind(kBoard, 0, 0)
+	bd.X, bd.Y, bd.W, bd.H = 32, 0, 79, 29
+	r := d.newKind(kRack, 0, 0)
+	r.X, r.Y = 0, 18 // beside the board's lower part
+	for range 3 { // three pages in it, as on the real board
+		r.Items = append(r.Items, &dOct{ID: d.nextID, Kind: kPage, Header: "page"})
+		d.nextID++
+	}
+	_, rh := d.size(r)
+	cs := []*dOct{}
+	for i := range 3 {
+		c := d.newKind(kCabinet, 0, 0)
+		c.X, c.Y = i*32, 18+rh+1 // a row under the rack and the board
+		cs = append(cs, c)
+	}
+	dr := d.newKind(kDrawer, 0, 0)
+	dr.X, dr.Y = bd.X+bd.W+2, 18 // beside the board's other side, lined up with the rack
+	for _, maxH := range []int{37, 24} { // two screen heights
+		d.maxH = maxH
+		d.zoom, d.camX, d.camY = len(designZooms)-2, 0, 0 // 200%: the board is drawn shorter
+		d.relayout()
+		_, by, _, bh := d.rect(bd)
+		_, ry, _, rhs := d.rect(r)
+		for _, c := range cs {
+			_, cy, _, _ := d.rect(c)
+			if gap := cy - (by + bh); gap > 3 {
+				t.Fatalf("screen %d rows: a hole of %d rows under the board (board %d..%d, rack %d..%d, cabinet at %d)", maxH, gap, by, by+bh, ry, ry+rhs, cy)
+			}
+			if cy < ry+rhs {
+				t.Fatalf("screen %d rows: a cabinet at row %d covers the rack (%d..%d)", maxH, cy, ry, ry+rhs)
+			}
+		}
+		if _, dy, _, _ := d.rect(dr); dy != ry {
+			t.Fatalf("screen %d rows: the drawer (row %d) and the rack (row %d) are no longer lined up", maxH, dy, ry)
+		}
+	}
+}

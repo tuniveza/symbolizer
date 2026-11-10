@@ -93,9 +93,12 @@ func (d *designState) relayout() {
 			hi[i] = lo(items[k]) + sz(items[k])
 		}
 		done := make(map[int]bool, len(items))
-		place := func(k int) float64 { // where items[k] goes, from its neighbours placed already
+		// place is where items[k] goes, from its neighbours placed already;
+		// firm: a neighbour before it holds it there (else it is only where
+		// it keeps its place beside one, or where the zoom puts it).
+		place := func(k int) (at float64, firm bool) {
 			it := items[k]
-			at := lo(it) * z // no neighbour: where the zoom puts it
+			at = lo(it) * z // no neighbour: where the zoom puts it
 			found := false
 			// The structures ending at or before it, nearest first.
 			j := sort.Search(len(hi), func(i int) bool { return hi[i] > lo(it) }) - 1
@@ -109,18 +112,59 @@ func (d *designState) relayout() {
 					at, found = c, true
 				}
 			}
-			return at
+			if found {
+				return at, true
+			}
+			// None before it, but it starts beside (or on) one that starts
+			// before it: it keeps its place against that one, from the edge
+			// it is nearer to. One drawn shorter than its own size (taller
+			// than the screen) leaves no hole beside it: what sits by its
+			// end stays by its end.
+			b := sort.Search(len(byLo), func(i int) bool { return lo(items[byLo[i]]) >= lo(it) }) - 1
+			for scanned := 0; b >= 0 && scanned < layoutScan; b, scanned = b-1, scanned+1 {
+				n := items[byLo[b]]
+				nlo, nhi := lo(n), lo(n)+sz(n)
+				if n.o == it.o || !done[n.o.ID] || nhi <= lo(it) || sz(n) <= 0 {
+					continue
+				}
+				if og := math.Max(olo(it)-(olo(n)+osz(n)), olo(n)-(olo(it)+osz(it))); og > gapKept {
+					continue // not near it on the other side
+				}
+				scale := drawn(n) * z / sz(n) // screen cells for each of n's own cells
+				var c float64
+				if ihi := lo(it) + sz(it); ihi <= nhi && nhi-ihi < lo(it)-nlo {
+					c = get(n.o.ID) + drawn(n)*z - (nhi-ihi)*scale - drawn(it)*z // by n's end
+				} else {
+					c = get(n.o.ID) + (lo(it)-nlo)*scale // by n's start
+				}
+				if !found || c > at {
+					at, found = c, true
+				}
+			}
+			return at, false
 		}
 		// Structures lined up on the board (the same left edge, or the same
-		// top) stay lined up: each goes where the furthest of them must.
+		// top) stay lined up: each goes where the furthest of them must, but
+		// of those only kept beside another, the nearest decides.
 		for i := 0; i < len(byLo); {
 			j := i
 			for j < len(byLo) && lo(items[byLo[j]]) == lo(items[byLo[i]]) {
 				j++
 			}
-			at := math.Inf(-1)
+			held, free := math.Inf(-1), math.Inf(1)
 			for _, k := range byLo[i:j] {
-				at = math.Max(at, place(k))
+				if c, firm := place(k); firm {
+					held = math.Max(held, c)
+				} else {
+					free = math.Min(free, c)
+				}
+			}
+			at := free // none held: the nearest
+			switch {
+			case math.IsInf(free, 1):
+				at = held // all held
+			case !math.IsInf(held, -1):
+				at = math.Max(held, free) // some held: never before where they must be
 			}
 			for _, k := range byLo[i:j] {
 				set(items[k].o.ID, at)
