@@ -3,8 +3,8 @@ package main
 // ---- the board: things pinned on it, small, turned and stretched -----------------------
 //
 // A board (Alt+N, then B) is a pinboard. Drop a page, note or shape on it
-// and it is pinned where you let go: drawn small (a miniature: its outline,
-// icon and one label) with a pin through its top. Each pin can be turned,
+// and it is pinned where you let go: drawn as a card (its outline, title
+// and first lines of text) with a pin through its top. Each pin can be turned,
 // scaled, stretched, skewed, flipped and moved, and the miniature is drawn
 // so, cell by cell:
 //
@@ -29,7 +29,9 @@ package main
 
 import (
 	"fmt"
+	"image/color"
 	"math"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -217,7 +219,7 @@ func parseTf(o *dOct, s string) (moveX, moveY int, bad string) {
 
 // pinMap maps between a pin's miniature (cells u, v from its corner) and
 // the screen (cells from the board's corner on the screen). The miniature
-// is first made at its size on the screen (gw × gh cells: miniW × miniH,
+// is first made at its size on the screen (gw × gh cells: pinW × pinH,
 // scaled and zoomed), so its edges and words are drawn once, never
 // stretched; then only turned, skewed and flipped.
 type pinMap struct {
@@ -228,8 +230,36 @@ type pinMap struct {
 	ok             bool
 }
 
+// boardFit is how much a board's pins are drawn smaller (1: not at all) so
+// that every one of them, turned and scaled as it is, is inside the board:
+// a board smaller than what is pinned on it shows it all, smaller, its
+// pins' places shrunk with them. mnX, mnY: where the pins start, when one
+// is pinned up or left of the board's corner.
+func (d *designState) boardFit(board *dOct) (fit, mnX, mnY float64) {
+	bw, bh := d.size(board)
+	iw, ih := float64(max(bw-2, 1)), float64(max(bh-2, 1))
+	mxX, mxY := iw, ih
+	for _, it := range board.Items {
+		if it == nil {
+			continue
+		}
+		rot, sx, sy, kx, ky := it.Tf.get()
+		th := rot * math.Pi / 180
+		w, h2 := pinW*math.Abs(sx), 2*pinH*math.Abs(sy) // in square units: a cell is 1 across, 2 down
+		w, h2 = w+math.Abs(kx)*h2, h2+math.Abs(ky)*w
+		bx := math.Abs(math.Cos(th))*w + math.Abs(math.Sin(th))*h2
+		by := (math.Abs(math.Sin(th))*w + math.Abs(math.Cos(th))*h2) / 2
+		cx, cy := float64(it.X)+pinW/2.0, float64(it.Y)+pinH/2.0
+		mnX, mnY = math.Min(mnX, cx-bx/2), math.Min(mnY, cy-by/2)
+		mxX, mxY = math.Max(mxX, cx+bx/2), math.Max(mxY, cy+by/2)
+	}
+	fit = math.Min(1, math.Min(iw/(mxX-mnX), ih/(mxY-mnY)))
+	return fit, mnX, mnY
+}
+
 func (d *designState) pinMapOf(board, it *dOct) pinMap {
 	z := d.z()
+	fit, mnX, mnY := d.boardFit(board)
 	rot, sx, sy, kx, ky := it.Tf.get()
 	th := rot * math.Pi / 180
 	cs, sn := math.Cos(th), math.Sin(th)
@@ -242,10 +272,10 @@ func (d *designState) pinMapOf(board, it *dOct) pinMap {
 	m11 := sn*s01 + cs*s11
 	det := m00*m11 - m01*m10
 	p := pinMap{
-		gw: max(3, int(math.Round(miniW*math.Abs(sx)*z))),
-		gh: max(1, int(math.Round(miniH*math.Abs(sy)*z))),
-		cx: (float64(1+it.X) + miniW/2.0) * z,
-		cy: (float64(1+it.Y) + miniH/2.0) * z,
+		gw: max(3, int(math.Round(pinW*math.Abs(sx)*z*fit))),
+		gh: max(1, int(math.Round(pinH*math.Abs(sy)*z*fit))),
+		cx: (1 + (float64(it.X)+pinW/2.0-mnX)*fit) * z,
+		cy: (1 + (float64(it.Y)+pinH/2.0-mnY)*fit) * z,
 		a:  m00, b: m01, c: m10, dd: m11,
 	}
 	if math.Abs(det) > 1e-9 {
@@ -376,7 +406,11 @@ func (d *designState) boardLayers(o *dOct) []*lipgloss.Layer {
 		}
 		sel := d.pin.active && d.pin.board == o.ID && d.pin.at == j
 		if p := d.pinMapOf(o, it); p.ok {
-			drawPin(it, p, sel, in)
+			pic := ""
+			if it.Image != "" {
+				pic = filepath.Join(d.imagesDir(), it.Image) // its picture fills its frame
+			}
+			drawPin(it, p, sel, pic, in)
 		}
 	}
 	l := lipgloss.NewLayer("").X(x).Y(y) // its cells are made already
@@ -456,8 +490,8 @@ func (m *Model) designPinKey(name string) (bool, tea.Cmd) {
 	}
 	rot, sx, sy, kx, ky := it.Tf.get()
 	moved := func(dx, dy int) {
-		maxX, maxY := max(0, b.W-2-miniW), max(0, b.H-2-miniH)
-		it.X, it.Y = max(-miniW/2, min(maxX+miniW/2, it.X+dx)), max(-miniH/2, min(maxY+miniH/2, it.Y+dy))
+		maxX, maxY := max(0, b.W-2-pinW), max(0, b.H-2-pinH)
+		it.X, it.Y = max(-pinW/2, min(maxX+pinW/2, it.X+dx)), max(-pinH/2, min(maxY+pinH/2, it.Y+dy))
 	}
 	switch name {
 	case "r", "R", "shift+r":
@@ -574,11 +608,12 @@ func (m *Model) pinMotion(sx, sy int) {
 	}
 	pp.moved = true
 	it := b.Items[pp.at]
-	z := d.z()
+	fit, _, _ := d.boardFit(b)
+	z := d.z() * fit // its pins drawn smaller: the mouse moves it as far as it goes on screen
 	it.X = pp.origX + int(math.Round(float64(sx-pp.sx)/z))
 	it.Y = pp.origY + int(math.Round(float64(sy-pp.sy)/z))
-	it.X = max(-miniW/2, min(b.W-2-miniW/2, it.X))
-	it.Y = max(-miniH/2, min(b.H-2-miniH/2, it.Y))
+	it.X = max(-pinW/2, min(b.W-2-pinW/2, it.X))
+	it.Y = max(-pinH/2, min(b.H-2-pinH/2, it.Y))
 	d.dirty = true
 }
 
@@ -620,205 +655,344 @@ func pinQuarter(t *dTf) (int, bool) {
 	return (int(math.Round(rot/90))%4 + 4) % 4, true
 }
 
-// drawPin draws pin it of a board: its miniature, its one label and its
-// pin. Turned by quarters (or not at all), it is its miniature, made at its
-// size on the screen, so its outline is whole and sharp. Turned by any
-// other angle, or skewed, it is drawn as a shape: its cells filled, its
-// four edges as joined lines, its label upright inside it.
-func drawPin(it *dOct, p pinMap, sel bool, put pinPut) {
-	fill, edge := miniColours(it, sel)
+// pinW, pinH are a pin's card size on the board at 100% (before its own
+// scale): room for its title and the first lines of its text.
+const pinW, pinH = 20, 8
+
+// pinText is what a pin's card shows under its title: its picture (as a
+// word) and its text, wrapped to w cells, each paragraph on its own lines.
+func pinText(it *dOct, w int) []string {
+	var out []string
+	if it.Image != "" {
+		out = append(out, "▣ picture")
+	}
+	for _, para := range strings.Split(it.Body, "\n") {
+		if strings.TrimSpace(para) == "" {
+			if len(out) > 0 && out[len(out)-1] != "" {
+				out = append(out, "")
+			}
+			continue
+		}
+		for _, l := range wrapWords(para, max(w, 1)) {
+			out = append(out, ansi.Truncate(l, max(w, 1), "…"))
+		}
+	}
+	for len(out) > 0 && out[len(out)-1] == "" {
+		out = out[:len(out)-1]
+	}
+	return out
+}
+
+// pinLines are a pin's title and text, to show w cells wide in rows rows:
+// cut, the last row shown ends in "…".
+func pinLines(it *dOct, w, rows int) (title string, body []string) {
+	title = ansi.Truncate(kindIcons[it.Kind]+" "+itemTitle(it), max(w, 1), "…")
+	body = pinText(it, w)
+	if len(body) > rows {
+		body = body[:max(rows, 0)]
+		if rows > 0 {
+			last := []rune(body[rows-1])
+			if len(last) >= w {
+				last = last[:max(w-1, 0)]
+			}
+			body[rows-1] = string(last) + "…"
+		}
+	}
+	return title, body
+}
+
+// pinCard is a pin drawn upright, w × h: its outline (its kind's), its
+// title on the first row inside, and under it as much of its text as fits.
+func pinCard(it *dOct, w, h int, sel bool) [][]miniCell {
+	if h < 3 || w < 4 { // tiny (zoomed far out): a block of its colour with its name
+		return miniOfSize(it, w, h, sel, true)
+	}
+	g := miniOfSize(it, w, h, sel, false)
+	fill, _ := miniColours(it, sel)
+	titleFG, textFG := cText, mixHex(cText, fill, 0.3)
+	if sel {
+		titleFG = cAccent
+	}
+	set := func(x, y int, s, fg string) {
+		for i, r := range []rune(s) {
+			if x+i >= 1 && x+i < w-1 && y >= 1 && y < h-1 {
+				g[y][x+i] = miniCell{string(r), fg, fill}
+			}
+		}
+	}
+	title, body := pinLines(it, w-2, h-3)
+	set(1+max(0, (w-2-len([]rune(title)))/2), 1, title, titleFG)
+	if len(body) == 0 && h > 3 {
+		set(2, 2, "empty", mixHex(cDim, fill, 0.2))
+	}
+	for i, l := range body {
+		set(1, 2+i, l, textFG)
+	}
+	return g
+}
+
+// drawPin draws pin it of a board. Turned by quarters (or not at all) it
+// is its card, made at its size on the screen, so its outline is whole and
+// sharp. Turned by any other angle, or skewed, its outline is a fine line
+// of dots (braille: 2 × 4 dots a cell) round its turned shape, so it is
+// smooth and never a run of repeated letters; inside, its title and text
+// stay upright to be read.
+func drawPin(it *dOct, p pinMap, sel bool, pic string, put pinPut) {
 	if q, ok := pinQuarter(it.Tf); ok {
-		drawPinBox(it, p, q, sel, put)
+		drawPinBox(it, p, q, sel, pic, put)
 		return
 	}
-	// The cells it covers: the box round its corners.
-	minX, minY, maxX, maxY := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
+	var picture *boardCanvas // its picture, the size of its frame, turned with it
+	if pic != "" {
+		picture = pinPicture(pic, p.gw, p.gh)
+	}
+	fill, edge := miniColours(it, sel)
 	gw, gh := float64(p.gw), float64(p.gh)
+	minX, minY, maxX, maxY := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
 	for _, cr := range [][2]float64{{0, 0}, {gw, 0}, {0, gh}, {gw, gh}} {
 		sx, sy := p.toScreen(cr[0], cr[1])
 		minX, minY, maxX, maxY = math.Min(minX, sx), math.Min(minY, sy), math.Max(maxX, sx), math.Max(maxY, sy)
 	}
-	x0, y0 := int(math.Floor(minX)), int(math.Floor(minY))
-	cw, ch := int(math.Ceil(maxX))-x0+1, int(math.Ceil(maxY))-y0+1
+	x0, y0 := int(math.Floor(minX))-1, int(math.Floor(minY))-1
+	cw, ch := int(math.Ceil(maxX))-x0+2, int(math.Ceil(maxY))-y0+2
 	inside := make([][]bool, ch)
-	edgeAt := make([][]string, ch)
+	dots := make([][]uint8, ch)
 	for yy := range inside {
 		inside[yy] = make([]bool, cw)
-		edgeAt[yy] = make([]string, cw)
+		dots[yy] = make([]uint8, cw)
 		for xx := range inside[yy] {
 			u, v := p.toMini(float64(x0+xx)+0.5, float64(y0+yy)+0.5)
 			inside[yy][xx] = p.inside(u, v)
 		}
 	}
-	// Its edges: lines through the middles of its outer cells, each cell
-	// the line letter nearest its slant (a cell is twice as tall as wide).
-	cs := [4][2]float64{{0.5, 0.5}, {gw - 0.5, 0.5}, {gw - 0.5, gh - 0.5}, {0.5, gh - 0.5}}
+	// Its outline in dots: each edge a line from corner to corner, a dot
+	// a step (a cell is 2 dots across and 4 down).
+	bit := [2][4]uint8{{0x01, 0x02, 0x04, 0x40}, {0x08, 0x10, 0x20, 0x80}}
+	const eu, ev = 0.25, 0.125 // just inside its edges
+	cs := [4][2]float64{{eu, ev}, {gw - eu, ev}, {gw - eu, gh - ev}, {eu, gh - ev}}
 	for i := range cs {
 		ax, ay := p.toScreen(cs[i][0], cs[i][1])
 		bx, by := p.toScreen(cs[(i+1)%4][0], cs[(i+1)%4][1])
-		// One cell per step along its longer way; where it steps the
-		// other way too, a slant letter joins the two.
-		x1, y1 := int(math.Floor(ax)), int(math.Floor(ay))
-		x2, y2 := int(math.Floor(bx)), int(math.Floor(by))
-		dx, dy := x2-x1, y2-y1
-		n := max(abs(dx), abs(dy))
-		cellAt := func(k int) (int, int) {
-			if n == 0 {
-				return x1, y1
-			}
-			t := float64(k) / float64(n)
-			return int(math.Round(float64(x1) + float64(dx)*t)), int(math.Round(float64(y1) + float64(dy)*t))
-		}
+		ax, ay, bx, by = ax*2, ay*4, bx*2, by*4
+		n := int(math.Ceil(math.Max(math.Abs(bx-ax), math.Abs(by-ay))))
 		for k := 0; k <= n; k++ {
-			cx, cy := cellAt(k)
-			r := "─"
-			if abs(dy) > abs(dx) {
-				r = "│"
+			t := float64(k) / float64(max(n, 1))
+			dx, dy := int(math.Floor(ax+(bx-ax)*t)), int(math.Floor(ay+(by-ay)*t))
+			cx, cy := floorDiv(dx, 2)-x0, floorDiv(dy, 4)-y0
+			if cx >= 0 && cy >= 0 && cx < cw && cy < ch {
+				dots[cy][cx] |= bit[dx-floorDiv(dx, 2)*2][dy-floorDiv(dy, 4)*4]
 			}
-			if k < n {
-				nx, ny := cellAt(k + 1)
-				if nx != cx && ny != cy {
-					r = "╲"
-					if (nx-cx)*(ny-cy) < 0 {
-						r = "╱"
-					}
-				}
-			}
-			if xx, yy := cx-x0, cy-y0; xx >= 0 && yy >= 0 && xx < cw && yy < ch {
-				if edgeAt[yy][xx] == "" || r != "─" && r != "│" {
-					edgeAt[yy][xx] = r
-				}
-				inside[yy][xx] = true
-			}
-		}
-	}
-	// Its inside: on each row, the cells between its edges (it is a
-	// parallelogram, so never hollow), and none past them.
-	for yy := range inside {
-		lo, hi := -1, -1
-		for xx := range cw {
-			if edgeAt[yy][xx] != "" {
-				if lo < 0 {
-					lo = xx
-				}
-				hi = xx
-			}
-		}
-		for xx := range cw {
-			inside[yy][xx] = lo >= 0 && xx >= lo && xx <= hi
 		}
 	}
 	for yy := range inside {
 		for xx := range inside[yy] {
 			switch {
-			case edgeAt[yy][xx] != "":
-				put(x0+xx, y0+yy, edgeAt[yy][xx], edge, fill, false)
+			case dots[yy][xx] != 0:
+				bg := ""
+				if inside[yy][xx] {
+					bg = fill
+				}
+				put(x0+xx, y0+yy, string(rune(0x2800+int(dots[yy][xx]))), edge, bg, false)
+			case inside[yy][xx] && picture != nil:
+				u, v := p.toMini(float64(x0+xx)+0.5, float64(y0+yy)+0.5)
+				pc := picture.Lines[min(max(int(v), 0), p.gh-1)][min(max(int(u), 0), p.gw-1)]
+				put(x0+xx, y0+yy, "▀", colorHex(pc.Style.Fg, fill), colorHex(pc.Style.Bg, fill), false)
 			case inside[yy][xx]:
 				put(x0+xx, y0+yy, " ", cText, fill, false)
 			}
 		}
 	}
-	// Its icon and label, upright (turned letters cannot be read), in the
-	// middle, each cut to the room inside its edges on that row.
-	mxs, _ := p.toScreen(gw/2, gh/2)
+	// Its title and text, upright, each row cut to the room inside it
+	// round its middle on that row.
+	mxs, mys := p.toScreen(gw/2, gh/2)
 	mid := int(math.Floor(mxs)) - x0
-	room := func(yy int) (int, int) { // the inside cells of row yy round its middle, between its edges
-		if yy < 0 || yy >= ch || mid < 0 || mid >= cw || !inside[yy][mid] || edgeAt[yy][mid] != "" {
+	room := func(yy int) (int, int) {
+		if yy < 0 || yy >= ch || mid < 0 || mid >= cw || !inside[yy][mid] || dots[yy][mid] != 0 {
 			return 0, -1
 		}
 		lo, hi := mid, mid
-		for lo > 0 && inside[yy][lo-1] && edgeAt[yy][lo-1] == "" {
+		for lo > 0 && inside[yy][lo-1] && dots[yy][lo-1] == 0 {
 			lo--
 		}
-		for hi < cw-1 && inside[yy][hi+1] && edgeAt[yy][hi+1] == "" {
+		for hi < cw-1 && inside[yy][hi+1] && dots[yy][hi+1] == 0 {
 			hi++
 		}
 		return lo, hi
 	}
-	// words puts text on row yy, centred on its middle, kept inside it.
-	full := func(yy int) (int, int) { // all its cells on row yy, its edges too
-		if yy < 0 || yy >= ch {
-			return 0, -1
-		}
-		lo, hi := -1, -2
-		for xx := range cw {
-			if inside[yy][xx] {
-				if lo < 0 {
-					lo = xx
-				}
-				hi = xx
-			}
-		}
-		return lo, hi
+	// The rows with room, from its middle up and down: they hold its text.
+	mrow := int(math.Floor(mys)) - y0
+	top, bottom := mrow, mrow
+	for lo, hi := room(top - 1); hi-lo+1 >= 3; lo, hi = room(top - 1) {
+		top--
 	}
-	words := func(text string, yy int, fg string, bold bool) {
-		lo, hi := room(yy)
-		if hi-lo+1 < lipgloss.Width(text) { // too long between its edges: over them
-			lo, hi = full(yy)
-		}
+	for lo, hi := room(bottom + 1); hi-lo+1 >= 3; lo, hi = room(bottom + 1) {
+		bottom++
+	}
+	titleFG, textFG := cText, mixHex(cText, fill, 0.3)
+	if sel {
+		titleFG = cAccent
+	}
+	// As many rows as it has words for, centred on its middle (where it
+	// is widest), inside the rows with room.
+	widest := 0
+	for r := top; r <= bottom; r++ {
+		lo, hi := room(r)
+		widest = max(widest, hi-lo+1)
+	}
+	_, all := pinLines(it, max(widest-1, 1), bottom-top)
+	n := min(1+max(len(all), 1), bottom-top+1)
+	top = min(max(mrow-(n-1)/2, top), bottom-n+1)
+	title, body := pinLines(it, max(widest-1, 1), n-1)
+	if len(body) == 0 && n > 1 {
+		body = []string{"empty"}
+	}
+	line := func(r int, text, fg string, centre, bold bool) {
+		lo, hi := room(r)
 		if hi < lo {
 			return
 		}
+		if lo < hi { // a cell of margin, when there is room
+			lo++
+		}
 		rs := []rune(ansi.Truncate(text, hi-lo+1, "…"))
-		start := min(max(mid-len(rs)/2, lo), hi-len(rs)+1)
-		for i, r := range rs {
-			put(x0+start+i, y0+yy, string(r), fg, fill, bold)
+		start := lo
+		if centre {
+			start = min(max(mid-len(rs)/2, lo), hi-len(rs)+1)
+		}
+		for i, r2 := range rs {
+			put(x0+start+i, y0+r, string(r2), fg, fill, bold)
 		}
 	}
-	icon, label := kindIcons[it.Kind], itemTitle(it)
-	_, pinY := p.toScreen(gw/2, 0.5)
-	pinRow := int(math.Floor(pinY)) - y0
-	width := func(yy int) int {
-		if yy == pinRow {
-			return 0 // the pin is there
-		}
-		lo, hi := room(yy)
-		if lo2, hi2 := full(yy); hi-lo+1 < lipgloss.Width(label) {
-			lo, hi = lo2, hi2
-		}
-		return hi - lo + 1
+	line(top, title, titleFG, true, sel)
+	if picture != nil { // a picture: its title on it, and the picture is the rest
+		px, py := p.toScreen(gw/2, 0.5)
+		put(int(math.Floor(px)), int(math.Floor(py)), "●", "#e06c75", fill, true)
+		return
 	}
-	_, my := p.toScreen(gw/2, gh/2)
-	mrow := int(math.Floor(my)) - y0
-	textFG := cText
-	if sel {
-		textFG = cAccent
+	// Its text flows into the rows under the title, as many words on each
+	// as its room there holds; what does not fit ends in "…".
+	var words []string
+	for _, l := range pinText(it, 1<<20) {
+		words = append(words, strings.Fields(l)...)
 	}
-	// The label's row: the middle one, or the next one that holds it all,
-	// or else the widest of them.
-	row := mrow
-	for _, r := range []int{mrow, mrow + 1, mrow - 1} {
-		if width(r) >= lipgloss.Width(label) {
-			row = r
-			break
-		}
-		if width(r) > width(row) {
-			row = r
-		}
+	if len(words) == 0 && len(body) > 0 {
+		words = body // "empty"
 	}
-	if width(row-1) >= 1 && p.gh >= 4 {
-		words(icon, row-1, mixHex(it.Color, cText, 0.3), false)
-		words(label, row, textFG, sel)
-	} else if width(row) >= lipgloss.Width(icon+" "+label) {
-		words(icon+" "+label, row, textFG, sel)
-	} else {
-		words(label, row, textFG, sel) // no room for its icon too
+	for r := top + 1; r <= bottom && len(words) > 0; r++ {
+		lo, hi := room(r)
+		w := hi - lo // a cell of margin
+		if w < 1 {
+			continue
+		}
+		row := ""
+		for len(words) > 0 {
+			next := words[0]
+			if row != "" {
+				next = row + " " + words[0]
+			}
+			if lipgloss.Width(next) > w && row != "" {
+				break
+			}
+			row, words = next, words[1:]
+		}
+		if len(words) > 0 && (r == bottom || lipgloss.Width(row) > w) {
+			row = ansi.Truncate(row, max(w-1, 0), "") + "…"
+		}
+		line(r, row, textFG, false, false)
 	}
 	// The pin, through the top of it.
 	px, py := p.toScreen(gw/2, 0.5)
 	put(int(math.Floor(px)), int(math.Floor(py)), "●", "#e06c75", fill, true)
 }
 
+// floorDiv is a ÷ b rounded down (for negative a too).
+func floorDiv(a, b int) int {
+	q := a / b
+	if a%b != 0 && (a < 0) != (b < 0) {
+		q--
+	}
+	return q
+}
+
+// pinPicture is the picture at path as w × h cells filling them all (cut
+// to fit, never squeezed: a cell is two pixels, one above the other).
+func pinPicture(path string, w, h int) *boardCanvas {
+	w, h = max(w, 1), max(h, 1)
+	key := fmt.Sprintf("cover|%s|%d|%d", path, w, h)
+	picMu.Lock()
+	defer picMu.Unlock()
+	if c, ok := picCells[key]; ok {
+		return c
+	}
+	c := newBoardCanvas(w, h)
+	if img, ok := loadPictureLocked(path); ok {
+		b := img.Bounds()
+		iw, ih := float64(b.Dx()), float64(b.Dy())
+		pw, ph := float64(w), float64(h*2)
+		scale := math.Max(pw/iw, ph/ih) // it covers the frame
+		ox, oy := (iw-pw/scale)/2, (ih-ph/scale)/2
+		step := max(1, int(1/scale/3))
+		px := func(x, y int) color.RGBA { // the average of the source pixels under pixel (x, y)
+			x0, y0 := ox+float64(x)/scale, oy+float64(y)/scale
+			x1, y1 := x0+1/scale, y0+1/scale
+			var r, g, bl, n int
+			for sy := int(y0); sy < max(int(y1), int(y0)+1); sy += step {
+				for sx := int(x0); sx < max(int(x1), int(x0)+1); sx += step {
+					cr, cg, cb, _ := img.At(b.Min.X+min(sx, b.Dx()-1), b.Min.Y+min(sy, b.Dy()-1)).RGBA()
+					r, g, bl, n = r+int(cr>>8), g+int(cg>>8), bl+int(cb>>8), n+1
+				}
+			}
+			n = max(n, 1)
+			return color.RGBA{uint8(r / n), uint8(g / n), uint8(bl / n), 255}
+		}
+		cell := uv.Cell{Content: "▀", Width: 1}
+		for row := range h {
+			for col := range w {
+				cell.Style.Fg, cell.Style.Bg = px(col, row*2), px(col, row*2+1)
+				c.SetCell(col, row, &cell)
+			}
+		}
+	}
+	if picCellsKept += w * h; picCellsKept > 1_000_000 {
+		clear(picCells)
+		picCellsKept = w * h
+	}
+	picCells[key] = c
+	return c
+}
+
 // drawPinBox draws a pin turned by q quarter turns (and maybe flipped): its
 // miniature, upright, made at the size the turn gives it, its corners
 // turned and mirrored as the pin is.
-func drawPinBox(it *dOct, p pinMap, q int, sel bool, put pinPut) {
+func drawPinBox(it *dOct, p pinMap, q int, sel bool, pic string, put pinPut) {
 	_, sx, sy, _, _ := it.Tf.get()
 	W, H := p.gw, p.gh
 	if q%2 == 1 { // on its side: as wide as it was tall (a cell is twice as tall as wide)
 		W, H = max(3, int(math.Round(float64(p.gh)*2))), max(1, int(math.Round(float64(p.gw)/2)))
 	}
-	g := miniOfSize(it, W, H, sel, true)
+	g := pinCard(it, W, H, sel)
+	if pic != "" && W >= 4 && H >= 3 {
+		// Its picture fills its frame; its title goes on its bottom edge
+		// (the pin is through its top).
+		fill, _ := miniColours(it, sel)
+		pc := pinPicture(pic, W-2, H-2)
+		for yy := 1; yy < H-1; yy++ {
+			for xx := 1; xx < W-1; xx++ {
+				c := pc.Lines[yy-1][xx-1]
+				g[yy][xx] = miniCell{"▀", colorHex(c.Style.Fg, fill), colorHex(c.Style.Bg, fill)}
+			}
+		}
+		titleFG := mixHex(it.Color, cText, 0.5)
+		if sel {
+			titleFG = cAccent
+		}
+		t := []rune(" " + ansi.Truncate(kindIcons[it.Kind]+" "+itemTitle(it), max(W-6, 1), "…") + " ")
+		for i, r := range t {
+			if x := 2 + i; x < W-2 {
+				g[H-1][x] = miniCell{string(r), titleFG, g[H-1][x].bg}
+			}
+		}
+	}
 	if H >= 3 && W >= 2 {
 		// The corners, clockwise from the top left, mirrored, then turned.
 		at := [4][2]int{{0, 0}, {W - 1, 0}, {W - 1, H - 1}, {0, H - 1}}
@@ -851,9 +1025,6 @@ func drawPinBox(it *dOct, p pinMap, q int, sel bool, put pinPut) {
 	for yy, row := range g {
 		for xx, mc := range row {
 			fg, bold := mc.fg, false // a clear cell (bg "") keeps the cork behind
-			if sel && mc.fg == cText && mc.r != " " {
-				fg, bold = cAccent, true // its label, picked out
-			}
 			put(x0+xx, y0+yy, mc.r, fg, mc.bg, bold)
 		}
 	}

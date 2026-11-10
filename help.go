@@ -130,7 +130,7 @@ var helpGroups = []helpGroup{
 		{"1–8", "highlighter pen colours (press the same one again to put it down)"},
 		{"  ⌫ · over/under on the toolbar", "  rubber · pen under the text or over it; right-drag rubs out too"},
 		{"Alt + N, then P · N · S", "place a new page · note · shape in the middle of the screen"},
-		{"Alt + N, then C · D · R · B", "place a container: cabinet (two doors, a shelf for each kind) · drawer (a handle; inside, everything small) · rack (a stack: click a row to open it inside the rack; Tab · Shift+Tab: its next · last thing) · board (things pinned on it, small)"},
+		{"Alt + N, then C · D · R · B", "place a container: cabinet (two doors, a shelf for each kind) · drawer (a handle; inside, everything small) · rack (a stack: click a row to open it inside the rack; Tab · Shift+Tab: its next · last thing) · board (things pinned on it as cards with their title and text)"},
 		{"  Cabinet · drawer", "  click the doors · the handle (or Tab, with it chosen) to open or shut it; click a thing inside to take it out"},
 		{"  Board", "  drop things on it to pin them; click a pin to open it; drag it to move it; Tab chooses a pin, then R turn · S size · W H stretch · K J skew · F V flip · Alt + arrows move · T type its transform (rotate 30 scale 1.5 skew 0.2 …) · X X take it off"},
 		{"Alt + L", "label mode (again, Esc or Alt tapped twice: off). On the chosen structure:"},

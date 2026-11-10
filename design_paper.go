@@ -57,7 +57,7 @@ const (
 	noteCols, noteRows = 28, 8                      // one page of a note
 	noteW, noteH       = noteCols + 4, noteRows + 6 // edges, title, footer
 	cabinetNewW        = 30
-	drawerNewW         = 2 + 1 + 3*(miniW+1) // three miniatures side by side
+	drawerNewW         = 2 + 2 + 1 + 3*(miniW+1) // three miniatures side by side
 	cabinetMinW        = 22
 	drawerMinW         = 24
 )
@@ -81,7 +81,7 @@ func minSize(kind string) (int, int) {
 	case kCabinet:
 		return cabinetMinW, 4
 	case kBoard:
-		return miniW + 4, miniH + 4
+		return pinW + 4, pinH + 4
 	}
 	return pageMinW, pageMinH
 }
@@ -102,15 +102,15 @@ func (d *designState) size(o *dOct) (int, int) {
 	case kCabinet:
 		w, h = max(o.W, cabinetMinW), cabinetLines(o) // shut, or open on its shelves (design_cabinet.go)
 	case kDrawer:
-		w, h = drawerW(o), drawerLines(o) // its front, and pulled out its tray (design_drawer.go)
+		w, h = drawerW(o), d.drawerLinesNow(o) // its front, and pulled out its tray (design_drawer.go)
 	case kRack:
-		w, h = max(o.W, cabinetMinW), 3+max(1, len(d.containerRows(o)))+1
+		w, h = max(o.W, cabinetMinW), rackLines(len(d.containerRows(o)))
 		if it := d.openIn(o); it != nil { // the rack grows to hold what is open in it
 			iw, ih := d.size(it)
 			w, h = max(w, iw+2), h+ih
 		}
 	case kBoard:
-		w, h = max(o.W, miniW+4), max(o.H, miniH+4)
+		w, h = max(o.W, pinW+4), max(o.H, pinH+4)
 	case kOct:
 	default:
 		h = max(o.H, pageMinH) // older, shorter pages get room for their footer
@@ -152,13 +152,13 @@ func (d *designState) newKind(kind string, cx, cy int) *dOct {
 		o.W, o.H = cabinetNewW, cabinetLines(o)            // the same open or shut
 		o.Color = hslHex(25+rand.Float64()*20, 0.35, 0.55) // wood
 	case kBoard:
-		o.W, o.H = 54, 18
+		o.W, o.H = 2+3*(pinW+2), 2+2*(pinH+2)             // three pins across, two down
 		o.Color = hslHex(30+rand.Float64()*10, 0.45, 0.5) // cork
 	case kDrawer:
 		o.W, o.H = drawerNewW, drawerLines(o)
 		o.Color = hslHex(200+rand.Float64()*30, 0.25, 0.55) // grey-blue
 	case kRack:
-		o.W, o.H = cabinetNewW, 3+1+1                     // its frame and name, and a row
+		o.W, o.H = cabinetNewW, rackLines(1)              // its frame and name, and a row
 		o.Color = hslHex(150+rand.Float64()*30, 0.3, 0.5) // green
 	}
 	o.X, o.Y = cx-o.W/2, cy-o.H/2
@@ -743,18 +743,22 @@ func (d *designState) hit(sx, sy int) hitInfo {
 		}
 		if isContainer(o.Kind) && w >= 6 && h >= 4 {
 			rows := d.containerRows(o)
-			r := sy - y - 3
-			if lines := d.containerLines(o); d.openIn(o) == nil && !d.drawerShown(o) && lines > h && h >= 5 {
+			head := 3
+			if o.Kind == kRack {
+				head = d.rackHead(o, h) // zoomed out: its name in its top edge
+			}
+			r := sy - y - head
+			if lines := d.containerLines(o); d.openIn(o) == nil && o.Kind != kDrawer && lines > h && h >= 5 {
 				// Not all its rows fit: the last one shown is "+N more".
 				switch {
-				case r == h-5 && sx > x && sx < x+w-1:
+				case r == h-2-head && sx > x && sx < x+w-1:
 					return hitInfo{o, hitRow, "more"}
-				case r > h-5:
+				case r > h-2-head:
 					r = -1
 				}
 			}
 			if o.Kind == kDrawer { // its handle and tray (design_drawer.go)
-				if act := drawerHit(o, sy-y, sx-x-1, d.drawerColsNow(o)); act != "" && sx > x && sx < x+w-1 {
+				if act := d.drawerHit(o, sy-y, sx-x-1, w, h); act != "" && sx > x && sx < x+w-1 {
 					return hitInfo{o, hitRow, act}
 				}
 				return hitInfo{o, hitBody, ""}
@@ -765,11 +769,18 @@ func (d *designState) hit(sx, sy int) hitInfo {
 				}
 				return hitInfo{o, hitBody, ""}
 			}
-			if at, gap := d.openGap(o); at >= 0 && r > at { // below the open thing's room
+			per := 1
+			if o.Kind == kRack {
+				per = d.rackPer(o, h) // a row, and the shelf under it
+			}
+			if at, gap := d.openGap(o); at >= 0 && r > at*per { // below the open thing's room
 				r -= gap
-				if r <= at {
+				if r <= at*per {
 					r = -1
 				}
+			}
+			if r >= 0 {
+				r /= per
 			}
 			if r >= 0 && r < len(rows) && rows[r].act != "" && sx > x && sx < x+w-1 {
 				return hitInfo{o, hitRow, itemDeleteAct(rows[r].act, sx-x-1, w-2)}
@@ -909,8 +920,8 @@ func (m *Model) designFileInto(it, to *dOct) {
 	d.remove(it.ID)
 	it.X, it.Y = 0, 0
 	if to.Kind == kBoard {
-		it.X = max(0, min(max(0, to.W-2-miniW), bx))
-		it.Y = max(0, min(max(0, to.H-2-miniH), by))
+		it.X = max(0, min(max(0, to.W-2-pinW), bx))
+		it.Y = max(0, min(max(0, to.H-2-pinH), by))
 	}
 	to.Items = append(to.Items, it)
 	d.dirty = true

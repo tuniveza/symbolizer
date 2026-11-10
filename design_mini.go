@@ -10,6 +10,7 @@ package main
 import (
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -102,13 +103,18 @@ func miniOfSize(o *dOct, w, h int, sel, words bool) [][]miniCell {
 		iconRow = -1
 		labelRow = miniH / 2
 	}
-	label := []rune(ansi.Truncate(itemTitle(o), max(miniW-2, 1), "…"))
-	if iconRow < 0 {
-		label = []rune(ansi.Truncate(icon+" "+itemTitle(o), max(miniW-2, 1), "…"))
-	} else {
-		set(miniW/2-1, iconRow, icon, mixHex(o.Color, cText, 0.3), fill)
+	room, left := max(miniW-2, 1), 1
+	if h < 3 { // no outline (tiny): its name has all the width
+		room, left = miniW, 0
 	}
-	start := max(1, (miniW-len(label))/2)
+	label := []rune(ansi.Truncate(itemTitle(o), room, "…"))
+	switch {
+	case iconRow >= 0:
+		set(miniW/2-1, iconRow, icon, mixHex(o.Color, cText, 0.3), fill)
+	case room >= lipgloss.Width(icon+" "+itemTitle(o)) || room >= 8:
+		label = []rune(ansi.Truncate(icon+" "+itemTitle(o), room, "…"))
+	}
+	start := max(left, (miniW-len(label))/2)
 	for i, r := range label {
 		set(start+i, labelRow, string(r), cText, fill)
 	}

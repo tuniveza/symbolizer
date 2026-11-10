@@ -595,6 +595,7 @@ func TestDesignCanvasMatchesCompositor(t *testing.T) {
 		for _, cam := range [][2]float64{{-2, -1}, {7.5, 3.25}, {-31, -9}, {13, 0}} {
 			for _, sel := range []int{-1, b.ID} {
 				d.zoom, d.camX, d.camY, d.sel, d.editing, d.drawn = zoom, cam[0], cam[1], sel, partNone, nil
+				d.relayout() // zoomed in, the gaps between structures (design_layout.go)
 				w, h := m.width, m.boardH()
 				picturesDirect, middlesDirect = false, false
 				ref := lipgloss.NewCanvas(w, h)
@@ -2488,13 +2489,13 @@ func TestDesignDrawerAndRack(t *testing.T) {
 	// as wide as the rack; the rack grows down to hold it.
 	p2W, p2H := p2.W, p2.H
 	x, y, w0, h0 := d.rect(rack)
-	click(m, x+5, y+3+1+m.boardTop(), tea.MouseLeft)
+	click(m, x+5, y+3+rackRowLines+m.boardTop(), tea.MouseLeft)
 	if !d.opened.active || d.byID(p2.ID) == nil || len(rack.Items) != 1 || d.sel != p2.ID {
 		t.Fatalf("the row did not open: opened %+v, rack holds %d", d.opened, len(rack.Items))
 	}
 	rx, ry, rw, rh := d.rect(rack)
 	px, py, pw, ph := d.rect(p2)
-	if px != rx+1 || py != ry+3+1+1 || pw != rw-2 || rw != w0 {
+	if px != rx+1 || py != ry+3+rackRowLines+1 || pw != rw-2 || rw != w0 {
 		t.Fatalf("the opened page is not inside the rack under its row: page %d,%d %d×%d, rack %d,%d %d×%d", px, py, pw, ph, rx, ry, rw, rh)
 	}
 	if rh != h0+ph || py+ph > ry+rh-1 {
@@ -2510,12 +2511,12 @@ func TestDesignDrawerAndRack(t *testing.T) {
 		t.Fatalf("the open page's row is not shown:\n%s", s)
 	}
 	// Its row again puts it back, its own size again.
-	click(m, rx+5, ry+3+1+m.boardTop(), tea.MouseLeft)
+	click(m, rx+5, ry+3+rackRowLines+m.boardTop(), tea.MouseLeft)
 	if d.opened.active || d.byID(p2.ID) != nil || len(rack.Items) != 2 || p2.W != p2W || p2.H != p2H {
 		t.Fatalf("its row did not put it back: opened %v, rack holds %d, size %d×%d (was %d×%d)", d.opened.active, len(rack.Items), p2.W, p2.H, p2W, p2H)
 	}
 	x, y, _, _ = d.rect(rack)
-	click(m, x+5, y+3+1+m.boardTop(), tea.MouseLeft)
+	click(m, x+5, y+3+rackRowLines+m.boardTop(), tea.MouseLeft)
 	if !d.opened.active {
 		t.Fatal("the row did not open again")
 	}
@@ -2901,13 +2902,13 @@ func TestDesignContainersNoOverlap(t *testing.T) {
 		d.zoom = zi
 		r := d.newKind(kRack, 0, 0)
 		r.X, r.Y, r.Header = 2, 2, "Shelf"
-		for i := range 5 {
+		for i := range 14 {
 			p := d.newKind(kPage, 0, 0)
 			p.Header = "P" + itoa(i)
 			m.designFileInto(p, r)
 		}
 		below := d.newKind(kPage, 0, 0) // right under the rack
-		below.X, below.Y, below.W, below.Header = 2, 2+9+1, cabinetNewW, "Below"
+		below.X, below.Y, below.W, below.Header = 2, 2+rackLines(14)+1, cabinetNewW, "Below"
 		dr := d.newKind(kDrawer, 0, 0) // right of the rack
 		dr.X, dr.Y, dr.Header = 2+cabinetNewW+1, 2, "Box"
 		for i := range 4 {
@@ -3133,19 +3134,26 @@ func TestDesignDrawerHandle(t *testing.T) {
 		{ID: 303, Kind: kOct, Header: "Bell", Color: "#e5c07b", W: 26, H: 10}}
 	d.sel = -1
 	s := screenOf(m)
-	if !strings.Contains(s, "⊔ Box · 3") || !strings.Contains(s, "○") || strings.Contains(s, "Call Ana") || dr.DrawerOpen {
+	if !strings.Contains(s, "⊔ Box · 3") || !strings.Contains(s, "▐▀▀▀▀▀▀") || strings.Contains(s, "Call Ana") || dr.DrawerOpen {
 		t.Fatalf("the pushed-in drawer should show its front and handle only:\n%s", s)
 	}
-	x, y, w, _ := d.rect(dr)
-	click(m, x+w/2, y+2+m.boardTop(), tea.MouseLeft) // the handle
+	x, y, w, h := d.rect(dr)
+	if _, _, _, h2 := d.rect(dr); h2 != drawerLines(dr) {
+		t.Fatalf("the drawer is %d rows, want %d", h2, drawerLines(dr))
+	}
+	l := drawerLayout(dr, w, h, d.z())
+	click(m, x+w/2, y+l.handle+m.boardTop(), tea.MouseLeft) // the handle
 	d.lastClick = time.Time{}
 	s = screenOf(m)
 	if !dr.DrawerOpen || !strings.Contains(s, "Call Ana") || !strings.Contains(s, "Plan") || !strings.Contains(s, "Bell") || !strings.Contains(s, "◹") {
 		t.Fatalf("pulled out, the tray should show each thing small with its label:\n%s", s)
 	}
+	if _, _, w2, h2 := d.rect(dr); w2 != w || h != drawerFrontLines || h2 != drawerOpenLines(dr) {
+		t.Fatalf("shut, the drawer should be its front (%d rows: %d), pulled out its tray under it (%d rows: %d), as wide (%d, %d)", drawerFrontLines, h, drawerOpenLines(dr), h2, w, w2)
+	}
 	// A click on the second miniature takes "Plan" out.
-	mx := x + 1 + 1 + (miniW + 1) + 3
-	dragTo(m, mx, y+5+m.boardTop(), 60, 22, tea.MouseLeft)
+	mx := x + 1 + 1 + 1 + (miniW + 1) + 3
+	dragTo(m, mx, y+drawerFrontLines+1+m.boardTop(), 60, 22, tea.MouseLeft)
 	if len(dr.Items) != 2 || d.byID(302) == nil {
 		t.Fatalf("the miniature did not take Plan out: drawer holds %d", len(dr.Items))
 	}
@@ -3299,26 +3307,24 @@ func TestDesignDrawerShownWhole(t *testing.T) {
 		d.zoom = zi
 		dr := d.newKind(kDrawer, 0, 0)
 		dr.X, dr.Y, dr.Header = 2, 1, "Box"
-		for i := range 24 {
+		for i := range 12 {
 			dr.Items = append(dr.Items, &dOct{ID: 700 + i, Kind: kNote, Header: "N" + itoa(i), Color: "#e5c07b"})
 		}
-		d.sel = dr.ID
-		m.designPull(dr) // pulled out: chosen, and the view on it
-		x, y, w, h := d.rect(dr)
-		if x < 0 || y < 0 || x+w > m.width || y+h > m.boardH() {
-			t.Fatalf("zoom %.2f: the pulled-out drawer is not all on screen: %d,%d %d×%d, screen %d×%d", d.z(), x, y, w, h, m.width, m.boardH())
+		bx, by, bw, _ := d.rect(dr)
+		m.designPull(dr) // pulled out: as wide, its tray under its front
+		if x, y, w, h := d.rect(dr); x != bx || y != by || w != bw || float64(h) <= float64(drawerFrontLines)*d.z()-1 {
+			t.Fatalf("zoom %.2f: pulled out, the drawer is %d×%d at %d,%d (shut: %d wide at %d,%d)", d.z(), w, h, x, y, bw, bx, by)
 		}
+		m.centreOn(dr)
 		s := screenOf(m)
-		for i := range 24 {
-			if !strings.Contains(s, "N"+itoa(i)+" ") && !strings.Contains(s, "N"+itoa(i)+"│") {
-				t.Fatalf("zoom %.2f: N%d does not show:\n%s", d.z(), i, s)
+		if d.z() == 1 {
+			for i := range 12 {
+				if !strings.Contains(s, "N"+itoa(i)+" ") && !strings.Contains(s, "N"+itoa(i)+"│") {
+					t.Fatalf("zoom %.2f: N%d does not show:\n%s", d.z(), i, s)
+				}
 			}
-		}
-		// Not chosen: its board size times the zoom.
-		d.sel = -1
-		bx, by, bw, bh := d.baseRect(dr)
-		if rx, ry, rw, rh := d.rect(dr); rx != bx || ry != by || rw != bw || rh != bh {
-			t.Fatalf("zoom %.2f: not chosen, the drawer is %d×%d, want its scaled size %d×%d", d.z(), rw, rh, bw, bh)
+		} else if !strings.Contains(s, "N0") {
+			t.Fatalf("zoom %.2f: zoomed out, its things should still show, smaller:\n%s", d.z(), s)
 		}
 	}
 }
@@ -3331,8 +3337,8 @@ func TestDesignPinNotStretched(t *testing.T) {
 	d.camX, d.camY, d.zoom = 0, 0, designZoom100
 	b := d.newKind(kBoard, 0, 0)
 	b.X, b.Y, b.W, b.H = 2, 1, 80, 24
-	pg := &dOct{ID: 900, Kind: kPage, Header: "Hello there", Color: "#c678dd", X: 4, Y: 2}
-	pg.setTf(0, 3, 3, 0, 0)
+	pg := &dOct{ID: 900, Kind: kPage, Header: "Hello there", Body: "Line one of it", Color: "#c678dd", X: 20, Y: 4}
+	pg.setTf(0, 1.5, 1.5, 0, 0)
 	b.Items = []*dOct{pg}
 	d.sel = -1
 	s := screenOf(m)
@@ -3342,9 +3348,18 @@ func TestDesignPinNotStretched(t *testing.T) {
 	if strings.Contains(s, "┌┌") || strings.Contains(s, "◹◹") {
 		t.Fatalf("the scaled pin's corners are drawn more than once:\n%s", s)
 	}
-	pg.setTf(90, 2, 2, 0, 0) // on its side: the label still reads across
+	if strings.Count(s, "Line one of it") != 1 {
+		t.Fatalf("the pin's card should show its text:\n%s", s)
+	}
+	pg.setTf(90, 1.2, 1.2, 0, 0) // on its side: the label still reads across
 	if s := screenOf(m); strings.Count(s, "Hello there") != 1 {
 		t.Fatalf("turned on its side, the label should still read once:\n%s", s)
+	}
+	pg.setTf(25, 1.5, 1.5, 0, 0) // turned: a fine outline of dots, the words upright
+	s = screenOf(m)
+	dotted := strings.ContainsFunc(s, func(r rune) bool { return r > 0x2800 && r <= 0x28ff })
+	if strings.Count(s, "Hello there") != 1 || !dotted {
+		t.Fatalf("turned, the pin should keep its title and have a dotted outline:\n%s", s)
 	}
 }
 
@@ -3408,5 +3423,29 @@ func TestDesignNewClearSpot(t *testing.T) {
 	bw, bh := d.size(b)
 	if b.X < ax+aw && ax < b.X+bw && b.Y < ay+ah && ay < b.Y+bh {
 		t.Fatalf("the cabinet still covers the drawer: %d,%d %d×%d and %d,%d %d×%d", b.X, b.Y, bw, bh, ax, ay, aw, ah)
+	}
+}
+
+// Zoomed in, structures grow but the gaps between neighbours keep their
+// size; at 100% or less everything is where the zoom puts it.
+func TestDesignZoomKeepsGaps(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	a := d.newKind(kPage, 0, 0)
+	a.X, a.Y = 0, 0
+	aw, ah := d.size(a)
+	b := d.newKind(kPage, 0, 0)
+	b.X, b.Y = aw+2, 0 // 2 cells to its right
+	c := d.newKind(kPage, 0, 0)
+	c.X, c.Y = 0, ah+1 // 1 cell below it
+	for _, zi := range []int{designZoom100, designZoom100 + 1, designZoom100 + 2, len(designZooms) - 1} {
+		d.zoom, d.camX, d.camY = zi, 0, 0
+		d.relayout()
+		ax, ay, aw2, ah2 := d.rect(a)
+		bx, _, _, _ := d.rect(b)
+		_, cy, _, _ := d.rect(c)
+		if gx, gy := bx-(ax+aw2), cy-(ay+ah2); gx < 1 || gx > 3 || gy < 0 || gy > 2 {
+			t.Fatalf("zoom %.2f: the gaps are %d across and %d down, want about 2 and 1", d.z(), gx, gy)
+		}
 	}
 }

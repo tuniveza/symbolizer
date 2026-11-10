@@ -202,6 +202,10 @@ type designState struct {
 	place          string     // the kind a double-click on the empty board places
 	dropOn         int        // while a page or note is dragged: the structure it would go into, or -1
 	dirty          bool
+	anims          map[int]openAnim   // doors and drawers opening or shutting (design_anim.go)
+	lay            map[int][2]float64 // zoomed in: where each structure is drawn (design_layout.go)
+	layKey         uint64             // what lay was worked out from
+	animTick       bool               // a frame for them is coming
 	saveErr        string
 	savePending    bool        // a change waits to be written (designSaveLater)
 	saveTick       bool        // the wait for it has started (designSaveCmd)
@@ -518,11 +522,7 @@ func (d *designState) rect(o *dOct) (x, y, w, h int) {
 			return x, y, w, h
 		}
 	}
-	x, y, w, h = d.baseRect(o)
-	if d.drawerShown(o) { // a pulled-out drawer, chosen: all of it, at any zoom (design_drawer.go)
-		w, h = d.drawerShownSize(o)
-	}
-	return x, y, w, h
+	return d.baseRect(o)
 }
 
 // baseRect is where a structure is on the screen: its board size times the
@@ -530,8 +530,9 @@ func (d *designState) rect(o *dOct) (x, y, w, h int) {
 func (d *designState) baseRect(o *dOct) (x, y, w, h int) {
 	z := d.z()
 	ow, oh := d.size(o)
-	x = int(math.Floor((float64(o.X) - d.camX) * z))
-	y = int(math.Floor((float64(o.Y) - d.camY) * z))
+	lx, ly := d.layAt(o) // zoomed in, gaps keep their size (design_layout.go)
+	x = int(math.Floor(lx - d.camX*z))
+	y = int(math.Floor(ly - d.camY*z))
 	// The size comes from the zoom alone, not from where the edges fall,
 	// so it stays the same while the board pans.
 	return x, y, max(int(math.Round(float64(ow)*z)), 1), max(int(math.Round(float64(oh)*z)), 1)
@@ -1362,6 +1363,7 @@ var octSides = lipgloss.Border{Left: "│", Right: "│"}
 
 // designCanvas is the whole board, drawn.
 func (m *Model) designCanvas() *boardCanvas {
+	m.ds().relayout() // zoomed in, the gaps between structures (design_layout.go)
 	d := m.ds()
 	// One canvas, kept from frame to frame: the board covers all of it.
 	if d.canvas == nil || d.canvas.Width() != m.width || d.canvas.Height() != m.boardH() {
@@ -1464,6 +1466,9 @@ func (p *drawnPart) paint(c *boardCanvas) {
 func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
 	if o.Image != "" && !picLoaded(filepath.Join(d.imagesDir(), o.Image)) {
 		return drawKey{}, false // a missing picture may turn up: look again each time
+	}
+	if _, moving := d.anims[o.ID]; moving {
+		return drawKey{}, false // opening or shutting: a new drawing each frame (design_anim.go)
 	}
 	_, _, w, h := d.rect(o)
 	k := drawKey{

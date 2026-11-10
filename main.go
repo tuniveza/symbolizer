@@ -83,7 +83,7 @@ func main() {
 		m.mode = startMode
 		m.say(modes[startMode].Icon() + "  " + modes[startMode].name + " mode. Alt+M switches modes.")
 	}
-	designFrames, designSaveLater = true, true
+	designFrames, designSaveLater, designAnims = true, true, true
 	p := tea.NewProgram(m, tea.WithFPS(120)) // the most Bubble Tea allows: smoother scrolling
 	_, err = p.Run()
 	if m.design != nil {

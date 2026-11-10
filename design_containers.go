@@ -111,7 +111,7 @@ func (d *designState) containerLayers(o *dOct) []*lipgloss.Layer {
 		edge, fill = cAccent, mixHex(cBG, cAccent, 0.2)
 	}
 	icon := kindIcons[o.Kind]
-	if w < 6 || h < 4 {
+	if w < 6 || h < 3 {
 		pill := mixHex(cBG, o.Color, 0.55)
 		return []*lipgloss.Layer{pillLayer(x, y, w, h, ansi.Truncate(icon+o.Header, w, ""), pill)}
 	}
@@ -136,15 +136,34 @@ func (d *designState) containerLayers(o *dOct) []*lipgloss.Layer {
 		e.Render(vt) + fitBlockLine(title, iw, fill) + e.Render(vt),
 		e.Render(ml + strings.Repeat("─", iw) + mr),
 	}
+	if d.rackHead(o, h) == 1 { // low (zoomed out): its name in its top edge, so its rows have room
+		nm := ansi.Truncate(" "+icon+" "+name+" ", max(iw-2, 1), "…")
+		lines = []string{e.Render(tl+hz) + head.Render(nm) + e.Render(strings.Repeat(hz, max(iw-1-lipgloss.Width(nm), 0))+tr)}
+	}
 	rows := d.containerRows(o)
 	at, gap := d.openGap(o)
 	blank := e.Render(vt) + st(cText, fill).Render(strings.Repeat(" ", iw)) + e.Render(vt)
-	for i, r := range drawRows(rows, iw, fill, edge) {
-		lines = append(lines, e.Render(vt)+r+e.Render(vt))
+	// Each thing on a shelf of its own: its row, and under it a plank
+	// joined to the rack's sides (the last one is the rack's bottom).
+	plank := e.Render("╟") + st(mixHex(edge, cText, 0.25), fill).Render(strings.Repeat("━", iw)) + e.Render("╢")
+	planks := d.rackPlanks(o, h)
+	per := d.rackPer(o, h) // zoomed in, each shelf is taller: the rows fill the rack
+	drawn := drawRows(rows, iw, fill, edge)
+	for i, r := range drawn {
+		for k := range max(per-1, 1) {
+			if k == (per-2)/2 || per < 2 {
+				lines = append(lines, e.Render(vt)+r+e.Render(vt))
+			} else {
+				lines = append(lines, blank)
+			}
+		}
 		if i == at { // room for the thing open under its row (it is drawn over it)
 			for range gap {
 				lines = append(lines, blank)
 			}
+		}
+		if i < len(drawn)-1 && planks {
+			lines = append(lines, plank)
 		}
 	}
 	bottom := bl + strings.Repeat(hz, iw) + br
@@ -153,12 +172,54 @@ func (d *designState) containerLayers(o *dOct) []*lipgloss.Layer {
 		bottom = bl + strings.Repeat(hz, left) + "═○═" + strings.Repeat(hz, max(iw-3-left, 0)) + br
 	}
 	lines = append(lines, e.Render(bottom))
-	lines = moreLines(lines, h, func(n int) string { // the rows that do not fit
-		return e.Render(vt) + fitBlockLine(centreLine(st(mixHex(cDim, cText, 0.4), fill).Italic(true).Render(ansi.Truncate("+"+itoa(n)+" more", iw, "…")), iw, fill), iw, fill) + e.Render(vt)
+	lines = moreLines(lines, h, func(n int) string { // the rows that do not fit (two lines each: a row and its shelf)
+		return e.Render(vt) + fitBlockLine(centreLine(st(mixHex(cDim, cText, 0.4), fill).Italic(true).Render(ansi.Truncate("+"+itoa(max(1, n/map[bool]int{true: rackRowLines, false: 1}[planks]))+" more", iw, "…")), iw, fill), iw, fill) + e.Render(vt)
 	}, blank)
 	layers := []*lipgloss.Layer{lipgloss.NewLayer(strings.Join(lines, "\n")).X(x).Y(y)}
 	return d.octExtras(layers, o, x, y, w, h, edge, fill, false, d.linkMode && d.linkFrom == o.ID)
 }
+
+// rackRowLines is how many screen rows each thing in a rack takes: its row
+// and the shelf under it.
+const rackRowLines = 2
+
+// rackPlanks is whether rack o, h rows high on the screen, has room for a
+// shelf under each row; zoomed out, it has not, and its rows go one under
+// another so they all still show.
+func (d *designState) rackPlanks(o *dOct, h int) bool {
+	_, gap := d.openGap(o)
+	return rackLines(len(d.containerRows(o)))+gap <= h
+}
+
+// rackPer is how many screen rows each row of rack o takes, h rows high on
+// the screen: a row and its shelf (2), more when zoomed in so its rows fill
+// it (the row in the middle of its shelf), 1 when zoomed out and its
+// shelves do not fit.
+func (d *designState) rackPer(o *dOct, h int) int {
+	if !d.rackPlanks(o, h) {
+		return 1
+	}
+	if d.openIn(o) != nil {
+		return rackRowLines
+	}
+	return max(rackRowLines, (h-3)/max(1, len(d.containerRows(o))))
+}
+
+// rackHead is how many rows a rack's top takes, h rows high on the screen:
+// its edge, its name and a line under it (3); zoomed out, when its rows
+// would not fit, only its edge, with its name in it (1).
+func (d *designState) rackHead(o *dOct, h int) int {
+	_, gap := d.openGap(o)
+	if 3+max(1, len(d.containerRows(o)))+gap+1 <= h {
+		return 3
+	}
+	return 1
+}
+
+// rackLines is how many rows a rack of n rows takes, with nothing open in
+// it: its frame, name and line under it, each row on its shelf (the last
+// shelf is its bottom).
+func rackLines(n int) int { return 3 + rackRowLines*max(1, n) }
 
 // detachDrawers gives each structure that still holds things in a drawer
 // of its own (boards saved before drawers were containers) a drawer
@@ -226,9 +287,9 @@ func (d *designState) containerLines(o *dOct) int {
 	case kCabinet:
 		return cabinetLines(o)
 	case kDrawer:
-		return drawerLines(o)
+		return d.drawerLinesNow(o)
 	}
-	return 3 + max(1, len(d.containerRows(o))) + 1
+	return rackLines(len(d.containerRows(o)))
 }
 
 // moreLines fits a container's drawn lines (its frame's top three, its
@@ -266,7 +327,7 @@ func (d *designState) openItemH(it *dOct) int {
 		return max(1, int(math.Round(float64(ih)*d.z())))
 	}
 	_, _, _, rh := d.rect(r)
-	return max(1, rh-(3+len(d.containerRows(r))+1))
+	return max(1, rh-rackLines(len(d.containerRows(r))))
 }
 
 // openRow is the row of rack r that the open thing sits under.
@@ -288,7 +349,7 @@ func (d *designState) openRect(it *dOct) (x, y, w, h int, ok bool) {
 	}
 	at := d.openRow(r)
 	rx, ry, rw, _ := d.rect(r)
-	return rx + 1, ry + 3 + at + 1, max(rw-2, 1), d.openItemH(it), true
+	return rx + 1, ry + 3 + rackRowLines*at + 1, max(rw-2, 1), d.openItemH(it), true
 }
 
 // openPlace is where the open thing is on the board (for the map): its
@@ -302,7 +363,7 @@ func (d *designState) openPlace(o *dOct) (x, y int, ok bool) {
 	if r == nil || r.Kind == kBoard {
 		return 0, 0, false
 	}
-	return r.X + 1, r.Y + 3 + d.openRow(r) + 1, true
+	return r.X + 1, r.Y + 3 + rackRowLines*d.openRow(r) + 1, true
 }
 
 // designRackOpen takes thing i out of rack r and shows it inside the rack,

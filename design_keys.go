@@ -224,11 +224,12 @@ func (m *Model) viewToPart(o *dOct, p int) {
 	w, _ := d.size(o)
 	top, bottom := d.partRows(o, p)
 	screenW, screenH := float64(m.width)/z, float64(m.boardH())/z
-	cx := float64(o.X) + float64(w)/2
-	cy := float64(o.Y) + float64(top+bottom+1)/2
+	sx, sy := d.shownXY(o) // where it is drawn (zoomed in, design_layout.go)
+	cx := sx + float64(w)/2
+	cy := sy + float64(top+bottom+1)/2
 	d.camX = cx - screenW/2
 	if float64(bottom-top+1) > screenH-2 {
-		d.camY = float64(o.Y+top) - 1
+		d.camY = sy + float64(top) - 1
 	} else {
 		d.camY = cy - screenH/2
 	}
@@ -574,16 +575,16 @@ func (m *Model) centreOn(o *dOct) {
 		return
 	}
 	w, h := d.size(o)
-	ox, oy := o.X, o.Y
+	ox, oy := d.shownXY(o)              // where it is drawn (zoomed in, design_layout.go)
 	if x, y, ok := d.openPlace(o); ok { // open inside a rack: where it shows
-		ox, oy = x, y
+		ox, oy = float64(x), float64(y)
 	}
 	screenW, screenH := float64(m.width)/z, float64(m.boardH())/z
-	d.camX = float64(ox) + float64(w)/2 - screenW/2
+	d.camX = ox + float64(w)/2 - screenW/2
 	if float64(h) > screenH-2 {
-		d.camY = float64(oy) - 1
+		d.camY = oy - 1
 	} else {
-		d.camY = float64(oy) + float64(h)/2 - screenH/2
+		d.camY = oy + float64(h)/2 - screenH/2
 	}
 	d.dirty = true
 }

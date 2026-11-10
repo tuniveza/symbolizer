@@ -293,8 +293,19 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		m.ds().frameTick = false // the View after this draws the board afresh
 		return m, nil
 	}
+	if _, ok := msg.(designAnimMsg); ok { // a door or drawer moves: the next frame (design_anim.go)
+		d := m.ds()
+		d.animTick, d.frameAt = false, time.Time{}
+		return m, m.designAnimCmd()
+	}
 	version := m.buf.Version()
+	if m.design != nil {
+		m.design.relayout() // zoomed in, where structures are, for clicks (design_layout.go)
+	}
 	cmd = m.update(msg)
+	if c := m.designAnimCmd(); c != nil { // a door or drawer started to move
+		cmd = tea.Batch(cmd, c)
+	}
 	if c := m.tellKittyMode(); c != nil { // kitty's keys can depend on the mode (syterm.go)
 		cmd = tea.Batch(cmd, c)
 	}

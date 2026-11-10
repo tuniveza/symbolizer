@@ -18,6 +18,7 @@ package main
 // it (it is the saved DrawerOpen).
 
 import (
+	"math"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -115,6 +116,58 @@ func (d *designState) cabinetShelves(o *dOct, sw int) [][]cabSeg {
 	return rows
 }
 
+// cabinetShelvesFit are a cabinet's shelf rows fitted into avail rows
+// (zoomed out, fewer show): first the empty shelves' rows go, then the
+// shelves' boards, so what it holds still shows.
+func (d *designState) cabinetShelvesFit(o *dOct, sw, avail int) [][]cabSeg {
+	rows := d.cabinetShelves(o, sw)
+	if extra := avail - len(rows); extra > 0 { // zoomed in: room between the shelves, so they fill it
+		isBoard := func(r []cabSeg) bool { return len(r) > 0 && r[0].look == lookBoard }
+		shelves := 0
+		for _, r := range rows {
+			if isBoard(r) {
+				shelves++
+			}
+		}
+		var spread [][]cabSeg
+		k := 0
+		for i, r := range rows {
+			if (i == 0 || isBoard(rows[i-1])) && k < shelves { // a shelf's things: room above them
+				for range extra / shelves {
+					spread = append(spread, nil)
+				}
+				if k < extra%shelves {
+					spread = append(spread, nil)
+				}
+				k++
+			}
+			spread = append(spread, r)
+		}
+		return spread
+	}
+	if len(rows) <= avail {
+		return rows
+	}
+	isEmpty := func(r []cabSeg) bool { return len(r) == 2 && r[1].look == lookDim }
+	isBoard := func(r []cabSeg) bool { return len(r) > 0 && r[0].look == lookBoard }
+	var kept [][]cabSeg
+	for _, r := range rows {
+		if !isEmpty(r) {
+			kept = append(kept, r)
+		}
+	}
+	if len(kept) <= avail {
+		return kept
+	}
+	var things [][]cabSeg
+	for _, r := range kept {
+		if !isBoard(r) {
+			things = append(things, r)
+		}
+	}
+	return things
+}
+
 // cabinetHit is what a click does on row r under a cabinet's name (0: the
 // first row below its name's line), col cells into its inside iw wide;
 // rows is how many rows it has inside on the screen.
@@ -128,7 +181,7 @@ func (d *designState) cabinetHit(o *dOct, r, col, iw, rows int) string {
 	if col < cabDoorW || col >= iw-cabDoorW {
 		return "doors" // an open door: a click shuts them
 	}
-	shelves := d.cabinetShelves(o, cabShelfW(iw+2))
+	shelves := d.cabinetShelvesFit(o, cabShelfW(iw+2), rows)
 	if r >= len(shelves) {
 		return ""
 	}
@@ -192,7 +245,8 @@ func (d *designState) cabinetLayers(o *dOct) []*lipgloss.Layer {
 	}
 	inside := h - 4 // rows inside on the screen: the cabinet is its board size times the zoom
 	var layers []*lipgloss.Layer
-	if !o.DrawerOpen {
+	p := d.openness(o) // opening or shutting, its doors move (design_anim.go)
+	if p <= 0 {
 		// Shut: two doors, a knob each by the middle, all the way down.
 		lw := (iw - 1) / 2
 		rw := iw - 1 - lw
@@ -213,7 +267,7 @@ func (d *designState) cabinetLayers(o *dOct) []*lipgloss.Layer {
 		lines = append(lines, e.Render("┣"+strings.Repeat("━", iw)+"┫"))
 		sw := cabShelfW(w)
 		var rows []string
-		for _, row := range d.cabinetShelves(o, sw) {
+		for _, row := range d.cabinetShelvesFit(o, sw, inside) {
 			var sb strings.Builder
 			for _, s := range row {
 				switch s.look {
@@ -249,7 +303,29 @@ func (d *designState) cabinetLayers(o *dOct) []*lipgloss.Layer {
 			case i == inside/2:
 				l, r = knob.Render("●")+dst.Render("▕"), dst.Render("▏")+knob.Render("●")
 			}
-			lines = append(lines, e.Render("┃")+l+rows[i]+r+e.Render("┃"))
+			inner := l + rows[i] + r
+			if dw := cabDoorW + int(math.Round((1-p)*float64(iw/2-cabDoorW))); dw > cabDoorW {
+				// Swinging: each door this wide, darker as it turns away,
+				// its knob on its inner edge; the shelves between them.
+				shade := mixHex(door, "#000000", 0.35*p)
+				ds := st(edge, shade)
+				panel := func(left bool) string {
+					s := strings.Repeat(" ", dw-1)
+					if i == inside/2 && dw >= 3 {
+						s = strings.Repeat(" ", dw-2)
+						if left {
+							return ds.Render(s) + st(mixHex(o.Color, cText, 0.6), shade).Bold(true).Render("●") + ds.Render("▕")
+						}
+						return ds.Render("▏") + st(mixHex(o.Color, cText, 0.6), shade).Bold(true).Render("●") + ds.Render(s)
+					}
+					if left {
+						return ds.Render(s + "▕")
+					}
+					return ds.Render("▏" + s)
+				}
+				inner = panel(true) + ansi.Cut(inner, dw, iw-dw) + panel(false)
+			}
+			lines = append(lines, e.Render("┃")+inner+e.Render("┃"))
 		}
 		lines = append(lines, e.Render("┗"+strings.Repeat("━", iw)+"┛"))
 		layers = append(layers, lipgloss.NewLayer(strings.Join(lines, "\n")).X(x).Y(y))
@@ -260,6 +336,7 @@ func (d *designState) cabinetLayers(o *dOct) []*lipgloss.Layer {
 // designDoors opens a cabinet's doors, or shuts them.
 func (m *Model) designDoors(o *dOct) {
 	o.DrawerOpen = !o.DrawerOpen
+	m.ds().startOpenAnim(o)
 	m.ds().dirty = true
 	if o.DrawerOpen {
 		m.say(octName(o) + " open: click a thing to take it out · + makes a new one · a door shuts it.")
