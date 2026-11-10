@@ -205,6 +205,7 @@ type designState struct {
 	anims          map[int]openAnim   // doors and drawers opening or shutting (design_anim.go)
 	lay            map[int][2]float64 // zoomed in: where each structure is drawn (design_layout.go)
 	layKey         uint64             // what lay was worked out from
+	layZoom        int                // the zoom lay was worked out for, plus 1 (0: none yet)
 	animTick       bool               // a frame for them is coming
 	saveErr        string
 	savePending    bool        // a change waits to be written (designSaveLater)

@@ -3460,7 +3460,7 @@ func TestDesignZoomNoHoleUnderTallBoard(t *testing.T) {
 	bd.X, bd.Y, bd.W, bd.H = 32, 0, 79, 29
 	r := d.newKind(kRack, 0, 0)
 	r.X, r.Y = 0, 18 // beside the board's lower part
-	for range 3 { // three pages in it, as on the real board
+	for range 3 {    // three pages in it, as on the real board
 		r.Items = append(r.Items, &dOct{ID: d.nextID, Kind: kPage, Header: "page"})
 		d.nextID++
 	}
@@ -3472,7 +3472,7 @@ func TestDesignZoomNoHoleUnderTallBoard(t *testing.T) {
 		cs = append(cs, c)
 	}
 	dr := d.newKind(kDrawer, 0, 0)
-	dr.X, dr.Y = bd.X+bd.W+2, 18 // beside the board's other side, lined up with the rack
+	dr.X, dr.Y = bd.X+bd.W+2, 18         // beside the board's other side, lined up with the rack
 	for _, maxH := range []int{37, 24} { // two screen heights
 		d.maxH = maxH
 		d.zoom, d.camX, d.camY = len(designZooms)-2, 0, 0 // 200%: the board is drawn shorter
@@ -3490,6 +3490,86 @@ func TestDesignZoomNoHoleUnderTallBoard(t *testing.T) {
 		}
 		if _, dy, _, _ := d.rect(dr); dy != ry {
 			t.Fatalf("screen %d rows: the drawer (row %d) and the rack (row %d) are no longer lined up", maxH, dy, ry)
+		}
+	}
+}
+
+// Every gap between structures is the same number of screen cells at
+// every zoom from 100% up: small gaps, wide ones, and the gap to one in
+// another row when nothing is in its own. Zoomed out, gaps shrink but
+// never close.
+func TestDesignGapsSameAtEveryZoom(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	a := d.newKind(kPage, 0, 0)
+	aw, ah := d.size(a)
+	a.X, a.Y = 0, 0
+	b := d.newKind(kPage, 0, 0)
+	b.X, b.Y = aw+2, 0 // 2 right of a
+	bw, _ := d.size(b)
+	c := d.newKind(kPage, 0, 0)
+	c.X, c.Y = b.X+bw+20, 0 // 20 right of b
+	cw, _ := d.size(c)
+	e := d.newKind(kPage, 0, 0)
+	e.X, e.Y = 0, ah+1 // 1 below a
+	_, eh := d.size(e)
+	f := d.newKind(kPage, 0, 0)
+	f.X, f.Y = c.X+cw+3, e.Y+eh+4 // 3 right of c and 4 below e: in no one's row
+	for zi := designZoom100; zi < len(designZooms); zi++ {
+		d.zoom, d.camX, d.camY = zi, 0.3, 0.7 // a camera between cells too
+		d.relayout()
+		ax, ay, aw2, ah2 := d.rect(a)
+		bx, _, bw2, _ := d.rect(b)
+		cx, _, cw2, _ := d.rect(c)
+		_, ey, _, eh2 := d.rect(e)
+		fx, fy, _, _ := d.rect(f)
+		got := [5]int{bx - (ax + aw2), cx - (bx + bw2), ey - (ay + ah2), fx - (cx + cw2), fy - (ey + eh2)}
+		if want := [5]int{2, 20, 1, 3, 4}; got != want {
+			t.Fatalf("zoom %.2f: the gaps are %v, want %v", d.z(), got, want)
+		}
+	}
+	// Zoomed out, a gap gets smaller with the zoom, but never closes.
+	for zi := range designZoom100 {
+		d.zoom, d.camX, d.camY = zi, 0.3, 0.7
+		d.relayout()
+		ax, ay, aw2, ah2 := d.rect(a)
+		bx, _, bw2, _ := d.rect(b)
+		cx, _, _, _ := d.rect(c)
+		_, ey, _, _ := d.rect(e)
+		got := [3]int{bx - (ax + aw2), cx - (bx + bw2), ey - (ay + ah2)}
+		for i, real := range [3]int{2, 20, 1} {
+			if got[i] < 1 || got[i] > real {
+				t.Fatalf("zoom %.2f: the gaps are %v, want each from 1 to %v", d.z(), got, [3]int{2, 20, 1})
+			}
+		}
+	}
+}
+
+// Zooming by keys from the furthest out to the furthest in keeps a chosen
+// cabinet in the middle at every step, among others that are laid out.
+func TestDesignZoomKeepsChosenAmongOthers(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	bd := d.newKind(kBoard, 0, 0)
+	bd.X, bd.Y, bd.W, bd.H = -386, -74, 79, 29 // far from the board's middle, as on the real board
+	r := d.newKind(kRack, 0, 0)
+	r.X, r.Y = -418, -54
+	var cs []*dOct
+	for i := range 4 {
+		c := d.newKind(kCabinet, 0, 0)
+		c.X, c.Y = -418+i*32, -44
+		cs = append(cs, c)
+	}
+	o := cs[1]
+	d.sel, d.editing = o.ID, partNone
+	d.camX, d.camY = -400, -60
+	m.designZoomTo(0)
+	for d.zoom < len(designZooms)-1 {
+		press(m, "=")
+		m.View() // drawn, as on the screen
+		x, y, w, h := d.rect(o)
+		if abs(x+w/2-m.width/2) > 1 || y < 0 || y+h > m.boardH() {
+			t.Fatalf("zoom %.0f%%: the chosen cabinet is not in the middle: %d,%d %d×%d, screen %d×%d", d.z()*100, x, y, w, h, m.width, m.boardH())
 		}
 	}
 }
