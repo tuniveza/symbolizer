@@ -27,13 +27,13 @@ const (
 // down (vert true: the Y), and which way that structure is from it
 // (toward: 1, more X or Y; -1, less). ok is false when nothing faces it.
 func (d *designState) snapGap(o *dOct, x, y int) (place int, vert bool, toward int, ok bool) {
-	w, h := d.size(o)
+	w, h := d.ownSize(o)
 	best := -1
 	for _, b := range d.octs {
 		if b == nil || b.ID == o.ID {
 			continue
 		}
-		bw, bh := d.size(b)
+		bw, bh := d.ownSize(b)
 		across := max(b.X-(x+w), x-(b.X+bw)) // empty columns between them (< 0: they overlap across)
 		upDown := max(b.Y-(y+h), y-(b.Y+bh)) // empty rows between them
 		var sep, p, tw int
@@ -60,9 +60,13 @@ func (d *designState) snapGap(o *dOct, x, y int) (place int, vert bool, toward i
 }
 
 // snapReach is how far (in board cells) a structure snaps, the same on
-// screen at every zoom.
+// screen at every zoom. Zoomed in, a gap is drawn its real size, so there
+// a board cell is a screen cell.
 func (d *designState) snapReach() (int, int) {
 	z := d.z()
+	if z >= 1 {
+		return snapReachX, snapReachY
+	}
 	return max(1, int(float64(snapReachX)/z+0.5)), max(1, int(float64(snapReachY)/z+0.5))
 }
 
@@ -134,4 +138,15 @@ func (d *designState) moveByKeys(o *dOct, dx, dy int) {
 	if snapped {
 		d.snapAt = time.Now()
 	}
+}
+
+// ownSize is a structure's own size on the board, also when it is drawn
+// shorter (and narrower) because it is taller than the screen: gaps are
+// measured from it, as the layout does (design_layout.go).
+func (d *designState) ownSize(o *dOct) (int, int) {
+	mh := d.maxH
+	d.maxH = 0
+	w, h := d.size(o)
+	d.maxH = mh
+	return w, h
 }

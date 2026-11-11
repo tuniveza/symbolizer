@@ -706,3 +706,20 @@ func BenchmarkHuge(b *testing.B) {
 }
 
 func nil2(m *Model) *Model { return m }
+
+// BenchmarkBigBoardMove drags a structure on the big board, zoomed out and
+// in (followMouse works out where it goes from the layout).
+func BenchmarkBigBoardMove(b *testing.B) {
+	for _, zi := range []int{2, 5, 8} {
+		b.Run(fmt.Sprint(designZooms[zi]), func(b *testing.B) {
+			m := bigBoard(b)
+			d := m.ds()
+			d.zoom = zi
+			o := d.octs[len(d.octs)/2]
+			d.camX, d.camY = float64(o.X)-60/d.z(), float64(o.Y)-15/d.z()
+			_ = m.View()
+			x, y, _, _ := d.rect(o)
+			benchDragWith(b, m, x+2, y+1+m.boardTop(), tea.MouseLeft)
+		})
+	}
+}

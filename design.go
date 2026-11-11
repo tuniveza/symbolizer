@@ -196,6 +196,7 @@ type designState struct {
 	drag           dragKind
 	pressX, pressY int // where the drag started, on the screen
 	origX, origY   int
+	dragFrom       dragFrom // where the structure being dragged was drawn when the drag began (followMouse)
 	origW, origH   int
 	origCX, origCY float64
 	lastPX, lastPY int
@@ -1221,7 +1222,8 @@ func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 				d.detachOpened(o) // dragged out of its rack: it is out for good
 				m.say(kindIcons[o.Kind] + " " + itemTitle(o) + " taken out of the rack.")
 			}
-			o.X, o.Y = d.snapNearest(o, d.origX+int(math.Round(dx)), d.origY+int(math.Round(dy)))
+			nx, ny := d.followMouse(o, sx-d.pressX, sy-d.pressY) // under the mouse at every zoom (design_layout.go)
+			o.X, o.Y = d.snapNearest(o, nx, ny)
 			d.dropOn, d.dropSlot = -1, -1
 			if d.multiOn(o) {
 				d.dragMulti(o) // the others chosen with it move as much

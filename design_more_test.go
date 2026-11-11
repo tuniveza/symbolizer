@@ -3761,3 +3761,44 @@ func TestDesignZoomKeepsChosenAmongOthers(t *testing.T) {
 		}
 	}
 }
+
+// Dragged at any zoom, a structure stays under the mouse, also near its
+// neighbours (zoomed in, a gap is drawn its real size, so a board cell
+// there is a screen cell, not the zoom's many), and it snaps a gap away
+// from its neighbour at the same distance on the screen.
+func TestDesignDragFollowsMouse(t *testing.T) {
+	for _, zi := range []int{2, 4, designZoom100, 6, 7, 8, 9} {
+		m := designTest(t)
+		d := m.ds()
+		d.camX, d.camY, d.zoom = 0, 0, zi
+		a := d.newKind(kOct, 0, 0)
+		a.X, a.Y, a.W, a.H = 2, 2, 20, 8
+		b := d.newKind(kOct, 0, 0)
+		b.X, b.Y, b.W, b.H = 40, 2, 20, 8
+		d.sel = -1
+		screenOf(m)
+		bx, by, _, _ := d.rect(b)
+		top := m.boardTop()
+		sx, sy := bx+3, by+1
+		m.Update(tea.MouseClickMsg{X: sx, Y: sy + top, Button: tea.MouseLeft})
+		snapAt := -1
+		for step := 0; step < 40; step++ {
+			sx--
+			m.Update(tea.MouseMotionMsg{X: sx, Y: sy + top, Button: tea.MouseLeft})
+			d.relayout() // as before each drawing
+			x, _, _, _ := d.rect(b)
+			ax, _, aw, _ := d.rect(a)
+			gap := x - (ax + aw)
+			if gap > snapReachX+2 && sx-x != 3 {
+				t.Fatalf("zoom %.2f: away from its neighbour the structure should stay 3 cells left of the mouse, it is %d (gap %d)", d.z(), sx-x, gap)
+			}
+			if snapAt < 0 && sx-x != 3 {
+				snapAt = sx - (ax + aw) - 3 // the gap there would have been, when it snapped
+			}
+		}
+		m.Update(tea.MouseReleaseMsg{X: sx, Y: sy + top, Button: tea.MouseLeft})
+		if d.z() >= 0.8 && snapAt != snapGapX+snapReachX {
+			t.Errorf("zoom %.2f: it should snap when %d cells from its place, not %d", d.z(), snapReachX, snapAt-snapGapX)
+		}
+	}
+}

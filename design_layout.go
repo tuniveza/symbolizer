@@ -76,10 +76,7 @@ func (d *designState) relayout() {
 			continue // open in a rack: drawn inside it (openRect), its own place left alone
 		}
 		dw, dh := d.size(o)
-		mh := d.maxH
-		d.maxH = 0
-		w, h := d.size(o)
-		d.maxH = mh
+		w, h := d.ownSize(o)
 		items = append(items, item{o, float64(o.X), float64(o.Y), float64(w), float64(h), float64(dw), float64(dh)})
 		put(o.ID)
 		put(o.X)
@@ -225,4 +222,83 @@ func (d *designState) shownXY(o *dOct) (float64, float64) {
 	x, y := d.layAt(o)
 	z := d.z()
 	return x / z, y / z
+}
+
+// ---- dragging, zoomed in: the structure stays under the mouse --------------------------
+//
+// Zoomed in, a gap is drawn its real size, so near a neighbour a board cell
+// is one screen cell, while away from any it is the zoom's many. Moving a
+// dragged structure by the mouse's cells over the zoom left it behind the
+// mouse near its neighbours (ten cells and more at 200%); zoomed out, a gap
+// rounded to whole cells made it jump a cell to and fro. followMouse finds
+// the board place at which it is drawn where the mouse has taken it.
+
+// dragFrom is where a dragged structure was drawn (layAt) when its drag
+// began from board place (ox, oy) at a zoom.
+type dragFrom struct {
+	id, ox, oy, zoom int
+	lx, ly           float64
+	ok               bool
+}
+
+// followMouse is the board place for o, dragged (dsx, dsy) screen cells
+// from where its drag began (d.origX, d.origY), at which it is drawn that
+// far from where it was.
+func (d *designState) followMouse(o *dOct, dsx, dsy int) (int, int) {
+	z := d.z()
+	gx, gy := d.origX+int(math.Round(float64(dsx)/z)), d.origY+int(math.Round(float64(dsy)/z))
+	if z == 1 {
+		return gx, gy // at 100% a board cell is a screen cell everywhere
+	}
+	drawn := func(x, y int) (float64, float64) {
+		o.X, o.Y = x, y
+		d.relayout()
+		if p, ok := d.lay[o.ID]; ok {
+			return p[0], p[1]
+		}
+		return float64(x) * z, float64(y) * z
+	}
+	f := d.dragFrom
+	if !f.ok || f.id != o.ID || f.ox != d.origX || f.oy != d.origY || f.zoom != d.zoom {
+		lx, ly := drawn(d.origX, d.origY)
+		f = dragFrom{o.ID, d.origX, d.origY, d.zoom, lx, ly, true}
+		d.dragFrom = f
+	}
+	tx, ty := f.lx+float64(dsx), f.ly+float64(dsy) // where it should be drawn
+	// Each axis: from the guess, step by what is still off, at the slope
+	// seen between the last two tries (1 by a neighbour, the zoom away from
+	// any); a few tries at most, keeping the closest.
+	type try struct {
+		x, y   int
+		lx, ly float64
+	}
+	cur := try{gx, gy, 0, 0}
+	cur.lx, cur.ly = drawn(gx, gy)
+	best := cur
+	off := func(t try) float64 { return math.Abs(t.lx-tx) + math.Abs(t.ly-ty) }
+	prev := try{d.origX, d.origY, f.lx, f.ly}
+	for range 4 {
+		if off(best) < 0.5 {
+			break
+		}
+		step := func(at, was int, lat, lwas, target float64) int {
+			slope := math.Min(1, z) // zoomed out, gaps shrink with the zoom too
+			if at != was && lat != lwas {
+				slope = math.Min(math.Max((lat-lwas)/float64(at-was), math.Min(1, z)), math.Max(1, z))
+			}
+			return at + int(math.Round((target-lat)/slope))
+		}
+		nx, ny := step(cur.x, prev.x, cur.lx, prev.lx, tx), step(cur.y, prev.y, cur.ly, prev.ly, ty)
+		if nx == cur.x && ny == cur.y {
+			break
+		}
+		prev, cur = cur, try{nx, ny, 0, 0}
+		cur.lx, cur.ly = drawn(nx, ny)
+		if off(cur) < off(best) {
+			best = cur
+		}
+	}
+	o.X, o.Y = best.x, best.y
+	d.relayout()
+	return best.x, best.y
 }
