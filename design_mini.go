@@ -65,7 +65,7 @@ func miniOfSize(o *dOct, w, h int, sel, words bool) [][]miniCell {
 		tl, tr, bl, br = "╭", "╮", "╰", "╯"
 	case kCabinet:
 		tl, tr, bl, br, hz, vt = "┏", "┓", "┗", "┛", "━", "┃"
-	case kDrawer, kRack, kBoard:
+	case kDrawer, kRack, kBoard, kBox:
 		tl, tr, bl, br, hz, vt = "╔", "╗", "╚", "╝", "═", "║"
 	default:
 		tr = "◹" // a sheet's folded corner

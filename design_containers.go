@@ -31,7 +31,7 @@ import (
 const structureDrawers = false
 
 func isContainer(kind string) bool {
-	return kind == kCabinet || kind == kDrawer || kind == kRack || kind == kBoard
+	return kind == kCabinet || kind == kDrawer || kind == kRack || kind == kBoard || kind == kBox
 }
 
 // accepts is whether container c takes o: a cabinet its kinds of sheet, a
@@ -43,7 +43,7 @@ func accepts(c, o *dOct) bool {
 	switch c.Kind {
 	case kCabinet:
 		return textual(o.Kind)
-	case kDrawer, kRack, kBoard:
+	case kDrawer, kRack, kBoard, kBox:
 		return true
 	}
 	return false
@@ -369,6 +369,10 @@ func (d *designState) openPlace(o *dOct) (x, y int, ok bool) {
 // designRackOpen takes thing i out of rack r and shows it inside the rack,
 // under its row, chosen, until it is closed.
 func (m *Model) designRackOpen(r *dOct, i int) {
+	if r != nil && r.Kind == kBox { // a box's thing is not opened: a click chooses it (design_box.go)
+		m.designBoxPick(r, i)
+		return
+	}
 	d := m.ds()
 	m.designRackClose() // one at a time
 	if i < 0 || i >= len(r.Items) || r.Items[i] == nil {

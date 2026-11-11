@@ -384,6 +384,8 @@ func mapShape(o *dOct, w, h int, s float64, i, j, bw, bh int) int {
 		if bw >= 4 && bh >= 4 && cut(0.6) { // round corners
 			return 0
 		}
+	case kBox: // its design's outline (design_box.go)
+		return boxMapShape(o, s, dx, dy, bw, bh, lines, row)
 	case kCabinet, kDrawer, kRack, kBoard:
 		if lines && dx > 0 && row(2) { // the line under its name
 			return 2
