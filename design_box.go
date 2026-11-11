@@ -574,6 +574,9 @@ func (d *designState) boxDrawThing(g *boxGrid, o *dOct, s boxShape, lk boxLook, 
 	x0, y0, tw, th := boxThingRect(o, it, g.w, g.h)
 	mini := miniOfSize(it, tw, th, sel, true)
 	act := "boxthing:" + itoa(j)
+	if !ghost {
+		defer g.noTails(x0, y0, tw, th, act, g.wordsAt(x0, y0, tw, th))
+	}
 	for yy, row := range mini {
 		for xx, mc := range row {
 			x, y := x0+xx, y0+yy
@@ -592,6 +595,61 @@ func (d *designState) boxDrawThing(g *boxGrid, o *dOct, s boxShape, lk boxLook, 
 				continue
 			}
 			*c = boxCell{r: mc.r, fg: mixHex(mc.fg, lk.floor, dark), bg: mixHex(mc.bg, lk.floor, dark), act: act}
+		}
+	}
+}
+
+// wordsAt is, for each row of the rectangle (x0, y0) tw × th, what holds
+// a letter at its left and right edge (its act; "" none), before
+// something is drawn over it.
+func (g *boxGrid) wordsAt(x0, y0, tw, th int) [][2]string {
+	out := make([][2]string, th)
+	letter := func(x, y int) string {
+		if x < 0 || y < 0 || x >= g.w || y >= g.h {
+			return ""
+		}
+		c := g.c[y][x]
+		if c.act == "" || !strings.ContainsFunc(c.r, isWordRune) {
+			return ""
+		}
+		return c.act
+	}
+	for k := range out {
+		out[k] = [2]string{letter(x0, y0+k), letter(x0+tw-1, y0+k)}
+	}
+	return out
+}
+
+// noTails, after a thing (act) is drawn over the rectangle (x0, y0) tw ×
+// th, takes away what is left showing of the words it covered half: the
+// letters after it ("Keys" over "Plan" left "Keysn"), and the first
+// letters before it when fewer than three show. A word under a thing is
+// hidden whole, as on a real pile, so two words' letters never run together.
+func (g *boxGrid) noTails(x0, y0, tw, th int, act string, under [][2]string) {
+	same := func(x, y int, a string) bool {
+		if x < 0 || y < 0 || x >= g.w || y >= g.h {
+			return false
+		}
+		c := g.c[y][x]
+		return c.act == a && strings.ContainsFunc(c.r, isWordRune)
+	}
+	for k, u := range under {
+		y := y0 + k
+		if a := u[1]; a != "" && a != act { // a word went on under its right edge
+			for x := x0 + tw; same(x, y, a); x++ {
+				g.c[y][x].r = " "
+			}
+		}
+		if a := u[0]; a != "" && a != act { // a word came in under its left edge
+			n := 0
+			for x := x0 - 1; same(x, y, a); x-- {
+				n++
+			}
+			if n < 3 {
+				for x := x0 - 1; same(x, y, a); x-- {
+					g.c[y][x].r = " "
+				}
+			}
 		}
 	}
 }

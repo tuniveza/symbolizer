@@ -1320,13 +1320,30 @@ func (r *room3D) faceWords(o *r3near, v *r3view, rm *r3room, titles bool) {
 			}
 		}
 		low := math.MinInt
+		prevRow, prevEnd := math.MinInt, math.MinInt // where the last line put on a screen row ends
 		for i := 0; i < n; i++ {
 			// A title stands out past a narrow face if it must (what it
 			// covers of the row's other words then does not show); on the
 			// wall, the last words of a row may.
 			keep := title && i == 0 || wall && i+1 == len(words)
-			r.putRun(int32(fi), fc, words[i], at[i][0], at[i][1]+shift, at[i][2], keep)
-			low = max(low, at[i][1]+shift)
+			col, row, limit := at[i][0], at[i][1]+shift, at[i][2]
+			if row == prevRow && col <= prevEnd {
+				// Squeezed onto the line before it: a space after that one,
+				// in what is left of its own room, or not at all (letters
+				// of two lines never mix: "Keys lan" not "Keysn").
+				limit -= prevEnd + 1 - col
+				col = prevEnd + 1
+				if limit < min(words[i].x1-words[i].x0, 3) {
+					continue
+				}
+			}
+			r.putRun(int32(fi), fc, words[i], col, row, limit, keep)
+			w := words[i].x1 - words[i].x0
+			if !keep {
+				w = min(w, limit)
+			}
+			prevRow, prevEnd = row, col+w
+			low = max(low, row)
 		}
 		next = low + 1
 		if title {
@@ -1415,13 +1432,16 @@ func (r *room3D) room(fi int32, fc *r3face, col, row, n int, sight bool) int {
 // with no more than runGap-1 spaces between them, between the box lines.
 func (r *room3D) rowRuns(runs []r3run, fc *r3face, cy int, tex func(x, y int) *r3texel, covered func(x, y int) bool) []r3run {
 	for cx := fc.cx0; cx < fc.cx1; {
-		if tex(cx, cy).glyph == "" || covered(cx, cy) {
+		if g := tex(cx, cy).glyph; g == "" || frameGlyph(g) || covered(cx, cy) {
 			cx++
 			continue
 		}
 		start, end, gap := cx, cx, 0
 		for x := cx; x < fc.cx1 && !covered(x, cy); {
 			t := tex(x, cy)
+			if frameGlyph(t.glyph) {
+				break // a box's line (drawn on the face) parts two lines of words: "Keys│lan" is two
+			}
 			if t.glyph != "" {
 				x++
 				if t.wide {
@@ -1527,6 +1547,15 @@ func (r *room3D) putRun(fi int32, fc *r3face, ru r3run, col, row, limit int, kee
 			c++
 		}
 	}
+}
+
+// frameGlyph is whether g is a line or block of a drawing (box lines,
+// corners, half blocks), which the face shows as lines, not as words.
+func frameGlyph(g string) bool {
+	for _, c := range g {
+		return c >= 0x2500 && c <= 0x259f && c != '▏' // not the caret, which is part of the words
+	}
+	return false
 }
 
 // isWordRune is whether c is a letter or a digit.

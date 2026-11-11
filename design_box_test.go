@@ -385,3 +385,27 @@ func TestDesignBoxSaveLoad(t *testing.T) {
 		}
 	}
 }
+
+// A thing lying over half of another's name hides the rest of that name:
+// the letters after it never run on from its own ("Keysn").
+func TestBoxNoHalfWords(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, 2 // 50%: things are one row, their names side by side
+	b := d.newKind(kBox, 0, 0)
+	b.X, b.Y, b.W, b.H, b.Header, b.DrawerOpen = 2, 1, 34, 14, "Card", true
+	b.Items = []*dOct{
+		{ID: 501, Kind: kNote, Header: "Keys", Color: "#e5c07b", X: 2, Y: 1},
+		{ID: 502, Kind: kPage, Header: "Plan", Color: "#c678dd", X: 8, Y: 3, Slot: 1},
+		{ID: 503, Kind: kPage, Header: "Glue", Color: "#61afef", X: 14, Y: 2, Slot: 2},
+	}
+	s := screenOf(m)
+	if !strings.Contains(s, "Keys") {
+		t.Fatalf("the top thing's name should show:\n%s", s)
+	}
+	for _, bad := range []string{"Keysn", "Keysa", "n ue", "Keysl"} {
+		if strings.Contains(s, bad) {
+			t.Fatalf("half a covered name runs on from Keys (%q):\n%s", bad, s)
+		}
+	}
+}
