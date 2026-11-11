@@ -428,6 +428,8 @@ func depthOf(kind string) float64 {
 		return 5
 	case kCabinet, kDrawer, kRack:
 		return 12
+	case kBox: // a box is deep: things lie in it
+		return 10
 	}
 	return 3
 }
