@@ -42,13 +42,14 @@ const (
 	kDrawer  = "drawer" // a container that holds anything, in no order (design_containers.go)
 	kRack    = "rack"   // a container: a stack of anything, each opened over the view when clicked
 	kBoard   = "board"  // a container: things pinned on it, small, each turned, moved, scaled, skewed (design_board.go)
+	kBox     = "box"    // a container: things in it on three layers, top, middle and bottom (design_box.go)
 )
 
 // stackKinds are what a cabinet (and every drawer) holds, a stack of each.
 var stackKinds = []string{kPage, kBook, kSlide, kNote, kDrawing}
 
-var kindIcons = map[string]string{kOct: "◆", kCabinet: "≣", kPage: "≡", kNote: "✎", kBook: "◫", kSlide: "☐", kDrawing: "✐", kDrawer: "⊔", kRack: "║", kBoard: "⊞"}
-var kindNames = map[string]string{kOct: "structure", kCabinet: "cabinet", kPage: "page", kNote: "note", kBook: "book", kSlide: "slide", kDrawing: "drawing", kDrawer: "drawer", kRack: "rack", kBoard: "board"}
+var kindIcons = map[string]string{kOct: "◆", kCabinet: "≣", kPage: "≡", kNote: "✎", kBook: "◫", kSlide: "☐", kDrawing: "✐", kDrawer: "⊔", kRack: "║", kBoard: "⊞", kBox: "⊡"}
+var kindNames = map[string]string{kOct: "structure", kCabinet: "cabinet", kPage: "page", kNote: "note", kBook: "book", kSlide: "slide", kDrawing: "drawing", kDrawer: "drawer", kRack: "rack", kBoard: "board", kBox: "box"}
 var stackNames = map[string]string{kPage: "Pages", kBook: "Books", kSlide: "Slides", kNote: "Notes", kDrawing: "Drawings"}
 
 const (
@@ -82,11 +83,15 @@ func minSize(kind string) (int, int) {
 		return cabinetMinW, 4
 	case kBoard:
 		return pinW + 4, pinH + 4
+	case kBox:
+		return boxMinW, boxMinH
 	}
 	return pageMinW, pageMinH
 }
 
-func resizable(o *dOct) bool { return o.Kind != kNote && (!isContainer(o.Kind) || o.Kind == kBoard) }
+func resizable(o *dOct) bool {
+	return o.Kind != kNote && (!isContainer(o.Kind) || o.Kind == kBoard || o.Kind == kBox)
+}
 
 // size is a structure's width and height on the board. A note is always one
 // page; a cabinet is as tall as its stacks.
@@ -111,6 +116,8 @@ func (d *designState) size(o *dOct) (int, int) {
 		}
 	case kBoard:
 		w, h = max(o.W, pinW+4), max(o.H, pinH+4)
+	case kBox:
+		w, h = boxBoardSize(o)
 	case kOct:
 	default:
 		h = max(o.H, pageMinH) // older, shorter pages get room for their footer
@@ -160,6 +167,10 @@ func (d *designState) newKind(kind string, cx, cy int) *dOct {
 	case kRack:
 		o.W, o.H = cabinetNewW, rackLines(1)              // its frame and name, and a row
 		o.Color = hslHex(150+rand.Float64()*30, 0.3, 0.5) // green
+	case kBox:
+		o.W, o.H = boxNewW, boxNewH
+		o.Color = hslHex(rand.Float64()*360, 0.5, 0.55) // a gift box's paper, a hexagonal box's colour
+		o.DrawerOpen = true                             // its lid open: what is in it shows
 	}
 	o.X, o.Y = cx-o.W/2, cy-o.H/2
 	return o
@@ -221,6 +232,8 @@ func selHint(o *dOct) string {
 		return "Space or Tab: next drawer  ·  [ ]: fewer / more drawers  ·  drop anything in  ·  X X: delete"
 	case kRack:
 		return "Click a row to open it  ·  drag a row out  ·  drop anything in"
+	case kBox:
+		return "Space: lid  ·  D: design  ·  Tab: its things  ·  PgUp / PgDn: layers  ·  drop anything in"
 	}
 	return "Tab: write  ·  Alt+arrows: move  ·  X X: delete"
 }
@@ -266,7 +279,7 @@ func partAt(o *dOct, r, h int) int {
 	switch o.Kind {
 	case kOct:
 		return octPartAt(r, h)
-	case kCabinet, kDrawer, kRack:
+	case kCabinet, kDrawer, kRack, kBox:
 		return partHeader
 	}
 	switch {
@@ -639,6 +652,8 @@ func (d *designState) structLayers(o *dOct) []*lipgloss.Layer {
 		return d.cabinetLayers(o)
 	case o.Kind == kDrawer || o.Kind == kRack || o.Kind == kBoard:
 		return d.containerLayers(o)
+	case o.Kind == kBox:
+		return d.boxLayers(o) // design_box.go
 	default:
 		layers = d.paperLayers(o)
 	}
@@ -736,6 +751,12 @@ func (d *designState) hit(sx, sy int) hitInfo {
 			}
 			return hitInfo{o, hitBody, ""}
 		}
+		if o.Kind == kBox { // a thing in it, its lid, its layers (design_box.go)
+			if act := d.boxHit(o, sx-x, sy-y, w, h); act != "" {
+				return hitInfo{o, hitRow, act}
+			}
+			return hitInfo{o, hitBody, ""}
+		}
 		if o.Kind == kOct {
 			if tx, ty, ok := layoutToggleSpot(x, y, w, h); ok && sy == ty && sx >= tx && sx < tx+3 {
 				return hitInfo{o, hitToggle, ""}
@@ -797,6 +818,8 @@ func (m *Model) designRow(o *dOct, act string, sx, sy int) tea.Cmd {
 	d.drag = dragNone
 	d.dirty = true
 	switch {
+	case o.Kind == kBox && strings.HasPrefix(act, "box"): // a thing in a box, its lid, its layers (design_box.go)
+		m.designBoxRow(o, act, sx, sy)
 	case strings.HasPrefix(act, "stack:"):
 		k := strings.TrimPrefix(act, "stack:")
 		if o.OpenStack == k {
@@ -924,6 +947,9 @@ func (m *Model) designFileInto(it, to *dOct) {
 		return
 	}
 	bx, by := it.X-to.X-1, it.Y-to.Y-1 // pinned on a board: where it was let go, from its inside corner
+	if to.Kind == kBox {
+		bx, by = d.boxDropAt(to, it) // in a box: where the mouse let it go (design_box.go)
+	}
 	d.remove(it.ID)
 	it.X, it.Y = 0, 0
 	if to.Kind == kBoard {
@@ -948,6 +974,10 @@ func (m *Model) designFileInto(it, to *dOct) {
 	}
 	to.Items = append(to.Items, it)
 	d.dirty = true
+	if to.Kind == kBox {
+		m.boxPut(to, it, bx, by)
+		return
+	}
 	if to.Kind == kDrawer && !slotOpen(to, it.Slot) {
 		setSlotOpen(to, it.Slot, true) // pulled out, to show it
 		d.startSlotAnim(to, it.Slot, true)

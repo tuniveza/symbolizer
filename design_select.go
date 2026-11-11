@@ -104,6 +104,8 @@ func (m *Model) designSpaceOpen() bool {
 			return false
 		}
 		m.designRackOpen(o, 0)
+	case kBox:
+		m.designBoxLid(o) // its lid (design_box.go)
 	case kBoard:
 		if !d.pin.active || d.pin.board != o.ID {
 			return false
@@ -117,7 +119,7 @@ func (m *Model) designSpaceOpen() bool {
 
 // opens is whether a structure of kind k opens and shuts.
 func opens(k string) bool {
-	return k == kCabinet || k == kDrawer || k == kRack || k == kBoard
+	return k == kCabinet || k == kDrawer || k == kRack || k == kBoard || k == kBox
 }
 
 // designSpaceGroup chooses every structure with the name plate of the one

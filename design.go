@@ -78,7 +78,7 @@ type dOct struct {
 	DrawerOpen bool    `json:"drawerOpen,omitempty"` // its drawer is pulled out (a drawer unit: any of its drawers)
 	Drawers    int     `json:"drawers,omitempty"`    // a drawer unit: how many drawers it has (0: one)
 	Pulled     []bool  `json:"pulled,omitempty"`     // a drawer unit: which of its drawers are pulled out
-	Slot       int     `json:"slot,omitempty"`       // in a drawer unit: which drawer it is in (0: the first)
+	Slot       int     `json:"slot,omitempty"`       // which drawer (or box layer) it is in (0: the first drawer, or the top layer)
 	OpenStack  string  `json:"openStack,omitempty"`  // the stack shown open in the drawer or cabinet
 	Scroll     int     `json:"scroll,omitempty"`     // a page: the first line shown
 	From       string  `json:"from,omitempty"`       // where it came from (a diary page, a file)
@@ -246,6 +246,8 @@ type designState struct {
 	pin            pinSel         // the chosen pin on a board (design_board.go)
 	pinPress       *pinPress      // a pin pressed: a click opens it, a drag moves it
 	rackPress      *rackPress     // a rack row pressed: a click opens it, a drag takes it out
+	boxPick        boxSel         // the chosen thing in a box (design_box.go)
+	boxLayer       map[int]int    // the layer looked at in each box, by ID: 1 top, 2 middle, 3 bottom (none: all)
 	labelMode      bool           // Alt+L: L, C, I, T, G label the chosen structure (design_labels.go)
 	platesOpen     bool           // AltGr+P: the list of name plates shows
 	groupMode      bool           // Shift+G: picking structures to give one name plate (design_groups.go)
@@ -752,9 +754,9 @@ const xTwice = 600 * time.Millisecond
 
 // placeKeys are the keys after Alt+N, and what each places.
 var placeKeys = map[string]string{
-	"p": kPage, "n": kNote, "c": kCabinet, "s": kOct, "d": kDrawer, "r": kRack, "b": kBoard,
-	"P": kPage, "N": kNote, "C": kCabinet, "S": kOct, "D": kDrawer, "R": kRack, "B": kBoard,
-	"shift+p": kPage, "shift+n": kNote, "shift+c": kCabinet, "shift+s": kOct, "shift+d": kDrawer, "shift+r": kRack, "shift+b": kBoard,
+	"p": kPage, "n": kNote, "c": kCabinet, "s": kOct, "d": kDrawer, "r": kRack, "b": kBoard, "o": kBox,
+	"P": kPage, "N": kNote, "C": kCabinet, "S": kOct, "D": kDrawer, "R": kRack, "B": kBoard, "O": kBox,
+	"shift+p": kPage, "shift+n": kNote, "shift+c": kCabinet, "shift+s": kOct, "shift+d": kDrawer, "shift+r": kRack, "shift+b": kBoard, "shift+o": kBox,
 }
 
 func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
@@ -788,7 +790,7 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 			d.editing = partHeader
 			m.say(newHint(kind))
 		} else {
-			m.say("Nothing placed. Alt+N, then P page · N note · S shape · C cabinet · D drawer · R rack · B board.")
+			m.say("Nothing placed. Alt+N, then P page · N note · S shape · C cabinet · D drawer · R rack · B board · O box.")
 		}
 		return nil
 	}
@@ -799,6 +801,9 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		if ok, cmd := m.designPinKey(name); ok {
 			return cmd
 		}
+	}
+	if ok, cmd := m.designBoxKey(name); ok { // a box chosen: D, Tab, PgUp / PgDn, its chosen thing (design_box.go)
+		return cmd
 	}
 	if d.groupMode { // G picks, Enter names (design_groups.go)
 		if ok, cmd := m.designGroupKey(name); ok {
@@ -834,7 +839,7 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		m.designZoomTo(designZoom100)
 	case "alt+n":
 		d.placing = true
-		m.say("Place: P page · N note · S shape · C cabinet · D drawer · R rack · B board (any other key: nothing).")
+		m.say("Place: P page · N note · S shape · C cabinet · D drawer · R rack · B board · O box (any other key: nothing).")
 	case "alt+l", "alt+shift+l", "alt+L":
 		m.designLabelMode() // label mode (design_labels.go); a shape's layout: its [¶]
 	case "x":
@@ -1505,6 +1510,9 @@ func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
 			}
 		}
 		k.opened += sb.String()
+	}
+	if o.Kind == kBox { // where its things are, the layer looked at, the chosen thing (design_box.go)
+		k.opened += d.boxKey(o)
 	}
 	if o.Kind == kDrawer { // its drawers, which are out, and which one a drag would go into
 		k.pulled = fmt.Sprint(o.Drawers, o.Pulled)
