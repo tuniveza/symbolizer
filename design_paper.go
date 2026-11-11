@@ -218,7 +218,7 @@ func selHint(o *dOct) string {
 	case kCabinet:
 		return "Space or Tab: open / shut  ·  drop sheets in  ·  X X: delete"
 	case kDrawer:
-		return "Space or Tab: next drawer  ·  [ ]: fewer / more drawers  ·  drop anything in  ·  X X: delete"
+		return "Space or Tab: next drawer  ·  [ ]: fewer / more  ·  C / Shift+C: colour / texture  ·  X X: delete"
 	case kRack:
 		return "Click a row to open it  ·  drag a row out  ·  drop anything in"
 	}
@@ -816,6 +816,10 @@ func (m *Model) designRow(o *dOct, act string, sx, sy int) tea.Cmd {
 		var i int
 		fmt.Sscanf(act, "pull:%d", &i)
 		m.designPullSlot(o, i)
+	case strings.HasPrefix(act, "look:"), strings.HasPrefix(act, "tex:"): // a drawer's colour dot or texture swatch
+		var i int
+		fmt.Sscanf(act[strings.IndexByte(act, ':')+1:], "%d", &i)
+		m.designDrawerLook(o, i, strings.HasPrefix(act, "tex:"))
 	case strings.HasPrefix(act, "drawers:"): // a drawer unit's [−] or [+]: fewer or more drawers
 		var n int
 		fmt.Sscanf(act, "drawers:%d", &n)

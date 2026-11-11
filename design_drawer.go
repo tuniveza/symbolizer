@@ -369,6 +369,14 @@ func (d *designState) drawerLayout(o *dOct, w, h int) drawerLay {
 	return l
 }
 
+// frontHandleW is how wide a drawer's handle is on a front iw wide.
+func frontHandleW(n, iw int) int {
+	if n == 1 {
+		return min(max(iw/2, 7), 26)
+	}
+	return min(max(iw/3, 6), 18)
+}
+
 // drawerCtl is the [−] N drawers [+] on a chosen unit's bottom edge, and
 // where it starts in its inside iw wide (-1: it does not fit).
 func drawerCtl(o *dOct, iw int) (string, int) {
@@ -394,6 +402,14 @@ func (d *designState) drawerHit(o *dOct, li, col, w, h int) string {
 			return "pull:0" // one drawer: its name is on its front, which pulls
 		}
 	case dlFront:
+		if n := drawerCount(o); n > 1 && d.sel == o.ID && ln.row == l.slots[ln.slot].handleRow && l.iw-4 > (l.iw-frontHandleW(n, l.iw))/2+frontHandleW(n, l.iw) {
+			switch col {
+			case l.iw - 4:
+				return "look:" + itoa(ln.slot) // its colour dot
+			case l.iw - 2:
+				return "tex:" + itoa(ln.slot) // its texture swatch
+			}
+		}
 		return "pull:" + itoa(ln.slot)
 	case dlBottom:
 		if d.sel != o.ID {
@@ -491,7 +507,7 @@ func (d *designState) drawerLayers(o *dOct) []*lipgloss.Layer {
 	iw := l.iw
 	e := st(edge, fill)
 	wood := mixHex(o.Color, fill, 0.5)   // the fronts' wood
-	inside := mixHex(cBG, o.Color, 0.08) // a tray, in its shadow
+	inside := mixHex(cBG, o.Color, 0.08) // a tray, in its shadow (tinted with its drawer's colour below)
 	wall := mixHex(o.Color, cBG, 0.45)
 	headBG := fill // with several drawers the name is on the frame, with one on its front
 	if n == 1 {
@@ -511,16 +527,26 @@ func (d *designState) drawerLayers(o *dOct) []*lipgloss.Layer {
 		title = st(mixHex(cDim, headBG, 0.25), headBG).Italic(true).Render(ansi.Truncate(kindIcons[o.Kind]+" drawer", iw, ""))
 	}
 	row := func(s, bg string) string { return e.Render("│") + fitBlockLine(s, iw, bg) + e.Render("│") }
-	side := st(wall, inside).Render("▐")
-	sideR := st(wall, inside).Render("▌")
-	trayRow := func(s string) string {
-		return e.Render("│") + side + fitBlockLine(s, l.cw, inside) + sideR + e.Render("│")
+	trayRowIn := func(i int, s string) string {
+		in := mixHex(cBG, drawerColor(o, i), 0.1)
+		wl := mixHex(drawerColor(o, i), cBG, 0.4)
+		return e.Render("│") + st(wl, in).Render("▐") + fitBlockLine(s, l.cw, in) + st(wl, in).Render("▌") + e.Render("│")
 	}
 	// Each tray's rows, as they are when it is pulled right out.
 	trays := make([][]string, n)
 	for i, s := range l.slots {
 		if s.vis == 0 {
 			continue
+		}
+		inside := inside
+		if n > 1 {
+			inside = mixHex(cBG, drawerColor(o, i), 0.1) // tinted with its drawer's colour
+		}
+		trayRow := func(s string) string { return trayRowIn(i, s) }
+		if n == 1 {
+			trayRow = func(s string) string {
+				return e.Render("│") + st(wall, inside).Render("▐") + fitBlockLine(s, l.cw, inside) + st(wall, inside).Render("▌") + e.Render("│")
+			}
 		}
 		var tray []string
 		things := s.things
@@ -582,39 +608,44 @@ func (d *designState) drawerLayers(o *dOct) []*lipgloss.Layer {
 			lines = append(lines, e.Render("├"+strings.Repeat("─", iw)+"┤"))
 		case dlFront:
 			s := l.slots[ln.slot]
-			front := wood
+			front := mixHex(drawerColor(o, ln.slot), fill, 0.5) // a one-drawer unit: its wood, as before
+			if n > 1 {
+				front = mixHex(drawerColor(o, ln.slot), fill, 0.2) // each drawer in its own colour
+			}
 			if slotOpen(o, ln.slot) {
-				front = mixHex(wood, cText, 0.06) // pulled out: lit a little more
+				front = mixHex(front, cText, 0.06) // pulled out: lit a little more
 			}
 			if !s.sepAbove && ln.slot%2 == 1 {
 				front = mixHex(front, "#000000", 0.14) // no line above it: shaded, to tell it from the one above
 			}
 			if d.dropOn == o.ID && d.dropSlot == ln.slot {
-				front = mixHex(wood, cAccent, 0.45) // a drag would go in here
+				front = mixHex(front, cAccent, 0.45) // a drag would go in here
+			}
+			y := 0 // the row's place in the unit, for its texture
+			for k, l2 := range l.lines {
+				if l2 == ln {
+					y = k
+				}
 			}
 			if ln.row != s.handleRow {
-				lines = append(lines, row("", front))
+				lines = append(lines, e.Render("│")+frontRow(o, ln.slot, front, y, iw, "", "", 0, false)+e.Render("│"))
 				break
 			}
-			if n == 1 {
-				lines = append(lines, row(centreLine(drawerHandle(min(max(iw/2, 7), 26), front, o.Color), iw, front), front))
-				break
+			// Its number and what it holds at the left (with several), its
+			// handle in the middle, and chosen, its colour dot and texture swatch.
+			hw, label := frontHandleW(n, iw), ""
+			if n > 1 {
+				label = " " + itoa(ln.slot+1)
+				if c := len(s.things); c > 0 {
+					label += " · " + itoa(c)
+				}
 			}
-			// Its number and what it holds at the left, its handle in the middle.
-			handle := drawerHandle(min(max(iw/3, 6), 18), front, o.Color)
-			hw := lipgloss.Width(handle)
-			lw := max((iw-hw)/2, 0)
-			label := " " + itoa(ln.slot+1)
-			if c := len(s.things); c > 0 {
-				label += " · " + itoa(c)
-			}
-			lab := st(mixHex(o.Color, cText, 0.5), front).Render(ansi.Truncate(label, max(lw-1, 0), ""))
-			lines = append(lines, row(fitBlockLine(lab, lw, front)+handle, front))
+			lines = append(lines, e.Render("│")+frontRow(o, ln.slot, front, y, iw, label, inkOn(front), hw, selected && n > 1)+e.Render("│"))
 		case dlTray:
 			if t := trays[ln.slot]; ln.row < len(t) {
 				lines = append(lines, t[ln.row])
 			} else {
-				lines = append(lines, trayRow(""))
+				lines = append(lines, trayRowIn(ln.slot, ""))
 			}
 		case dlBottom:
 			bottom := e.Render("└" + strings.Repeat("─", iw) + "┘")

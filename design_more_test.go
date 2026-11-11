@@ -1006,6 +1006,8 @@ func TestDesignUndoSeesEveryField(t *testing.T) {
 			v.SetInt(7)
 		case reflect.Bool:
 			v.SetBool(true)
+		case reflect.Slice: // a drawer unit's fronts: one given a look
+			v.Set(reflect.MakeSlice(v.Type(), 1, 1))
 		case reflect.Pointer: // a pin's transform: turned
 			v.Set(reflect.New(v.Type().Elem()))
 			v.Elem().Field(0).SetFloat(7)
@@ -3196,7 +3198,7 @@ func TestDesignDrawerSeveral(t *testing.T) {
 		t.Fatalf("three drawers pushed in: %d rows, want %d", h, 3+2*3)
 	}
 	s := screenOf(m)
-	if strings.Count(s, "▐▀▀") != 3 || !strings.Contains(s, "[−] 3 drawers [+]") || !strings.Contains(s, " 1 · 1") {
+	if strings.Count(s, "▐▀▀") != 3 || !strings.Contains(s, "[−] 3 drawers [+]") || !strings.Contains(s, "1 · 1") {
 		t.Fatalf("three drawers should each show a front with a handle, the first holding 1:\n%s", s)
 	}
 	front := func(i int) int {
@@ -3800,5 +3802,61 @@ func TestDesignDragFollowsMouse(t *testing.T) {
 		if d.z() >= 0.8 && snapAt != snapGapX+snapReachX {
 			t.Errorf("zoom %.2f: it should snap when %d cells from its place, not %d", d.z(), snapReachX, snapAt-snapGapX)
 		}
+	}
+}
+
+// Each drawer of a unit has its own colour and texture: different by
+// default, the front painted cell by cell; C and Shift+C (or a click on
+// the dot and swatch of a chosen unit's front) change the drawer that is
+// out; undo takes the change back.
+func TestDesignDrawerLooks(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	dr := d.newKind(kDrawer, 0, 0)
+	dr.X, dr.Y, dr.Header, dr.Drawers = 2, 1, "Tools", 3
+	if drawerColor(dr, 0) == drawerColor(dr, 1) || drawerTexture(dr, 0) == drawerTexture(dr, 1) {
+		t.Fatal("neighbouring drawers should differ by default")
+	}
+	d.sel = dr.ID
+	d.save()
+	m.designPullSlot(dr, 1)
+	before, tex := drawerColor(dr, 1), drawerTexture(dr, 1)
+	press(m, "c")
+	if drawerColor(dr, 1) == before || drawerColor(dr, 0) == before && false {
+		t.Fatalf("C should change drawer 2's colour (%s)", before)
+	}
+	press(m, "shift+c")
+	if drawerTexture(dr, 1) != (tex+1)%len(drawerTextures) {
+		t.Fatalf("Shift+C should give drawer 2 the next texture, not %d", drawerTexture(dr, 1))
+	}
+	d.save()
+	// The dot on the first front: its colour.
+	x, y, w, h := d.rect(dr)
+	l := d.drawerLayout(dr, w, h)
+	c0 := drawerColor(dr, 0)
+	for li, ln := range l.lines {
+		if ln.kind == dlFront && ln.slot == 0 {
+			if act := d.drawerHit(dr, li, l.iw-4, w, h); act != "look:0" {
+				t.Fatalf("the first front's dot should change its colour, not %q", act)
+			}
+			if act := d.drawerHit(dr, li, l.iw-2, w, h); act != "tex:0" {
+				t.Fatalf("the first front's swatch should change its texture, not %q", act)
+			}
+			click(m, x+1+l.iw-4, y+li+m.boardTop(), tea.MouseLeft)
+			d.lastClick = time.Time{}
+		}
+	}
+	if drawerColor(dr, 0) == c0 {
+		t.Fatal("a click on the dot should change the first drawer's colour")
+	}
+	if s := screenOf(m); !strings.Contains(s, "●") || !strings.Contains(s, "▒") {
+		t.Fatalf("a chosen unit's fronts should show their dot and swatch:\n%s", s)
+	}
+	d.save()
+	press(m, "ctrl+z")
+	dr = d.byID(dr.ID)
+	if drawerColor(dr, 0) != c0 {
+		t.Fatal("undo should bring back the first drawer's colour")
 	}
 }

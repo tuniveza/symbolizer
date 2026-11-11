@@ -133,6 +133,7 @@ var helpGroups = []helpGroup{
 		{"Alt + N, then C · D · R · B", "place a container: cabinet (two doors, a shelf for each kind) · drawer (one or more drawers, each with a handle; inside, everything small) · rack (a stack: click a row to open it inside the rack; Tab · Shift+Tab: its next · last thing) · board (things pinned on it as cards with their title and text)"},
 		{"  Cabinet · drawer", "  click the doors · a drawer's front (or Tab, with it chosen) to open or shut it; click a thing inside to take it out"},
 		{"  [ · ]", "  with a drawer unit chosen: one drawer fewer · one more (or its [−] · [+] on its bottom edge)"},
+		{"  C · Shift+C", "  with a drawer unit chosen: the open drawer's next colour · next texture (or click the dot · swatch on its front)"},
 		{"  Board", "  drop things on it to pin them; click a pin to open it; drag it to move it; Tab chooses a pin, then R turn · S size · W H stretch · K J skew · F V flip · Alt + arrows move · T type its transform (rotate 30 scale 1.5 skew 0.2 …) · X X take it off"},
 		{"Alt + L", "label mode (again, Esc or Alt tapped twice: off). On the chosen structure:"},
 		{"  L · C · I", "  label: icon + title → title + icon → icon → title → none · its colour · its icon (symbols, then pictures in design/images)"},

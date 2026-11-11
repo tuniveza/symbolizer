@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 // ---- undo and redo ----------------------------------------------------------------
 //
@@ -157,7 +160,7 @@ func sameOct(a, b *dOct) bool {
 		a.Kind == b.Kind && a.Layout == b.Layout && a.Image == b.Image && a.From == b.From &&
 		a.LabelStyle == b.LabelStyle && a.LabelColor == b.LabelColor && a.LabelIcon == b.LabelIcon &&
 		a.LabelTitle == b.LabelTitle && a.Plate == b.Plate && sameTf(a.Tf, b.Tf) &&
-		a.Drawers == b.Drawers && a.Slot == b.Slot
+		a.Drawers == b.Drawers && a.Slot == b.Slot && slices.Equal(a.Fronts, b.Fronts)
 }
 
 // recordUndo makes a step of what changed since the last one. It runs each

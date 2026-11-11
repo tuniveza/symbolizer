@@ -71,17 +71,18 @@ type dOct struct {
 	Footer string `json:"footer"`
 	Color  string `json:"color"`
 
-	Kind       string  `json:"kind,omitempty"`       // "" an octagon, or cabinet, page, note, book, slide, drawing
-	Layout     int     `json:"layout,omitempty"`     // an octagon's layout (octLayouts)
-	Image      string  `json:"image,omitempty"`      // an octagon's picture: a file in design/images
-	Items      []*dOct `json:"items,omitempty"`      // what its drawer (or the cabinet) holds
-	DrawerOpen bool    `json:"drawerOpen,omitempty"` // its drawer is pulled out (a drawer unit: any of its drawers)
-	Drawers    int     `json:"drawers,omitempty"`    // a drawer unit: how many drawers it has (0: one)
-	Pulled     []bool  `json:"pulled,omitempty"`     // a drawer unit: which of its drawers are pulled out
-	Slot       int     `json:"slot,omitempty"`       // in a drawer unit: which drawer it is in (0: the first)
-	OpenStack  string  `json:"openStack,omitempty"`  // the stack shown open in the drawer or cabinet
-	Scroll     int     `json:"scroll,omitempty"`     // a page: the first line shown
-	From       string  `json:"from,omitempty"`       // where it came from (a diary page, a file)
+	Kind       string   `json:"kind,omitempty"`       // "" an octagon, or cabinet, page, note, book, slide, drawing
+	Layout     int      `json:"layout,omitempty"`     // an octagon's layout (octLayouts)
+	Image      string   `json:"image,omitempty"`      // an octagon's picture: a file in design/images
+	Items      []*dOct  `json:"items,omitempty"`      // what its drawer (or the cabinet) holds
+	DrawerOpen bool     `json:"drawerOpen,omitempty"` // its drawer is pulled out (a drawer unit: any of its drawers)
+	Drawers    int      `json:"drawers,omitempty"`    // a drawer unit: how many drawers it has (0: one)
+	Pulled     []bool   `json:"pulled,omitempty"`     // a drawer unit: which of its drawers are pulled out
+	Slot       int      `json:"slot,omitempty"`       // in a drawer unit: which drawer it is in (0: the first)
+	Fronts     []dFront `json:"fronts,omitempty"`     // a drawer unit: each drawer's colour and texture (design_drawer_look.go)
+	OpenStack  string   `json:"openStack,omitempty"`  // the stack shown open in the drawer or cabinet
+	Scroll     int      `json:"scroll,omitempty"`     // a page: the first line shown
+	From       string   `json:"from,omitempty"`       // where it came from (a diary page, a file)
 
 	// Its label (design_labels.go): how it shows (0 none, labelIconTitle …),
 	// its colour, its icon (a symbol, or "img:" and a picture in
@@ -390,7 +391,7 @@ func copyOcts(os []*dOct) []*dOct {
 		}
 		c := dOct{X: o.X, Y: o.Y, ID: o.ID, W: o.W, H: o.H, Header: o.Header, Body: o.Body, Footer: o.Footer, Color: o.Color,
 			Kind: o.Kind, Layout: o.Layout, Image: o.Image, DrawerOpen: o.DrawerOpen, OpenStack: o.OpenStack, Scroll: o.Scroll, From: o.From,
-			Drawers: o.Drawers, Slot: o.Slot, Pulled: append([]bool(nil), o.Pulled...),
+			Drawers: o.Drawers, Slot: o.Slot, Pulled: append([]bool(nil), o.Pulled...), Fronts: append([]dFront(nil), o.Fronts...),
 			LabelStyle: o.LabelStyle, LabelColor: o.LabelColor, LabelIcon: o.LabelIcon, LabelTitle: o.LabelTitle, Plate: o.Plate}
 		c.Items = copyOcts(o.Items)
 		if o.Tf != nil {
@@ -921,6 +922,10 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 			return nil
 		}
 		m.designTab(name == "shift+tab")
+	case "c", "C", "shift+c":
+		if o := d.byID(d.sel); o != nil && o.Kind == kDrawer { // a drawer's colour, or texture (design_drawer_look.go)
+			m.designDrawerLook(o, lookSlot(o), name != "c")
+		}
 	case "[", "]":
 		if o := d.byID(d.sel); o != nil && o.Kind == kDrawer { // fewer or more drawers (design_drawer.go)
 			m.designDrawerCount(o, map[bool]int{true: -1, false: 1}[name == "["])
@@ -1509,7 +1514,7 @@ func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
 		k.opened += sb.String()
 	}
 	if o.Kind == kDrawer { // its drawers, which are out, and which one a drag would go into
-		k.pulled = fmt.Sprint(o.Drawers, o.Pulled)
+		k.pulled = fmt.Sprint(o.Drawers, o.Pulled, o.Fronts)
 		if k.drop {
 			k.pulled += "\x00" + itoa(d.dropSlot)
 		}
