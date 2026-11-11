@@ -102,7 +102,8 @@ func (v *r3view) ray(ux, uy float64) r3vec {
 type r3block struct {
 	o              *dOct
 	x0, y0, x1, y1 int
-	whole          bool // not cut: all of it is in the room
+	whole          bool    // not cut: all of it is in the room
+	dep            float64 // how far it comes out of the wall
 }
 
 // r3room is the room's size. The back wall is the flat board's cells
@@ -124,11 +125,21 @@ type r3room struct {
 // across, one down (one unit is a cell's width, a cell is two units tall).
 const roomMarginX, roomMarginY = 2, 1
 
-// area works out the room for a w×h board area, and which structures are
-// blocks in it.
-func (r *room3D) area(d *designState, w, h int) r3room {
+// area works out the room for a w×h board area at zoom z, and which
+// structures are blocks in it. The room is fitted to what shows: the
+// blocks (with a pulled out drawer) and the pen's ink on the screen, or,
+// with nothing on the screen, the screen itself.
+func (r *room3D) area(d *designState, w, h int, z float64) r3room {
 	r.blocks = r.blocks[:0]
-	x0, y0, x1, y1 := 0, 0, w, h
+	big := math.Max(float64(w), float64(2*h))
+	x0, y0, x1, y1 := math.MaxInt, math.MaxInt, math.MinInt, math.MinInt
+	take := func(bx0, by0, bx1, by1 int) {
+		bx0, by0, bx1, by1 = max(bx0, -w), max(by0, -h), min(bx1, 2*w), min(by1, 2*h)
+		if bx0 < bx1 && by0 < by1 {
+			x0, y0, x1, y1 = min(x0, bx0), min(y0, by0), max(x1, bx1), max(y1, by1)
+		}
+	}
+	deepest := 0.0
 	for _, o := range d.octs {
 		x, y, ow, oh := d.rect(o)
 		if x >= w || y >= h || x+ow <= 0 || y+oh <= 0 {
@@ -136,22 +147,57 @@ func (r *room3D) area(d *designState, w, h int) r3room {
 		}
 		b := r3block{o: o, x0: max(x, -w), y0: max(y, -h), x1: min(x+ow, 2*w), y1: min(y+oh, 2*h)}
 		b.whole = b.x0 == x && b.y0 == y && b.x1 == x+ow && b.y1 == y+oh
+		b.dep = blockDepth(&b, z, big)
+		deepest = math.Max(deepest, b.dep)
 		r.blocks = append(r.blocks, b)
-		x0, y0, x1, y1 = min(x0, b.x0), min(y0, b.y0), max(x1, b.x1), max(y1, b.y1)
+		take(b.x0, b.y0, b.x1, b.y1)
+		if o.DrawerOpen && o.Kind != kCabinet {
+			dx, dy, dw, dh := d.drawerRect(o) // drawn beside it, on the wall
+			take(dx, dy, dx+dw, dy+dh)
+		}
+	}
+	if ix0, iy0, ix1, iy1, ok := r.ink(d, w, h); ok {
+		take(ix0, iy0, ix1, iy1)
+	}
+	if x0 > x1 {
+		x0, y0, x1, y1 = 0, 0, w, h // nothing shows: the screen
 	}
 	x0, y0, x1, y1 = x0-roomMarginX, y0-roomMarginY, x1+roomMarginX, y1+roomMarginY
-	rm := r3room{w: w, h: h, hw: float64(w) / 2, hh: float64(h), tx0: x0, ty0: y0, tw: x1 - x0, th: y1 - y0}
+	rm := r3room{w: w, h: h, hw: float64(w) / 2, hh: float64(h), tx0: x0, ty0: y0, tw: x1 - x0, th: y1 - y0, big: big}
 	rm.x0, rm.x1 = float64(x0)-rm.hw, float64(x1)-rm.hw
 	rm.y1, rm.y0 = rm.hh-float64(2*y0), rm.hh-float64(2*y1)
-	rm.big = math.Max(float64(w), float64(2*h))
-	rm.depth = math.Max(8, 0.45*rm.big)
+	// The floor comes out a little under half the room's size (no more
+	// than for the screen), and over three times the deepest block.
+	rm.depth = math.Max(8, math.Max(deepest/0.3, 0.45*math.Min(big, math.Max(rm.x1-rm.x0, rm.y1-rm.y0))))
 	return rm
 }
 
-// blockDepth is how far block b comes out of the wall.
-func blockDepth(b *r3block, z, roomDepth float64) float64 {
+// ink is the part of the w×h screen the pen's ink is on (cells x0 ≤ x <
+// x1, y0 ≤ y < y1), when there is any.
+func (r *room3D) ink(d *designState, w, h int) (x0, y0, x1, y1 int, ok bool) {
+	if len(d.marks) == 0 {
+		return 0, 0, 0, 0, false
+	}
+	if r.inkVer != d.marksVer || r.inkLen != len(d.marks) { // where it is on the board, kept until it changes
+		b := [4]int{math.MaxInt, math.MaxInt, math.MinInt, math.MinInt}
+		for at := range d.marks {
+			b = [4]int{min(b[0], at[0]), min(b[1], at[1]), max(b[2], at[0]+1), max(b[3], at[1]+1)}
+		}
+		r.inkBox, r.inkVer, r.inkLen = b, d.marksVer, len(d.marks)
+	}
+	z := d.z()
+	b := r.inkBox
+	x0, y0 = int(math.Floor((float64(b[0])-d.camX)*z)), int(math.Floor((float64(b[1])-d.camY)*z))
+	x1, y1 = int(math.Ceil((float64(b[2])-d.camX)*z)), int(math.Ceil((float64(b[3])-d.camY)*z))
+	x0, y0, x1, y1 = max(x0, 0), max(y0, 0), min(x1, w), min(y1, h)
+	return x0, y0, x1, y1, x0 < x1 && y0 < y1
+}
+
+// blockDepth is how far block b comes out of the wall at zoom z, on a
+// screen whose bigger side is big units.
+func blockDepth(b *r3block, z, big float64) float64 {
 	dep := math.Max(0.6, depthOf(b.o.Kind)*z)
-	return math.Min(dep, math.Min(0.3*roomDepth, 0.8*float64(max(b.x1-b.x0, 2*(b.y1-b.y0)))))
+	return math.Min(dep, math.Min(0.135*big, 0.8*float64(max(b.x1-b.x0, 2*(b.y1-b.y0)))))
 }
 
 // ---- the flat board as a picture ----------------------------------------------------------
@@ -346,7 +392,7 @@ func (r *room3D) quadFace(f r3face, o, u, v r3vec) {
 
 // lampAt is where the lamp hangs: at the front left, near the top.
 func lampAt(rm *r3room) r3vec {
-	return r3vec{rm.x0 + 0.15*(rm.x1-rm.x0), rm.y1 - math.Max(3, 0.06*(rm.y1-rm.y0)), 0.6 * rm.depth}
+	return r3vec{rm.x0 + 0.15*(rm.x1-rm.x0), rm.y1 - math.Max(1, 0.02*(rm.y1-rm.y0)), 0.6 * rm.depth}
 }
 
 // scene puts the room, the blocks and the lamp in faces.
@@ -379,7 +425,7 @@ func (r *room3D) scene(rm *r3room, z float64, lamp r3vec) {
 		b := &r.blocks[i]
 		o := b.o
 		// A block on top of another on the flat board comes out a hair further.
-		dep := blockDepth(b, z, depth) + 1e-5*float64(i)
+		dep := b.dep + 1e-5*float64(i)
 		X0, X1 := float64(b.x0)-hw, float64(b.x1)-hw
 		Yt, Yb := hh-float64(2*b.y0), hh-float64(2*b.y1)
 		// The front: an octagon for a shape drawn whole as one, else a rectangle.
@@ -606,7 +652,7 @@ func (r *room3D) orbitView(rm *r3room) r3view {
 	depth := rm.depth
 	dist0 := depth + 1.05*rm.big // the camera's distance from the back wall, straight on
 	f := dist0                   // so straight on, the back wall is the board area cell for cell
-	pivot := r3vec{0, 0, depth / 2}.add(r.pan)
+	pivot := r3vec{0, 0, depth / 2}
 	rad := dist0 - depth/2
 	ya, pa := -float64(r.yaw)*math.Pi/180, float64(r.pitch)*math.Pi/180
 	way := r3vec{math.Sin(ya) * math.Cos(pa), math.Sin(pa), math.Cos(ya) * math.Cos(pa)}
@@ -616,7 +662,9 @@ func (r *room3D) orbitView(rm *r3room) r3view {
 	up := right.cross(fwd)
 	angle := math.Max(math.Abs(float64(r.yaw)), math.Abs(float64(r.pitch)))
 	scale, ox, oy := fitRoom(cam, right, up, fwd, f, fw/2, fh/2, rm, angle)
-	cam = pivot.add(way.mul(rad * math.Pow(0.87, float64(r.near)))) // + and -: closer, further
+	// The camera closer or further (+ and -) and moved sideways (a drag with the
+	// middle or right button), after the fitting, which would undo the move.
+	cam = pivot.add(r.pan).add(way.mul(rad * math.Pow(0.87, float64(r.near))))
 	return r3view{cam: cam, right: right, up: up, fwd: fwd, f: f * scale, px: fw/2 + ox, py: fh/2 + oy}
 }
 
@@ -649,7 +697,7 @@ func fitRoom(cam, right, up, fwd r3vec, f, hw, hh float64, rm *r3room, angle flo
 	if x1 <= x0 || y1 <= y0 {
 		return 1, 0, 0
 	}
-	room := math.Min(1, 0.96*math.Min(2*hw/(x1-x0), 2*hh/(y1-y0)))
+	room := math.Min(2.5, 0.96*math.Min(2*hw/(x1-x0), 2*hh/(y1-y0))) // a small room is drawn bigger, up to 2.5 times
 	a := math.Min(1, angle/30)
 	a *= a
 	return (1 - a) + room*a, -a * room * (x0 + x1) / 2, -a * room * (y0 + y1) / 2
@@ -860,10 +908,10 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 //
 // Each board cell goes to the screen cell its middle is seen in. Drawn a
 // little bigger or smaller than the board, a word would get a gap or lose
-// a letter, so each letter of a word goes straight after the one before,
-// and a word shows whole or not at all. Spaces take their screen cells
-// too, so where two rows would fall on one screen row, the second does not
-// show.
+// a letter, so a word's letters go side by side on one screen row, centred
+// on where it is seen, and a word shows whole or not at all (only what is
+// off the screen is left out). Spaces take their screen cells too, so
+// where two rows would fall on one screen row, the second does not show.
 func (r *room3D) letters(v *r3view, rm *r3room) {
 	pw := r.pw
 	w, h := rm.w, rm.h
@@ -883,25 +931,26 @@ func (r *room3D) letters(v *r3view, rm *r3room) {
 	dR := r3vec{right.x, up.x, fwd.x}
 	dD := r3vec{-2 * right.y, -2 * up.y, -2 * fwd.y}
 	// target is the screen cell where the middle of board cell (cx, cy) on
-	// a face at depth z is seen, when it is seen there about one for one.
-	target := func(cx, cy int, z float64) (int, bool) {
+	// a face at depth z is seen, and how: readOK when it is seen there
+	// about one for one, readOff when it would be but is off the screen.
+	target := func(cx, cy int, z float64) (int, int) {
 		q := r3vec{float64(cx) + 0.5 - hw, hh - float64(2*cy+1), z}.sub(cam)
 		c := r3vec{q.dot(right), q.dot(up), q.dot(fwd)}
 		cr, cd := c.add(dR), c.add(dD)
 		if c.z < 1 || cr.z < 1 || cd.z < 1 {
-			return 0, false
+			return 0, readBad
 		}
 		sx, sy := px+f*c.x/c.z, py-f*c.y/c.z
 		rx, ry := px+f*cr.x/cr.z-sx, py-f*cr.y/cr.z-sy
 		dx, dy := px+f*cd.x/cd.z-sx, py-f*cd.y/cd.z-sy
 		if rx < 0.75 || rx > 1.6 || math.Abs(ry) > 0.4 || dy < 1.5 || dy > 3.2 || math.Abs(dx) > 0.4 {
-			return 0, false // turned too far, or too small or big, to read
+			return 0, readBad // turned too far, or too small or big, to read
 		}
 		col, row := int(math.Floor(sx)), int(math.Floor(sy/2))
 		if col < 0 || col >= w || row < 0 || row >= h {
-			return 0, false
+			return 0, readOff
 		}
-		return row*w + col, true
+		return row*w + col, readOK
 	}
 	// free: screen cell at shows face fid in all four of its pixels, and
 	// nothing has taken it yet.
@@ -910,7 +959,11 @@ func (r *room3D) letters(v *r3view, rm *r3room) {
 		return r.claim[at] < 0 && r.face[tl] == fid && r.face[tl+1] == fid && r.face[tl+pw] == fid && r.face[tl+pw+1] == fid
 	}
 	tex := func(cx, cy int) *r3texel { return &r.tex[(cy-ty0)*tw+cx-tx0] }
-	var word []int
+	type letter struct {
+		at int   // the screen cell
+		s  int32 // the wall cell
+	}
+	var word []letter
 	for fi := range r.faces {
 		fc := &r.faces[fi]
 		if !fc.seen || (fc.mat != matBoard && fc.mat != matFront) {
@@ -922,10 +975,12 @@ func (r *room3D) letters(v *r3view, rm *r3room) {
 			if fc.mat == matFront && !r.rowReads(target, tex, fc, cy, z) {
 				continue // a line of a structure shows whole or not at all
 			}
+			lineRow := -1 // the screen row the line's first word went on
 			for cx := fc.cx0; cx < fc.cx1; {
 				s := int32((cy-ty0)*tw + cx - tx0)
 				if tex(cx, cy).glyph == "" { // a space: it takes its cell
-					at, ok := target(cx, cy, z)
+					at, how := target(cx, cy, z)
+					ok := how == readOK
 					if ok && cx > fc.cx0 && r.claim[at] == s-1 && (at+1)/w == at/w {
 						at++ // drawn a little smaller: the cell before it took its cell
 					}
@@ -942,28 +997,43 @@ func (r *room3D) letters(v *r3view, rm *r3room) {
 				for end < fc.cx1 && tex(end, cy).glyph != "" {
 					end++
 				}
+				// The word goes on one screen row, its letters side by side,
+				// centred on where its first and last letters are seen.
 				word = word[:0]
 				ok := true
 				for x := cx; x < end && ok; x++ {
-					at, seen := target(x, cy, z)
-					if seen && x == cx && x > fc.cx0 && r.claim[at] == s-1 && (at+1)/w == at/w {
-						at++ // drawn a little smaller: the cell before it took its cell
+					at, how := target(x, cy, z)
+					if how != readOff { // off the screen: the rest of the word still shows
+						ok = how == readOK
+						word = append(word, letter{at, s + int32(x-cx)})
 					}
-					if n := len(word); n > 0 && seen {
-						prev := word[n-1]
-						if at < prev || at > prev+2 || (prev+1)/w != prev/w {
-							seen = false // not about one cell for one here
-						}
-						at = prev + 1
-					}
-					ok = seen && free(at, fid)
-					word = append(word, at)
 				}
-				if ok {
-					for i, at := range word {
-						s := s + int32(i)
-						r.claim[at], r.glyph[at], r.placed[s] = s, s, r.stamp
+				if n := len(word); ok && n > 0 {
+					row := word[n/2].at / w
+					if lineRow >= 0 && abs(row-lineRow) <= 1 {
+						row = lineRow // the words of a line stay on one screen row
 					}
+					start := int(math.Round(float64(word[0].at%w+word[n-1].at%w)/2 - float64(n-1)/2))
+					if at := row*w + start; start >= 0 && start < w && r.claim[at] >= 0 && r.claim[at] == word[0].s-1 {
+						start++ // drawn a little smaller: the cell before it took its cell
+					}
+					if at := row*w + start - 1; start >= 1 && start <= w && r.glyph[at] >= 0 && r.tex[r.glyph[at]].glyph != "" {
+						start++ // straight after another word: a cell further, for the space between them
+					}
+					for i := range word {
+						col, l := start+i, &word[i]
+						if col < 0 || col >= w || abs(l.at%w-col) > 2 || abs(l.at/w-row) > 1 || !free(row*w+col, fid) {
+							ok = false // not about one cell for one here, or its cells are taken
+							break
+						}
+						l.at = row*w + col
+					}
+				}
+				if ok && len(word) > 0 {
+					for _, l := range word {
+						r.claim[l.at], r.glyph[l.at], r.placed[l.s] = l.s, l.s, r.stamp
+					}
+					lineRow = word[0].at / w
 				}
 				cx = end
 			}
@@ -971,12 +1041,19 @@ func (r *room3D) letters(v *r3view, rm *r3room) {
 	}
 }
 
+// How a letter of the board is seen (letters' target).
+const (
+	readOK  = iota // about one cell for one, on the screen
+	readOff        // so, but off the screen
+	readBad        // turned too far, or too small or big, to read
+)
+
 // rowReads is whether every letter of row cy of face fc is seen about one
-// cell for one.
-func (r *room3D) rowReads(target func(cx, cy int, z float64) (int, bool), tex func(cx, cy int) *r3texel, fc *r3face, cy int, z float64) bool {
+// cell for one (on the screen or just off it).
+func (r *room3D) rowReads(target func(cx, cy int, z float64) (int, int), tex func(cx, cy int) *r3texel, fc *r3face, cy int, z float64) bool {
 	for cx := fc.cx0; cx < fc.cx1; cx++ {
 		if tex(cx, cy).glyph != "" {
-			if _, ok := target(cx, cy, z); !ok {
+			if _, how := target(cx, cy, z); how == readBad {
 				return false
 			}
 		}

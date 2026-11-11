@@ -55,8 +55,8 @@ const (
 	walkFast     = 3   // with Shift: this many times faster
 	walkTap      = 0.06 * float64(time.Second)
 	walkEvery    = 20 * time.Millisecond // held: a step every 20 ms, as far as the time since the last one
-	roomHint     = "3D view  ·  drag: turn  ·  right-drag: move  ·  wheel: closer  ·  Ctrl+F: free roam  ·  Esc: flat board"
-	roomFreeHint = "Free roam  ·  W A S D: walk  ·  Q E: down, up  ·  Shift: faster  ·  drag or Ctrl+arrows: look  ·  Esc: back"
+	roomHint     = "3D view  ·  drag: turn  ·  right-drag: move  ·  wheel: closer  ·  Ctrl+F: free roam  ·  Esc: flat"
+	roomFreeHint = "Free roam  ·  W A S D: walk  ·  Q E: down, up  ·  Shift: fast  ·  drag: look  ·  Esc: back"
 )
 
 // What a drag with the mouse does to the camera.
@@ -116,6 +116,8 @@ type room3D struct {
 	faces          []r3face
 	pts            []r3vec
 	blocks         []r3block
+	inkBox         [4]int // where the pen's ink is on the board (see ink), kept until it changes
+	inkVer, inkLen int
 	hexes          map[string]uint32 // colours read from their "#rrggbb"
 	view           r3view            // the camera of the last drawing, for the mouse
 	rm             r3room            // the room of the last drawing
@@ -353,7 +355,7 @@ type room3DWalkMsg struct{}
 func (m *Model) design3DFree() {
 	d := m.ds()
 	r := &d.room
-	rm := r.area(d, m.width, m.boardH())
+	rm := r.area(d, m.width, m.boardH(), d.z())
 	v := r.orbitView(&rm)
 	c := v.ray(float64(rm.w)/2, float64(rm.h)).norm() // straight ahead on the screen
 	r.look = [2]float64{math.Atan2(c.x, -c.z) * 180 / math.Pi, math.Asin(clampF(-c.y, -1, 1)) * 180 / math.Pi}
@@ -632,6 +634,11 @@ func (m *Model) design3DMotion(ms tea.Mouse) tea.Cmd {
 			r.yaw = r.yaw0 + int(math.Round(float64(dx)*turnPerCol))
 			r.pitch = r.pitch0 + int(math.Round(float64(dy)*turnPerRow))
 			r.clampTurn()
+			if r.on() {
+				m.say(roomAngles(r.yaw, r.pitch))
+			} else {
+				m.say("Flat board.")
+			}
 		}
 	case camPan:
 		// What is as far away as the point pressed moves with the mouse.
@@ -728,7 +735,7 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 	d.mapCorner, d.platesOpen = 0, false
 	c := m.designCanvas()
 	d.mapCorner, d.platesOpen = corner, plates
-	rm := r.area(d, w, h)
+	rm := r.area(d, w, h, d.z())
 	r.takeRoom(d, c, &rm)
 	var fb strings.Builder
 	r.draw(&rm, d.z(), &fb)

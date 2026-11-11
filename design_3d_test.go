@@ -235,6 +235,22 @@ func BenchmarkDesign3D(b *testing.B) {
 	}
 }
 
+// Free roam, walking into the room at 200×60: frames with the camera close
+// to the blocks and then among them.
+func BenchmarkDesign3DFree(b *testing.B) {
+	m, _ := designBenchModel(b)
+	press(m, "ctrl+f")
+	r := &m.ds().room
+	start := r.pos
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		r.pos = start.add(r3vec{0, 0, -float64(i%40) * 7})
+		var sb strings.Builder
+		m.designRows(&sb)
+	}
+	b.ReportMetric(float64(r.cost)/float64(time.Millisecond), "ms/last")
+}
+
 func BenchmarkDesign3DHuge(b *testing.B) {
 	m := hugeBoard(b)
 	d := m.ds()

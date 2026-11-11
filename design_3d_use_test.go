@@ -74,6 +74,7 @@ func TestDesign3DRoomFits(t *testing.T) {
 				checkRows(t, m, "fitted room")
 				rm := r.rm
 				what := fmt.Sprintf("zoom %d, board at %v, turned %v", zoom, pan, a)
+				low, left, right := math.Inf(1), math.Inf(1), math.Inf(-1) // the blocks' lowest point and outermost sides
 				for fi := range r.faces {
 					f := &r.faces[fi]
 					if f.own < 0 {
@@ -84,10 +85,12 @@ func TestDesign3DRoomFits(t *testing.T) {
 							t.Fatalf("%s: a corner of structure %d at %v is outside the room x %.1f…%.1f, y %.1f…%.1f, z 0…%.1f",
 								what, f.own, p, rm.x0, rm.x1, rm.y0, rm.y1, rm.depth)
 						}
+						low, left, right = math.Min(low, p.y), math.Min(left, p.x), math.Max(right, p.x)
 					}
 				}
-				if rm.y0 > -rm.hh-1 || rm.x0 > -rm.hw-1 || rm.x1 < rm.hw+1 {
-					t.Fatalf("%s: the floor and walls should stand beyond the screen's board area: %+v", what, rm)
+				if len(r.blocks) > 0 && (low-rm.y0 != 2*roomMarginY || left-rm.x0 != roomMarginX || rm.x1-right != roomMarginX) {
+					t.Fatalf("%s: the floor should be just under the lowest block, the walls just beyond the outermost: %+v, blocks %.1f to %.1f, lowest %.1f",
+						what, rm, left, right, low)
 				}
 				for _, b := range r.blocks {
 					x, y, ow, oh := d.rect(b.o)
