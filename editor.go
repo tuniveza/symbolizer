@@ -289,6 +289,9 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	if _, ok := msg.(designHoldMsg); ok {
 		return m, tea.Batch(m.designHold(), m.designFrameCmd(), m.designSaveCmd())
 	}
+	if _, ok := msg.(room3DWalkMsg); ok { // free roam: walking on while a key is held (design_3d.go)
+		return m, m.design3DWalkStep()
+	}
 	if _, ok := msg.(designFrameMsg); ok {
 		m.ds().frameTick = false // the View after this draws the board afresh
 		return m, nil
@@ -401,6 +404,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			m.designSpaceUp()
 			return tea.Batch(m.designFrameCmd(), m.designSaveCmd())
 		}
+		m.design3DKeyUp(msg.Key()) // free roam: W A S D let go (design_3d.go)
 		m.keys.release(msg.Key(), m.altGr.down)
 		return nil
 	case tea.KeyPressMsg:
@@ -513,6 +517,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		return m.mouseClick(msg.Mouse())
 	case tea.MouseMotionMsg:
+		if m.inDesign() && m.design != nil && m.design.room.camDrag != camNone {
+			return m.design3DMotion(msg.Mouse()) // the 3D view turned or moved by the mouse (design_3d.go)
+		}
 		if m.inDesign() && m.design != nil && (m.design.drag != dragNone || m.design.rackPress != nil || m.design.pinPress != nil) {
 			return m.designMotion(msg.Mouse())
 		}
@@ -526,6 +533,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		return m.mouseDrag(msg.Mouse())
 	case tea.MouseReleaseMsg:
+		if m.inDesign() && m.design != nil && m.design.room.camDrag != camNone {
+			return m.design3DRelease(msg.Mouse())
+		}
 		if m.inDesign() && m.design != nil && (m.design.drag != dragNone || m.design.rackPress != nil || m.design.pinPress != nil) {
 			return m.designRelease()
 		}

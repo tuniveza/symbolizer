@@ -131,40 +131,6 @@ func TestDesign3DEveryAngle(t *testing.T) {
 	}
 }
 
-// Turned, keys and clicks other than the 3D view's own change nothing.
-func TestDesign3DKeysHarmless(t *testing.T) {
-	m := room3DModel(t, 120, 40)
-	d := m.ds()
-	o := d.octs[0]
-	d.sel = o.ID
-	press(m, "ctrl+left")
-	n := len(d.octs)
-	x, y, header := o.X, o.Y, o.Header
-	for _, k := range []string{"x", "x", "alt+n", "p", "e", "alt+right", "tab", "q"} {
-		press(m, k)
-	}
-	sx, sy, _, _ := d.rect(o)
-	click(m, sx+2, sy+2+m.boardTop(), tea.MouseLeft)
-	click(m, sx+2, sy+2+m.boardTop(), tea.MouseLeft)
-	if len(d.octs) != n || o.X != x || o.Y != y || o.Header != header || d.editing != partNone {
-		t.Fatalf("turned, keys and clicks changed the board: %d structures (was %d), at %d,%d (was %d,%d), header %q",
-			len(d.octs), n, o.X, o.Y, x, y, o.Header)
-	}
-	if !strings.Contains(m.msg, "Esc") || !strings.Contains(m.designStatus(), "3D view") {
-		t.Fatalf("a key the 3D view does not use should show the hint: %q", m.msg)
-	}
-	before := d.room.near
-	typeKeys(m, "+")
-	if d.room.near != before+1 {
-		t.Fatal("+ in 3D: the camera closer")
-	}
-	camX := d.camX
-	press(m, "shift+right")
-	if d.camX == camX {
-		t.Fatal("arrows in 3D: the board moves")
-	}
-}
-
 // kitty says when keys are let go: held, Ctrl + an arrow keeps turning;
 // let go, it stops.
 func TestDesign3DHold(t *testing.T) {
@@ -242,13 +208,13 @@ func TestDesign3DPictures(t *testing.T) {
 	for _, a := range [][2]int{{5, 0}, {-30, 0}, {30, 0}, {0, -30}, {0, 30}, {35, 25}, {80, 75}, {-80, -75}} {
 		r.yaw, r.pitch = a[0], a[1]
 		boardRows(m)
-		img := image.NewRGBA(image.Rect(0, 0, r.pw*2, r.ph*2))
+		img := image.NewRGBA(image.Rect(0, 0, r.pw*2, r.ph*4)) // a pixel is half a cell: twice as tall as wide
 		for y := 0; y < r.ph; y++ {
 			for x := 0; x < r.pw; x++ {
 				c := r.pixel(y*r.pw + x)
 				col := color.RGBA{uint8(c >> 16), uint8(c >> 8), uint8(c), 255}
-				for k := 0; k < 4; k++ {
-					img.Set(2*x+k%2, 2*y+k/2, col)
+				for k := 0; k < 8; k++ {
+					img.Set(2*x+k%2, 4*y+k/2, col)
 				}
 			}
 		}

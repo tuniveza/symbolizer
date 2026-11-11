@@ -766,7 +766,7 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 	d := m.ds()
 	defer d.save()
 	name := keyName(k)
-	if ok, cmd := m.design3DKey(k, name); ok { // Ctrl + arrows turn the room; turned, it takes every key (design_3d.go)
+	if ok, cmd := m.design3DKey(k, name); ok { // Ctrl + arrows turn the room, Ctrl+F free roam; in 3D: its own keys (design_3d.go)
 		return cmd
 	}
 	switch name {
@@ -1035,10 +1035,10 @@ func (m *Model) designMouseHere(y int) bool {
 func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 	d := m.ds()
 	defer d.save()
-	if ms.Y == m.height-3 {
+	if ms.Y == m.height-3 && !d.room.passing {
 		return m.designToolClick(ms.X)
 	}
-	if ok, cmd := m.design3DMouse(ms); ok { // the room in 3D: a click changes nothing
+	if ok, cmd := m.design3DPress(ms); ok { // the room in 3D: turned, or handed on as a flat cell (design_3d.go)
 		return cmd
 	}
 	sx, sy := ms.X, ms.Y-m.boardTop()
@@ -1212,6 +1212,9 @@ func octName(o *dOct) string {
 
 func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 	d := m.ds()
+	if d.room.on() && !d.room.passing {
+		ms = m.design3DThrough(ms) // the room in 3D: the flat cell the mouse is over (design_3d.go)
+	}
 	sx, sy := ms.X, ms.Y-m.boardTop()
 	z := d.z()
 	dx, dy := float64(sx-d.pressX)/z, float64(sy-d.pressY)/z
@@ -1309,7 +1312,7 @@ func (m *Model) designRelease() tea.Cmd {
 
 func (m *Model) designWheel(ms tea.Mouse) tea.Cmd {
 	d := m.ds()
-	if ok, cmd := m.design3DMouse(ms); ok { // the room in 3D: the wheel moves the camera
+	if ok, cmd := m.design3DWheel(ms); ok { // the room in 3D: the wheel moves the camera
 		return cmd
 	}
 	sx, sy := ms.X, ms.Y-m.boardTop()
@@ -2558,8 +2561,6 @@ func (m *Model) designStatus() string {
 	switch {
 	case d.saveErr != "":
 		hint = "✗ board not saved: " + d.saveErr
-	case d.room.on():
-		hint = roomHint
 	case d.drag == dragMove && d.dropOn >= 0:
 		hint = "Let go to put it in " + octName(d.byID(d.dropOn))
 		if t := d.byID(d.dropOn); t != nil && t.Kind == kDrawer && d.dropSlot >= 0 {
@@ -2571,6 +2572,8 @@ func (m *Model) designStatus() string {
 			part = map[int]string{partHeader: "title", partBody: "text", partFooter: "footer"}[d.editing]
 		}
 		hint = "Writing the " + part + "  ·  Tab: next part  ·  arrows: done"
+	case d.room.on():
+		hint = d.room.hint()
 	case d.platesOpen:
 		hint = "Name plates  ·  AltGr+P or Alt twice: close"
 	case d.pin.active:

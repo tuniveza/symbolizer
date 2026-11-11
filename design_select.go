@@ -59,6 +59,13 @@ func (m *Model) sayMulti(what string) {
 func (m *Model) designHover(ms tea.Mouse) {
 	d := m.ds()
 	d.hover = 0
+	if d.room.on() { // the room in 3D: the flat cell the mouse is over (design_3d.go)
+		var ok bool
+		if ms, ok = m.design3DHover(ms); !ok {
+			d.hoverOnly = true
+			return
+		}
+	}
 	if sy := ms.Y - m.boardTop(); sy >= 0 && sy < m.boardH() {
 		if o := d.at(ms.X, sy); o != nil {
 			d.hover = o.ID + 1
