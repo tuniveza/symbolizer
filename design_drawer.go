@@ -175,6 +175,47 @@ type slotLay struct {
 	vis       int   // tray rows showing now
 	mh, fit   int   // a miniature's height, and how many rows of them show
 	handleRow int   // which row of its front has the handle
+	sepAbove  bool  // a line above its front (else it is shaded, to tell it from the one above)
+}
+
+// shareRows gives out rows by weight, rounded so they add up (the largest
+// remainders get the odd rows).
+func shareRows(rows int, weight []int) []int {
+	out := make([]int, len(weight))
+	total := 0
+	for _, w := range weight {
+		total += w
+	}
+	if total <= 0 || rows <= 0 {
+		return out
+	}
+	given := 0
+	rem := make([]int, len(weight))
+	for i, w := range weight {
+		out[i] = rows * w / total
+		rem[i] = rows * w % total
+		given += out[i]
+	}
+	for given < rows {
+		best := -1
+		for i, w := range weight {
+			if w > 0 && (best < 0 || rem[i] > rem[best]) {
+				best = i
+			}
+		}
+		out[best]++
+		rem[best] = -1
+		given++
+	}
+	return out
+}
+
+func slicesRepeat(v, n int) []int {
+	out := make([]int, n)
+	for i := range out {
+		out[i] = v
+	}
+	return out
 }
 
 // drawerLay is where a unit's parts are as it is drawn now, w × h on the
@@ -188,10 +229,14 @@ type drawerLay struct {
 }
 
 // drawerLayout works out a unit drawn w × h on the screen. At 100% each
-// part has its own rows; zoomed in, the trays pulled out get the extra rows
-// (with none out, the fronts do); zoomed out, first the lines between the
-// drawers go, then its name's own row (it goes into the top edge), then the
-// trays shrink, and only then is it cut short.
+// part has its own rows. Zoomed out, its top part (name, fronts and the
+// lines between them) has as many rows as the unit shut at this zoom:
+// first the lines between drawers keep theirs, then its name's own row
+// (without it, its name goes into its top edge), then the line above the
+// first drawer. So pulling a drawer out moves only what is under it. The
+// trays get the rest, and the lines under their fronts if there is room.
+// Zoomed in, the fronts grow. Only if even a front each does not fit is
+// it cut short.
 func (d *designState) drawerLayout(o *dOct, w, h int) drawerLay {
 	n := drawerCount(o)
 	l := drawerLay{iw: w - 2}
@@ -204,90 +249,87 @@ func (d *designState) drawerLayout(o *dOct, w, h int) drawerLay {
 	l.slots = make([]slotLay, n)
 	now := make([]int, n)  // each tray's rows at 100% as it is now, with its line
 	want := make([]int, n) // and its rows of miniatures
-	opened := 0
+	opened, total, natural := 0, 0, drawerHeadLines(o)
 	for i := range n {
 		l.slots[i].things = slotThings(o, i)
 		l.slots[i].rows = max(1, (len(l.slots[i].things)+l.cols-1)/l.cols)
 		now[i] = d.slotLinesNow(o, i)
 		want[i] = max(now[i]-1, 0)
+		natural += now[i]
+		total += want[i]
 		if want[i] > 0 {
 			opened++
 		}
 	}
-	seps := 0
+	// Its name, fronts and the lines between them are as they are with
+	// every drawer in (headH rows at this zoom), so pulling one out moves
+	// only what is under it; the trays get the rest.
+	room := max(h-2-n, 0) // inside, past a row for each front
+	headH := int(math.Round(float64(drawerHeadLines(o)) * d.z()))
+	optAvail := n // the lines between drawers, its name's row, and (with several) the line above the first
 	if n > 1 {
-		seps = n
+		optAvail++
 	}
-	traySeps := 0
+	headExtra := min(max(headH-2-n, 0), room)
+	optHead := min(headExtra, optAvail)
+	grow := headExtra - optHead // zoomed in: the fronts grow
+	trays := room - headExtra
+	if short := opened - trays; total > 0 && short > 0 { // a row for each tray out: from the fronts, then the lines
+		g := min(grow, short)
+		grow, short = grow-g, short-g
+		g = min(optHead, short)
+		optHead, trays = optHead-g, opened
+	}
+	sepBefore := make([]bool, n)
+	traySep := make([]bool, n)
+	take := func() bool {
+		if optHead > 0 {
+			optHead--
+			return true
+		}
+		return false
+	}
+	for i := 1; i < n; i++ {
+		sepBefore[i] = take() // the lines between drawers
+	}
+	l.named = take()
+	if n > 1 {
+		sepBefore[0] = take()
+	}
+	cnt := 0
 	for i := range n {
 		if now[i] > 0 {
-			traySeps++
+			cnt++
 		}
 	}
-	// How much it can keep: 0 all of it; 1 no lines between drawers or
-	// trays; 2 its name in its top edge too.
-	fixed := func(lvl int) int {
-		f := 2 + n // its edges and the fronts
-		if lvl < 2 {
-			f++ // its name
+	if trays-cnt >= int(math.Round(float64(total)*d.z())) && trays >= cnt+opened { // room for the lines under the fronts too
+		for i := range n {
+			traySep[i] = now[i] > 0
 		}
-		if lvl < 1 {
-			f += seps + traySeps
-		}
-		return f
+		trays -= cnt
 	}
-	lvl := 2
-	for _, v := range []int{0, 1} {
-		if fixed(v)+opened <= h {
-			lvl = v
-			break
-		}
-	}
-	l.named = lvl < 2
-	extra := max(h-fixed(lvl), 0)
-	vis := make([]int, n)
 	frontH := make([]int, n)
 	for i := range frontH {
 		frontH[i] = 1
 	}
-	total := 0
-	for _, v := range want {
-		total += v
+	vis := make([]int, n)
+	if total > 0 {
+		if trays >= opened {
+			for i := range n {
+				if want[i] > 0 {
+					vis[i] = 1 // a row each first
+				}
+			}
+			trays -= opened
+		}
+		for i, v := range shareRows(trays, want) {
+			vis[i] += v
+		}
+	} else {
+		grow += trays
 	}
-	if total > 0 { // the trays share the rows left: a row each first, then as much as each wants
-		given := 0
-		for i := range n {
-			if want[i] > 0 && given < extra {
-				vis[i] = 1
-				given++
-			}
-		}
-		rest := extra - given
-		for i := range n {
-			if want[i] > 0 {
-				vis[i] += rest * want[i] / total
-				given += rest * want[i] / total
-			}
-		}
-		for i := 0; i < n && given < extra; i++ { // what is left over: first to those short of their share
-			if want[i] > 0 && vis[i]*total < extra*want[i] {
-				vis[i]++
-				given++
-			}
-		}
-		for i := n - 1; i >= 0 && given < extra; i-- { // then to the last ones out
-			if want[i] > 0 {
-				vis[i] += extra - given
-				given = extra
-			}
-		}
-	} else { // none out: the fronts grow
-		for i := range n {
-			frontH[i] += extra / n
-			if i < extra%n {
-				frontH[i]++
-			}
-		}
+	for i, v := range shareRows(grow, slicesRepeat(1, n)) {
+		frontH[i] += v
 	}
 
 	l.lines = append(l.lines, drawerLine{kind: dlTop, slot: -1})
@@ -296,14 +338,15 @@ func (d *designState) drawerLayout(o *dOct, w, h int) drawerLay {
 	}
 	for i := range n {
 		s := &l.slots[i]
-		if lvl < 1 && n > 1 {
+		s.sepAbove = sepBefore[i] || (i == 0 && n == 1)
+		if sepBefore[i] {
 			l.lines = append(l.lines, drawerLine{kind: dlSep, slot: i})
 		}
 		s.handleRow = (frontH[i] - 1) / 2
 		for r := range frontH[i] {
 			l.lines = append(l.lines, drawerLine{kind: dlFront, slot: i, row: r})
 		}
-		if lvl < 1 && now[i] > 0 {
+		if traySep[i] {
 			l.lines = append(l.lines, drawerLine{kind: dlTraySep, slot: i})
 		}
 		s.vis = vis[i]
@@ -312,7 +355,7 @@ func (d *designState) drawerLayout(o *dOct, w, h int) drawerLay {
 		}
 		// Its miniatures: as tall as the tray pulled right out allows.
 		all := max(vis[i], 1)
-		if want[i] > 0 && want[i] < slotTrayLines(o, i)-1 && total > 0 { // still sliding: as tall as when right out
+		if want[i] > 0 && want[i] < slotTrayLines(o, i)-1 { // still sliding: as tall as when right out
 			all = max(int(math.Round(float64(vis[i])*float64(slotTrayLines(o, i)-1)/float64(want[i]))), 1)
 		}
 		s.mh = max(1, all/s.rows)
@@ -542,6 +585,9 @@ func (d *designState) drawerLayers(o *dOct) []*lipgloss.Layer {
 			front := wood
 			if slotOpen(o, ln.slot) {
 				front = mixHex(wood, cText, 0.06) // pulled out: lit a little more
+			}
+			if !s.sepAbove && ln.slot%2 == 1 {
+				front = mixHex(front, "#000000", 0.14) // no line above it: shaded, to tell it from the one above
 			}
 			if d.dropOn == o.ID && d.dropSlot == ln.slot {
 				front = mixHex(wood, cAccent, 0.45) // a drag would go in here

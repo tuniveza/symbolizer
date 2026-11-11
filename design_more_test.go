@@ -3330,6 +3330,21 @@ func TestDesignDrawerSeveralZoom(t *testing.T) {
 		if h >= 6 && len(fronts) != 4 {
 			t.Fatalf("zoom %.2f (%d rows): every drawer should keep its front: %v", d.z(), h, fronts)
 		}
+		frontAt := func(i int) int {
+			_, _, w, h := d.rect(dr)
+			for li, ln := range d.drawerLayout(dr, w, h).lines {
+				if ln.kind == dlFront && ln.slot == i {
+					return li
+				}
+			}
+			return -1
+		}
+		f0, f1 := frontAt(0), frontAt(1)
+		m.designPullSlot(dr, 1)
+		if h >= 6 && (frontAt(0) != f0 || frontAt(1) != f1) {
+			t.Fatalf("zoom %.2f: pulling out drawer 2 moved the fronts above it: %d,%d → %d,%d", d.z(), f0, f1, frontAt(0), frontAt(1))
+		}
+		m.designPullSlot(dr, 1)
 		m.designPull(dr, false)
 		m.centreOn(dr)
 		if s := screenOf(m); d.z() >= 1 && !strings.Contains(s, "N0") {
