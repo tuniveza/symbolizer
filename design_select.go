@@ -98,7 +98,7 @@ func (m *Model) designSpaceOpen() bool {
 	case kCabinet:
 		m.designDoors(o)
 	case kDrawer:
-		m.designPull(o)
+		m.designPull(o, false)
 	case kRack:
 		if len(o.Items) == 0 {
 			return false

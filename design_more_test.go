@@ -989,7 +989,7 @@ func TestDesignUndoRedo(t *testing.T) {
 // reflection, so a field added later is not forgotten), except what is
 // only looking around.
 func TestDesignUndoSeesEveryField(t *testing.T) {
-	looking := map[string]bool{"Scroll": true, "DrawerOpen": true, "OpenStack": true, "Items": true}
+	looking := map[string]bool{"Scroll": true, "DrawerOpen": true, "Pulled": true, "OpenStack": true, "Items": true}
 	typ := reflect.TypeOf(dOct{})
 	for i := 0; i < typ.NumField(); i++ {
 		f := typ.Field(i)
@@ -3141,8 +3141,16 @@ func TestDesignDrawerHandle(t *testing.T) {
 	if _, _, _, h2 := d.rect(dr); h2 != drawerLines(dr) {
 		t.Fatalf("the drawer is %d rows, want %d", h2, drawerLines(dr))
 	}
-	l := drawerLayout(dr, w, h, d.z())
-	click(m, x+w/2, y+l.handle+m.boardTop(), tea.MouseLeft) // the handle
+	handle := -1
+	for i, ln := range d.drawerLayout(dr, w, h).lines {
+		if ln.kind == dlFront && handle < 0 {
+			handle = i
+		}
+	}
+	if handle != 2 {
+		t.Fatalf("one drawer: its handle should be on line 2, under its name, not %d", handle)
+	}
+	click(m, x+w/2, y+handle+m.boardTop(), tea.MouseLeft) // the handle
 	d.lastClick = time.Time{}
 	s = screenOf(m)
 	if !dr.DrawerOpen || !strings.Contains(s, "Call Ana") || !strings.Contains(s, "Plan") || !strings.Contains(s, "Bell") || !strings.Contains(s, "◹") {
@@ -3162,6 +3170,171 @@ func TestDesignDrawerHandle(t *testing.T) {
 	press(m, "tab")
 	if dr.DrawerOpen {
 		t.Fatal("Tab did not push the drawer in")
+	}
+}
+
+// A drawer unit can have several drawers ([ and ], or its [−] and [+]):
+// each is a box of its own, with its own front and handle, pulled out and
+// pushed in by itself; a thing dropped on a drawer goes into that one;
+// Tab pulls out the next one; fewer drawers move what was in the last
+// ones into the new last one; the count is undone, being pulled out is not.
+func TestDesignDrawerSeveral(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	dr := d.newKind(kDrawer, 0, 0)
+	dr.X, dr.Y, dr.Header = 2, 1, "Tools"
+	dr.Items = []*dOct{{ID: 401, Kind: kNote, Header: "Saw", Color: "#98c379"}}
+	d.sel = dr.ID
+	d.save()
+	press(m, "]")
+	press(m, "]")
+	if drawerCount(dr) != 3 {
+		t.Fatalf("] twice should give 3 drawers, not %d", drawerCount(dr))
+	}
+	if _, _, _, h := d.rect(dr); h != drawerHeadLines(dr) || h != 3+2*3 {
+		t.Fatalf("three drawers pushed in: %d rows, want %d", h, 3+2*3)
+	}
+	s := screenOf(m)
+	if strings.Count(s, "▐▀▀") != 3 || !strings.Contains(s, "[−] 3 drawers [+]") || !strings.Contains(s, " 1 · 1") {
+		t.Fatalf("three drawers should each show a front with a handle, the first holding 1:\n%s", s)
+	}
+	front := func(i int) int {
+		x, y, w, h := d.rect(dr)
+		for li, ln := range d.drawerLayout(dr, w, h).lines {
+			if ln.kind == dlFront && ln.slot == i {
+				_ = x
+				return y + li
+			}
+		}
+		t.Fatalf("no front for drawer %d", i)
+		return 0
+	}
+	// A click on the second front pulls out only the second drawer.
+	x, _, w, _ := d.rect(dr)
+	click(m, x+w/2, front(1)+m.boardTop(), tea.MouseLeft)
+	d.lastClick = time.Time{}
+	if slotOpen(dr, 0) || !slotOpen(dr, 1) || slotOpen(dr, 2) || !dr.DrawerOpen {
+		t.Fatalf("only drawer 2 should be out: %v", dr.Pulled)
+	}
+	if s := screenOf(m); !strings.Contains(s, "drop anything here") || strings.Contains(s, "Saw") {
+		t.Fatalf("drawer 2 is empty and out, drawer 1 (with Saw) is in:\n%s", s)
+	}
+	// The first one too: both out, each with its own tray.
+	click(m, x+w/2, front(0)+m.boardTop(), tea.MouseLeft)
+	d.lastClick = time.Time{}
+	if !slotOpen(dr, 0) || !slotOpen(dr, 1) {
+		t.Fatalf("drawers 1 and 2 should both be out: %v", dr.Pulled)
+	}
+	if s := screenOf(m); !strings.Contains(s, "Saw") || !strings.Contains(s, "drop anything here") {
+		t.Fatalf("both trays should show:\n%s", s)
+	}
+	if _, _, _, h := d.rect(dr); h != drawerLines(dr) || h != 3+2*3+2*(1+miniH) {
+		t.Fatalf("two drawers out: %d rows, want %d", h, 3+2*3+2*(1+miniH))
+	}
+	// A page let go on the third drawer's front goes into the third drawer.
+	pg := d.newKind(kPage, 60, 30)
+	pg.Header = "Plan"
+	d.dropSlot = d.drawerSlotAt(dr, x+w/2, front(2))
+	if d.dropSlot != 2 {
+		t.Fatalf("the third front is drawer 2 (from 0), not %d", d.dropSlot)
+	}
+	m.designFileInto(pg, dr)
+	if pg.Slot != 2 || !slotOpen(dr, 2) || len(slotThings(dr, 2)) != 1 {
+		t.Fatalf("Plan should be in drawer 3, pulled out: slot %d, %v", pg.Slot, dr.Pulled)
+	}
+	// Tab: the next drawer after the last one out is none: all go in.
+	d.sel = dr.ID
+	press(m, "tab")
+	if dr.DrawerOpen {
+		t.Fatalf("Tab after the last drawer should push them all in: %v", dr.Pulled)
+	}
+	press(m, "tab")
+	if !slotOpen(dr, 0) || slotOpen(dr, 1) {
+		t.Fatalf("Tab should pull out the first drawer only: %v", dr.Pulled)
+	}
+	press(m, "tab")
+	if slotOpen(dr, 0) || !slotOpen(dr, 1) {
+		t.Fatalf("Tab again: the second drawer only: %v", dr.Pulled)
+	}
+	// The [−] on its bottom edge: one fewer; Plan moves into drawer 2.
+	bx, by, bw, bh := d.rect(dr)
+	_, at := drawerCtl(dr, bw-2)
+	click(m, bx+1+at+1, by+bh-1+m.boardTop(), tea.MouseLeft)
+	d.lastClick = time.Time{}
+	if drawerCount(dr) != 2 || slotOf(pg, 2) != 1 || len(dr.Items) != 2 {
+		t.Fatalf("[−] should leave 2 drawers with Plan in the second: %d drawers, slot %d, %d things", drawerCount(dr), pg.Slot, len(dr.Items))
+	}
+	// The [+]: one more again, empty.
+	bx, by, bw, bh = d.rect(dr)
+	ctl, at := drawerCtl(dr, bw-2)
+	click(m, bx+1+at+lipgloss.Width(ctl)-2, by+bh-1+m.boardTop(), tea.MouseLeft)
+	d.lastClick = time.Time{}
+	if drawerCount(dr) != 3 || len(slotThings(dr, 2)) != 0 {
+		t.Fatalf("[+] should give an empty third drawer: %d drawers", drawerCount(dr))
+	}
+	press(m, "[")
+	d.save()
+	// Undo brings back the third drawer, and Plan in it.
+	press(m, "ctrl+z")
+	dr = d.byID(dr.ID)
+	if drawerCount(dr) != 3 {
+		t.Fatalf("undo should bring the third drawer back, not %d", drawerCount(dr))
+	}
+	// Taken out, a thing forgets its drawer.
+	for i := 1; i < 12; i++ {
+		press(m, "]")
+	}
+	if drawerCount(dr) != drawerMax {
+		t.Fatalf("at most %d drawers, not %d", drawerMax, drawerCount(dr))
+	}
+	for i := 0; i < 20; i++ {
+		press(m, "[")
+	}
+	if drawerCount(dr) != 1 || dr.Drawers != 0 {
+		t.Fatalf("at least one drawer: %d (%d)", drawerCount(dr), dr.Drawers)
+	}
+	for _, it := range dr.Items {
+		if slotOf(it, 1) != 0 {
+			t.Fatalf("with one drawer, everything is in it")
+		}
+	}
+}
+
+// Zoomed out, a unit of several drawers drops its lines, then its name's
+// row, but keeps a front for each drawer; zoomed in, the fronts grow.
+func TestDesignDrawerSeveralZoom(t *testing.T) {
+	for _, zi := range []int{0, 1, 2, designZoom100, 8} {
+		m := designTest(t)
+		d := m.ds()
+		d.zoom = zi
+		dr := d.newKind(kDrawer, 0, 0)
+		dr.X, dr.Y, dr.Header, dr.Drawers = 2, 1, "Tools", 4
+		for i := range 6 {
+			dr.Items = append(dr.Items, &dOct{ID: 800 + i, Kind: kNote, Header: "N" + itoa(i), Color: "#e5c07b", Slot: i % 4})
+		}
+		_, _, w, h := d.rect(dr)
+		if w < 8 || h < 3 {
+			continue // a pill
+		}
+		l := d.drawerLayout(dr, w, h)
+		if len(l.lines) != h {
+			t.Fatalf("zoom %.2f: %d lines drawn for %d rows", d.z(), len(l.lines), h)
+		}
+		fronts := map[int]bool{}
+		for _, ln := range l.lines {
+			if ln.kind == dlFront {
+				fronts[ln.slot] = true
+			}
+		}
+		if h >= 6 && len(fronts) != 4 {
+			t.Fatalf("zoom %.2f (%d rows): every drawer should keep its front: %v", d.z(), h, fronts)
+		}
+		m.designPull(dr, false)
+		m.centreOn(dr)
+		if s := screenOf(m); d.z() >= 1 && !strings.Contains(s, "N0") {
+			t.Fatalf("zoom %.2f: drawer 1 out should show N0:\n%s", d.z(), s)
+		}
 	}
 }
 
@@ -3311,7 +3484,7 @@ func TestDesignDrawerShownWhole(t *testing.T) {
 			dr.Items = append(dr.Items, &dOct{ID: 700 + i, Kind: kNote, Header: "N" + itoa(i), Color: "#e5c07b"})
 		}
 		bx, by, bw, _ := d.rect(dr)
-		m.designPull(dr) // pulled out: as wide, its tray under its front
+		m.designPull(dr, false) // pulled out: as wide, its tray under its front
 		if x, y, w, h := d.rect(dr); x != bx || y != by || w != bw || float64(h) <= float64(drawerFrontLines)*d.z()-1 {
 			t.Fatalf("zoom %.2f: pulled out, the drawer is %d×%d at %d,%d (shut: %d wide at %d,%d)", d.z(), w, h, x, y, bw, bx, by)
 		}

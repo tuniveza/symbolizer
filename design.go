@@ -75,7 +75,10 @@ type dOct struct {
 	Layout     int     `json:"layout,omitempty"`     // an octagon's layout (octLayouts)
 	Image      string  `json:"image,omitempty"`      // an octagon's picture: a file in design/images
 	Items      []*dOct `json:"items,omitempty"`      // what its drawer (or the cabinet) holds
-	DrawerOpen bool    `json:"drawerOpen,omitempty"` // its drawer is pulled out
+	DrawerOpen bool    `json:"drawerOpen,omitempty"` // its drawer is pulled out (a drawer unit: any of its drawers)
+	Drawers    int     `json:"drawers,omitempty"`    // a drawer unit: how many drawers it has (0: one)
+	Pulled     []bool  `json:"pulled,omitempty"`     // a drawer unit: which of its drawers are pulled out
+	Slot       int     `json:"slot,omitempty"`       // in a drawer unit: which drawer it is in (0: the first)
 	OpenStack  string  `json:"openStack,omitempty"`  // the stack shown open in the drawer or cabinet
 	Scroll     int     `json:"scroll,omitempty"`     // a page: the first line shown
 	From       string  `json:"from,omitempty"`       // where it came from (a diary page, a file)
@@ -201,12 +204,13 @@ type designState struct {
 	toolbar        []toolSpot // what the toolbar row has where (for clicks)
 	place          string     // the kind a double-click on the empty board places
 	dropOn         int        // while a page or note is dragged: the structure it would go into, or -1
+	dropSlot       int        // and in a drawer unit, which drawer (-1: none in particular)
 	dirty          bool
-	anims          map[int]openAnim   // doors and drawers opening or shutting (design_anim.go)
-	lay            map[int][2]float64 // zoomed in: where each structure is drawn (design_layout.go)
-	layKey         uint64             // what lay was worked out from
-	layZoom        int                // the zoom lay was worked out for, plus 1 (0: none yet)
-	animTick       bool               // a frame for them is coming
+	anims          map[animKey]openAnim // doors and drawers opening or shutting (design_anim.go)
+	lay            map[int][2]float64   // zoomed in: where each structure is drawn (design_layout.go)
+	layKey         uint64               // what lay was worked out from
+	layZoom        int                  // the zoom lay was worked out for, plus 1 (0: none yet)
+	animTick       bool                 // a frame for them is coming
 	saveErr        string
 	savePending    bool        // a change waits to be written (designSaveLater)
 	saveTick       bool        // the wait for it has started (designSaveCmd)
@@ -287,7 +291,7 @@ func (d *designState) startUndo() *designState {
 }
 
 func loadDesign(path string) *designState {
-	d := &designState{marks: map[[2]int]dMark{}, zoom: designZoom100, sel: -1, linkFrom: -1, pen: -1, nextID: 1, dropOn: -1, selLink: -1, undoWriting: -1, loadedFrom: path}
+	d := &designState{marks: map[[2]int]dMark{}, zoom: designZoom100, sel: -1, linkFrom: -1, pen: -1, nextID: 1, dropOn: -1, dropSlot: -1, selLink: -1, undoWriting: -1, loadedFrom: path}
 	f, inParts, err := readDesignFile(path)
 	if err != nil && f.Octs == nil && f.Links == nil {
 		return d.startUndo()
@@ -385,6 +389,7 @@ func copyOcts(os []*dOct) []*dOct {
 		}
 		c := dOct{X: o.X, Y: o.Y, ID: o.ID, W: o.W, H: o.H, Header: o.Header, Body: o.Body, Footer: o.Footer, Color: o.Color,
 			Kind: o.Kind, Layout: o.Layout, Image: o.Image, DrawerOpen: o.DrawerOpen, OpenStack: o.OpenStack, Scroll: o.Scroll, From: o.From,
+			Drawers: o.Drawers, Slot: o.Slot, Pulled: append([]bool(nil), o.Pulled...),
 			LabelStyle: o.LabelStyle, LabelColor: o.LabelColor, LabelIcon: o.LabelIcon, LabelTitle: o.LabelTitle, Plate: o.Plate}
 		c.Items = copyOcts(o.Items)
 		if o.Tf != nil {
@@ -915,6 +920,10 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 			return nil
 		}
 		m.designTab(name == "shift+tab")
+	case "[", "]":
+		if o := d.byID(d.sel); o != nil && o.Kind == kDrawer { // fewer or more drawers (design_drawer.go)
+			m.designDrawerCount(o, map[bool]int{true: -1, false: 1}[name == "["])
+		}
 	case "e", "E", "shift+e":
 		m.designEdit() // write in the chosen structure's text
 	case "space":
@@ -1213,7 +1222,7 @@ func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 				m.say(kindIcons[o.Kind] + " " + itemTitle(o) + " taken out of the rack.")
 			}
 			o.X, o.Y = d.snapNearest(o, d.origX+int(math.Round(dx)), d.origY+int(math.Round(dy)))
-			d.dropOn = -1
+			d.dropOn, d.dropSlot = -1, -1
 			if d.multiOn(o) {
 				d.dragMulti(o) // the others chosen with it move as much
 				break
@@ -1221,6 +1230,7 @@ func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 			if !isContainer(o.Kind) {
 				if t := d.dropTarget(o, sx, sy); t != nil {
 					d.dropOn = t.ID
+					d.dropSlot = d.drawerSlotAt(t, sx, sy) // a drawer unit: the drawer under the mouse
 				}
 			}
 		}
@@ -1416,6 +1426,7 @@ type drawKey struct {
 	image, openStack, items, opened         string
 	layout, scroll, editing                 int
 	drawerOpen, sel, source, drop           bool
+	pulled                                  string
 	linkMode                                bool
 	bg, text, dim, accent, err, bar, stText string
 	stBG, ember                             string
@@ -1468,7 +1479,7 @@ func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
 	if o.Image != "" && !picLoaded(filepath.Join(d.imagesDir(), o.Image)) {
 		return drawKey{}, false // a missing picture may turn up: look again each time
 	}
-	if _, moving := d.anims[o.ID]; moving {
+	if d.moving(o.ID) {
 		return drawKey{}, false // opening or shutting: a new drawing each frame (design_anim.go)
 	}
 	_, _, w, h := d.rect(o)
@@ -1495,6 +1506,12 @@ func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
 		}
 		k.opened += sb.String()
 	}
+	if o.Kind == kDrawer { // its drawers, which are out, and which one a drag would go into
+		k.pulled = fmt.Sprint(o.Drawers, o.Pulled)
+		if k.drop {
+			k.pulled += "\x00" + itoa(d.dropSlot)
+		}
+	}
 	if o.Kind == kCabinet && len(d.shelfAt) > 0 {
 		for _, kind := range stackKinds { // where each shelf starts
 			k.openStack += "\x00" + itoa(d.shelfAt[shelfKey(o, kind)])
@@ -1507,7 +1524,7 @@ func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
 		var sb strings.Builder
 		for _, it := range o.Items {
 			if it != nil {
-				sb.WriteString(it.Kind + "\x00" + itemTitle(it))
+				sb.WriteString(it.Kind + "\x00" + itemTitle(it) + "\x00" + itoa(it.Slot))
 			}
 			sb.WriteByte('\n')
 		}
@@ -2513,7 +2530,10 @@ func (m *Model) designStatus() string {
 	case d.saveErr != "":
 		hint = "✗ board not saved: " + d.saveErr
 	case d.drag == dragMove && d.dropOn >= 0:
-		hint = "Let go to put it in " + octName(d.byID(d.dropOn)) + (map[bool]string{true: "", false: "'s drawer"}[d.byID(d.dropOn) != nil && d.byID(d.dropOn).Kind == kCabinet])
+		hint = "Let go to put it in " + octName(d.byID(d.dropOn))
+		if t := d.byID(d.dropOn); t != nil && t.Kind == kDrawer && d.dropSlot >= 0 {
+			hint = "Let go to put it in " + drawerName(t, d.dropSlot) // the drawer under the mouse
+		}
 	case d.editing != partNone:
 		part := map[int]string{partHeader: "header", partBody: "text", partFooter: "footer"}[d.editing]
 		if o := d.byID(d.sel); o != nil && o.Kind != kOct {

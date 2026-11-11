@@ -218,7 +218,7 @@ func selHint(o *dOct) string {
 	case kCabinet:
 		return "Space or Tab: open / shut  ·  drop sheets in  ·  X X: delete"
 	case kDrawer:
-		return "Space or Tab: pull out / push in  ·  drop anything in  ·  X X: delete"
+		return "Space or Tab: next drawer  ·  [ ]: fewer / more drawers  ·  drop anything in  ·  X X: delete"
 	case kRack:
 		return "Click a row to open it  ·  drag a row out  ·  drop anything in"
 	}
@@ -812,8 +812,14 @@ func (m *Model) designRow(o *dOct, act string, sx, sy int) tea.Cmd {
 		}
 		d.pin = pinSel{board: o.ID, at: j, active: true}
 		d.pinPress = &pinPress{board: o.ID, at: j, sx: sx, sy: sy, origX: o.Items[j].X, origY: o.Items[j].Y}
-	case act == "pull": // a drawer's handle: pull it out or push it in (design_drawer.go)
-		m.designPull(o)
+	case strings.HasPrefix(act, "pull:"): // a drawer's front: pull it out or push it in (design_drawer.go)
+		var i int
+		fmt.Sscanf(act, "pull:%d", &i)
+		m.designPullSlot(o, i)
+	case strings.HasPrefix(act, "drawers:"): // a drawer unit's [−] or [+]: fewer or more drawers
+		var n int
+		fmt.Sscanf(act, "drawers:%d", &n)
+		m.designDrawerCount(o, n)
 	case act == "doors": // a cabinet's doors: open or shut (design_cabinet.go)
 		m.designDoors(o)
 	case strings.HasPrefix(act, "shelf:"): // a shelf's "+N ▸": its next things
@@ -842,6 +848,7 @@ func (m *Model) designRow(o *dOct, act string, sx, sy int) tea.Cmd {
 		// Take it out: it lands under the mouse and follows it until let go.
 		it := o.Items[i]
 		o.Items = append(o.Items[:i:i], o.Items[i+1:]...)
+		it.Slot = 0 // out of its drawer
 		wx, wy := d.world(sx, sy)
 		iw, _ := d.size(it)
 		it.X, it.Y = int(wx)-iw/2, int(wy)-1
@@ -923,10 +930,31 @@ func (m *Model) designFileInto(it, to *dOct) {
 		it.X = max(0, min(max(0, to.W-2-pinW), bx))
 		it.Y = max(0, min(max(0, to.H-2-pinH), by))
 	}
+	slot := d.dropSlot
+	d.dropSlot = -1
+	it.Slot = 0
+	if to.Kind == kDrawer { // into the drawer it was let go on (else the one out, or the first)
+		n := drawerCount(to)
+		if slot < 0 || slot >= n {
+			slot = 0
+			for i := range n {
+				if slotOpen(to, i) {
+					slot = i
+					break
+				}
+			}
+		}
+		it.Slot = slot
+	}
 	to.Items = append(to.Items, it)
 	d.dirty = true
-	if to.Kind == kDrawer {
-		to.DrawerOpen = true // pulled out, to show it
+	if to.Kind == kDrawer && !slotOpen(to, it.Slot) {
+		setSlotOpen(to, it.Slot, true) // pulled out, to show it
+		d.startSlotAnim(to, it.Slot, true)
+	}
+	if to.Kind == kDrawer && drawerCount(to) > 1 {
+		m.say(kindIcons[it.Kind] + " " + itemTitle(it) + " put in " + drawerName(to, it.Slot) + ".")
+		return
 	}
 	if to.Kind == kCabinet {
 		to.DrawerOpen = true // its doors open on the shelf it went on

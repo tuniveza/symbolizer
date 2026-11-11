@@ -257,7 +257,7 @@ func maps2Equal(a, b map[[2]int]dMark) bool {
 // sameSaved is whether a and b would be written the same: every saved
 // field, and what their drawers hold.
 func sameSaved(a, b *dOct) bool {
-	return sameOct(a, b) && a.Scroll == b.Scroll && a.DrawerOpen == b.DrawerOpen &&
+	return sameOct(a, b) && a.Scroll == b.Scroll && a.DrawerOpen == b.DrawerOpen && slices.Equal(a.Pulled, b.Pulled) &&
 		a.OpenStack == b.OpenStack && sameSavedItems(a.Items, b.Items)
 }
 

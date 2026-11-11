@@ -176,8 +176,8 @@ func (m *Model) designTab(back bool) {
 		m.designDoors(o)
 		return
 	}
-	if o.Kind == kDrawer { // Tab pulls it out, or pushes it in (design_drawer.go)
-		m.designPull(o)
+	if o.Kind == kDrawer { // Tab pulls out its next drawer (Shift+Tab: the one before) (design_drawer.go)
+		m.designPull(o, back)
 		return
 	}
 	ps := partsOf(o)

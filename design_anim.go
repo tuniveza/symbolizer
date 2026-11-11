@@ -35,38 +35,67 @@ type openAnim struct {
 // designAnimMsg draws the board again while something opens or shuts.
 type designAnimMsg struct{}
 
+// animKey is what moves: a structure, and which of its drawers (0 for a
+// cabinet's doors, or a drawer unit's first drawer).
+type animKey struct{ id, slot int }
+
 // startOpenAnim starts o moving to its (new) DrawerOpen state. Moving the
 // other way already, it turns round from where it is.
 func (d *designState) startOpenAnim(o *dOct) {
+	if o != nil {
+		d.startSlotAnim(o, 0, o.DrawerOpen)
+	}
+}
+
+// startSlotAnim starts drawer slot of o moving open (or shut).
+func (d *designState) startSlotAnim(o *dOct, slot int, opening bool) {
 	if !designAnims || o == nil {
 		return
 	}
 	if d.anims == nil {
-		d.anims = map[int]openAnim{}
+		d.anims = map[animKey]openAnim{}
 	}
+	k := animKey{o.ID, slot}
 	start := time.Now()
-	if a, ok := d.anims[o.ID]; ok {
+	if a, ok := d.anims[k]; ok {
 		if t := time.Since(a.start); t < openAnimFor {
 			start = start.Add(-(openAnimFor - t)) // from where it is now
 		}
 	}
-	d.anims[o.ID] = openAnim{start, o.DrawerOpen}
+	d.anims[k] = openAnim{start, opening}
+}
+
+// moving is whether any part of structure id is opening or shutting.
+func (d *designState) moving(id int) bool {
+	for k := range d.anims {
+		if k.id == id {
+			return true
+		}
+	}
+	return false
 }
 
 // openness is how open o is drawn now: 0 shut, 1 open, between while it
 // moves (eased: quick to start, gentle to stop).
 func (d *designState) openness(o *dOct) float64 {
+	return d.slotOpenness(o, 0, o.DrawerOpen)
+}
+
+// slotOpenness is how open drawer slot of o is drawn now; open is where
+// it is going.
+func (d *designState) slotOpenness(o *dOct, slot int, open bool) float64 {
 	done := 0.0
-	if o.DrawerOpen {
+	if open {
 		done = 1
 	}
-	a, ok := d.anims[o.ID]
+	k := animKey{o.ID, slot}
+	a, ok := d.anims[k]
 	if !ok {
 		return done
 	}
 	t := float64(time.Since(a.start)) / float64(openAnimFor)
 	if t >= 1 {
-		delete(d.anims, o.ID)
+		delete(d.anims, k)
 		return done
 	}
 	e := 1 - math.Pow(1-math.Max(t, 0), 3) // ease out
