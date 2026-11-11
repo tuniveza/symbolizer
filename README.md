@@ -211,9 +211,9 @@ Everything on it is drawn with letters, kept in `~/.local/share/symbolizer/desig
 <br>
 
 <div align="center">
-<img src="docs/media/design4.gif" alt="A cabinet called Archive is chosen and Space opens its doors inside its frame, showing its shelves at the same size, then Space shuts it; a drawer called Box is chosen and Space pulls it out to show Keys, Recipe and Lamp small with one label each, then pushes it in; on a board called Wall, Tab chooses the pin Plan and R turns it 30 degrees, drawn as a fine dotted outline with its title and text upright; Call Ana is turned the other way, and Bell is turned on its side" width="880">
+<img src="docs/media/design4.gif" alt="A cabinet called Archive is chosen and Space opens its doors inside its frame, then shuts them; a drawer unit called Box has three drawers, each in its own colour and texture; a click on the second front pulls out only that drawer (Lamp), then the first (Keys, Recipe); Recipe is dragged onto the third front and goes into the third drawer; ] adds a fourth drawer, Tab pulls out the next drawer, [ takes the fourth away, Tab steps through the drawers and pushes them in; on a board called Wall, Tab chooses each pin and R turns it, drawn as a fine dotted outline with its title and text upright" width="880">
 <br>
-<sub>Space opens and shuts a cabinet (the same size) and a drawer · on a board, Tab chooses a pin, R turns it: its text stays upright inside a fine outline</sub>
+<sub>Space opens and shuts a cabinet · a drawer unit of three drawers, each its own colour and texture, each pulled out by itself · a thing dragged into the third drawer · ] adds a drawer, Tab the next one · on a board, Tab chooses a pin, R turns it</sub>
 </div>
 
 <br>
