@@ -152,7 +152,7 @@ func (d *designState) relayout() {
 				}
 				scale := zoomed(drawn(n), z) / sz(n) // screen cells for each of n's own cells
 				var c float64
-				if ihi := lo(it) + sz(it); ihi <= nhi && nhi-ihi < lo(it)-nlo {
+				if ihi := lo(it) + sz(it); drawn(n) < sz(n) && ihi <= nhi && nhi-ihi < lo(it)-nlo { // drawn shorter: by its end
 					c = get(n.o.ID) + zoomed(drawn(n), z) - math.Round((nhi-ihi)*scale) - zoomed(drawn(it), z) // by n's end
 				} else {
 					c = get(n.o.ID) + math.Round((lo(it)-nlo)*scale) // by n's start

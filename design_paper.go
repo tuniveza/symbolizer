@@ -928,7 +928,11 @@ func (m *Model) designFileInto(it, to *dOct) {
 		return
 	}
 	bx, by := it.X-to.X-1, it.Y-to.Y-1 // pinned on a board: where it was let go, from its inside corner
+	chosen := d.sel == it.ID
 	d.remove(it.ID)
+	if chosen {
+		d.sel, d.editing = to.ID, partNone // what it went into is chosen now (it is not on the board)
+	}
 	it.X, it.Y = 0, 0
 	if to.Kind == kBoard {
 		it.X = max(0, min(max(0, to.W-2-pinW), bx))

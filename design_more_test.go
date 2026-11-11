@@ -3860,3 +3860,44 @@ func TestDesignDrawerLooks(t *testing.T) {
 		t.Fatal("undo should bring back the first drawer's colour")
 	}
 }
+
+// Dropped into a container, a thing is no longer on the board: the
+// container is chosen instead, so its keys work straight away.
+func TestDesignFiledContainerChosen(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	dr := d.newKind(kDrawer, 0, 0)
+	n := d.newKind(kNote, 40, 0)
+	d.sel = n.ID
+	m.designFileInto(n, dr)
+	if d.sel != dr.ID {
+		t.Fatalf("after filing, the drawer should be chosen, not %d", d.sel)
+	}
+}
+
+// Zoomed out, a structure beside a drawer unit stays where it is when a
+// drawer is pulled out (the unit only grows down; what sits beside it is
+// lined up with its top, not its moving bottom).
+func TestDesignNeighbourStillWhenDrawerOpens(t *testing.T) {
+	for _, zi := range []int{2, 3, 4} { // where the unit fits the screen (taller, it is drawn shorter and what is by its end stays by its end)
+		m := designTest(t)
+		d := m.ds()
+		d.camX, d.camY, d.zoom = 0, 0, zi
+		dr := d.newKind(kDrawer, 0, 0)
+		dr.X, dr.Y, dr.W, dr.Drawers = 27, 1, 31, 3
+		for i := range 4 {
+			dr.Items = append(dr.Items, &dOct{ID: 900 + i, Kind: kNote, Header: "N", Color: "#e5c07b", Slot: i % 3})
+		}
+		b := d.newKind(kBoard, 0, 0)
+		b.X, b.Y, b.W, b.H = 61, 9, 64, 13
+		d.relayout()
+		x0, y0, _, _ := d.rect(b)
+		for i := range 3 {
+			m.designPullSlot(dr, i)
+			d.relayout()
+			if x, y, _, _ := d.rect(b); x != x0 || y != y0 {
+				t.Fatalf("zoom %.2f: pulling out drawer %d moved the board beside it from %d,%d to %d,%d", d.z(), i+1, x0, y0, x, y)
+			}
+		}
+	}
+}
