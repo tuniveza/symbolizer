@@ -459,6 +459,9 @@ func (m *Model) designHold() tea.Cmd {
 	if d == nil {
 		return nil
 	}
+	if d.holdMods == "ctrl+" {
+		return m.design3DHold() // Ctrl + arrows held: the room turns (design_3d.go)
+	}
 	var dx, dy int
 	for dir, down := range m.chord.held {
 		if down {

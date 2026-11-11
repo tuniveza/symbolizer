@@ -127,6 +127,7 @@ var helpGroups = []helpGroup{
 		{"Alt + arrows (Alt + Shift)", "move the chosen structure (further); near the closest one it snaps a small gap away from it and stops there"},
 		{"Tab · Shift + Tab", "switch areas: write in the chosen structure's header, then its text, then its footer (back), and the view moves to it; on a cabinet: the next stack"},
 		{"+ · − · 0", "zoom in · out · back to 100%, around the chosen structure (it stays in the middle); the keypad's + and − too"},
+		{"Ctrl + arrows", "3D: Left · Right turn the board's room, Up · Down tilt it (5° a press; held: it keeps turning). Each structure is a block on the back wall, lit by a lamp. + − (or the wheel): the camera closer · further; arrows: move the board; Esc (or straight on again): the flat board"},
 		{"1–8", "highlighter pen colours (press the same one again to put it down)"},
 		{"  ⌫ · over/under on the toolbar", "  rubber · pen under the text or over it; right-drag rubs out too"},
 		{"Alt + N, then P · N · S", "place a new page · note · shape in the middle of the screen"},

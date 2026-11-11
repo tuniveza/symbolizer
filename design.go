@@ -258,6 +258,7 @@ type designState struct {
 	idFor          **dOct // the octs it was made for: its first element and length
 	idLen          int
 	loadedFrom     string // the board's file
+	room           room3D // Ctrl + arrows: the board turned as a room in 3D (design_3d.go)
 }
 
 type toolSpot struct {
@@ -761,6 +762,9 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 	d := m.ds()
 	defer d.save()
 	name := keyName(k)
+	if ok, cmd := m.design3DKey(k, name); ok { // Ctrl + arrows turn the room; turned, it takes every key (design_3d.go)
+		return cmd
+	}
 	switch name {
 	case "ctrl+z":
 		m.designUndo()
@@ -1022,6 +1026,9 @@ func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 	defer d.save()
 	if ms.Y == m.height-3 {
 		return m.designToolClick(ms.X)
+	}
+	if ok, cmd := m.design3DMouse(ms); ok { // the room in 3D: a click changes nothing
+		return cmd
 	}
 	sx, sy := ms.X, ms.Y-m.boardTop()
 	d.pressX, d.pressY, d.lastPX, d.lastPY = sx, sy, sx, sy
@@ -1290,6 +1297,9 @@ func (m *Model) designRelease() tea.Cmd {
 
 func (m *Model) designWheel(ms tea.Mouse) tea.Cmd {
 	d := m.ds()
+	if ok, cmd := m.design3DMouse(ms); ok { // the room in 3D: the wheel moves the camera
+		return cmd
+	}
 	sx, sy := ms.X, ms.Y-m.boardTop()
 	z := d.z()
 	if o := d.hit(sx, sy).o; o != nil && o.ID == d.sel && o.Kind != kOct && o.Kind != kCabinet &&
@@ -1626,6 +1636,10 @@ type designFrameMsg struct{}
 // designRows draws the board in the text area.
 func (m *Model) designRows(sb *strings.Builder) {
 	d := m.ds()
+	if d.room.on() {
+		m.design3DRows(sb) // turned: the board as a room in 3D (design_3d.go)
+		return
+	}
 	if d.hoverOnly && d.frame != "" && d.frameW == m.width && d.frameH == m.boardH() {
 		d.hoverOnly = false // only the mouse moved: nothing on the board changed
 		sb.WriteString(d.frame)
@@ -2529,6 +2543,8 @@ func (m *Model) designStatus() string {
 	switch {
 	case d.saveErr != "":
 		hint = "✗ board not saved: " + d.saveErr
+	case d.room.on():
+		hint = roomHint
 	case d.drag == dragMove && d.dropOn >= 0:
 		hint = "Let go to put it in " + octName(d.byID(d.dropOn))
 		if t := d.byID(d.dropOn); t != nil && t.Kind == kDrawer && d.dropSlot >= 0 {
