@@ -103,16 +103,20 @@ type room3D struct {
 	base           []uint32  // each pixel's colour before the light
 	mul            []float32 // the light on it: base times mul, plus add of the lamp's colour
 	add            []float32
-	zb             []float32 // the depth of the nearest surface
-	face           []int32   // which face it shows (-1: none)
-	src            []int32   // the back wall cell it shows (wall and fronts), or -1
-	dirs           []r3vec   // each pixel's ray
-	tex            []r3texel // the back wall's cells (the flat board, widened: see r3room)
+	zb             []float32  // the depth of the nearest surface
+	face           []int32    // which face it shows (-1: none)
+	dirs           []r3vec    // each pixel's ray
+	tex            []r3texel  // the back wall's cells (the flat board, widened: see r3room)
+	mips           [][]uint32 // the back wall as pictures, each half as big as the one before (see mipmap)
+	mipW, mipH     []int
 	shadow         []float32 // the blocks' shadows on the back wall, per unit of it
-	glyph          []int32   // per screen cell: the wall cell whose letter shows there, or -1
-	placed         []int32   // per wall cell: the frame (stamp) its letter was put on the screen
-	claim          []int32   // per screen cell: the wall cell that took it (letters), or -1
-	stamp          int32
+	chars          []r3char  // per screen cell: the letter of a word drawn there (see words)
+	cover          []int32   // per back wall cell: the frame (stamp) a block stood on it
+	order          []r3near  // the faces with words, nearest first
+	marks          []r3run   // a face's marks, put after its words
+	firstAt        []int32   // per face: the first screen cell that shows it (see firstSeen), or -1
+	firstStamp     int32     // the frame firstAt is for
+	stamp          int32     // the frame: counts up with each drawing
 	faces          []r3face
 	pts            []r3vec
 	blocks         []r3block
@@ -737,6 +741,7 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 	d.mapCorner, d.platesOpen = corner, plates
 	rm := r.area(d, w, h, d.z())
 	r.takeRoom(d, c, &rm)
+	r.mipmap(&rm)
 	var fb strings.Builder
 	r.draw(&rm, d.z(), &fb)
 	r.frame, r.frameW, r.frameH = fb.String(), w, h

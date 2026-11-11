@@ -6,9 +6,11 @@ package main
 // depth buffer), which is lit there. A cell of the screen is four pixels,
 // two across and two down, drawn with one of the quarter-block letters
 // (▘ ▝ ▖ ▗ ▀ ▄ ▌ ▐ ▚ ▞ ▙ ▛ ▜ ▟ █ or a space): of the ways to split the four
-// into two colours, the one closest to them is taken. Where the wall and
-// the fronts of the blocks are seen about one cell for one, the letters of
-// the flat board show as they are, so the words stay readable.
+// into two colours, the one closest to them is taken; four colours close
+// together are one plain cell, so lit surfaces stay smooth. The faces show
+// the flat board's cells by their background (and box lines as lines),
+// and every word is drawn over them in the terminal's own letters, upright
+// and crisp, wherever it is seen (see words).
 //
 // The world's units: one is a cell's width, and a cell is two units tall.
 // x goes right, y up, and z out of the back wall toward the viewer. The
@@ -19,8 +21,10 @@ package main
 import (
 	"image/color"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -203,13 +207,16 @@ func blockDepth(b *r3block, z, big float64) float64 {
 // ---- the flat board as a picture ----------------------------------------------------------
 
 // r3texel is one cell of the flat board: its four quarters' colours (top
-// left, top right, bottom left, bottom right), its colours, and its letter
-// when that can show as it is.
+// left, top right, bottom left, bottom right) as the faces show it, its
+// colours, and its letter when it is a word's letter (drawn as a letter
+// of the terminal, see words), else "".
 type r3texel struct {
 	q      [4]uint32
 	fg, bg uint32
 	glyph  string
+	wide   bool // the letter is two cells wide
 	blank  bool // a space
+	arms   int8 // a box line: its arms (see boxArms)
 }
 
 // quadMask is which quarters of a cell each block letter from ▀ (U+2580)
@@ -243,28 +250,107 @@ func texelOf(cell *uv.Cell, defFG, defBG uint32) r3texel {
 		}
 		return t
 	}
-	switch s {
-	case "", " ":
+	switch {
+	case s == "" || s == " ":
 		all(t.bg)
 		t.blank = true
-	case "▒":
+	case s == "▒":
 		all(mix32(t.bg, t.fg, 0.5))
-	case "░":
+	case s == "░":
 		all(mix32(t.bg, t.fg, 0.25))
-	case "▓":
+	case s == "▓":
 		all(mix32(t.bg, t.fg, 0.75))
-	default:
-		// A letter or a line: seen from afar, a tint of its colour.
-		k := 0.35
-		if ru >= 0x2500 && ru <= 0x257f {
-			k = 0.6 // box lines: the edges of things
+	case ru >= 0x2500 && ru <= 0x257f && size == len(s):
+		// A box line, the edge of a thing: each quarter is tinted by the
+		// arms of the line that touch it, so a corner stays a corner.
+		arms := boxArms(ru)
+		t.arms = int8(arms)
+		if arms == 0 {
+			all(mix32(t.bg, t.fg, 0.55))
+			break
 		}
-		all(mix32(t.bg, t.fg, k))
-		if cell.Width == 1 && ansi.StringWidth(s) == 1 {
+		touch := [4]int{1 | 4, 1 | 8, 2 | 4, 2 | 8} // up and left touch the top left quarter, and so on
+		for i, m := range touch {
+			n := 0
+			for b := arms & m; b != 0; b &= b - 1 {
+				n++
+			}
+			t.q[i] = mix32(t.bg, t.fg, 0.45*float64(n))
+		}
+	case ru >= 0x2580 && ru <= 0x259f && ru != '▏' && size == len(s):
+		all(mix32(t.bg, t.fg, 0.45)) // the other blocks (▁ ▂ … ▉ ▊ …): about half the cell
+	case ru >= 0x2800 && ru <= 0x28ff && size == len(s):
+		all(mix32(t.bg, t.fg, 0.4)) // braille dots: a picture
+	default:
+		// A letter (or the caret ▏): the face shows only its background,
+		// and the letter itself is drawn over it as a letter.
+		all(t.bg)
+		switch sw := ansi.StringWidth(s); {
+		case sw == 1:
 			t.glyph = s
+		case sw == 2 && cell.Width == 2:
+			t.glyph, t.wide = s, true
+		default:
+			all(mix32(t.bg, t.fg, 0.35)) // nothing a cell can hold: its tint
 		}
 	}
 	return t
+}
+
+// lineCover is how much of a pixel at (u, v) in a cell (0 to 1 across
+// and down), px of a cell wide and tall, a box line with those arms
+// covers: the line about a pixel thick (never thinner than a tenth of the
+// cell), its arms running to the cell's edges.
+func lineCover(arms int, u, v, px float64) float64 {
+	hw := math.Max(0.06, 0.5*px)              // half the line's thickness
+	over := func(c, lo, hi float64) float64 { // how much of [c - px/2, c + px/2] is in [lo, hi]
+		return clampF((math.Min(c+px/2, hi)-math.Max(c-px/2, lo))/px, 0, 1)
+	}
+	span := func(a, b int) (lo, hi float64) { // the arms a (to 0) and b (to 1) along one way
+		lo, hi = 0.5-hw, 0.5+hw
+		if arms&a != 0 {
+			lo = -1
+		}
+		if arms&b != 0 {
+			hi = 2
+		}
+		return lo, hi
+	}
+	cov := 0.0
+	if arms&(4|8) != 0 { // across
+		lo, hi := span(4, 8)
+		cov = over(u, lo, hi) * over(v, 0.5-hw, 0.5+hw)
+	}
+	if arms&(1|2) != 0 { // up and down
+		lo, hi := span(1, 2)
+		cov = math.Max(cov, over(v, lo, hi)*over(u, 0.5-hw, 0.5+hw))
+	}
+	return cov
+}
+
+// boxArms is which arms a box line letter (U+2500 to U+257F) has: 1 up,
+// 2 down, 4 left, 8 right (0: not known, a diagonal).
+func boxArms(r rune) int { return int(boxArmTable[r-0x2500]) }
+
+var boxArmTable = func() (t [128]int8) {
+	for _, a := range boxArmSets {
+		for _, r := range a.s {
+			t[r-0x2500] = int8(a.arms)
+		}
+	}
+	return t
+}()
+
+var boxArmSets = []struct {
+	s    string
+	arms int
+}{
+	{"─━═╌╍┄┅┈┉╼╾", 4 | 8}, {"│┃║╎╏┆┇┊┋╽╿", 1 | 2},
+	{"┌┍┎┏╒╓╔╭", 2 | 8}, {"┐┑┒┓╕╖╗╮", 2 | 4}, {"└┕┖┗╘╙╚╰", 1 | 8}, {"┘┙┚┛╛╜╝╯", 1 | 4},
+	{"├┝┞┟┠┡┢┣╞╟╠", 1 | 2 | 8}, {"┤┥┦┧┨┩┪┫╡╢╣", 1 | 2 | 4},
+	{"┬┭┮┯┰┱┲┳╤╥╦", 2 | 4 | 8}, {"┴┵┶┷┸┹┺┻╧╨╩", 1 | 4 | 8},
+	{"┼┽┾┿╀╁╂╃╄╅╆╇╈╉╊╋╪╫╬", 15},
+	{"╴╸", 4}, {"╵╹", 1}, {"╶╺", 8}, {"╷╻", 2},
 }
 
 // takeRoom reads the back wall's cells: the flat board c where it is on
@@ -274,7 +360,7 @@ func (r *room3D) takeRoom(d *designState, c *boardCanvas, rm *r3room) {
 	n := rm.tw * rm.th
 	if len(r.tex) != n {
 		r.tex = make([]r3texel, n)
-		r.placed = make([]int32, n)
+		r.cover = make([]int32, n)
 	}
 	defFG, defBG := hex32(cText), hex32(cBG)
 	plain := r3texel{fg: defFG, bg: defBG, q: [4]uint32{defBG, defBG, defBG, defBG}, blank: true}
@@ -318,6 +404,48 @@ func (r *room3D) takeRoom(d *designState, c *boardCanvas, rm *r3room) {
 		line := c.Lines[y]
 		for x := 0; x < w && x < len(line); x++ {
 			put(x, y, &line[x])
+		}
+	}
+}
+
+// mipmap makes the back wall's pictures: the first is its pixels (four a
+// cell, as the faces show them), and each after it is half as big each
+// way, a pixel the mean of four. A face seen small takes its colours from
+// the picture whose pixels are about as big as the screen's, so its
+// lines and letters' backgrounds blend smoothly instead of flickering
+// into noise.
+func (r *room3D) mipmap(rm *r3room) {
+	w, h := 2*rm.tw, 2*rm.th
+	if len(r.mips) == 0 || r.mipW[0] != w || r.mipH[0] != h {
+		r.mips, r.mipW, r.mipH = r.mips[:0], r.mipW[:0], r.mipH[:0]
+		for lw, lh := w, h; len(r.mips) < 6; lw, lh = (lw+1)/2, (lh+1)/2 {
+			r.mips, r.mipW, r.mipH = append(r.mips, make([]uint32, lw*lh)), append(r.mipW, lw), append(r.mipH, lh)
+			if lw == 1 && lh == 1 {
+				break
+			}
+		}
+	}
+	l0 := r.mips[0]
+	for cy := 0; cy < rm.th; cy++ {
+		for cx := 0; cx < rm.tw; cx++ {
+			q := &r.tex[cy*rm.tw+cx].q
+			i := 2*cy*w + 2*cx
+			l0[i], l0[i+1], l0[i+w], l0[i+w+1] = q[0], q[1], q[2], q[3]
+		}
+	}
+	for k := 1; k < len(r.mips); k++ {
+		src, sw, sh := r.mips[k-1], r.mipW[k-1], r.mipH[k-1]
+		dst, dw := r.mips[k], r.mipW[k]
+		for y := 0; y < r.mipH[k]; y++ {
+			y0, y1 := 2*y*sw, min(2*y+1, sh-1)*sw
+			for x := 0; x < dw; x++ {
+				x0, x1 := 2*x, min(2*x+1, sw-1)
+				a, b, c, d := src[y0+x0], src[y0+x1], src[y1+x0], src[y1+x1]
+				red := (a>>16&255 + b>>16&255 + c>>16&255 + d>>16&255 + 2) / 4
+				green := (a>>8&255 + b>>8&255 + c>>8&255 + d>>8&255 + 2) / 4
+				blue := (a&255 + b&255 + c&255 + d&255 + 2) / 4
+				dst[y*dw+x] = red<<16 | green<<8 | blue
+			}
 		}
 	}
 }
@@ -556,6 +684,21 @@ func (r *room3D) shadows(rm *r3room, lamp r3vec) {
 	}
 }
 
+// shadowAt is the shadow at (u, v) on the back wall (u units from its
+// left edge, v from its top), blended between the four nearest values so
+// its edges are smooth, not steps.
+func (r *room3D) shadowAt(u, v float64) float32 {
+	w, ph := r.rm.tw, 2*r.rm.th
+	u, v = clampF(u-0.5, 0, float64(w-1)), clampF(v-0.5, 0, float64(ph-1))
+	i, j := int(u), int(v)
+	i1, j1 := min(i+1, w-1), min(j+1, ph-1)
+	fu, fv := float32(u-float64(i)), float32(v-float64(j))
+	s := r.shadow
+	top := s[j*w+i] + (s[j*w+i1]-s[j*w+i])*fu
+	bot := s[j1*w+i] + (s[j1*w+i1]-s[j1*w+i])*fu
+	return top + (bot-top)*fv
+}
+
 // fillHull fills the smallest convex shape round pts with 1 in a w×h mask.
 func fillHull(pts [][2]float64, mask []float32, w, h int) {
 	// The hull, by the monotone chain.
@@ -703,19 +846,23 @@ func fitRoom(cam, right, up, fwd r3vec, f, hw, hh float64, rm *r3room, angle flo
 	return (1 - a) + room*a, -a * room * (x0 + x1) / 2, -a * room * (y0 + y1) / 2
 }
 
-// floorAt is the floor's colour at (x, z): planks running out from the
-// wall, each a slightly different shade, with dark joins.
-func floorAt(base uint32, x, z float64) uint32 {
+// floorAt is the floor's colour at (x, z), seen with px units to a pixel:
+// planks running out from the wall, each a shade apart, with soft joins.
+// Far away, where a join would be thinner than a pixel and only flicker,
+// the joins fade out.
+func floorAt(base uint32, x, z, px float64) uint32 {
 	const plankW, plankL = 7.0, 34.0
 	mod := func(a, b float64) float64 { return a - b*math.Floor(a/b) } // from 0 up to b, below 0 too
 	p := math.Floor(x / plankW)
 	along := z + mod(p*13, plankL)
-	hash := mod(p*7.31+math.Floor(along/plankL)*3.17, 1)
-	col := mix32(base, 0, 0.04+0.07*hash)
-	if x-p*plankW < 0.45 || mod(along, plankL) < 0.6 {
-		col = mix32(col, 0, 0.2)
-	}
-	return col
+	hash := mod(p*7.31+math.Floor(along/plankL)*3.17, 1) // each length of plank its own shade
+	dark := 0.04 + 0.03*hash
+	// The join between two planks (the lines running out from the wall),
+	// blurred to a pixel's width: 1 on it, 0 away from it.
+	d := math.Min(x-p*plankW, plankW-(x-p*plankW))
+	j := clampF(1-(d-0.25)/math.Max(px, 0.3), 0, 1)
+	dark += 0.1 * j * clampF(1.6-px, 0, 1)
+	return mix32(base, 0, dark)
 }
 
 // draw draws the room into sb: rm.h lines of rm.w cells.
@@ -726,8 +873,7 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 		r.pw, r.ph = pw, ph
 		n := pw * ph
 		r.base, r.mul, r.add = make([]uint32, n), make([]float32, n), make([]float32, n)
-		r.zb, r.face, r.src, r.dirs = make([]float32, n), make([]int32, n), make([]int32, n), make([]r3vec, n)
-		r.glyph = make([]int32, w*h)
+		r.zb, r.face, r.dirs = make([]float32, n), make([]int32, n), make([]r3vec, n)
 	}
 	r.stamp++
 	var v r3view
@@ -757,15 +903,11 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 	}
 	for i := range r.base {
 		r.base[i], r.mul[i], r.add[i] = outside, 1, 0
-		r.zb[i], r.face[i], r.src[i] = math.MaxFloat32, -1, -1
+		r.zb[i], r.face[i] = math.MaxFloat32, -1
 	}
-	for i := range r.glyph {
-		r.glyph[i] = -1
-	}
-
 	const near = 0.25 // faces closer to the camera than this are cut off
 	hw, hh := rm.hw, rm.hh
-	tw, tx0, ty0 := rm.tw, rm.tx0, rm.ty0
+	tx0, ty0 := rm.tx0, rm.ty0
 	var cs, clip [20]r3vec
 	var poly [20][2]float64
 	for fi := range r.faces {
@@ -821,7 +963,6 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 					continue
 				}
 				p := r3vec{cam.x + dir.x*t, cam.y + dir.y*t, cam.z + dir.z*t}
-				src := int32(-1)
 				var col uint32
 				shade := float32(1)
 				switch fc.mat {
@@ -829,28 +970,49 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 					fx := p.x + hw
 					cx := max(fc.cx0, min(fc.cx1-1, int(math.Floor(fx))))
 					hy := max(fc.py0, min(fc.py1-1, int(math.Floor(hh-p.y))))
-					ti := (hy>>1-ty0)*tw + cx - tx0
-					src = int32(ti)
-					q := (hy & 1) << 1
-					if fx-float64(cx) >= 0.5 {
-						q++
+					// The wall's pixel here (two a cell across, two down), from
+					// the picture about as fine as the screen's pixels are.
+					tx := 2*(cx-tx0) + int(2*(fx-float64(cx)))
+					ty := hy - 2*ty0
+					// How many of the wall's pixels one of the screen's takes
+					// (more where the face is seen at a slant), and so which
+					// picture.
+					k, s := 0, t/f
+					if s > 1.25 || nd > -0.5 {
+						s /= math.Sqrt(math.Max(-nd/math.Sqrt(dir.x*dir.x+dir.y*dir.y+dir.z*dir.z), 0.03))
 					}
-					col = r.tex[ti].q[q]
+					for ss := s; k < len(r.mips)-1 && ss > 1.6; ss /= 2 {
+						k++
+					}
+					col = r.mips[k][(ty>>k)*r.mipW[k]+tx>>k]
+					if s < 0.75 {
+						// Seen bigger than on the flat board: a box line is
+						// drawn as a thin line, not a whole cell's tint.
+						cy := hy >> 1
+						if t := &r.tex[(cy-ty0)*rm.tw+cx-tx0]; t.arms != 0 {
+							cov := lineCover(int(t.arms), fx-float64(cx), (hh-p.y)/2-float64(cy), 0.5*s)
+							col = mix32(t.bg, t.fg, 0.85*cov)
+						}
+					}
 					if fc.mat == matBoard {
-						shade = 1 - 0.7*r.shadow[(hy-2*ty0)*tw+cx-tx0]
+						shade = 1 - 0.7*r.shadowAt(fx-float64(tx0), hh-p.y-float64(2*ty0))
 					}
 				case matSolid:
 					col = fc.col
 					if fc.edge {
 						q := p.sub(fc.o)
 						u, v := q.dot(fc.eu), q.dot(fc.ev)
+						// Its edges, a little darker: a band e wide, blurred to
+						// a pixel's width (px) so far away it does not flicker.
 						e := math.Min(0.45, 0.25*math.Min(fc.lu, fc.lv))
-						if u < e || v < e || u > fc.lu-e || v > fc.lv-e {
-							col = mix32(col, 0, 0.3) // its edges, a little darker
+						px := math.Max(t/f, 0.1)
+						d := math.Min(math.Min(u, v), math.Min(fc.lu-u, fc.lv-v))
+						if cov := clampF((e-d)/px+0.5, 0, 1); cov > 0 {
+							col = mix32(col, 0, 0.3*cov*math.Min(1, 2*e/px))
 						}
 					}
 				case matFloor:
-					col = floorAt(fc.col, p.x+hw, p.z)
+					col = floorAt(fc.col, p.x+hw, p.z, t/f)
 				case matWall:
 					col = fc.col
 					if p.y < rm.y0+3 {
@@ -859,7 +1021,7 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 				case matLamp, matShade:
 					col = fc.col
 				}
-				r.zb[idx], r.face[idx], r.src[idx], r.base[idx] = float32(t), fid, src, col
+				r.zb[idx], r.face[idx], r.base[idx] = float32(t), fid, col
 
 				// The light here.
 				dl := 1 / math.Sqrt(dir.x*dir.x+dir.y*dir.y+dir.z*dir.z)
@@ -898,177 +1060,575 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 		})
 	}
 
-	r.letters(&v, rm)
+	r.words(&v, rm)
 	r.write(w, h, sb)
 }
 
-// letters puts the flat board's letters on the screen where the wall and
-// the blocks' fronts are seen about one cell for one: there the text
-// reads as on the flat board. Elsewhere the cells are only their colours.
+// ---- the words ----------------------------------------------------------------------------
 //
-// Each board cell goes to the screen cell its middle is seen in. Drawn a
-// little bigger or smaller than the board, a word would get a gap or lose
-// a letter, so a word's letters go side by side on one screen row, centred
-// on where it is seen, and a word shows whole or not at all (only what is
-// off the screen is left out). Spaces take their screen cells too, so
-// where two rows would fall on one screen row, the second does not show.
-func (r *room3D) letters(v *r3view, rm *r3room) {
-	pw := r.pw
+// Words are never pixels: every line of words on the wall and on the
+// blocks' fronts is drawn in the terminal's own letters, one a cell and
+// upright, at any turn, tilt, zoom or distance. A line starts where the
+// start of its cells is seen (a centred line seen bigger: where its middle
+// is), and runs to the right along the screen row. A letter shows only
+// where its face is not behind another block, so a word half hidden
+// behind a nearer block is cut there (with "…").
+//
+// Where a front is seen so small or slanted that its lines would fall
+// closer than a row apart, its title still shows, and then as many of the
+// next lines as fit, a row apart. A line longer than the face is wide
+// there is cut short with "…" (a title may stand out a little past a very
+// narrow face). Every face's title is placed before any other line, the
+// nearer face first: where words would meet, a title wins over other
+// lines, and a nearer face's words over a further one's. A title that
+// would be hidden, taken or off the screen moves along its face to where
+// it can show.
+
+// r3char is a letter drawn in a screen cell.
+type r3char struct {
+	s      string
+	fg, bg uint32
+	stamp  int32 // the frame it was put there (r.stamp): older ones are not there
+	cont   bool  // the second cell of a two cells wide letter
+	face   int32 // the face whose words it is part of
+}
+
+// r3run is a line of words on a face: cells x0 ≤ x < x1 of row y of the
+// flat board. Without words (a letter or a digit) it is only a mark.
+type r3run struct {
+	x0, x1, y int
+	words     bool
+}
+
+const (
+	titleRoom = 16 // a title may stand out past a narrow face until it is this wide (and 2 past any face)
+	runGap    = 3  // this many spaces in a row part two lines of words
+)
+
+// words puts the words of every face that shows the flat board on the
+// screen, the nearest face first.
+func (r *room3D) words(v *r3view, rm *r3room) {
 	w, h := rm.w, rm.h
-	hw, hh := rm.hw, rm.hh
-	tw, tx0, ty0 := rm.tw, rm.tx0, rm.ty0
-	if len(r.claim) != w*h {
-		r.claim = make([]int32, w*h)
+	if len(r.chars) != w*h {
+		r.chars = make([]r3char, w*h)
 	}
-	for i := range r.claim {
-		r.claim[i] = -1
-	}
-	cam, right, up, fwd, f, px, py := v.cam, v.right, v.up, v.fwd, v.f, v.px, v.py
-	if -fwd.z < math.Cos(60*math.Pi/180) {
-		return // turned more than 60° from the wall: no cell is seen one for one
-	}
-	// A step of one cell right, and one down, as the camera sees it.
-	dR := r3vec{right.x, up.x, fwd.x}
-	dD := r3vec{-2 * right.y, -2 * up.y, -2 * fwd.y}
-	// target is the screen cell where the middle of board cell (cx, cy) on
-	// a face at depth z is seen, and how: readOK when it is seen there
-	// about one for one, readOff when it would be but is off the screen.
-	target := func(cx, cy int, z float64) (int, int) {
-		q := r3vec{float64(cx) + 0.5 - hw, hh - float64(2*cy+1), z}.sub(cam)
-		c := r3vec{q.dot(right), q.dot(up), q.dot(fwd)}
-		cr, cd := c.add(dR), c.add(dD)
-		if c.z < 1 || cr.z < 1 || cd.z < 1 {
-			return 0, readBad
+	// The back wall's cells a block stands on: the block's front shows
+	// their words, not the wall.
+	for _, b := range r.blocks {
+		for y := max(b.y0, rm.ty0); y < min(b.y1, rm.ty0+rm.th); y++ {
+			row := r.cover[(y-rm.ty0)*rm.tw:]
+			for x := max(b.x0, rm.tx0); x < min(b.x1, rm.tx0+rm.tw); x++ {
+				row[x-rm.tx0] = r.stamp
+			}
 		}
-		sx, sy := px+f*c.x/c.z, py-f*c.y/c.z
-		rx, ry := px+f*cr.x/cr.z-sx, py-f*cr.y/cr.z-sy
-		dx, dy := px+f*cd.x/cd.z-sx, py-f*cd.y/cd.z-sy
-		if rx < 0.75 || rx > 1.6 || math.Abs(ry) > 0.4 || dy < 1.5 || dy > 3.2 || math.Abs(dx) > 0.4 {
-			return 0, readBad // turned too far, or too small or big, to read
-		}
-		col, row := int(math.Floor(sx)), int(math.Floor(sy/2))
-		if col < 0 || col >= w || row < 0 || row >= h {
-			return 0, readOff
-		}
-		return row*w + col, readOK
 	}
-	// free: screen cell at shows face fid in all four of its pixels, and
-	// nothing has taken it yet.
-	free := func(at int, fid int32) bool {
-		tl := at/w*2*pw + 2*(at%w)
-		return r.claim[at] < 0 && r.face[tl] == fid && r.face[tl+1] == fid && r.face[tl+pw] == fid && r.face[tl+pw+1] == fid
-	}
-	tex := func(cx, cy int) *r3texel { return &r.tex[(cy-ty0)*tw+cx-tx0] }
-	type letter struct {
-		at int   // the screen cell
-		s  int32 // the wall cell
-	}
-	var word []letter
+	r.order = r.order[:0]
 	for fi := range r.faces {
 		fc := &r.faces[fi]
 		if !fc.seen || (fc.mat != matBoard && fc.mat != matFront) {
 			continue
 		}
-		z := r.pts[fc.p0].z
-		fid := int32(fi)
-		for cy := fc.py0 >> 1; cy < fc.py1>>1; cy++ {
-			if fc.mat == matFront && !r.rowReads(target, tex, fc, cy, z) {
-				continue // a line of a structure shows whole or not at all
+		d := math.Inf(1) // the wall: last
+		if fc.mat == matFront {
+			mid := r3vec{(float64(fc.cx0+fc.cx1))/2 - rm.hw, rm.hh - float64(fc.py0+fc.py1)/2, r.pts[fc.p0].z}
+			d = mid.sub(v.cam).dot(v.fwd)
+		}
+		r.order = append(r.order, r3near{fi: fi, d: d})
+	}
+	sort.Slice(r.order, func(i, j int) bool { return r.order[i].d < r.order[j].d })
+	// The titles first, so another face's lines never take a title's
+	// place; then the other lines and marks.
+	for i := range r.order {
+		r.faceWords(&r.order[i], v, rm, true)
+	}
+	for i := range r.order {
+		r.faceWords(&r.order[i], v, rm, false)
+	}
+}
+
+// r3near is a face and how far in front of the camera it is.
+type r3near struct {
+	fi int
+	d  float64
+	// After its title is placed: the flat board row after the title's,
+	// and the first screen row its next line may go on.
+	cy, next int
+}
+
+// faceWords puts the words of face o on the screen: with titles, its
+// title (a front's first line of words); else its lines one under another
+// from under its title down, as many as fit, and then its marks (a line
+// of only signs, such as ◹ or ●) where they are seen, if there is room.
+// The back wall has no title: all its words go with the other lines.
+func (r *room3D) faceWords(o *r3near, v *r3view, rm *r3room, titles bool) {
+	fi := o.fi
+	fc := &r.faces[fi]
+	wall := fc.mat == matBoard
+	z := r.pts[fc.p0].z
+	cam, right, up, fwd, f, px, py := v.cam, v.right, v.up, v.fwd, v.f, v.px, v.py
+	hw, hh := rm.hw, rm.hh
+	tw, tx0, ty0 := rm.tw, rm.tx0, rm.ty0
+	// proj is where point (bx, by) of the face (in flat board cells: bx
+	// across, by down) is seen on the screen, in cells.
+	proj := func(bx, by float64) (sx, sy float64, ok bool) {
+		q := r3vec{bx - hw - cam.x, hh - 2*by - cam.y, z - cam.z}
+		cz := q.dot(fwd)
+		if cz < 0.25 {
+			return 0, 0, false
+		}
+		return px + f*q.dot(right)/cz, (py - f*q.dot(up)/cz) / 2, true
+	}
+	tex := func(x, y int) *r3texel { return &r.tex[(y-ty0)*tw+x-tx0] }
+	covered := func(x, y int) bool { return wall && r.cover[(y-ty0)*tw+x-tx0] == r.stamp }
+	// place is where line i of runs starts on the screen, and how many
+	// cells it may take: to the next line's start, or the face's edge.
+	place := func(runs []r3run, i int) (col, row, limit int, ok bool) {
+		ru := runs[i]
+		sx, sy, vis := proj(float64(ru.x0), float64(ru.y)+0.5)
+		end := float64(fc.cx1)
+		if i+1 < len(runs) {
+			end = float64(runs[i+1].x0) - 1
+		} else if wall {
+			end = float64(ru.x1) + 2
+		}
+		ex, _, vis2 := proj(end, float64(ru.y)+0.5)
+		col = int(math.Floor(sx + 0.5))
+		if n := ru.x1 - ru.x0; !wall && len(runs) == 1 && abs((ru.x0-fc.cx0)-(fc.cx1-ru.x1)) <= 1 {
+			// A line in the middle of its face (a title, centred words),
+			// seen bigger than its letters: in the middle of where it is seen.
+			if rx, _, ok := proj(float64(ru.x1), float64(ru.y)+0.5); ok && rx-sx > float64(n)+0.5 {
+				col = int(math.Floor((sx+rx)/2 - float64(n)/2 + 0.5))
 			}
-			lineRow := -1 // the screen row the line's first word went on
-			for cx := fc.cx0; cx < fc.cx1; {
-				s := int32((cy-ty0)*tw + cx - tx0)
-				if tex(cx, cy).glyph == "" { // a space: it takes its cell
-					at, how := target(cx, cy, z)
-					ok := how == readOK
-					if ok && cx > fc.cx0 && r.claim[at] == s-1 && (at+1)/w == at/w {
-						at++ // drawn a little smaller: the cell before it took its cell
-					}
-					if ok && free(at, fid) {
-						r.claim[at] = s
-						if tex(cx, cy).blank {
-							r.glyph[at] = s // a clean space between the words
-						}
-					}
-					cx++
-					continue
+		}
+		return col, int(math.Floor(sy)), int(math.Floor(ex+0.5)) - col, vis && vis2
+	}
+	if titles && wall {
+		return
+	}
+	next := math.MinInt // the first screen row a further line may go on
+	title := titles
+	from := fc.py0 >> 1 // the first row whose lines go on the screen now
+	if !titles && !wall {
+		from, next = o.cy, o.next
+	}
+	o.cy = fc.py1 >> 1 // no title: no further lines
+	var runs, words []r3run
+	marks := r.marks[:0]
+	for cy := fc.py0 >> 1; cy < fc.py1>>1; cy++ {
+		runs = r.rowRuns(runs[:0], fc, cy, tex, covered)
+		words = words[:0]
+		for _, ru := range runs {
+			if ru.words {
+				words = append(words, ru)
+			} else if !titles {
+				marks = append(marks, ru)
+			}
+		}
+		if len(words) == 0 || cy < from {
+			continue
+		}
+		var at [16][3]int // each line's column, row and room
+		n := min(len(words), len(at))
+		top := math.MaxInt
+		ok := true
+		for i := 0; i < n && ok; i++ {
+			col, row, limit, vis := place(words, i)
+			if i > 0 && abs(row-at[0][1]) <= 1 {
+				row = at[0][1] // the lines of a row stay on one screen row
+			}
+			at[i] = [3]int{col, row, limit}
+			top, ok = min(top, row), vis
+		}
+		if !ok {
+			continue
+		}
+		// onFace is whether screen row row is still on the face, under the
+		// row's first line.
+		_, bot, vis := proj(float64(words[0].x0), float64(fc.py1)/2)
+		onFace := func(row int) bool { return vis && float64(row)+0.5 <= bot+0.25 }
+		shift := 0
+		if !wall && !title {
+			// A line a row under the one before at least, and only while it
+			// is still on the face.
+			shift = max(0, next-top)
+			if !onFace(top + shift) {
+				break
+			}
+		}
+		if !wall && title {
+			// A title above or left of the screen, on a face that is on it:
+			// on the screen's first row, or from its first column.
+			if top < 0 && onFace(0) {
+				shift = -top
+			}
+			if c := at[0][0]; c < 0 && c+at[0][2] > 1 {
+				at[0][0], at[0][2] = 0, c+at[0][2]
+			}
+			if c, need := at[0][0], min(words[0].x1-words[0].x0, 5); c < rm.w && c+need > rm.w {
+				at[0][0] = rm.w - need // running off the right: its first letters on the screen
+			}
+			if row := at[0][1] + shift; row < 0 || row >= rm.h || at[0][0] < 0 || at[0][0] >= rm.w {
+				// Still off the screen, where some of the face is on it:
+				// where the face is first seen.
+				if col, row, n, ok := r.firstSeen(int32(fi)); ok {
+					at[0] = [3]int{col, row - shift, n}
 				}
-				end := cx
-				for end < fc.cx1 && tex(end, cy).glyph != "" {
-					end++
-				}
-				// The word goes on one screen row, its letters side by side,
-				// centred on where its first and last letters are seen.
-				word = word[:0]
-				ok := true
-				for x := cx; x < end && ok; x++ {
-					at, how := target(x, cy, z)
-					if how != readOff { // off the screen: the rest of the word still shows
-						ok = how == readOK
-						word = append(word, letter{at, s + int32(x-cx)})
+			}
+		}
+		if !wall {
+			// A line goes a row lower while the words of a nearer face are
+			// where it would go, as long as it is on the face. A title also
+			// moves while its face is hidden there (behind a nearer block),
+			// up or down along the face's side, to the nearest row where it
+			// is seen.
+			good := func(shift int) bool {
+				for i := 0; i < n; i++ {
+					need := min(words[i].x1-words[i].x0, 3)
+					if title && i == 0 {
+						need = min(words[i].x1-words[i].x0, 4) // at least "Abc…" of it in sight
+					}
+					if r.room(int32(fi), fc, at[i][0], at[i][1]+shift, need, title && i == 0) < need {
+						return false
 					}
 				}
-				if n := len(word); ok && n > 0 {
-					row := word[n/2].at / w
-					if lineRow >= 0 && abs(row-lineRow) <= 1 {
-						row = lineRow // the words of a line stay on one screen row
-					}
-					start := int(math.Round(float64(word[0].at%w+word[n-1].at%w)/2 - float64(n-1)/2))
-					if at := row*w + start; start >= 0 && start < w && r.claim[at] >= 0 && r.claim[at] == word[0].s-1 {
-						start++ // drawn a little smaller: the cell before it took its cell
-					}
-					if at := row*w + start - 1; start >= 1 && start <= w && r.glyph[at] >= 0 && r.tex[r.glyph[at]].glyph != "" {
-						start++ // straight after another word: a cell further, for the space between them
-					}
-					for i := range word {
-						col, l := start+i, &word[i]
-						if col < 0 || col >= w || abs(l.at%w-col) > 2 || abs(l.at/w-row) > 1 || !free(row*w+col, fid) {
-							ok = false // not about one cell for one here, or its cells are taken
+				return true
+			}
+			if !good(shift) {
+				if title {
+					// The rows the face's left side is seen on.
+					_, ra, ok1 := proj(float64(fc.cx0), float64(fc.py0)/2)
+					_, rb, ok2 := proj(float64(fc.cx0), float64(fc.py1)/2)
+					lo, hi := int(math.Floor(math.Min(ra, rb))), int(math.Floor(math.Max(ra, rb)))
+					for k := 1; ok1 && ok2 && k <= 16; k++ {
+						if row := top + shift + k; row <= hi && good(shift+k) {
+							shift += k
 							break
 						}
-						l.at = row*w + col
+						if row := top + shift - k; row >= lo && good(shift-k) {
+							shift -= k
+							break
+						}
+					}
+				} else {
+					for k := 1; k <= 12 && onFace(top+shift+k); k++ {
+						if good(shift + k) {
+							shift += k
+							break
+						}
 					}
 				}
-				if ok && len(word) > 0 {
-					for _, l := range word {
-						r.claim[l.at], r.glyph[l.at], r.placed[l.s] = l.s, l.s, r.stamp
-					}
-					lineRow = word[0].at / w
-				}
-				cx = end
 			}
+		}
+		low := math.MinInt
+		for i := 0; i < n; i++ {
+			// A title stands out past a narrow face if it must (what it
+			// covers of the row's other words then does not show); on the
+			// wall, the last words of a row may.
+			keep := title && i == 0 || wall && i+1 == len(words)
+			r.putRun(int32(fi), fc, words[i], at[i][0], at[i][1]+shift, at[i][2], keep)
+			low = max(low, at[i][1]+shift)
+		}
+		next = low + 1
+		if title {
+			o.cy, o.next = cy+1, next
+			return
+		}
+	}
+	for i, ru := range marks {
+		if col, row, _, ok := place(marks[i:i+1], 0); ok {
+			r.putRun(int32(fi), fc, ru, col, row, ru.x1-ru.x0, false)
+		}
+	}
+	r.marks = marks
+}
+
+// firstSeen is the first screen cell, row by row, that shows face fi
+// (three of its four pixels at least), and how many cells from it along
+// the row do.
+func (r *room3D) firstSeen(fi int32) (col, row, n int, ok bool) {
+	w, pw := r.rm.w, r.pw
+	shows := func(c, row int, fi int32) bool {
+		tl := 2*row*pw + 2*c
+		k := 0
+		for _, i := range [4]int{tl, tl + 1, tl + pw, tl + pw + 1} {
+			if r.face[i] == fi {
+				k++
+			}
+		}
+		return k >= 3
+	}
+	if r.firstAt == nil || r.firstStamp != r.stamp {
+		// Once a drawing: every face's first such cell, in one look over
+		// the screen.
+		r.firstStamp = r.stamp
+		if cap(r.firstAt) < len(r.faces) {
+			r.firstAt = make([]int32, len(r.faces))
+		}
+		r.firstAt = r.firstAt[:len(r.faces)]
+		for i := range r.firstAt {
+			r.firstAt[i] = -1
+		}
+		for row := 0; row < r.rm.h; row++ {
+			for c := 0; c < w; c++ {
+				if f := r.face[2*row*pw+2*c]; f >= 0 && r.firstAt[f] < 0 && shows(c, row, f) {
+					r.firstAt[f] = int32(row*w + c)
+				}
+			}
+		}
+	}
+	at := int(r.firstAt[fi])
+	if at < 0 {
+		return 0, 0, 0, false
+	}
+	col, row = at%w, at/w
+	n = 1
+	for col+n < w && shows(col+n, row, fi) {
+		n++
+	}
+	return col, row, n, true
+}
+
+// room is how many cells from (col, row) to the right, up to n, a line
+// of face fi may take: cells no other words have taken and, with sight,
+// where the face is not hidden behind a nearer block. Cells left of the
+// screen count (the line runs off there); the screen's right edge ends it.
+func (r *room3D) room(fi int32, fc *r3face, col, row, n int, sight bool) int {
+	w := r.rm.w
+	if row < 0 || row >= r.rm.h {
+		return 0
+	}
+	num := fc.k - fc.n.dot(r.view.cam)
+	c := col
+	for ; c < col+n && c < w; c++ {
+		if c < 0 {
+			continue
+		}
+		at := row*w + c
+		if r.chars[at].stamp == r.stamp || sight && !r.inSight(at, fi, fc.own, fc.n, num) {
+			break
+		}
+	}
+	return c - col
+}
+
+// rowRuns adds the lines of words in row cy of face fc to runs: letters,
+// with no more than runGap-1 spaces between them, between the box lines.
+func (r *room3D) rowRuns(runs []r3run, fc *r3face, cy int, tex func(x, y int) *r3texel, covered func(x, y int) bool) []r3run {
+	for cx := fc.cx0; cx < fc.cx1; {
+		if tex(cx, cy).glyph == "" || covered(cx, cy) {
+			cx++
+			continue
+		}
+		start, end, gap := cx, cx, 0
+		for x := cx; x < fc.cx1 && !covered(x, cy); {
+			t := tex(x, cy)
+			if t.glyph != "" {
+				x++
+				if t.wide {
+					x++
+				}
+				end, gap = min(x, fc.cx1), 0
+				continue
+			}
+			if t.blank && gap < runGap-1 {
+				gap++
+				x++
+				continue
+			}
+			break
+		}
+		// A lone dot or cross of the board's grid on the wall is not a word.
+		if g := tex(start, cy).glyph; fc.mat == matBoard && end-start == 1 && (g == "·" || g == "+") {
+			cx = end
+			continue
+		}
+		ru := r3run{x0: start, x1: end, y: cy}
+		for x := start; x < end && !ru.words; x++ {
+			ru.words = strings.ContainsFunc(tex(x, cy).glyph, isWordRune)
+		}
+		runs = append(runs, ru)
+		cx = end
+	}
+	return runs
+}
+
+// putRun draws line ru of face fc from screen cell (col, row) to the
+// right, in at most limit cells (keep: a title, which may stand out past
+// a narrow face). It takes only cells no nearer face's words have taken,
+// where the face is not behind something nearer: where those end, the
+// line is cut short with "…" (a title keeps at least its first letters).
+func (r *room3D) putRun(fi int32, fc *r3face, ru r3run, col, row, limit int, keep bool) {
+	if row < 0 || row >= r.rm.h {
+		return
+	}
+	tw, tx0, ty0 := r.rm.tw, r.rm.tx0, r.rm.ty0
+	type letter struct {
+		s    string
+		t    int32 // its cell of the flat board
+		wide bool
+	}
+	var buf [96]letter
+	ls := buf[:0]
+	width := 0
+	for x := ru.x0; x < ru.x1; {
+		ti := int32((ru.y-ty0)*tw + x - tx0)
+		t := &r.tex[ti]
+		l := letter{s: t.glyph, t: ti, wide: t.wide}
+		if l.s == "" {
+			l.s = " "
+		}
+		ls = append(ls, l)
+		x++
+		width++
+		if t.wide {
+			x++
+			width++
+		}
+	}
+	if keep {
+		limit = max(limit+2, min(width, titleRoom))
+	}
+	limit = min(limit, r.room(fi, fc, col, row, limit, true))
+	if width > limit && len(ls) > 3 && ls[1].s == " " && !ls[0].wide && !strings.ContainsFunc(ls[0].s, isWordRune) {
+		ls, width = ls[2:], width-2 // squeezed: the sign before a title gives way to its words
+	}
+	if limit < 1 || width > limit && (limit < 2 || !keep && limit < 3) {
+		return // no room for a letter and "…"
+	}
+	if width > limit {
+		// Cut short: as many letters as fit with "…" after them.
+		n, used := 0, 0
+		for n < len(ls) {
+			lw := 1
+			if ls[n].wide {
+				lw = 2
+			}
+			if used+lw > limit-1 {
+				break
+			}
+			used += lw
+			n++
+		}
+		last := ls[max(n-1, 0)].t
+		ls = append(ls[:n], letter{s: "…", t: last})
+	}
+	w := r.rm.w
+	c := col
+	for _, l := range ls {
+		if c >= 0 && c < w {
+			at := row*w + c
+			r.setChar(at, fi, l.s, &r.tex[l.t])
+			if l.wide && c+1 < w {
+				r.chars[at+1] = r3char{stamp: r.stamp, cont: true, face: fi}
+			}
+		}
+		c++
+		if l.wide {
+			c++
 		}
 	}
 }
 
-// How a letter of the board is seen (letters' target).
-const (
-	readOK  = iota // about one cell for one, on the screen
-	readOff        // so, but off the screen
-	readBad        // turned too far, or too small or big, to read
-)
+// isWordRune is whether c is a letter or a digit.
+func isWordRune(c rune) bool { return unicode.IsLetter(c) || unicode.IsDigit(c) }
 
-// rowReads is whether every letter of row cy of face fc is seen about one
-// cell for one (on the screen or just off it).
-func (r *room3D) rowReads(target func(cx, cy int, z float64) (int, int), tex func(cx, cy int) *r3texel, fc *r3face, cy int, z float64) bool {
-	for cx := fc.cx0; cx < fc.cx1; cx++ {
-		if tex(cx, cy).glyph != "" {
-			if _, how := target(cx, cy, z); how == readBad {
-				return false
-			}
+// inSight is whether a letter of face fi (of structure own) can show in
+// screen cell at: fewer than three of its four pixels show another
+// structure nearer than the face's plane (n · p = k, num = k − n · camera).
+//
+// The room itself never hides words: seen from inside, its walls and
+// floor are behind everything in it, so they cover only a line that
+// stands out past its face; and the lamp is too small to hide a word.
+func (r *room3D) inSight(at int, fi int32, own int, n r3vec, num float64) bool {
+	pw, w := r.pw, r.rm.w
+	tl := at/w*2*pw + 2*(at%w)
+	bad := 0
+	for _, i := range [4]int{tl, tl + 1, tl + pw, tl + pw + 1} {
+		f := r.face[i]
+		if f < 0 || f == fi || r.faces[f].own < 0 || r.faces[f].own == own {
+			continue // nothing, the face itself, the room, or its own block's sides (behind its front)
+		}
+		d := r.dirs[i]
+		nd := n.x*d.x + n.y*d.y + n.z*d.z
+		if nd >= -1e-12 {
+			bad++
+			continue
+		}
+		t := num / nd
+		eps := 2e-4*t + 0.01
+		switch z := float64(r.zb[i]); {
+		case z < t-eps:
+			bad++ // nearer
+		case z <= t+eps && r.over(fi, r.view.cam.add(d.mul(z))):
+			bad++ // the front of a block as far out, over this one on the flat board
 		}
 	}
-	return true
+	return bad <= 2
+}
+
+// over is whether point p is on face fi's part of the flat board (its
+// cells), as a block over it on the flat board would be.
+func (r *room3D) over(fi int32, p r3vec) bool {
+	fc := &r.faces[fi]
+	x, y := p.x+r.rm.hw, r.rm.hh-p.y
+	return x >= float64(fc.cx0) && x < float64(fc.cx1) && y >= float64(fc.py0) && y < float64(fc.py1)
+}
+
+// setChar puts letter s of the flat board's cell t, on face fi, in screen
+// cell at: its background is the face's colour there, and its letter's
+// colour is lit a little by the face's light, kept clear of the background.
+func (r *room3D) setChar(at int, fi int32, s string, t *r3texel) {
+	pw, w := r.pw, r.rm.w
+	tl := at/w*2*pw + 2*(at%w)
+	var sr, sg, sb, m, a float64
+	for _, i := range [4]int{tl, tl + 1, tl + pw, tl + pw + 1} {
+		col := r.lit(r.base[i], i)
+		if r.face[i] == fi {
+			col = r.lit(t.bg, i)
+		}
+		cr, cg, cb := chans(col)
+		sr, sg, sb = sr+cr, sg+cg, sb+cb
+		m, a = m+float64(r.mul[i]), a+float64(r.add[i])
+	}
+	bg := rgb32(sr/4+0.5, sg/4+0.5, sb/4+0.5)
+	m, a = 0.55+0.45*m/4, 0.4*a/4
+	fr, fg, fb := chans(t.fg)
+	ink := rgb32(byteOf(fr*m+a*lampWarm[0]), byteOf(fg*m+a*lampWarm[1]), byteOf(fb*m+a*lampWarm[2]))
+	r.chars[at] = r3char{s: s, fg: clearInk(ink, bg), bg: bg, stamp: r.stamp, face: fi}
+}
+
+// clearInk is ink c made light or dark enough to read on background bg: it
+// keeps its own way (lighter or darker than bg) when that can be clear
+// enough, else it goes the other way.
+func clearInk(c, bg uint32) uint32 {
+	const need = 105.0 // the least difference in lightness, out of 255
+	lum := func(c uint32) float64 { r, g, b := chans(c); return 0.299*r + 0.587*g + 0.114*b }
+	lc, lb := lum(c), lum(bg)
+	if math.Abs(lc-lb) >= need {
+		return c
+	}
+	lighter := func() uint32 { // toward white, until need lighter than bg (or white)
+		t := clampF((lb+need-lc)/math.Max(255-lc, 1), 0, 1)
+		return mix32(c, 0xffffff, t)
+	}
+	darker := func() uint32 {
+		t := clampF((lc-(lb-need))/math.Max(lc, 1), 0, 1)
+		return mix32(c, 0, t)
+	}
+	up, down := lb+need <= 255, lb-need >= 0
+	switch {
+	case lc >= lb && up, !down && lb < 128:
+		return lighter()
+	case lc < lb && down, !up:
+		return darker()
+	case lb < 128:
+		return lighter()
+	}
+	return darker()
 }
 
 // pixel is a pixel's colour, lit.
-func (r *room3D) pixel(i int) uint32 {
-	col := r.base[i]
-	if s := r.src[i]; s >= 0 && r.placed[s] == r.stamp {
-		col = r.tex[s].bg // its letter shows in a cell of its own: here only its background
-	}
-	return r.lit(col, i)
-}
+func (r *room3D) pixel(i int) uint32 { return r.lit(r.base[i], i) }
 
 // lit is colour col in the light of pixel i.
 func (r *room3D) lit(col uint32, i int) uint32 {
@@ -1088,6 +1648,10 @@ func byteOf(v float64) float64 {
 	return v
 }
 
+// smoothSpread is how far apart (in any of red, green and blue, out of
+// 255) a cell's four pixels may be and still be drawn as one colour.
+const smoothSpread = 14
+
 // quads splits a cell's four pixels (top left, top right, bottom left,
 // bottom right) into two colours, the way that is closest to them: mask
 // is the pixels in colour fg (as quadGlyph draws them), the rest are bg.
@@ -1101,6 +1665,18 @@ func quads(c *[4]uint32) (mask int, fg, bg uint32) {
 	for i, v := range c {
 		cr[i], cg[i], cb[i] = int(v>>16&255), int(v>>8&255), int(v&255)
 		tr, tg, tb = tr+cr[i], tg+cg[i], tb+cb[i]
+	}
+	// Four colours close together (a lit surface's gradient, a soft
+	// pattern) are one: their mean, as a plain cell, so a smooth surface
+	// stays smooth and is not turned into a grain of little blocks.
+	spread := 0
+	for _, ch := range [3]*[4]int{&cr, &cg, &cb} {
+		lo, hi := min(ch[0], ch[1], ch[2], ch[3]), max(ch[0], ch[1], ch[2], ch[3])
+		spread = max(spread, hi-lo)
+	}
+	if spread <= smoothSpread {
+		c := uint32((tr+2)/4)<<16 | uint32((tg+2)/4)<<8 | uint32((tb+2)/4)
+		return 0, c, c
 	}
 	// The best split leaves the least error, which is the one where the
 	// sums of the two groups, squared and shared out, are the largest.
@@ -1147,12 +1723,11 @@ func (r *room3D) write(w, h int, sb *strings.Builder) {
 			tl := 2*row*pw + 2*col
 			var top, bot uint32
 			var glyph string
-			if s := r.glyph[row*w+col]; s >= 0 {
-				t := &r.tex[s]
-				top, bot, glyph = r.lit(t.fg, tl), r.lit(t.bg, tl), t.glyph
-				if glyph == "" {
-					glyph = " " // a space of the board
+			if ch := &r.chars[row*w+col]; ch.stamp == r.stamp {
+				if ch.cont {
+					continue // the second half of a wide letter: drawn with it
 				}
+				top, bot, glyph = ch.fg, ch.bg, ch.s
 			} else {
 				px[0], px[1], px[2], px[3] = r.pixel(tl), r.pixel(tl+1), r.pixel(tl+pw), r.pixel(tl+pw+1)
 				mask, a, b := quads(&px)

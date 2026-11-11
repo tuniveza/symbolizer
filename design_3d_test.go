@@ -264,3 +264,18 @@ func BenchmarkDesign3DHuge(b *testing.B) {
 	b.ReportMetric(float64(d.room.cost)/float64(time.Millisecond), "ms/last")
 	b.ReportMetric(float64(len(d.room.faces)), "faces")
 }
+
+// The owner's view (turned 35° right, tilted 30° down) of a board of
+// pages with lines of words, a box, drawers and a cabinet, at 200×60:
+// most of a frame's words drawn as letters.
+func BenchmarkDesign3DWords(b *testing.B) {
+	m := wordsScene(b, 200, 60)
+	r := &m.ds().room
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		r.yaw, r.pitch = 35+i%2, 30
+		var sb strings.Builder
+		m.designRows(&sb)
+	}
+	b.ReportMetric(float64(r.cost)/float64(time.Millisecond), "ms/last")
+}
