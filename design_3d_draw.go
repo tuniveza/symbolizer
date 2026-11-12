@@ -554,6 +554,9 @@ func (r *room3D) scene(rm *r3room, z float64, lamp r3vec) {
 		o := b.o
 		// A block on top of another on the flat board comes out a hair further.
 		dep := b.dep + 1e-5*float64(i)
+		if o.Kind == kBox && r.boxBlock(b, dep, hw, hh) {
+			continue // an open box, its walls and what is in it (design_3d_box.go)
+		}
 		X0, X1 := float64(b.x0)-hw, float64(b.x1)-hw
 		Yt, Yb := hh-float64(2*b.y0), hh-float64(2*b.y1)
 		// The front: an octagon for a shape drawn whole as one, else a rectangle.

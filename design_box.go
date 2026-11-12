@@ -14,7 +14,9 @@ package main
 // nails), a metal tin (round corners, a shine), a gift box (a ribbon and a
 // bow), a round hat box (a curved outline) and a hexagonal box. D (Shift+D:
 // back), with the box chosen, or the [◇] on its top edge, changes it. The
-// design is kept in the box's Layout.
+// design is kept in the box's Layout. How each design is painted, as an
+// open box seen from a little above: design_box_look.go; as an open box
+// in the 3D room: design_3d_box.go.
 //
 //	drop a thing on it   puts it in, on the top layer, where it is let go
 //	click a thing        chooses it (the top one under the mouse)
@@ -198,43 +200,6 @@ func boxThingRect(o, it *dOct, w, h int) (x, y, tw, th int) {
 	return int(math.Round(cx - float64(tw)/2)), int(math.Round(cy - float64(th)/2)), tw, th
 }
 
-// ---- its colours ----------------------------------------------------------------------------
-
-// boxLook is a design's colours: its walls, the lines on them, its floor
-// (inside, in shadow), its lid, and a second colour (tape, ribbon, nails …).
-type boxLook struct {
-	wall, edge, floor, lid, extra string
-}
-
-func boxLookOf(o *dOct) boxLook {
-	base := map[int]string{boxCardboard: "#b5895a", boxCrate: "#9c6b3c", boxTin: "#9aa5af", boxHat: "#d4a5c0"}[boxDesign(o)]
-	if base == "" {
-		base = o.Color // a gift box's paper, a hexagonal box: its own colour
-	}
-	l := boxLook{
-		wall:  mixHex(base, cBG, 0.25),
-		edge:  mixHex(base, "#1a1410", 0.45),
-		floor: mixHex(cBG, base, 0.2),
-		lid:   mixHex(base, cBG, 0.1),
-		extra: "#d9c48f",
-	}
-	switch boxDesign(o) {
-	case boxCardboard:
-		l.extra = "#d8c9a3" // tape
-	case boxCrate:
-		l.edge, l.extra = mixHex(base, "#1a1410", 0.55), "#c9ced3" // nails
-	case boxTin:
-		l.edge, l.extra = mixHex(base, "#20262c", 0.5), "#f1f5f8" // its shine
-	case boxGift:
-		l.extra = "#e5c07b" // gold ribbon
-	case boxHat:
-		l.edge, l.extra = mixHex(base, "#2a1a24", 0.5), "#f6e6ef" // stripes
-	case boxHex:
-		l.edge = mixHex(base, cText, 0.35)
-	}
-	return l
-}
-
 // ---- its cells --------------------------------------------------------------------------------
 
 // boxCell is one cell of a box's drawing, and what a click on it does.
@@ -257,14 +222,19 @@ func (g *boxGrid) set(x, y int, r, fg, bg string) {
 	}
 }
 
-// text writes s from (x, y), at most up to column end (inclusive).
+// text writes s from (x, y), at most up to column end (inclusive), on
+// background bg ("": on what is drawn there).
 func (g *boxGrid) text(x, y, end int, s, fg, bg string, bold bool, act string) int {
 	for _, r := range s {
 		if x > end || x >= g.w {
 			break
 		}
 		if x >= 0 && y >= 0 && y < g.h {
-			g.c[y][x] = boxCell{r: string(r), fg: fg, bg: bg, bold: bold, act: act}
+			b := bg
+			if b == "" {
+				b = g.c[y][x].bg
+			}
+			g.c[y][x] = boxCell{r: string(r), fg: fg, bg: b, bold: bold, act: act}
 		}
 		x++
 	}
@@ -275,7 +245,9 @@ func (g *boxGrid) text(x, y, end int, s, fg, bg string, bold bool, act string) i
 // middle, 3 bottom.
 func (d *designState) boxView(o *dOct) int { return d.boxLayer[o.ID] }
 
-// boxGridOf draws box o, w × h on the screen.
+// boxGridOf draws box o, w × h on the screen: its walls and floor in
+// pixels (design_box_look.go), the things in it, or its lid, and the words
+// and buttons on its edges.
 func (d *designState) boxGridOf(o *dOct, w, h int) *boxGrid {
 	g := &boxGrid{w: w, h: h, c: make([][]boxCell, h)}
 	for y := range g.c {
@@ -287,204 +259,102 @@ func (d *designState) boxGridOf(o *dOct, w, h int) *boxGrid {
 	design := boxDesign(o)
 	s := boxShapeOf(design, w, h)
 	lk := boxLookOf(o)
-	selected := d.sel == o.ID
-	if selected {
+	if d.sel == o.ID {
 		lk.edge = mixHex(lk.edge, cText, 0.4)
+		lk.outline = lk.outline.mix(toRGB(cText), 0.45)
 	}
 	if d.dropOn == o.ID {
-		lk.edge, lk.floor = cAccent, mixHex(lk.floor, cAccent, 0.18)
+		lk.edge, lk.outline = cAccent, toRGB(cAccent)
+		lk.floorC = lk.floorC.mix(toRGB(cAccent), 0.2)
+		lk.floor = lk.floorC.hex()
 	}
 	p := d.slotOpenness(o, 0, o.DrawerOpen)
 	shut := p < 0.5
-	d.boxFrame(g, o, s, lk, shut)
-
-	// Its floor, and on it the things, bottom layer first.
+	pix := boxPaint(s, lk, w, h, shut)
 	for y := range h {
 		for x := range w {
+			act := ""
 			if s.inside(x, y, w, h) {
-				g.c[y][x] = boxCell{r: " ", fg: cText, bg: boxFloorAt(design, lk, x, y, w, s), act: "boxfloor"}
-				if design == boxCrate && (y-s.top)%3 == 2 {
-					g.c[y][x].r, g.c[y][x].fg = "─", mixHex(lk.floor, lk.edge, 0.35) // the planks of its back
+				act = "boxfloor"
+			}
+			g.fromPix(pix, x, y, act)
+		}
+	}
+	if design == boxCrate && !shut { // a nail where each plank meets a post
+		for y := 1; y < h-1; y++ {
+			if (y-s.top)%3 == 2 || y == 1 || y == h-2 {
+				for _, x := range []int{1, w - 2} {
+					g.c[y][x].r, g.c[y][x].fg = "•", lk.extra
 				}
 			}
 		}
 	}
+	if design == boxGift && shut && s.f0 > 0 { // its bow, on the lid
+		g.text(w/2-1, 0, w-1, "⊰⋈⊱", lk.extra, cBG, true, "")
+	}
+
+	// On its floor the things, bottom layer first; over them the lid, as
+	// far as it is on.
 	rows := s.insideRows(w, h)
 	covered := int(math.Round((1 - p) * float64(len(rows))))
 	if covered < len(rows) {
 		d.boxThings(g, o, s, lk)
 	}
 	if covered > 0 {
-		boxLid(g, o, s, lk, rows[:covered], covered == len(rows))
+		whole := covered == len(rows)
+		boxLidPaint(pix, s, lk, w, h, rows[:covered], whole)
+		for y := range h {
+			for x := range w {
+				if whole && y >= s.f0 || !whole && y <= rows[covered-1] && s.inside(x, y, w, h) {
+					g.fromPix(pix, x, y, "")
+				}
+			}
+		}
+		if whole {
+			boxLidWords(g, o, s, lk, rows)
+		}
 	}
 	d.boxEdges(g, o, s, lk, shut)
 	return g
 }
 
-// boxFloorAt is the colour of a box's floor at (x, y): a tin's has a shine
-// across it, a hat box's a soft stripe.
-func boxFloorAt(design int, lk boxLook, x, y, w int, s boxShape) string {
-	switch design {
-	case boxTin: // a soft band of light, slanting down from its top
-		k := float64(x-w/3) + 1.5*float64(y)
-		return mixHex(lk.floor, lk.extra, 0.09*math.Exp(-math.Pow(k/5, 2)))
-	case boxHat:
-		if (x/3)%2 == 0 {
-			return mixHex(lk.floor, lk.extra, 0.05)
-		}
-	}
-	return lk.floor
-}
-
-// boxFrame draws a box's walls and outline, by its design.
-func (d *designState) boxFrame(g *boxGrid, o *dOct, s boxShape, lk boxLook, shut bool) {
+// boxLidWords writes on a shut box's lid its name, how many things it
+// holds, and a button that opens it.
+func boxLidWords(g *boxGrid, o *dOct, s boxShape, lk boxLook, rows []int) {
 	w, h := g.w, g.h
-	wall := func(x, y int, r string) { g.set(x, y, r, lk.edge, lk.wall) }
-	rect := func(y0 int, tl, tr, bl, br, hz, vt string) {
-		for x := 1; x < w-1; x++ {
-			wall(x, y0, hz)
-			wall(x, h-1, hz)
-		}
-		for y := y0 + 1; y < h-1; y++ {
-			for k := range s.wall {
-				wall(k, y, vt)
-				wall(w-1-k, y, vt)
-			}
-		}
-		wall(0, y0, tl)
-		wall(w-1, y0, tr)
-		wall(0, h-1, bl)
-		wall(w-1, h-1, br)
+	name := strings.TrimSpace(o.Header)
+	if name == "" {
+		name = boxDesignNames[s.design]
 	}
-	switch s.design {
-	case boxCardboard:
-		rect(1, "┌", "┐", "└", "┘", "─", "│")
-		if !shut { // its flaps, open, folded out at its top corners
-			fw := max(3, w/3)
-			flap := mixHex(lk.wall, "#ffffff", 0.1)
-			for x := 1; x < fw-1; x++ {
-				g.set(x, 0, " ", lk.edge, flap)
-				g.set(w-1-x, 0, " ", lk.edge, flap)
-			}
-			g.set(0, 0, "◤", flap, cBG)
-			g.set(fw-1, 0, "◣", flap, cBG)
-			g.set(w-1, 0, "◥", flap, cBG)
-			g.set(w-fw, 0, "◢", flap, cBG)
+	lines := []string{kindIcons[kBox] + " " + name, plural(len(drawerThings(o)), "thing")}
+	mid := rows[max(0, len(rows)/2-1)]
+	if len(rows) < 4 {
+		lines = []string{kindIcons[kBox] + " " + name + " · " + itoa(len(drawerThings(o)))}
+		mid = rows[len(rows)/2]
+	}
+	if len(rows) >= 5 {
+		lines = append(lines, "[open]")
+	}
+	for i, t := range lines {
+		y := mid + i
+		if y > rows[len(rows)-1] {
+			break
 		}
-		for x := w/2 - 2; x <= w/2+1; x++ { // tape across its bottom
-			g.set(x, h-1, "═", mixHex(lk.extra, lk.edge, 0.3), lk.extra)
+		lo, hi := 0, w-1
+		for lo < w && !s.inside(lo, y, w, h) {
+			lo++
 		}
-	case boxCrate:
-		plank := mixHex(lk.wall, "#ffffff", 0.06)
-		for x := range w { // planks along its top and bottom
-			g.set(x, 0, "▁", mixHex(plank, lk.edge, 0.4), plank)
-			g.set(x, h-1, "▔", mixHex(plank, lk.edge, 0.4), plank)
+		for hi >= 0 && !s.inside(hi, y, w, h) {
+			hi--
 		}
-		for y := 1; y < h-1; y++ { // a post each side
-			g.set(0, y, "▌", lk.edge, lk.wall)
-			g.set(1, y, " ", lk.edge, lk.wall)
-			g.set(w-2, y, " ", lk.edge, lk.wall)
-			g.set(w-1, y, "▐", lk.edge, lk.wall)
-			if (y-s.top)%3 == 2 || y == 1 || y == h-2 { // a nail where each plank meets it
-				g.set(1, y, "•", lk.extra, lk.wall)
-				g.set(w-2, y, "•", lk.extra, lk.wall)
-			}
+		t = ansi.Truncate(t, max(hi-lo+1, 0), "…")
+		x := lo + max(0, (hi-lo+1-lipgloss.Width(t))/2)
+		bg, act := mixHex(lk.lid, cBG, 0.35), ""
+		fg := boxInk(bg)
+		if t == "[open]" {
+			bg, fg, act = mixHex(cBG, lk.wall, 0.2), cAccent, "boxlid"
 		}
-		for _, x := range []int{1, w - 2} {
-			g.set(x, 0, "•", lk.extra, plank)
-			g.set(x, h-1, "•", lk.extra, plank)
-		}
-	case boxTin:
-		rect(0, "╭", "╮", "╰", "╯", "─", "│")
-		for x := 1; x < w-1; x++ { // its rolled rim
-			wall(x, 1, "═")
-		}
-		wall(0, 1, "╞")
-		wall(w-1, 1, "╡")
-		for x := range w { // a shine along its rim, a third of the way along
-			t := float64(x) / float64(max(w-1, 1))
-			shine := math.Exp(-math.Pow((t-0.3)/0.2, 2))
-			for _, y := range []int{0, 1} {
-				c := &g.c[y][x]
-				c.fg = mixHex(c.fg, lk.extra, 0.5*shine)
-				c.bg = mixHex(c.bg, lk.extra, 0.22*shine)
-			}
-		}
-	case boxGift:
-		rect(1, "┌", "┐", "└", "┘", "─", "│")
-		cx := w / 2
-		for _, y := range []int{1, h - 1} { // its ribbon, round it
-			g.set(cx, y, "║", mixHex(lk.extra, lk.edge, 0.3), lk.extra)
-		}
-		mid := (1 + h) / 2
-		g.set(0, mid, "╪", mixHex(lk.extra, lk.edge, 0.3), lk.extra)
-		g.set(w-1, mid, "╪", mixHex(lk.extra, lk.edge, 0.3), lk.extra)
-		if shut { // its bow, on the lid
-			g.text(cx-1, 0, w-1, "⊰⋈⊱", lk.extra, cBG, true, "")
-		} else { // the lid, off, behind it
-			lid := mixHex(lk.wall, "#ffffff", 0.08)
-			for x := 2; x < w-2; x++ {
-				g.set(x, 0, "▄", lid, cBG)
-			}
-			g.set(cx, 0, "▄", lk.extra, cBG)
-		}
-	case boxHat:
-		k := s.hatK
-		for x := k + 1; x < w-1-k; x++ {
-			wall(x, 0, "─")
-			stripe := lk.wall
-			if (x/2)%2 == 0 {
-				stripe = mixHex(lk.wall, lk.extra, 0.45) // its striped band
-			}
-			g.set(x, h-1, "─", lk.edge, stripe)
-		}
-		wall(k, 0, "╭")
-		wall(w-1-k, 0, "╮")
-		wall(k, h-1, "╰")
-		wall(w-1-k, h-1, "╯")
-		for x := 1; x < k; x++ {
-			wall(x, 1, "─")
-			wall(w-1-x, 1, "─")
-			wall(x, h-2, "─")
-			wall(w-1-x, h-2, "─")
-		}
-		wall(0, 1, "╭")
-		wall(k, 1, "╯")
-		wall(w-1-k, 1, "╰")
-		wall(w-1, 1, "╮")
-		wall(0, h-2, "╰")
-		wall(k, h-2, "╮")
-		wall(w-1-k, h-2, "╭")
-		wall(w-1, h-2, "╯")
-		for y := 2; y < h-2; y++ {
-			wall(0, y, "│")
-			wall(w-1, y, "│")
-		}
-	case boxHex:
-		// Its slanted sides: each cell half wall, cut on the slant, so
-		// the side is one smooth line.
-		mid := float64(h-1) / 2
-		side := lk.wall
-		if d.sel == o.ID || d.dropOn == o.ID {
-			side = mixHex(lk.wall, lk.edge, 0.5)
-		}
-		for y := range h {
-			c := s.cut[y]
-			l, r := "◢", "◣"
-			switch {
-			case float64(y) > mid:
-				l, r = "◥", "◤"
-			case float64(y) == mid:
-				l, r = "▐", "▌"
-			}
-			if y == 0 || y == h-1 {
-				for x := c + 1; x < w-1-c; x++ {
-					wall(x, y, "─")
-				}
-			}
-			g.set(c, y, l, side, cBG)
-			g.set(w-1-c, y, r, side, cBG)
-		}
+		g.text(x, y, hi, t, fg, bg, true, act)
 	}
 }
 
@@ -507,6 +377,11 @@ func (d *designState) boxThings(g *boxGrid, o *dOct, s boxShape, lk boxLook) {
 			dark = 0.5
 		}
 		order := boxLayerThings(o, l)
+		if !ghost {
+			for _, j := range order {
+				boxShadow(g, o, s, o.Items[j]) // a shadow on what is under it
+			}
+		}
 		for _, j := range order {
 			it := o.Items[j]
 			if it == chosen {
@@ -534,12 +409,27 @@ func (d *designState) boxThings(g *boxGrid, o *dOct, s boxShape, lk boxLook) {
 			if edge && th >= 3 && s.inside(x, y, w, h) && g.c[y][x].act != "boxthing:"+itoa(itemIndex(o, sel)) {
 				c := &g.c[y][x]
 				c.fg = cAccent
-				if c.r == " " {
+				if c.r == " " || c.act == "boxfloor" {
 					c.r = "┈"
 					if x == x0 || x == x0+tw-1 {
 						c.r = "┊"
 					}
 				}
+			}
+		}
+	}
+}
+
+// boxShadow darkens what lies under thing it of box o, a cell right of
+// it and a cell below: its shadow, so it shows lying over the things on
+// the layers under it.
+func boxShadow(g *boxGrid, o *dOct, s boxShape, it *dOct) {
+	x0, y0, tw, th := boxThingRect(o, it, g.w, g.h)
+	for y := y0 + 1; y <= y0+th; y++ {
+		for x := x0 + 1; x <= x0+tw; x++ {
+			if (x == x0+tw || y == y0+th) && x >= 0 && y >= 0 && x < g.w && y < g.h && s.inside(x, y, g.w, g.h) {
+				c := &g.c[y][x]
+				c.fg, c.bg = mixHex(c.fg, "#000000", 0.3), mixHex(c.bg, "#000000", 0.4)
 			}
 		}
 	}
@@ -654,89 +544,6 @@ func (g *boxGrid) noTails(x0, y0, tw, th int, act string, under [][2]string) {
 	}
 }
 
-// boxLid draws a box's lid over the given inside rows; shut right down,
-// with its name, how many things it holds, and a button that opens it.
-func boxLid(g *boxGrid, o *dOct, s boxShape, lk boxLook, rows []int, whole bool) {
-	w, h := g.w, g.h
-	cx := w / 2
-	for i, y := range rows {
-		for x := range w {
-			if !s.inside(x, y, w, h) {
-				continue
-			}
-			r, fg, bg := " ", lk.edge, lk.lid
-			switch s.design {
-			case boxCardboard: // two flaps folded down, taped where they meet
-				if x == cx-1 || x == cx {
-					r, bg = " ", lk.extra
-				}
-			case boxCrate: // planks, nailed at each end
-				if i%2 == 1 {
-					r, fg = "─", mixHex(lk.lid, lk.edge, 0.5)
-				}
-				if x == s.cut[y]+s.wall && i%2 == 0 || x == w-1-s.cut[y]-s.wall && i%2 == 0 {
-					r, fg = "•", lk.extra
-				}
-			case boxTin: // metal, with a shine across it
-				if k := float64(x-w/3) + 1.5*float64(y); math.Abs(k) < 12 {
-					bg = mixHex(lk.lid, lk.extra, 0.22*math.Exp(-math.Pow(k/5, 2)))
-				}
-			case boxGift: // the ribbon, across and down
-				if x == cx || y == rows[len(rows)/2] {
-					r, fg, bg = " ", lk.edge, lk.extra
-				}
-			case boxHat: // stripes
-				if (x/2)%2 == 0 {
-					bg = mixHex(lk.lid, lk.extra, 0.4)
-				}
-			case boxHex: // a line round inside its edge
-				if x == s.cut[y]+s.wall || x == w-1-s.cut[y]-s.wall {
-					r, fg = "·", mixHex(lk.lid, lk.edge, 0.5)
-				}
-			}
-			g.c[y][x] = boxCell{r: r, fg: fg, bg: bg}
-		}
-	}
-	if !whole || len(rows) == 0 {
-		return
-	}
-	// Its name and what it holds, in the middle; under them, a button.
-	name := strings.TrimSpace(o.Header)
-	if name == "" {
-		name = boxDesignNames[s.design]
-	}
-	lines := []string{kindIcons[kBox] + " " + name, plural(len(drawerThings(o)), "thing")}
-	mid := rows[max(0, len(rows)/2-1)]
-	if len(rows) < 4 {
-		lines = []string{kindIcons[kBox] + " " + name + " · " + itoa(len(drawerThings(o)))}
-		mid = rows[len(rows)/2]
-	}
-	if len(rows) >= 5 {
-		lines = append(lines, "[open]")
-	}
-	for i, t := range lines {
-		y := mid + i
-		if y > rows[len(rows)-1] {
-			break
-		}
-		lo, hi := 0, w-1
-		for lo < w && !s.inside(lo, y, w, h) {
-			lo++
-		}
-		for hi >= 0 && !s.inside(hi, y, w, h) {
-			hi--
-		}
-		t = ansi.Truncate(t, max(hi-lo+1, 0), "…")
-		x := lo + max(0, (hi-lo+1-lipgloss.Width(t))/2)
-		bg, act := mixHex(lk.lid, cBG, 0.35), ""
-		fg := boxInk(bg)
-		if t == "[open]" {
-			bg, fg, act = mixHex(cBG, lk.wall, 0.2), cAccent, "boxlid"
-		}
-		g.text(x, y, hi, t, fg, bg, true, act)
-	}
-}
-
 // boxEdges writes on a box's edges: its name and how many things it holds
 // on its top edge (and, chosen, its design and lid buttons), and how many
 // are on each layer on its bottom edge (a click there looks at that layer).
@@ -748,9 +555,8 @@ func (d *designState) boxEdges(g *boxGrid, o *dOct, s boxShape, lk boxLook, shut
 	if y == 0 {
 		hi = min(hi, w-6) // the ✕ that deletes it is at its top right
 	}
-	bg := lk.wall
-	head := boxInk(bg)
-	btnBG := mixHex(cBG, lk.wall, 0.2) // a button: dark, so it reads on any wall
+	head := boxInk(g.c[y][min(max((lo+hi)/2, 0), w-1)].bg) // the words on its rim (or lid), as they are drawn there
+	btnBG := mixHex(cBG, lk.wall, 0.2)                     // a button: dark, so it reads on any wall
 	if d.sel == o.ID {
 		lid := "[shut]"
 		if shut {
@@ -773,7 +579,7 @@ func (d *designState) boxEdges(g *boxGrid, o *dOct, s boxShape, lk boxLook, shut
 		name += " · " + itoa(n)
 	}
 	if hi-lo >= 3 {
-		g.text(lo, y, hi, ansi.Truncate(" "+kindIcons[kBox]+" "+name+" ", hi-lo+1, "…"), head, bg, true, "")
+		g.text(lo, y, hi, ansi.Truncate(" "+kindIcons[kBox]+" "+name+" ", hi-lo+1, "…"), head, "", true, "")
 	}
 	if shut || h < 6 {
 		return
@@ -804,8 +610,8 @@ func (d *designState) boxEdges(g *boxGrid, o *dOct, s boxShape, lk boxLook, shut
 	}
 	x := lo + (hi-lo+1-total(parts))/2
 	for l, p := range parts {
-		pbg := lk.wall
-		fg := boxInk(pbg)
+		pbg := "" // on its front
+		fg := boxInk(g.c[y][min(max(x, 0), w-1)].bg)
 		if l == view {
 			fg, pbg = cBG, cAccent
 		}
