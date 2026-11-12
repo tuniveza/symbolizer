@@ -133,6 +133,7 @@ var helpGroups = []helpGroup{
 		{"  3D: font", "  sy --font: installs Sy Geometry, the shape letters that draw the room's edges at their own angle (restart kitty)"},
 		{"  3D: room", "  fills the screen: papered walls, floor, ceiling · a box is open, its things inside by layer · a cabinet's doors swing out on hinges · kitty: a sharp picture"},
 		{"  3D: blocks", "  click, double-click and drag them as on the flat board: drawers, lids, rows, pins, ✕, titles; other keys work as flat too"},
+		{"  3D: words", "  lettering on their faces: they turn and tilt with them, fade as a face turns away, and hide edge-on or too far to read"},
 		{"Ctrl + F", "3D free roam: W A S D walk, Q · E down · up, Shift faster; the arrows or a drag look round (all the way); 0: back to the start; Esc: back"},
 		{"1–8", "highlighter pen colours (press the same one again to put it down)"},
 		{"  ⌫ · over/under on the toolbar", "  rubber · pen under the text or over it; right-drag rubs out too"},

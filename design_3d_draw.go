@@ -1347,8 +1347,7 @@ type r3run struct {
 }
 
 const (
-	titleRoom = 16 // a title may stand out past a narrow face until it is this wide (and 2 past any face)
-	runGap    = 3  // this many spaces in a row part two lines of words
+	runGap = 3 // this many spaces in a row part two lines of words
 )
 
 // words puts the words of every face that shows the flat board on the
@@ -1372,13 +1371,8 @@ func (r *room3D) words(v *r3view, rm *r3room) {
 		r.order = append(r.order, r3near{fi: fi, d: d})
 	}
 	sort.Slice(r.order, func(i, j int) bool { return r.order[i].d < r.order[j].d })
-	// The titles first, so another face's lines never take a title's
-	// place; then the other lines and marks.
 	for i := range r.order {
-		r.faceWords(&r.order[i], v, rm, true)
-	}
-	for i := range r.order {
-		r.faceWords(&r.order[i], v, rm, false)
+		r.surfaceWords(&r.order[i], v, rm) // each line on its face, the nearest face first
 	}
 }
 
@@ -1386,310 +1380,6 @@ func (r *room3D) words(v *r3view, rm *r3room) {
 type r3near struct {
 	fi int
 	d  float64
-	// After its title is placed: the flat board row after the title's,
-	// and the first screen row its next line may go on.
-	cy, next int
-}
-
-// faceWords puts the words of face o on the screen: with titles, its
-// title (a front's first line of words); else its lines one under another
-// from under its title down, as many as fit, and then its marks (a line
-// of only signs, such as ◹ or ●) where they are seen, if there is room.
-// The back wall has no title: all its words go with the other lines.
-func (r *room3D) faceWords(o *r3near, v *r3view, rm *r3room, titles bool) {
-	fi := o.fi
-	fc := &r.faces[fi]
-	wall := fc.mat == matBoard
-	z := r.pts[fc.p0].z
-	cam, right, up, fwd, f, px, py := v.cam, v.right, v.up, v.fwd, v.f, v.px, v.py
-	hw, hh := rm.hw, rm.hh
-	tw, tx0, ty0 := rm.tw, rm.tx0, rm.ty0
-	// proj is where point (bx, by) of the face (in flat board cells: bx
-	// across, by down) is seen on the screen, in cells.
-	proj := func(bx, by float64) (sx, sy float64, ok bool) {
-		q := r3vec{bx - hw - cam.x, hh - 2*by - cam.y, z - cam.z}
-		cz := q.dot(fwd)
-		if cz < 0.25 {
-			return 0, 0, false
-		}
-		return px + f*q.dot(right)/cz, (py - f*q.dot(up)/cz) / 2, true
-	}
-	tex := func(x, y int) *r3texel { return &r.tex[(y-ty0)*tw+x-tx0] }
-	covered := func(x, y int) bool { return wall && r.cover[(y-ty0)*tw+x-tx0] == r.stamp }
-	// place is where line i of runs starts on the screen, and how many
-	// cells it may take: to the next line's start, or the face's edge.
-	place := func(runs []r3run, i int) (col, row, limit int, ok bool) {
-		ru := runs[i]
-		sx, sy, vis := proj(float64(ru.x0), float64(ru.y)+0.5)
-		end := float64(fc.cx1)
-		if i+1 < len(runs) {
-			end = float64(runs[i+1].x0) - 1
-		} else if wall {
-			end = float64(ru.x1) + 2
-		}
-		ex, _, vis2 := proj(end, float64(ru.y)+0.5)
-		col = int(math.Floor(sx + 0.5))
-		if n := ru.x1 - ru.x0; !wall && len(runs) == 1 && abs((ru.x0-fc.cx0)-(fc.cx1-ru.x1)) <= 1 {
-			// A line in the middle of its face (a title, centred words),
-			// seen bigger than its letters: in the middle of where it is seen.
-			if rx, _, ok := proj(float64(ru.x1), float64(ru.y)+0.5); ok && rx-sx > float64(n)+0.5 {
-				col = int(math.Floor((sx+rx)/2 - float64(n)/2 + 0.5))
-			}
-		}
-		return col, int(math.Floor(sy)), int(math.Floor(ex+0.5)) - col, vis && vis2
-	}
-	if titles && wall {
-		return
-	}
-	next := math.MinInt // the first screen row a further line may go on
-	title := titles
-	from := fc.py0 >> 1 // the first row whose lines go on the screen now
-	if !titles && !wall {
-		from, next = o.cy, o.next
-	}
-	o.cy = fc.py1 >> 1 // no title: no further lines
-	var runs, words []r3run
-	marks := r.marks[:0]
-	for cy := fc.py0 >> 1; cy < fc.py1>>1; cy++ {
-		runs = r.rowRuns(runs[:0], fc, cy, tex, covered)
-		words = words[:0]
-		for _, ru := range runs {
-			if ru.words {
-				words = append(words, ru)
-			} else if !titles {
-				marks = append(marks, ru)
-			}
-		}
-		if len(words) == 0 || cy < from {
-			continue
-		}
-		var at [16][3]int // each line's column, row and room
-		n := min(len(words), len(at))
-		top := math.MaxInt
-		ok := true
-		for i := 0; i < n && ok; i++ {
-			col, row, limit, vis := place(words, i)
-			if i > 0 && abs(row-at[0][1]) <= 1 {
-				row = at[0][1] // the lines of a row stay on one screen row
-			}
-			at[i] = [3]int{col, row, limit}
-			top, ok = min(top, row), vis
-		}
-		if !ok {
-			continue
-		}
-		// onFace is whether screen row row is still on the face, under the
-		// row's first line.
-		_, bot, vis := proj(float64(words[0].x0), float64(fc.py1)/2)
-		onFace := func(row int) bool { return vis && float64(row)+0.5 <= bot+0.25 }
-		shift := 0
-		if !wall && !title {
-			// A line a row under the one before at least, and only while it
-			// is still on the face.
-			shift = max(0, next-top)
-			if !onFace(top + shift) {
-				break
-			}
-		}
-		if !wall && title {
-			// A title above or left of the screen, on a face that is on it:
-			// on the screen's first row, or from its first column.
-			if top < 0 && onFace(0) {
-				shift = -top
-			}
-			if c := at[0][0]; c < 0 && c+at[0][2] > 1 {
-				at[0][0], at[0][2] = 0, c+at[0][2]
-			}
-			if c, need := at[0][0], min(words[0].x1-words[0].x0, 5); c < rm.w && c+need > rm.w {
-				at[0][0] = rm.w - need // running off the right: its first letters on the screen
-			}
-			if row := at[0][1] + shift; row < 0 || row >= rm.h || at[0][0] < 0 || at[0][0] >= rm.w {
-				// Still off the screen, where some of the face is on it:
-				// where the face is first seen.
-				if col, row, n, ok := r.firstSeen(int32(fi)); ok {
-					at[0] = [3]int{col, row - shift, n}
-				}
-			}
-		}
-		if !wall {
-			// A line goes a row lower while the words of a nearer face are
-			// where it would go, as long as it is on the face. A title also
-			// moves while its face is hidden there (behind a nearer block),
-			// up or down along the face's side, to the nearest row where it
-			// is seen.
-			good := func(shift int) bool {
-				for i := 0; i < n; i++ {
-					need := min(words[i].x1-words[i].x0, 3)
-					if title && i == 0 {
-						need = min(words[i].x1-words[i].x0, 4) // at least "Abc…" of it in sight
-					}
-					if r.room(int32(fi), fc, at[i][0], at[i][1]+shift, need, title && i == 0) < need {
-						return false
-					}
-				}
-				return true
-			}
-			if !good(shift) {
-				if title {
-					// The rows the face's left side is seen on.
-					_, ra, ok1 := proj(float64(fc.cx0), float64(fc.py0)/2)
-					_, rb, ok2 := proj(float64(fc.cx0), float64(fc.py1)/2)
-					lo, hi := int(math.Floor(math.Min(ra, rb))), int(math.Floor(math.Max(ra, rb)))
-					for k := 1; ok1 && ok2 && k <= 16; k++ {
-						if row := top + shift + k; row <= hi && good(shift+k) {
-							shift += k
-							break
-						}
-						if row := top + shift - k; row >= lo && good(shift-k) {
-							shift -= k
-							break
-						}
-					}
-				} else {
-					for k := 1; k <= 12 && onFace(top+shift+k); k++ {
-						if good(shift + k) {
-							shift += k
-							break
-						}
-					}
-				}
-				if title && !good(shift) {
-					// Still nowhere along its side (the face seen at a slant,
-					// its top off the screen): the first row, from the top,
-					// where enough of the face is seen in a row for it.
-					r.titleAnywhere(int32(fi), fc, &at[0], shift, min(words[0].x1-words[0].x0, 4))
-				}
-			}
-		}
-		low := math.MinInt
-		prevRow, prevEnd := math.MinInt, math.MinInt // where the last line put on a screen row ends
-		for i := 0; i < n; i++ {
-			// A title stands out past a narrow face if it must (what it
-			// covers of the row's other words then does not show); on the
-			// wall, the last words of a row may.
-			keep := title && i == 0 || wall && i+1 == len(words)
-			col, row, limit := at[i][0], at[i][1]+shift, at[i][2]
-			if row == prevRow && col <= prevEnd {
-				// Squeezed onto the line before it: a space after that one,
-				// in what is left of its own room, or not at all (letters
-				// of two lines never mix: "Keys lan" not "Keysn").
-				limit -= prevEnd + 1 - col
-				col = prevEnd + 1
-				if limit < min(words[i].x1-words[i].x0, 3) {
-					continue
-				}
-			}
-			r.putRun(int32(fi), fc, words[i], col, row, limit, keep)
-			w := words[i].x1 - words[i].x0
-			if !keep {
-				w = min(w, limit)
-			}
-			prevRow, prevEnd = row, col+w
-			low = max(low, row)
-		}
-		next = low + 1
-		if title {
-			o.cy, o.next = cy+1, next
-			return
-		}
-	}
-	for i, ru := range marks {
-		if col, row, _, ok := place(marks[i:i+1], 0); ok {
-			r.putRun(int32(fi), fc, ru, col, row, ru.x1-ru.x0, false)
-		}
-	}
-	r.marks = marks
-}
-
-// firstSeen is the first screen cell, row by row, that shows face fi
-// (three of its four quarters at least, see cellFour), and how many cells
-// from it along the row do.
-func (r *room3D) firstSeen(fi int32) (col, row, n int, ok bool) {
-	w := r.rm.w
-	shows := func(c, row int, fi int32) bool {
-		k := 0
-		for _, i := range r.cellFour(c, row) {
-			if r.face[i] == fi {
-				k++
-			}
-		}
-		return k >= 3
-	}
-	if r.firstAt == nil || r.firstStamp != r.stamp {
-		// Once a drawing: every face's first such cell, in one look over
-		// the screen.
-		r.firstStamp = r.stamp
-		if cap(r.firstAt) < len(r.faces) {
-			r.firstAt = make([]int32, len(r.faces))
-		}
-		r.firstAt = r.firstAt[:len(r.faces)]
-		for i := range r.firstAt {
-			r.firstAt[i] = -1
-		}
-		for row := 0; row < r.rm.h; row++ {
-			for c := 0; c < w; c++ {
-				if f := r.face[r.cellFour(c, row)[0]]; f >= 0 && r.firstAt[f] < 0 && shows(c, row, f) {
-					r.firstAt[f] = int32(row*w + c)
-				}
-			}
-		}
-	}
-	at := int(r.firstAt[fi])
-	if at < 0 {
-		return 0, 0, 0, false
-	}
-	col, row = at%w, at/w
-	n = 1
-	for col+n < w && shows(col+n, row, fi) {
-		n++
-	}
-	return col, row, n, true
-}
-
-// titleAnywhere moves a title (at: its column, row less shift, and
-// room) to the first screen row, from the top, where face fi shows in
-// sight for need cells in a row, when there is one.
-func (r *room3D) titleAnywhere(fi int32, fc *r3face, at *[3]int, shift, need int) {
-	w := r.rm.w
-	for row := 0; row < r.rm.h; row++ {
-		for c := 0; c < w; c++ {
-			if r.face[r.cellFour(c, row)[0]] != fi {
-				continue
-			}
-			n := 0
-			for c+n < w && r.face[r.cellFour(c+n, row)[0]] == fi {
-				n++
-			}
-			if n >= need && r.room(fi, fc, c, row, n, true) >= need {
-				*at = [3]int{c, row - shift, n}
-				return
-			}
-			c += n
-		}
-	}
-}
-
-// room is how many cells from (col, row) to the right, up to n, a line
-// of face fi may take: cells no other words have taken and, with sight,
-// where the face is not hidden behind a nearer block. Cells left of the
-// screen count (the line runs off there); the screen's right edge ends it.
-func (r *room3D) room(fi int32, fc *r3face, col, row, n int, sight bool) int {
-	w := r.rm.w
-	if row < 0 || row >= r.rm.h {
-		return 0
-	}
-	num := fc.k - fc.n.dot(r.view.cam)
-	c := col
-	for ; c < col+n && c < w; c++ {
-		if c < 0 {
-			continue
-		}
-		at := row*w + c
-		if r.chars[at].stamp == r.stamp || sight && !r.inSight(at, fi, fc.own, fc.n, num) {
-			break
-		}
-	}
-	return c - col
 }
 
 // rowRuns adds the lines of words in row cy of face fc to runs: letters,
@@ -1734,83 +1424,6 @@ func (r *room3D) rowRuns(runs []r3run, fc *r3face, cy int, tex func(x, y int) *r
 		cx = end
 	}
 	return runs
-}
-
-// putRun draws line ru of face fc from screen cell (col, row) to the
-// right, in at most limit cells (keep: a title, which may stand out past
-// a narrow face). It takes only cells no nearer face's words have taken,
-// where the face is not behind something nearer: where those end, the
-// line is cut short with "…" (a title keeps at least its first letters).
-func (r *room3D) putRun(fi int32, fc *r3face, ru r3run, col, row, limit int, keep bool) {
-	if row < 0 || row >= r.rm.h {
-		return
-	}
-	tw, tx0, ty0 := r.rm.tw, r.rm.tx0, r.rm.ty0
-	type letter struct {
-		s    string
-		t    int32 // its cell of the flat board
-		wide bool
-	}
-	var buf [96]letter
-	ls := buf[:0]
-	width := 0
-	for x := ru.x0; x < ru.x1; {
-		ti := int32((ru.y-ty0)*tw + x - tx0)
-		t := &r.tex[ti]
-		l := letter{s: t.glyph, t: ti, wide: t.wide}
-		if l.s == "" {
-			l.s = " "
-		}
-		ls = append(ls, l)
-		x++
-		width++
-		if t.wide {
-			x++
-			width++
-		}
-	}
-	if keep {
-		limit = max(limit+2, min(width, titleRoom))
-	}
-	limit = min(limit, r.room(fi, fc, col, row, limit, true))
-	if width > limit && len(ls) > 3 && ls[1].s == " " && !ls[0].wide && !strings.ContainsFunc(ls[0].s, isWordRune) {
-		ls, width = ls[2:], width-2 // squeezed: the sign before a title gives way to its words
-	}
-	if limit < 1 || width > limit && (limit < 2 || !keep && limit < 3) {
-		return // no room for a letter and "…"
-	}
-	if width > limit {
-		// Cut short: as many letters as fit with "…" after them.
-		n, used := 0, 0
-		for n < len(ls) {
-			lw := 1
-			if ls[n].wide {
-				lw = 2
-			}
-			if used+lw > limit-1 {
-				break
-			}
-			used += lw
-			n++
-		}
-		last := ls[max(n-1, 0)].t
-		ls = append(ls[:n], letter{s: "…", t: last})
-	}
-	w := r.rm.w
-	c := col
-	for _, l := range ls {
-		if c >= 0 && c < w {
-			at := row*w + c
-			r.setChar(at, fi, l.s, &r.tex[l.t])
-			if l.wide && c+1 < w {
-				r.chars[at+1] = r3char{stamp: r.stamp, cont: true, face: fi}
-			}
-		}
-		c++
-		if l.wide {
-			c++
-		}
-	}
 }
 
 // frameGlyph is whether g is a line or block of a drawing (box lines,
@@ -2056,5 +1669,189 @@ func (r *room3D) write(w, h int, sb *strings.Builder) {
 		}
 		buf = append(buf, "\x1b[m\n"...)
 		sb.Write(buf)
+	}
+}
+
+// ---- words on their surfaces ----------------------------------------------------------------
+//
+// In 3D a face's words are lettering on it, not labels facing the camera:
+// each line of words stays where it is on its face and goes with it. Its
+// letters go where the face's cells are seen, so on a block turned or
+// tilted the line slopes with the face. A face seen from behind, or so
+// edge-on that its letters would crowd into each other, shows none; as it
+// turns away its words fade into it; and seen too small to read (far off,
+// or zoomed out), they are not drawn: letters cannot shrink in a terminal,
+// so that is what getting smaller is. Letters are never mirrored. A nearer
+// block hides the letters behind it.
+
+const (
+	wordsFadeFrom = 0.5  // a face turned this far from the camera (the cosine) starts to fade its words…
+	wordsGone     = 0.25 // …and at this, they are gone
+	wordsTight    = 0.5  // letters closer than this many cells apart on the screen are too small to read
+	wordsLow      = 0.5  // a row seen this many rows high or less is too squashed to read
+)
+
+// surfaceWords puts face o's words on the screen, each line where it is on
+// the face (see above).
+func (r *room3D) surfaceWords(o *r3near, v *r3view, rm *r3room) {
+	fi := o.fi
+	fc := &r.faces[fi]
+	wall := fc.mat == matBoard
+	z := r.pts[fc.p0].z
+	cam, right, up, fwd, f, px, py := v.cam, v.right, v.up, v.fwd, v.f, v.px, v.py
+	hw, hh := rm.hw, rm.hh
+	tw, tx0, ty0 := rm.tw, rm.tx0, rm.ty0
+	proj := func(bx, by float64) (sx, sy float64, ok bool) {
+		q := r3vec{bx - hw - cam.x, hh - 2*by - cam.y, z - cam.z}
+		cz := q.dot(fwd)
+		if cz < 0.25 {
+			return 0, 0, false
+		}
+		return px + f*q.dot(right)/cz, (py - f*q.dot(up)/cz) / 2, true
+	}
+	// How squarely the face is seen, from its middle.
+	mid := r3vec{float64(fc.cx0+fc.cx1)/2 - hw, hh - float64(fc.py0+fc.py1)/2, z}
+	to := cam.sub(mid)
+	facing := math.Abs(fc.n.dot(to)) / math.Max(math.Sqrt(to.dot(to)), 1e-9)
+	fade := clampF((facing-wordsGone)/(wordsFadeFrom-wordsGone), 0, 1)
+	if fade <= 0 {
+		return // seen edge-on (or from behind): no words
+	}
+	tex := func(x, y int) *r3texel { return &r.tex[(y-ty0)*tw+x-tx0] }
+	covered := func(x, y int) bool { return wall && r.cover[(y-ty0)*tw+x-tx0] == r.stamp }
+	num := fc.k - fc.n.dot(cam)
+	w := rm.w
+	var runs []r3run
+	for cy := fc.py0 >> 1; cy < fc.py1>>1; cy++ {
+		runs = r.rowRuns(runs[:0], fc, cy, tex, covered)
+		for _, ru := range runs {
+			by := float64(cy) + 0.5
+			// The row's height on the screen: too squashed, it cannot be read.
+			_, ya, ok1 := proj(float64(ru.x0)+0.5, float64(cy))
+			_, yb, ok2 := proj(float64(ru.x0)+0.5, float64(cy+1))
+			if !ok1 || !ok2 || math.Abs(yb-ya) < wordsLow {
+				continue
+			}
+			// How far apart its letters are on the screen.
+			x0, x1 := float64(ru.x0)+0.5, float64(ru.x1)-0.5
+			if ru.x1-ru.x0 < 2 {
+				x1 = x0 + 1
+			}
+			ax, _, okA := proj(x0, by)
+			bx, _, okB := proj(x1, by)
+			if !okA || !okB {
+				continue
+			}
+			gap := (bx - ax) / (x1 - x0)
+			if gap < wordsTight {
+				continue // too small (far, or seen at a slant) to read
+			}
+			alpha := fade * clampF((gap-wordsTight)/0.2, 0, 1)
+			if alpha < 0.15 {
+				continue
+			}
+			// The letters side by side, the line's middle where the face's
+			// middle of it is seen; each on the row where its own cell is.
+			width := ru.x1 - ru.x0
+			col := int(math.Floor((ax+bx)/2 - float64(width)/2 + 0.5))
+			if ru.x1-ru.x0 < 2 {
+				col = int(math.Floor(ax))
+			}
+			// Each word on one row: the line's row, or, where the face
+			// slopes a whole row away by then, the row its middle is seen
+			// on (a line steps between words, never inside one).
+			_, msy, _ := proj(float64(ru.x0+ru.x1)/2, by)
+			base := int(math.Floor(msy))
+			wordRow := make(map[int]int, 4)
+			for x := ru.x0; x < ru.x1; {
+				if tex(x, cy).glyph == "" || tex(x, cy).glyph == " " {
+					x++
+					continue
+				}
+				e := x
+				for e < ru.x1 && tex(e, cy).glyph != "" && tex(e, cy).glyph != " " {
+					e++
+				}
+				_, sy, ok := proj(float64(x+e)/2, by)
+				row := math.MinInt
+				if ok {
+					row = base
+					if d := sy - (float64(base) + 0.5); math.Abs(d) >= 1 {
+						row = base + int(math.Round(d))
+					}
+				}
+				for k := x; k < e; k++ {
+					wordRow[k] = row
+				}
+				x = e
+			}
+			// A word that would run into another face's or line's words, or
+			// touch them with no space between, is left out whole (never
+			// "footerlines").
+			skip := make(map[int]bool, 4)
+			for x := ru.x0; x < ru.x1; {
+				if g := tex(x, cy).glyph; g == "" || g == " " {
+					x++
+					continue
+				}
+				e := x
+				for e < ru.x1 && tex(e, cy).glyph != "" && tex(e, cy).glyph != " " {
+					e++
+				}
+				row := wordRow[x]
+				taken := false
+				if row != math.MinInt && row >= 0 && row < rm.h {
+					for c := col + x - ru.x0 - 1; c <= col+e-ru.x0 && !taken; c++ {
+						taken = c >= 0 && c < w && r.chars[row*w+c].stamp == r.stamp
+					}
+				}
+				for k := x; k < e; k++ {
+					skip[k] = taken
+				}
+				x = e
+			}
+			for x := ru.x0; x < ru.x1; x++ {
+				ti := int32((cy-ty0)*tw + x - tx0)
+				t := &r.tex[ti]
+				c := col + x - ru.x0
+				if skip[x] {
+					if t.wide {
+						x++
+					}
+					continue
+				}
+				row, ok := wordRow[x]
+				g := t.glyph
+				if g == "" || g == " " { // a space inside the line: the row of the word before it
+					g = " "
+					row, ok = wordRow[x-1]
+				}
+				ok = ok && row != math.MinInt
+				if !ok || c < 0 || c >= w || row < 0 || row >= rm.h {
+					if t.wide {
+						x++
+					}
+					continue
+				}
+				at := row*w + c
+				if r.chars[at].stamp == r.stamp || !r.inSight(at, int32(fi), fc.own, fc.n, num) {
+					if t.wide {
+						x++
+					}
+					continue // a nearer face's words, or a nearer block, there
+				}
+				r.setChar(at, int32(fi), g, t)
+				if alpha < 1 { // turning away: into the face
+					ch := &r.chars[at]
+					ch.fg = mix32(ch.bg, ch.fg, alpha)
+				}
+				if t.wide {
+					if c+1 < w {
+						r.chars[at+1] = r3char{stamp: r.stamp, cont: true, face: int32(fi)}
+					}
+					x++
+				}
+			}
+		}
 	}
 }

@@ -124,13 +124,15 @@ func checkNoWordThrough(t *testing.T, r *room3D, what string) {
 	}
 }
 
-// Every title shows as letters, at every zoom, turn, tilt and camera
-// distance, with no letter over a nearer block and no line too wide.
+// Words are lettering on their faces: a title shows where its face is
+// seen squarely and big enough to read; on a face seen edge-on, or too
+// small (zoomed far out), it does not show at all; and no letter is ever
+// drawn over a nearer block.
 func TestDesign3DTitlesEverywhere(t *testing.T) {
 	m, pages := pagesScene(t, 200, 60)
 	d := m.ds()
 	r := &d.room
-	checked := 0
+	shown, hidden := 0, 0
 	for _, zoom := range []int{0, 2, 4, designZoom100, 8} { // 25%, 50%, 80%, 100%, 200%
 		d.zoom = zoom
 		for _, a := range [][2]int{{5, 0}, {20, 10}, {35, 30}, {-35, -30}, {80, 0}, {-80, 0}, {0, 70}, {0, -45}, {60, 45}, {80, 75}} {
@@ -143,17 +145,27 @@ func TestDesign3DTitlesEverywhere(t *testing.T) {
 					if frontSeen(r, o) < 12 {
 						continue // its front hardly shows (off the screen)
 					}
-					checked++
-					if !titleShows(rows, o.Header) {
-						t.Fatalf("%s: the title %q should show as letters:\n%s", what, o.Header, strings.Join(rows, "\n"))
+					square := abs(a[0]) <= 20 && abs(a[1]) <= 10
+					edgeOn := abs(a[0]) >= 80 || abs(a[1]) >= 70
+					switch {
+					case zoom >= designZoom100 && square && near == 0:
+						shown++
+						if !titleShows(rows, o.Header) {
+							t.Fatalf("%s: the title %q, seen squarely and big enough, should show:\n%s", what, o.Header, strings.Join(rows, "\n"))
+						}
+					case edgeOn && near == 0:
+						hidden++
+						if titleShows(rows, o.Header) {
+							t.Fatalf("%s: the title %q is seen edge-on, and should not show:\n%s", what, o.Header, strings.Join(rows, "\n"))
+						}
 					}
 				}
 				checkNoWordThrough(t, r, what)
 			}
 		}
 	}
-	if checked < 400 {
-		t.Fatalf("only %d titles checked: the test checks too little", checked)
+	if shown < 4 || hidden < 6 {
+		t.Fatalf("only %d titles checked shown and %d hidden: the test checks too little", shown, hidden)
 	}
 }
 
@@ -164,7 +176,7 @@ func TestDesign3DTitlesFreeRoam(t *testing.T) {
 	r := &d.room
 	r.yaw, r.pitch = 35, 30
 	press(m, "ctrl+f")
-	start, look := r.pos, r.look
+	start := r.pos
 	o := pages[0]
 	x, y, ow, _ := d.rect(o)
 	rm := r.rm
@@ -173,13 +185,12 @@ func TestDesign3DTitlesFreeRoam(t *testing.T) {
 		what string
 		pos  r3vec
 		look [2]float64
+		show bool // its titles are big and square enough to read
 	}{
-		{"where it started", start, look},
-		{"far away", start.add(r3vec{0, 0, 3 * rm.big}), [2]float64{0, 0}},
-		{"far away, turned", start.add(r3vec{-rm.big, rm.big / 2, 2 * rm.big}), [2]float64{20, 15}},
-		{"close to a page", page.add(r3vec{0, 0, 30}), [2]float64{0, 0}},
-		{"very close to a page", page.add(r3vec{0, -2, 12}), [2]float64{0, 0}},
-		{"close, at a slant", page.add(r3vec{-25, 6, 25}), [2]float64{45, 12}},
+		{"far away", start.add(r3vec{0, 0, 3 * rm.big}), [2]float64{0, 0}, false},
+		{"far away, turned", start.add(r3vec{-rm.big, rm.big / 2, 2 * rm.big}), [2]float64{20, 15}, false},
+		{"close to a page", page.add(r3vec{0, 0, 30}), [2]float64{0, 0}, true},
+		{"very close to a page", page.add(r3vec{0, -2, 12}), [2]float64{0, 0}, true},
 	} {
 		r.pos, r.look = c.pos, c.look
 		checkRows(t, m, "free roam "+c.what)
@@ -190,8 +201,11 @@ func TestDesign3DTitlesFreeRoam(t *testing.T) {
 				continue
 			}
 			seen++
-			if !titleShows(rows, p.Header) {
+			if c.show && p == o && !titleShows(rows, p.Header) {
 				t.Fatalf("free roam %s: the title %q should show as letters:\n%s", c.what, p.Header, strings.Join(rows, "\n"))
+			}
+			if !c.show && titleShows(rows, p.Header) {
+				t.Fatalf("free roam %s: the title %q is too far to read, and should not show:\n%s", c.what, p.Header, strings.Join(rows, "\n"))
 			}
 		}
 		if seen == 0 {
@@ -231,9 +245,6 @@ func TestDesign3DTitleBehindBlock(t *testing.T) {
 				}
 			}
 		}
-		if !titleShows(rows, "Cupboard") {
-			t.Fatalf("%s: the cabinet's own title should show:\n%s", what, strings.Join(rows, "\n"))
-		}
 	}
 }
 
@@ -251,13 +262,13 @@ func TestDesign3DBodyLines(t *testing.T) {
 			}
 		}
 	}
-	// Tilted far down, the pages are squeezed: the title and the first
-	// line still show.
+	// Tilted far down, the pages are seen nearly edge-on: their words are
+	// too squashed to read, so they do not show.
 	r.yaw, r.pitch = 0, 75
 	all := strings.Join(room3DText(m), "\n")
-	for _, want := range []string{"Shopping", "Bread", "Week plan", "Monday"} {
-		if !strings.Contains(all, want) {
-			t.Fatalf("tilted 75°: %q should still show:\n%s", want, all)
+	for _, want := range []string{"Shopping", "Week plan", "Monday"} {
+		if strings.Contains(all, want) {
+			t.Fatalf("tilted 75°: %q is seen edge-on and should not show:\n%s", want, all)
 		}
 	}
 }

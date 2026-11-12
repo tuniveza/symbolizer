@@ -134,8 +134,6 @@ type room3D struct {
 	cover          []int32   // per back wall cell: the frame (stamp) a block stood on it
 	order          []r3near  // the faces with words, nearest first
 	marks          []r3run   // a face's marks, put after its words
-	firstAt        []int32   // per face: the first screen cell that shows it (see firstSeen), or -1
-	firstStamp     int32     // the frame firstAt is for
 	stamp          int32     // the frame: counts up with each drawing
 	faces          []r3face
 	pts            []r3vec

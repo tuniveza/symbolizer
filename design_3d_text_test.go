@@ -91,7 +91,7 @@ func TestDesign3DTextUnderWords(t *testing.T) {
 	m, _ := pagesScene(t, 200, 60)
 	designFrames = false
 	r := &m.ds().room
-	for _, a := range [][2]int{{5, 0}, {25, 15}, {-35, 30}} {
+	for _, a := range [][2]int{{5, 0}, {25, 15}, {-20, 10}} {
 		r.yaw, r.pitch = a[0], a[1]
 		rows := room3DText(m)
 		under := 0
