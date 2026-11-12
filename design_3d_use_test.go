@@ -109,6 +109,54 @@ func TestDesign3DRoomFits(t *testing.T) {
 	}
 }
 
+// The turned room fills the whole board area: at every turn, tilt, zoom
+// and camera distance, with the board moved and with nothing on it, every
+// pixel shows a surface of the room (no pixel is left the colour of
+// beyond it), and the far turns show the side walls, the floor and the
+// ceiling.
+func TestDesign3DRoomFillsScreen(t *testing.T) {
+	m := room3DModel(t, 120, 30)
+	d := m.ds()
+	r := &d.room
+	seen := map[int]bool{} // the materials seen
+	check := func(what string) {
+		t.Helper()
+		boardRows(m)
+		for i, f := range r.face {
+			if f < 0 {
+				t.Fatalf("%s: pixel %d, %d shows nothing (beyond the room)", what, i%r.pw, i/r.pw)
+			}
+			seen[r.faces[f].mat] = true
+		}
+	}
+	for _, empty := range []bool{false, true} {
+		if empty {
+			d.octs = nil
+		}
+		for _, zoom := range []int{0, 2, designZoom100, 8} {
+			for _, pan := range [][2]float64{{0, 0}, {-30, -12}, {60, -20}} {
+				d.zoom, d.camX, d.camY = zoom, pan[0], pan[1]
+				for _, a := range [][2]int{{5, 0}, {-25, 10}, {25, -10}, {80, 0}, {-80, 75}, {80, -45}, {0, 75}, {-40, -45}} {
+					for _, near := range []int{roomNearMin, 0, roomNearMax} {
+						r.yaw, r.pitch, r.near = a[0], a[1], near
+						check(fmt.Sprintf("zoom %d, board at %v, turned %v, %d steps closer, empty %v", zoom, pan, a, near, empty))
+					}
+				}
+			}
+		}
+	}
+	r.near = 0
+	for _, mat := range []int{matBoard, matBack, matFloor, matWall, matCeiling} {
+		if !seen[mat] {
+			t.Errorf("the room's surface %d never showed", mat)
+		}
+	}
+	// Free roam starts inside the room: all room too.
+	r.yaw, r.pitch = 30, 20
+	press(m, "ctrl+f")
+	check("free roam, at the start")
+}
+
 // The mouse turns the room (left drag on the empty room), moves the camera
 // (middle or right drag) and brings it closer (the wheel); a click on the
 // empty wall is a click on the empty board.

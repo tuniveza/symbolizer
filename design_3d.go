@@ -13,7 +13,11 @@ package main
 // board; its sides are its colour. A lamp hangs at the front left and
 // lights it all, and the blocks cast soft shadows on the back wall. The
 // walls and the floor stand just beyond the outermost blocks, so no block
-// goes through them.
+// goes through them, or further out to take in the camera: the room is
+// closed, with a ceiling and a wall behind the camera, so the whole board
+// area shows room at any turn, tilt and zoom. The walls are papered, with
+// rails and a skirting board, and the board hangs on the back wall like a
+// panel in a frame (see design_3d_walls.go).
 //
 // The room works as the flat board does: a click on a block's front is a
 // click on that cell of its flat drawing (a drawer pulls out, a lid opens,
@@ -44,7 +48,7 @@ const (
 	turnStep     = 5                      // degrees a press
 	turnYawMax   = 80                     // the room has no front wall: never seen from behind
 	turnPitchMax = 75                     // tilted down: seen from above
-	turnPitchUp  = 45                     // tilted up: seen from below, where the room has no ceiling to look at
+	turnPitchUp  = 45                     // tilted up: seen from below, the ceiling over it
 	turnGlide    = 2                      // degrees a glide step, held
 	turnStart    = 160 * time.Millisecond // held: the first glide step (a quick tap is one step)
 	turnEvery    = 30 * time.Millisecond  // then 33 steps a second: about 65° a second

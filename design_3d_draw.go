@@ -44,7 +44,7 @@ func (a r3vec) cross(b r3vec) r3vec {
 }
 func (a r3vec) norm() r3vec            { return a.mul(1 / math.Sqrt(a.dot(a))) }
 func (a r3vec) len() float64           { return math.Sqrt(a.dot(a)) }
-func clampF(v, lo, hi float64) float64 { return math.Max(lo, math.Min(hi, v)) }
+func clampF(v, lo, hi float64) float64 { return max(lo, min(hi, v)) } // the built-in min and max: no call, same answers
 func hex32(h string) uint32            { r, g, b := rgb(h); return uint32(r)<<16 | uint32(g)<<8 | uint32(b) }
 func rgb32(r, g, b float64) uint32     { return uint32(r)<<16 | uint32(g)<<8 | uint32(b) }
 func chans(c uint32) (r, g, b float64) {
@@ -110,19 +110,45 @@ type r3block struct {
 	dep            float64 // how far it comes out of the wall
 }
 
-// r3room is the room's size. The back wall is the flat board's cells
-// tx0 ≤ x < tx0+tw, ty0 ≤ y < ty0+th: the screen's board area, widened to
-// take in every structure that shows on it (whole, up to a screen beyond
-// it) and a margin. The side walls stand at its left and right edges, and
-// the floor lies along its bottom edge, so no block goes through them.
+// r3room is the room's size. The board on the back wall is the flat
+// board's cells tx0 ≤ x < tx0+tw, ty0 ≤ y < ty0+th: the screen's board
+// area, widened to take in every structure that shows on it (whole, up to
+// a screen beyond it) and a margin. The side walls stand at its left and
+// right edges, and the floor lies along its bottom edge, so no block goes
+// through them; the camera is fitted to that box (x0 to x1, y0 to y1,
+// out to depth).
+//
+// The room itself is closed: a ceiling over it and a wall behind the
+// camera, and where the camera is beyond that box (turned far, tilted up
+// under the floor's height), the walls, the floor and the ceiling stand
+// further out, so the camera is always inside and sees room wherever it
+// looks (see enclose). The back wall round the board is plain wall.
 type r3room struct {
 	w, h           int     // the screen's board area, cells
 	hw, hh         float64 // half of it, in units
 	tx0, ty0       int
 	tw, th         int
-	x0, x1, y0, y1 float64 // the side walls, the floor and the top of the back wall
-	depth          float64 // how far the floor and the side walls come out
+	x0, x1, y0, y1 float64 // the box round the blocks: its sides, bottom and top
+	depth          float64 // how far the box comes out
 	big            float64 // the screen's bigger side, in units
+	// The room's walls (see enclose): the side walls at wx0 and wx1, the
+	// floor at fy, the ceiling at cy and the wall behind the camera at fz.
+	wx0, wx1, fy, cy, fz float64
+}
+
+// enclose stands the room's walls round the box of the blocks, and further
+// out where they must be to take in the camera at cam with room to spare:
+// a camera inside a closed room sees room wherever it looks, never a void.
+func (rm *r3room) enclose(cam r3vec) {
+	// Well clear of the camera to the sides and behind it, so a wall right
+	// next to it does not fill the edge of the screen; a little under it
+	// and over it, so the floor and the ceiling are not further off than
+	// they need be.
+	wide, low := 0.35*rm.big, 2+0.04*rm.big
+	rm.wx0, rm.wx1 = math.Min(rm.x0, cam.x-wide), math.Max(rm.x1, cam.x+wide)
+	rm.fy = math.Min(rm.y0, cam.y-low)
+	rm.cy = math.Max(rm.y1+math.Max(2, 0.125*(rm.y1-rm.y0)), cam.y+low)
+	rm.fz = math.Max(rm.depth, cam.z+wide)
 }
 
 // The margin between the outermost blocks and the walls, in cells: two
@@ -454,13 +480,15 @@ func (r *room3D) mipmap(rm *r3room) {
 
 // What a face is made of.
 const (
-	matBoard = iota // the back wall: the flat board
-	matFront        // a block's front: its part of the flat board
-	matSolid        // one colour (a block's sides)
-	matFloor        // planks
-	matWall         // a side wall, with a skirting board
-	matLamp         // the bulb: it shines, it is not lit
-	matShade        // the lamp's shade, lit from inside
+	matBoard   = iota // the back wall: the flat board
+	matFront          // a block's front: its part of the flat board
+	matSolid          // one colour (a block's sides)
+	matFloor          // planks
+	matWall           // a side wall (or the wall behind the camera): wallpaper, rails and a skirting board
+	matBack           // the back wall round the board: papered, with a frame round the board
+	matCeiling        // the ceiling: plaster
+	matLamp           // the bulb: it shines, it is not lit
+	matShade          // the lamp's shade, lit from inside
 )
 
 // r3face is one flat, convex face.
@@ -528,25 +556,39 @@ func (r *room3D) scene(rm *r3room, z float64, lamp r3vec) {
 	r.faces, r.pts = r.faces[:0], r.pts[:0]
 	hw, hh := rm.hw, rm.hh
 	bg, text, accent := hex32(cBG), hex32(cText), hex32(cAccent)
-	x0, x1, y0, y1, depth := rm.x0, rm.x1, rm.y0, rm.y1, rm.depth
+	x0, x1, y0, y1 := rm.x0, rm.x1, rm.y0, rm.y1
 	wide, tall := x1-x0, y1-y0
 
-	// The room (the back wall is face 0). The back wall and the floor have
-	// a back too, seen from behind or below in free roam.
+	// The room (the board on the back wall is face 0), closed all round
+	// (see enclose). Each wall runs a little past the ones it meets, so no
+	// pixel slips through the corners. The back wall and the floor have a
+	// back too, seen from behind or below in free roam.
 	r.quadFace(r3face{n: r3vec{0, 0, 1}, mat: matBoard, own: -1, gloss: 0.15,
 		cx0: rm.tx0, cx1: rm.tx0 + rm.tw, py0: 2 * rm.ty0, py1: 2 * (rm.ty0 + rm.th)},
 		r3vec{x0, y0, 0}, r3vec{wide, 0, 0}, r3vec{0, tall, 0})
+	const lap = 0.5
+	wx0, wx1, fy, cy, fz := rm.wx0-lap, rm.wx1+lap, rm.fy-lap, rm.cy+lap, rm.fz+lap
+	across, up, out := r3vec{wx1 - wx0, 0, 0}, r3vec{0, cy - fy, 0}, r3vec{0, 0, fz + lap}
+	wall := mix32(bg, text, 0.08)
+	// The back wall round the board, a hair behind it (so the board is
+	// always seen in front of it): the board hangs on it like a panel.
+	r.quadFace(r3face{n: r3vec{0, 0, 1}, mat: matBack, own: -1, col: wall, gloss: 0.1},
+		r3vec{wx0, fy, -0.02}, across, up)
 	r.quadFace(r3face{n: r3vec{0, 1, 0}, mat: matFloor, own: -1, col: mix32(mix32(bg, text, 0.16), accent, 0.06), gloss: 0.6},
-		r3vec{x0, y0, 0}, r3vec{wide, 0, 0}, r3vec{0, 0, depth})
+		r3vec{wx0, rm.fy, -lap}, across, out)
 	r.quadFace(r3face{n: r3vec{1, 0, 0}, mat: matWall, own: -1, col: mix32(mix32(bg, text, 0.09), accent, 0.05), gloss: 0.1},
-		r3vec{x0, y0, 0}, r3vec{0, tall, 0}, r3vec{0, 0, depth})
+		r3vec{rm.wx0, fy, -lap}, up, out)
 	r.quadFace(r3face{n: r3vec{-1, 0, 0}, mat: matWall, own: -1, col: mix32(bg, text, 0.07), gloss: 0.1},
-		r3vec{x1, y0, 0}, r3vec{0, tall, 0}, r3vec{0, 0, depth})
+		r3vec{rm.wx1, fy, -lap}, up, out)
+	r.quadFace(r3face{n: r3vec{0, 0, -1}, mat: matWall, own: -1, col: wall, gloss: 0.1},
+		r3vec{wx0, fy, rm.fz}, across, up)
+	r.quadFace(r3face{n: r3vec{0, -1, 0}, mat: matCeiling, own: -1, col: mix32(bg, text, 0.05), gloss: 0.05},
+		r3vec{wx0, rm.cy, -lap}, across, out)
 	back := mix32(mix32(bg, text, 0.12), 0, 0.2)
 	r.quadFace(r3face{n: r3vec{0, 0, -1}, mat: matSolid, own: -1, col: back},
-		r3vec{x0, y0, -0.05}, r3vec{wide, 0, 0}, r3vec{0, tall, 0})
+		r3vec{wx0, fy, -0.05}, across, up)
 	r.quadFace(r3face{n: r3vec{0, -1, 0}, mat: matSolid, own: -1, col: back},
-		r3vec{x0, y0 - 0.05, 0}, r3vec{wide, 0, 0}, r3vec{0, 0, depth})
+		r3vec{wx0, rm.fy - 0.05, -lap}, across, out)
 
 	// Every structure that shows, as a block.
 	for i := range r.blocks {
@@ -619,7 +661,7 @@ func (r *room3D) scene(rm *r3room, z float64, lamp r3vec) {
 	}
 	cw := math.Max(0.5, rb/4)
 	cord := mix32(text, bg, 0.3)
-	ceil := y1 + 0.125*tall
+	ceil := rm.cy
 	for _, s := range []r3vec{{1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}} {
 		side := r3vec{s.z, 0, -s.x} // along the face
 		o := lamp.add(s.mul(cw)).sub(side.mul(cw))
@@ -859,8 +901,8 @@ func floorAt(base uint32, x, z, px float64) uint32 {
 	dark := 0.04 + 0.03*hash
 	// The join between two planks (the lines running out from the wall),
 	// blurred to a pixel's width: 1 on it, 0 away from it.
-	d := math.Min(x-p*plankW, plankW-(x-p*plankW))
-	j := clampF(1-(d-0.25)/math.Max(px, 0.3), 0, 1)
+	d := min(x-p*plankW, plankW-(x-p*plankW))
+	j := clampF(1-(d-0.25)/max(px, 0.3), 0, 1)
 	dark += 0.1 * j * clampF(1.6-px, 0, 1)
 	return mix32(base, 0, dark)
 }
@@ -882,17 +924,28 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 	} else {
 		v = r.orbitView(rm)
 	}
+	if r.free {
+		rm.enclose(r.startPos) // the room as it was round the camera when free roam began: it can be walked out of
+	} else {
+		rm.enclose(v.cam)
+	}
 	r.view, r.rm = v, *rm
 	cam, right, up, fwd, f, px, py := v.cam, v.right, v.up, v.fwd, v.f, v.px, v.py
 	lamp := lampAt(rm)
 	invR2 := 1 / (1.15 * rm.big * 1.15 * rm.big)
 	light := lightFor(cBG)
+	gk := grainFor(light.lightness)
 
 	r.scene(rm, z, lamp)
 	r.shadows(rm, lamp)
 
 	// A ray for every pixel (two across a cell, two down it), and a clean screen.
-	outside := mix32(hex32(cBG), 0, 0.55-0.37*light.lightness) // round the room: darker than the board
+	// Beyond the room (only seen from outside it, in free roam): the walls'
+	// colour in the light they mostly have, so it reads as more room.
+	bgPlain, textC := hex32(cBG), hex32(cText)
+	wr, wg, wb := chans(mix32(bgPlain, textC, 0.08))
+	wl := light.ambient + 0.85*light.fill + 0.12*light.lamp
+	outside := rgb32(byteOf(wr*wl), byteOf(wg*wl), byteOf(wb*wl))
 	for j := 0; j < ph; j++ {
 		dy := -(float64(j) + 0.5 - py) / f
 		row := j * pw
@@ -965,6 +1018,11 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 				p := r3vec{cam.x + dir.x*t, cam.y + dir.y*t, cam.z + dir.z*t}
 				var col uint32
 				shade := float32(1)
+				dl := 1 / math.Sqrt(dir.x*dir.x+dir.y*dir.y+dir.z*dir.z)
+				// foot is how many units of the face one pixel spans here
+				// (more where it is seen at a slant): a texture's details
+				// finer than that fade out instead of flickering.
+				foot := func() float64 { return t / f / max(-nd*dl, 0.12) }
 				switch fc.mat {
 				case matBoard, matFront:
 					fx := p.x + hw
@@ -979,7 +1037,7 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 					// picture.
 					k, s := 0, t/f
 					if s > 1.25 || nd > -0.5 {
-						s /= math.Sqrt(math.Max(-nd/math.Sqrt(dir.x*dir.x+dir.y*dir.y+dir.z*dir.z), 0.03))
+						s /= math.Sqrt(max(-nd*dl, 0.03))
 					}
 					for ss := s; k < len(r.mips)-1 && ss > 1.6; ss /= 2 {
 						k++
@@ -996,6 +1054,9 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 					}
 					if fc.mat == matBoard {
 						shade = 1 - 0.7*r.shadowAt(fx-float64(tx0), hh-p.y-float64(2*ty0))
+						if col == bgPlain {
+							col = plasterAt(col, p.x, p.y, foot(), boardGrain*gk) // the empty board: the wall round it, carried on
+						}
 					}
 				case matSolid:
 					col = fc.col
@@ -1014,17 +1075,21 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 				case matFloor:
 					col = floorAt(fc.col, p.x+hw, p.z, t/f)
 				case matWall:
-					col = fc.col
-					if p.y < rm.y0+3 {
-						col = mix32(col, hex32(cText), 0.12) // the skirting board
+					u := p.z // along the wall
+					if n.z != 0 {
+						u = p.x
 					}
+					col = wallAt(fc.col, textC, u, p.y, foot(), gk, rm)
+				case matBack:
+					col = backWallAt(fc.col, textC, p.x, p.y, foot(), gk, rm)
+				case matCeiling:
+					col = plasterAt(fc.col, p.x, p.z, foot(), ceilingGrain*gk)
 				case matLamp, matShade:
 					col = fc.col
 				}
 				r.zb[idx], r.face[idx], r.base[idx] = float32(t), fid, col
 
 				// The light here.
-				dl := 1 / math.Sqrt(dir.x*dir.x+dir.y*dir.y+dir.z*dir.z)
 				vx, vy, vz := -dir.x*dl, -dir.y*dl, -dir.z*dl
 				fill := n.x*vx + n.y*vy + n.z*vz
 				if fc.mat == matLamp {
