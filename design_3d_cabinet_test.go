@@ -37,7 +37,7 @@ func cabinetDoors(m *Model, cab *dOct) []int {
 	d := m.ds()
 	r := &d.room
 	x, _, w, _ := d.rect(cab)
-	fill := mixHex(cBG, cab.Color, 0.18)
+	fill := mixHex(boardBG(), cab.Color, 0.18)
 	wood := r.hex(mixHex(cab.Color, fill, 0.55))
 	var out []int
 	for fi, f := range r.faces {

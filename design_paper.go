@@ -452,9 +452,9 @@ func (d *designState) paperLayers(o *dOct) []*lipgloss.Layer {
 	if selected {
 		editing = d.editing
 	}
-	fill := mixHex(cBG, cText, 0.07)
+	fill := mixHex(boardBG(), cText, 0.07)
 	if o.Kind == kNote {
-		fill = mixHex(cBG, o.Color, 0.22)
+		fill = mixHex(boardBG(), o.Color, 0.22)
 	}
 	edge := mixHex(o.Color, fill, 0.15)
 	if selected {
@@ -467,7 +467,7 @@ func (d *designState) paperLayers(o *dOct) []*lipgloss.Layer {
 		fill = mixHex(fill, o.Color, 0.2)
 	}
 	if h < 4 || w < 8 {
-		pill := mixHex(cBG, o.Color, 0.5)
+		pill := mixHex(boardBG(), o.Color, 0.5)
 		return []*lipgloss.Layer{pillLayer(x, y, w, h, ansi.Truncate(kindIcons[o.Kind]+itemTitle(o), w, ""), pill)}
 	}
 	// Edges, the title and its line, the footer and its line; zoomed far
@@ -668,9 +668,9 @@ func (d *designState) structLayers(o *dOct) []*lipgloss.Layer {
 	}
 	if o.DrawerOpen {
 		dx, dy, dw, _ := d.drawerRect(o)
-		fill := mixHex(cBG, o.Color, 0.12)
+		fill := mixHex(boardBG(), o.Color, 0.12)
 		if d.dropOn == o.ID {
-			fill = mixHex(cBG, cAccent, 0.2)
+			fill = mixHex(boardBG(), cAccent, 0.2)
 		}
 		e := st(edge, fill)
 		iw := dw - 2

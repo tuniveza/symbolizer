@@ -491,15 +491,15 @@ func drawerHandle(n int, front, tint string) string {
 func (d *designState) drawerLayers(o *dOct) []*lipgloss.Layer {
 	x, y, w, h := d.rect(o)
 	selected := d.sel == o.ID
-	edge, fill := o.Color, mixHex(cBG, o.Color, 0.16)
+	edge, fill := o.Color, mixHex(boardBG(), o.Color, 0.16)
 	if selected {
 		edge = mixHex(o.Color, cText, 0.35)
 	}
 	if d.dropOn == o.ID {
-		edge, fill = cAccent, mixHex(cBG, cAccent, 0.2)
+		edge, fill = cAccent, mixHex(boardBG(), cAccent, 0.2)
 	}
 	if w < 8 || h < 3 {
-		pill := mixHex(cBG, o.Color, 0.55)
+		pill := mixHex(boardBG(), o.Color, 0.55)
 		return []*lipgloss.Layer{pillLayer(x, y, w, h, ansi.Truncate(kindIcons[o.Kind]+o.Header, w, ""), pill)}
 	}
 	n := drawerCount(o)
@@ -507,8 +507,8 @@ func (d *designState) drawerLayers(o *dOct) []*lipgloss.Layer {
 	iw := l.iw
 	e := st(edge, fill)
 	wood := mixHex(o.Color, fill, 0.5)   // the fronts' wood
-	inside := mixHex(cBG, o.Color, 0.08) // a tray, in its shadow (tinted with its drawer's colour below)
-	wall := mixHex(o.Color, cBG, 0.45)
+	inside := mixHex(boardBG(), o.Color, 0.08) // a tray, in its shadow (tinted with its drawer's colour below)
+	wall := mixHex(o.Color, boardBG(), 0.45)
 	headBG := fill // with several drawers the name is on the frame, with one on its front
 	if n == 1 {
 		headBG = wood
@@ -528,8 +528,8 @@ func (d *designState) drawerLayers(o *dOct) []*lipgloss.Layer {
 	}
 	row := func(s, bg string) string { return e.Render("│") + fitBlockLine(s, iw, bg) + e.Render("│") }
 	trayRowIn := func(i int, s string) string {
-		in := mixHex(cBG, drawerColor(o, i), 0.1)
-		wl := mixHex(drawerColor(o, i), cBG, 0.4)
+		in := mixHex(boardBG(), drawerColor(o, i), 0.1)
+		wl := mixHex(drawerColor(o, i), boardBG(), 0.4)
 		return e.Render("│") + st(wl, in).Render("▐") + fitBlockLine(s, l.cw, in) + st(wl, in).Render("▌") + e.Render("│")
 	}
 	// Each tray's rows, as they are when it is pulled right out.
@@ -540,7 +540,7 @@ func (d *designState) drawerLayers(o *dOct) []*lipgloss.Layer {
 		}
 		inside := inside
 		if n > 1 {
-			inside = mixHex(cBG, drawerColor(o, i), 0.1) // tinted with its drawer's colour
+			inside = mixHex(boardBG(), drawerColor(o, i), 0.1) // tinted with its drawer's colour
 		}
 		trayRow := func(s string) string { return trayRowIn(i, s) }
 		if n == 1 {

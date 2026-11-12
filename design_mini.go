@@ -28,9 +28,9 @@ func miniOf(o *dOct, sel bool) [][]miniCell { return miniOfSize(o, miniW, miniH,
 
 // miniColours are a miniature's fill and edge colours.
 func miniColours(o *dOct, sel bool) (fill, edge string) {
-	fill = mixHex(cBG, o.Color, 0.22)
+	fill = mixHex(boardBG(), o.Color, 0.22)
 	if textual(o.Kind) && o.Kind != kNote {
-		fill = mixHex(cBG, cText, 0.09) // a sheet is paper
+		fill = mixHex(boardBG(), cText, 0.09) // a sheet is paper
 	}
 	edge = mixHex(o.Color, cText, 0.15)
 	if sel {

@@ -397,8 +397,8 @@ func (m *Model) paintPlates(c *boardCanvas) {
 	bw := min(cw-4, 76)
 	bh := min(ch-2, max(len(lines), 1)+4)
 	x0, y0 := (cw-bw)/2, (ch-bh)/2
-	bg := mixHex(cBG, cBarBG, 0.7)
-	edge := mixHex(cDim, cBG, 0.1)
+	bg := mixHex(boardBG(), cBarBG, 0.7)
+	edge := mixHex(cDim, boardBG(), 0.1)
 	put := func(x, y int, s string, fg, back string, bold bool) {
 		if x < 0 || y < 0 || x >= cw || y >= ch {
 			return

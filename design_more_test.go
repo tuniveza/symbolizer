@@ -610,8 +610,11 @@ func TestDesignCanvasMatchesCompositor(t *testing.T) {
 				picturesDirect, middlesDirect = true, true
 				d.drawn = nil
 				got := m.designCanvas().Render()
-				if got != ref.Render() {
-					gl, wl := strings.Split(got, "\n"), strings.Split(ref.Render(), "\n")
+				onRef := newBoardCanvas(w, h) // the board's colour under all of it, as designCanvas does last
+				uv.NewStyledString(ref.Render()).Draw(onRef, onRef.Bounds())
+				onBoard(onRef)
+				if want := onRef.Render(); got != want {
+					gl, wl := strings.Split(got, "\n"), strings.Split(want, "\n")
 					for i := range wl {
 						if i < len(gl) && gl[i] != wl[i] {
 							t.Fatalf("zoom %d cam %v sel %d: row %d differs\n got %q\nwant %q\n got %q\nwant %q", zoom, cam, sel, i, ansi.Strip(gl[i]), ansi.Strip(wl[i]), gl[i], wl[i])
@@ -1305,7 +1308,7 @@ func (d *designState) linkGridSlow(w, h int, owner map[[2]int]int) map[[2]int]st
 			continue
 		}
 		current = i
-		c := mixHex(mixHex(a.Color, b.Color, 0.5), cBG, 0.2)
+		c := mixHex(mixHex(a.Color, b.Color, 0.5), boardBG(), 0.2)
 		if i == d.selLink {
 			c = cAccent // the chosen link
 		}

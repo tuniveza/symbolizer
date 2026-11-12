@@ -103,16 +103,16 @@ func (d *designState) containerLayers(o *dOct) []*lipgloss.Layer {
 	}
 	x, y, w, h := d.rect(o)
 	selected := d.sel == o.ID
-	edge, fill := o.Color, mixHex(cBG, o.Color, 0.16)
+	edge, fill := o.Color, mixHex(boardBG(), o.Color, 0.16)
 	if selected {
 		edge = mixHex(o.Color, cText, 0.35)
 	}
 	if d.dropOn == o.ID {
-		edge, fill = cAccent, mixHex(cBG, cAccent, 0.2)
+		edge, fill = cAccent, mixHex(boardBG(), cAccent, 0.2)
 	}
 	icon := kindIcons[o.Kind]
 	if w < 6 || h < 3 {
-		pill := mixHex(cBG, o.Color, 0.55)
+		pill := mixHex(boardBG(), o.Color, 0.55)
 		return []*lipgloss.Layer{pillLayer(x, y, w, h, ansi.Truncate(icon+o.Header, w, ""), pill)}
 	}
 	tl, tr, bl, br, hz, vt, ml, mr := "┌", "┐", "└", "┘", "─", "│", "├", "┤"
@@ -232,7 +232,7 @@ func (d *designState) detachDrawers() {
 		}
 		w, _ := d.size(o)
 		dr := &dOct{ID: d.nextID, Kind: kDrawer, X: o.X + w + 3, Y: o.Y, W: drawerNewW, H: 4,
-			Header: strings.TrimSpace(itemTitle(o) + " drawer"), Color: mixHex(o.Color, cBG, 0.25), Items: o.Items}
+			Header: strings.TrimSpace(itemTitle(o) + " drawer"), Color: mixHex(o.Color, boardBG(), 0.25), Items: o.Items}
 		d.nextID++
 		o.Items, o.DrawerOpen = nil, false
 		made = append(made, dr)

@@ -206,7 +206,7 @@ func (r *room3D) cabinetBlock(rm *r3room, b *r3block, dep float64) bool {
 	hw, hh := rm.hw, rm.hh
 	X := func(cx int) float64 { return float64(cx) - hw }
 	Y := func(cy int) float64 { return hh - float64(2*cy) }
-	fill := mixHex(cBG, o.Color, 0.18)
+	fill := mixHex(boardBG(), o.Color, 0.18)
 	wood := r.hex(mixHex(o.Color, fill, 0.55)) // the doors, as the flat drawing has them
 	knob := r.hex(mixHex(o.Color, cText, 0.6))
 	col := hex32(cText)

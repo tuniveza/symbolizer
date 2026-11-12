@@ -334,9 +334,9 @@ func (d *designState) boardLayers(o *dOct) []*lipgloss.Layer {
 	if d.dropOn == o.ID {
 		edge = cAccent
 	}
-	cork := mixHex(cBG, o.Color, 0.2)
+	cork := mixHex(boardBG(), o.Color, 0.2)
 	if w < 6 || h < 3 {
-		pill := mixHex(cBG, o.Color, 0.55)
+		pill := mixHex(boardBG(), o.Color, 0.55)
 		return []*lipgloss.Layer{pillLayer(x, y, w, h, kindIcons[kBoard]+o.Header, pill)}
 	}
 	c := newBoardCanvas(w, h)

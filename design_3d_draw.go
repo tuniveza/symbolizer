@@ -414,7 +414,7 @@ func (r *room3D) takeRoom(d *designState, c *boardCanvas, rm *r3room) {
 		r.tex = make([]r3texel, n)
 		r.cover = make([]int32, n)
 	}
-	defFG, defBG := hex32(cText), hex32(cBG)
+	defFG, defBG := hex32(cText), hex32(boardBG())
 	plain := r3texel{fg: defFG, bg: defBG, q: [4]uint32{defBG, defBG, defBG, defBG}, blank: true}
 	for i := range r.tex {
 		r.tex[i] = plain
@@ -989,8 +989,8 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 
 	// Beyond the room (only seen from outside it, in free roam): the walls'
 	// colour in the light they mostly have, so it reads as more room.
-	bgPlain := hex32(cBG)
-	wr, wg, wb := chans(mix32(bgPlain, hex32(cText), 0.08))
+	bgPlain := hex32(boardBG()) // an empty cell of the board, which is the walls' colour
+	wr, wg, wb := chans(bgPlain)
 	wl := light.ambient + 0.85*light.fill + 0.12*light.lamp
 	outside := rgb32(byteOf(wr*wl), byteOf(wg*wl), byteOf(wb*wl))
 
@@ -1051,7 +1051,7 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 	c := r3shade{cam: cam, lamp: lamp, f: f, invR2: 1 / (1.15 * rm.big * 1.15 * rm.big), light: light,
 		hw: rm.hw, hh: rm.hh, tx0: rm.tx0, ty0: rm.ty0, kx: kx, ky: ky, kpx: math.Max(2/kx, 1/ky),
 		minU: 0.06, minV: 0.06, rm: rm, textCol: hex32(cText),
-		outer: outside, bgPlain: bgPlain, wallCol: mix32(bgPlain, hex32(cText), 0.08), gk: gk}
+		outer: outside, bgPlain: bgPlain, wallCol: bgPlain, gk: gk}
 	if r.pix {
 		c.minV = 0.03 // a cell is twice as tall as wide: a line across as thin as one down
 	}

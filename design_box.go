@@ -349,10 +349,10 @@ func boxLidWords(g *boxGrid, o *dOct, s boxShape, lk boxLook, rows []int) {
 		}
 		t = ansi.Truncate(t, max(hi-lo+1, 0), "…")
 		x := lo + max(0, (hi-lo+1-lipgloss.Width(t))/2)
-		bg, act := mixHex(lk.lid, cBG, 0.35), ""
+		bg, act := mixHex(lk.lid, boardBG(), 0.35), ""
 		fg := boxInk(bg)
 		if t == "[open]" {
-			bg, fg, act = mixHex(cBG, lk.wall, 0.2), cAccent, "boxlid"
+			bg, fg, act = mixHex(boardBG(), lk.wall, 0.2), cAccent, "boxlid"
 		}
 		g.text(x, y, hi, t, fg, bg, true, act)
 	}
@@ -556,7 +556,7 @@ func (d *designState) boxEdges(g *boxGrid, o *dOct, s boxShape, lk boxLook, shut
 		hi = min(hi, w-6) // the ✕ that deletes it is at its top right
 	}
 	head := boxInk(g.c[y][min(max((lo+hi)/2, 0), w-1)].bg) // the words on its rim (or lid), as they are drawn there
-	btnBG := mixHex(cBG, lk.wall, 0.2)                     // a button: dark, so it reads on any wall
+	btnBG := mixHex(boardBG(), lk.wall, 0.2)                     // a button: dark, so it reads on any wall
 	if d.sel == o.ID {
 		lid := "[shut]"
 		if shut {
@@ -639,7 +639,7 @@ func (d *designState) boxLayers(o *dOct) []*lipgloss.Layer {
 	selected := d.sel == o.ID
 	lk := boxLookOf(o)
 	if w < 12 || h < 5 { // too small (zoomed far out): a block of its colour with its name
-		return []*lipgloss.Layer{pillLayer(x, y, w, h, ansi.Truncate(kindIcons[kBox]+o.Header, w, ""), mixHex(cBG, lk.wall, 0.8))}
+		return []*lipgloss.Layer{pillLayer(x, y, w, h, ansi.Truncate(kindIcons[kBox]+o.Header, w, ""), mixHex(boardBG(), lk.wall, 0.8))}
 	}
 	g := d.boxGridOf(o, w, h)
 	c := newBoardCanvas(w, h)
@@ -658,7 +658,7 @@ func (d *designState) boxLayers(o *dOct) []*lipgloss.Layer {
 	if selected {
 		edge = mixHex(lk.edge, cText, 0.4)
 	}
-	return d.octExtras([]*lipgloss.Layer{l}, o, x, y, w, h, edge, mixHex(cBG, lk.wall, 0.2), selected, d.linkMode && d.linkFrom == o.ID)
+	return d.octExtras([]*lipgloss.Layer{l}, o, x, y, w, h, edge, mixHex(boardBG(), lk.wall, 0.2), selected, d.linkMode && d.linkFrom == o.ID)
 }
 
 // boxHit is what a click does at (cx, cy) from the corner of box o, drawn

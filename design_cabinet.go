@@ -210,15 +210,15 @@ func cabinetDoorHit(o *dOct, x, y, w, h, sx, sy int) bool {
 func (d *designState) cabinetLayers(o *dOct) []*lipgloss.Layer {
 	x, y, w, h := d.rect(o)
 	selected := d.sel == o.ID
-	edge, fill := o.Color, mixHex(cBG, o.Color, 0.18)
+	edge, fill := o.Color, mixHex(boardBG(), o.Color, 0.18)
 	if selected {
 		edge = mixHex(o.Color, cText, 0.35)
 	}
 	if d.dropOn == o.ID {
-		edge, fill = cAccent, mixHex(cBG, cAccent, 0.2)
+		edge, fill = cAccent, mixHex(boardBG(), cAccent, 0.2)
 	}
 	if w < 10 || h < 5 {
-		pill := mixHex(cBG, o.Color, 0.55)
+		pill := mixHex(boardBG(), o.Color, 0.55)
 		return []*lipgloss.Layer{pillLayer(x, y, w, h, ansi.Truncate("≣"+o.Header, w, ""), pill)}
 	}
 	iw := w - 2

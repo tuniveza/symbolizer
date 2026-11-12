@@ -515,6 +515,14 @@ func mixHex(a, b string, t float64) string {
 	return s
 }
 
+// boardBG is the empty board's colour: the walls' colour of the room in
+// 3D (design_3d_draw.go), so the flat board and the room are one backdrop.
+func boardBG() string { return mixHex(cBG, cText, boardTint) }
+
+// boardTint is how far the board's colour is from the background toward
+// the text's.
+const boardTint = 0.08
+
 func mixHexNow(a, b string, t float64) string {
 	ar, ag, ab := rgb(a)
 	br, bg, bb := rgb(b)
@@ -1439,7 +1447,32 @@ func (m *Model) designCanvas() *boardCanvas {
 			c.Lines[y][x] = uv.Cell{Content: "✚", Width: 1, Style: uv.Style{Fg: rgbaOf(cAccent), Bg: rgbaOf(cBG), Attrs: uv.AttrBold}}
 		}
 	}
+	onBoard(c)
 	return c
+}
+
+// onBoard gives every cell drawn in the background's colour (or none) the
+// board's colour instead: whatever is drawn "on the board", a link's
+// letters, a box's open inside, a pill's ends, sits on the same backdrop.
+func onBoard(c *boardCanvas) {
+	r, g, b := rgb(cBG)
+	var to color.Color = rgbaOf(boardBG())
+	for _, line := range c.Lines {
+		for x := range line {
+			if line[x].Width == 0 {
+				continue // the second half of a wide letter: drawn with the first
+			}
+			bg := line[x].Style.Bg
+			if bg == nil {
+				line[x].Style.Bg = to
+				continue
+			}
+			cr, cg, cb, _ := bg.RGBA()
+			if int(cr>>8) == r && int(cg>>8) == g && int(cb>>8) == b {
+				line[x].Style.Bg = to
+			}
+		}
+	}
 }
 
 // drawKey is everything a structure's drawing depends on, except where it
@@ -1722,7 +1755,7 @@ func (d *designState) boardLayer(w, h int) string {
 	at := d.boardMarks(w, h)
 	// Styling is slow next to the rest, and the same few dots and gaps come
 	// again and again, so each is styled once per frame.
-	bg := st(cText, cBG)
+	bg := st(cText, boardBG())
 	gaps := map[int]string{}
 	gap := func(n int) string {
 		s, ok := gaps[n]
@@ -1748,7 +1781,7 @@ func (d *designState) boardLayer(w, h int) string {
 			}
 			s, ok := styled[mk]
 			if !ok {
-				s = st(mk.fg, cBG).Render(mk.s)
+				s = st(mk.fg, boardBG()).Render(mk.s)
 				styled[mk] = s
 			}
 			sb.WriteString(s)
@@ -1786,7 +1819,7 @@ func (d *designState) boardDots(w, h int, dot func(x, y int, mk boardMark)) {
 		b := math.Floor((cam + float64(s+1)/z) / float64(step))
 		return b > a, int(b) * step
 	}
-	plain, centre := boardMark{"·", mixHex(cDim, cBG, 0.45)}, boardMark{"+", mixHex(cDim, cBG, 0.1)}
+	plain, centre := boardMark{"·", mixHex(cDim, boardBG(), 0.45)}, boardMark{"+", mixHex(cDim, boardBG(), 0.1)}
 	var xs [][2]int
 	for x := range w {
 		if ok, wx := crosses(x, d.camX, stepX); ok {
@@ -1823,12 +1856,12 @@ func (d *designState) paintBoard(c *boardCanvas) {
 	}
 	blank := make(uv.Line, c.Width())
 	for x := range blank {
-		blank[x] = uv.Cell{Content: " ", Width: 1, Style: uv.Style{Fg: rgba(cText), Bg: rgba(cBG)}}
+		blank[x] = uv.Cell{Content: " ", Width: 1, Style: uv.Style{Fg: rgba(cText), Bg: rgba(boardBG())}}
 	}
 	for _, line := range c.Lines {
 		copy(line, blank)
 	}
-	bg := rgba(cBG)
+	bg := rgba(boardBG())
 	put := func(x, y int, mk boardMark) {
 		c.Lines[y][x] = uv.Cell{Content: mk.s, Width: 1, Style: uv.Style{Fg: rgba(mk.fg), Bg: bg}}
 	}
@@ -2028,7 +2061,7 @@ func (d *designState) linkWalk(w, h int, cell func(x, y, link int, s, fg string)
 			continue // the whole line is off the screen
 		}
 		current = i
-		c := mixHex(mixHex(a.Color, b.Color, 0.5), cBG, 0.2)
+		c := mixHex(mixHex(a.Color, b.Color, 0.5), boardBG(), 0.2)
 		if i == d.selLink {
 			c = cAccent // the chosen link
 		}
@@ -2067,9 +2100,9 @@ func (d *designState) octLayers(o *dOct) []*lipgloss.Layer {
 	if selected {
 		editing = d.editing
 	}
-	edge, fill := o.Color, mixHex(cBG, o.Color, 0.16)
+	edge, fill := o.Color, mixHex(boardBG(), o.Color, 0.16)
 	if source {
-		fill = mixHex(cBG, o.Color, 0.32)
+		fill = mixHex(boardBG(), o.Color, 0.32)
 	}
 	if selected {
 		edge = mixHex(o.Color, cText, 0.35)
@@ -2095,7 +2128,7 @@ func (d *designState) octLayers(o *dOct) []*lipgloss.Layer {
 	}
 
 	if h < 3 || w < 6 { // too small for the shape: one coloured row
-		pill := mixHex(cBG, o.Color, 0.55)
+		pill := mixHex(boardBG(), o.Color, 0.55)
 		return []*lipgloss.Layer{pillLayer(x, y, w, h, ansi.Truncate("◆"+o.Header, w, ""), pill)}
 	}
 	diag := func(s string) string { return st(edge, cBG).Bold(selected).Render(s) }
