@@ -45,7 +45,7 @@ func TestPaintedWords(t *testing.T) {
 }
 
 // A clean card shows its words and none of the flat board's frame or
-// placeholders.
+// placeholders; drawers, boxes and cabinets show no counts or layer tabs.
 func TestCleanCardTexels(t *testing.T) {
 	m := wordsScene(t, 140, 40)
 	withPixels(t, m, 10, 20)
@@ -66,7 +66,7 @@ func TestCleanCardTexels(t *testing.T) {
 			t.Errorf("no %q in the cards' words", want)
 		}
 	}
-	for _, not := range []string{"footer", "lines"} {
+	for _, not := range []string{"footer", "lines", "Tools·", "Cardbox·", "top1", "middle"} {
 		if strings.Contains(s, not) {
 			t.Errorf("placeholder %q on a card", not)
 		}
@@ -92,5 +92,17 @@ func TestGlyphCover(t *testing.T) {
 	}
 	if most < 0.9 {
 		t.Errorf("the crossbar covers only %.2f", most)
+	}
+}
+
+// The flat board keeps its counts: clean3D is only for the 3D picture.
+func TestFlatKeepsCounts(t *testing.T) {
+	m := wordsScene(t, 140, 40)
+	rows := strings.Join(boardRows(m), "\n")
+	if !strings.Contains(rows, "Tools · 1") {
+		t.Fatal("the flat board lost the drawer's count")
+	}
+	if clean3D {
+		t.Fatal("clean3D left on")
 	}
 }

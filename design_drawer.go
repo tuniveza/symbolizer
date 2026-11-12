@@ -514,7 +514,7 @@ func (d *designState) drawerLayers(o *dOct) []*lipgloss.Layer {
 		headBG = wood
 	}
 	name := o.Header
-	if c := len(drawerThings(o)); c > 0 {
+	if c := len(drawerThings(o)); c > 0 && !clean3D {
 		name = strings.TrimSpace(name + " · " + itoa(c))
 	}
 	head := st(mixHex(o.Color, cText, 0.45), headBG).Bold(true)
@@ -636,7 +636,7 @@ func (d *designState) drawerLayers(o *dOct) []*lipgloss.Layer {
 			hw, label := frontHandleW(n, iw), ""
 			if n > 1 {
 				label = " " + itoa(ln.slot+1)
-				if c := len(s.things); c > 0 {
+				if c := len(s.things); c > 0 && !clean3D {
 					label += " · " + itoa(c)
 				}
 			}

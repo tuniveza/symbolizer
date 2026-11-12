@@ -492,6 +492,22 @@ func (r *room3D) mipmap(rm *r3room) {
 			l0[i], l0[i+1], l0[i+w], l0[i+w+1] = q[0], q[1], q[2], q[3]
 		}
 	}
+	if r.paint {
+		// For the picture between its pixels (smooth): a painted letter's
+		// cell is its background there, the letter is painted over it.
+		if len(r.flat0) != len(l0) {
+			r.flat0 = make([]uint32, len(l0))
+		}
+		copy(r.flat0, l0)
+		for cy := 0; cy < rm.th; cy++ {
+			for cx := 0; cx < rm.tw; cx++ {
+				if t := &r.tex[cy*rm.tw+cx]; t.gl != nil {
+					i := 2*cy*w + 2*cx
+					r.flat0[i], r.flat0[i+1], r.flat0[i+w], r.flat0[i+w+1] = t.bg, t.bg, t.bg, t.bg
+				}
+			}
+		}
+	}
 	for k := 1; k < len(r.mips); k++ {
 		src, sw, sh := r.mips[k-1], r.mipW[k-1], r.mipH[k-1]
 		dst, dw := r.mips[k], r.mipW[k]
@@ -1209,6 +1225,12 @@ func (r *room3D) shadeRows(c *r3shade, j0, j1 int) {
 			}
 			col = r.mips[k][(ty>>k)*r.mipW[k]+tx>>k]
 			if k == 0 && r.paint {
+				// The picture between its pixels, smoothly: a texture, a
+				// picture in half blocks, a coloured strip have soft edges,
+				// not squares.
+				col = r.smooth(2*(fx-float64(tx0)), hh-p.y-float64(2*ty0))
+			}
+			if k == 0 && r.paint {
 				// A letter, painted (design_3d_glyphs.go).
 				cy := hy >> 1
 				if t := &r.tex[(cy-ty0)*rm.tw+cx-tx0]; t.gl != nil {
@@ -1217,7 +1239,7 @@ func (r *room3D) shadeRows(c *r3shade, j0, j1 int) {
 					col = mix32(t.bg, t.fg, t.gl.cover(u, v, s0/c.kx, s0/(2*c.ky)))
 				}
 			}
-			if s < 0.75 && !r.paint {
+			if s < 0.75 {
 				// Seen bigger than on the flat board: a box line is
 				// drawn as a thin line, not a whole cell's tint.
 				cy := hy >> 1

@@ -227,7 +227,7 @@ func (d *designState) cabinetLayers(o *dOct) []*lipgloss.Layer {
 	dst := st(edge, door)
 	knob := st(mixHex(o.Color, cText, 0.6), door).Bold(true)
 	name := o.Header
-	if n := countItems(o); n > 0 {
+	if n := countItems(o); n > 0 && !clean3D {
 		name = strings.TrimSpace(name + " · " + itoa(n))
 	}
 	head := st(mixHex(o.Color, cText, 0.4), fill).Bold(true)

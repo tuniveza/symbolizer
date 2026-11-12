@@ -1488,6 +1488,7 @@ type drawKey struct {
 	linkMode                                bool
 	bg, text, dim, accent, err, bar, stText string
 	stBG, ember                             string
+	clean                                   bool // drawn for the 3D picture (clean3D)
 }
 
 type drawnStruct struct {
@@ -1546,7 +1547,7 @@ func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
 		image: o.Image, openStack: o.OpenStack, layout: o.Layout, scroll: o.Scroll, drawerOpen: o.DrawerOpen,
 		sel: d.sel == o.ID, source: d.linkMode && d.linkFrom == o.ID, drop: d.dropOn == o.ID, linkMode: d.linkMode,
 		bg: cBG, text: cText, dim: cDim, accent: cAccent, err: cError, bar: cBarBG, stText: cStatusText,
-		stBG: cStatusBG, ember: cEmber,
+		stBG: cStatusBG, ember: cEmber, clean: clean3D,
 	}
 	if k.sel {
 		k.editing = d.editing

@@ -27,6 +27,11 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
+// clean3D is set while the structures are drawn for the 3D picture: their
+// drawings leave out what is only for working on the flat board (how many
+// things a drawer, cabinet or box holds, a box's layer tabs).
+var clean3D bool
+
 // glyphW, glyphH: a cell's letter is drawn this many pixels wide and tall
 // at its finest (a terminal cell is about twice as tall as wide).
 const glyphW, glyphH = 48, 96
@@ -211,7 +216,7 @@ func (r *room3D) paintGlyphs(rm *r3room) {
 // from its words (cleanCards), not as its flat drawing.
 func cleanCard(o *dOct) bool {
 	switch o.Kind {
-	case kOct, kPage, kNote, kSlide:
+	case kOct, kPage, kNote, kSlide, kBook, kDrawing:
 		return o.Image == ""
 	}
 	return false
@@ -254,6 +259,9 @@ func (r *room3D) cleanCards(rm *r3room) {
 					if cy == y {
 						t.q[0], t.q[1] = edge, edge // the strip along the top
 					}
+					if o.Kind == kBook && cx == x {
+						t.q[0], t.q[2] = edge, edge // a book: its spine down the left
+					}
 				}
 			}
 		}
@@ -283,7 +291,27 @@ func (r *room3D) cleanCards(rm *r3room) {
 			line(ansi.Truncate(o.Footer, room, "…"), bottom, dim, false)
 			bottom-- // a blank row above it
 		}
-		if o.Body != "" && bottom > top {
+		if o.Kind == kDrawing && o.Body != "" && bottom > top {
+			// A drawing keeps its lines as they are, one under another,
+			// the whole of it in the middle.
+			lines := strings.Split(o.Body, "\n")
+			lines = lines[:min(len(lines), bottom-top)]
+			widest := 0
+			for _, l := range lines {
+				widest = max(widest, ansi.StringWidth(l))
+			}
+			x0 := x + max(0, (w-min(widest, room))/2)
+			for i, l := range lines {
+				cx := x0
+				for _, gr := range graphemes(ansi.Truncate(l, room, "")) {
+					gw := ansi.StringWidth(gr)
+					if t := at(cx, top+i); t != nil && gw > 0 && gr != " " {
+						t.fg, t.blank, t.glyph, t.wide = text, false, gr, gw == 2
+					}
+					cx += max(gw, 1)
+				}
+			}
+		} else if o.Body != "" && bottom > top {
 			lines := strings.Split(ansi.Wrap(o.Body, room, ""), "\n")
 			if o.Kind == kPage && o.Scroll > 0 && o.Scroll < len(lines) {
 				lines = lines[o.Scroll:]
@@ -308,4 +336,25 @@ func graphemes(s string) []string {
 		out = append(out, g.Str())
 	}
 	return out
+}
+
+// smooth is the back wall's finest picture at (x, y) (its pixels, two a
+// cell across, two a row down), between its four nearest pixels.
+func (r *room3D) smooth(x, y float64) uint32 {
+	l, w, h := r.flat0, r.mipW[0], r.mipH[0]
+	x, y = x-0.5, y-0.5
+	x0, y0 := int(math.Floor(x)), int(math.Floor(y))
+	fx, fy := x-float64(x0), y-float64(y0)
+	cl := func(v, n int) int { return max(0, min(n-1, v)) }
+	xa, xb, ya, yb := cl(x0, w), cl(x0+1, w), cl(y0, h), cl(y0+1, h)
+	a, b, c, d := l[ya*w+xa], l[ya*w+xb], l[yb*w+xa], l[yb*w+xb]
+	if a == b && b == c && c == d {
+		return a
+	}
+	ch := func(sh uint) uint32 {
+		v := (float64(a>>sh&255)*(1-fx)+float64(b>>sh&255)*fx)*(1-fy) +
+			(float64(c>>sh&255)*(1-fx)+float64(d>>sh&255)*fx)*fy
+		return uint32(v + 0.5)
+	}
+	return ch(16)<<16 | ch(8)<<8 | ch(0)
 }

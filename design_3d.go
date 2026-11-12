@@ -150,6 +150,7 @@ type room3D struct {
 	ds             *designState  // the board it shows (a box's inside: design_3d_box.go)
 	plain          bool          // P: the plain picture, without the text layer (design_3d_text.go)
 	looked         bool          // P was pressed: plain is the person's choice, not the default (the picture where kitty can show it)
+	flat0          []uint32      // the back wall's finest picture with painted letters' cells as their background (design_3d_glyphs.go)
 	paint          bool          // this drawing: the plain picture, its words painted on the faces (design_3d_glyphs.go)
 	noShapes       bool          // P: the text layer over the picture, not shape letters (design_3d_shapes.go)
 	cells          []r3ink       // per screen cell: the text layer's letter
@@ -813,14 +814,16 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 	corner, plates := d.mapCorner, d.platesOpen
 	d.mapCorner, d.platesOpen = 0, false
 	r.cabinets(d, w, h) // how open each cabinet is this frame, for the flat drawing and the 3D doors alike
-	c := m.designCanvas()
-	d.mapCorner, d.platesOpen = corner, plates
-	r.ds = d
 	pic := room3DPixels && w <= len(kittyMarks) && h <= len(kittyMarks)
 	if !r.looked {
 		r.plain = pic // where kitty shows pictures the room is a picture, its words painted on
 	}
 	r.paint = pic && r.plain
+	clean3D = r.paint // the structures drawn without the flat board's counts and tabs
+	c := m.designCanvas()
+	clean3D = false
+	d.mapCorner, d.platesOpen = corner, plates
+	r.ds = d
 	rm := r.area(d, w, h, d.z())
 	r.takeRoom(d, c, &rm)
 	r.mipmap(&rm)

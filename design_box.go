@@ -575,7 +575,7 @@ func (d *designState) boxEdges(g *boxGrid, o *dOct, s boxShape, lk boxLook, shut
 	} else if strings.TrimSpace(name) == "" {
 		name = boxDesignNames[s.design]
 	}
-	if n := len(drawerThings(o)); n > 0 && !(d.sel == o.ID && d.editing == partHeader) {
+	if n := len(drawerThings(o)); n > 0 && !(d.sel == o.ID && d.editing == partHeader) && !clean3D {
 		name += " · " + itoa(n)
 	}
 	if hi-lo >= 3 {
@@ -583,6 +583,9 @@ func (d *designState) boxEdges(g *boxGrid, o *dOct, s boxShape, lk boxLook, shut
 	}
 	if shut || h < 6 {
 		return
+	}
+	if clean3D {
+		return // the layers' tabs are for working on the flat board
 	}
 	// The layers, with how many things each has.
 	y = h - 1
