@@ -186,19 +186,25 @@ func (r *room3D) writeCells(w, h int, sb *strings.Builder) {
 		buf = buf[:0]
 		fg, bg := unset, unset
 		for col := 0; col < w; col++ {
+			s, cf, cb := "", uint32(0), uint32(0)
 			if ch := &r.chars[row*w+col]; ch.stamp == r.stamp {
 				if ch.cont {
 					continue // the second half of a wide letter: drawn with it
 				}
-				if int64(ch.fg) != fg {
-					buf = colour(buf, "\x1b[38;2;", ch.fg)
-					fg = int64(ch.fg)
+				s, cf, cb = ch.s, ch.fg, ch.bg
+			} else if k := r.inkAt(row*w + col); k != nil {
+				s, cf, cb = k.s, k.fg, k.bg // the text layer's letter (design_3d_text.go)
+			}
+			if s != "" {
+				if int64(cf) != fg {
+					buf = colour(buf, "\x1b[38;2;", cf)
+					fg = int64(cf)
 				}
-				if int64(ch.bg) != bg {
-					buf = colour(buf, "\x1b[48;2;", ch.bg)
-					bg = int64(ch.bg)
+				if int64(cb) != bg {
+					buf = colour(buf, "\x1b[48;2;", cb)
+					bg = int64(cb)
 				}
-				buf = append(buf, ch.s...)
+				buf = append(buf, s...)
 				continue
 			}
 			if fg != int64(id) {

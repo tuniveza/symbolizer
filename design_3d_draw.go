@@ -12,7 +12,10 @@ package main
 // and every word is drawn over them in the terminal's own letters, upright
 // and crisp, wherever it is seen (see words). In kitty the pixels are a
 // real picture instead, as many as the terminal's own (see
-// design_3d_kitty.go): the same drawing, with more pixels to a cell.
+// design_3d_kitty.go): the same drawing, with more pixels to a cell. Over
+// either goes a layer of letters (design_3d_text.go): the edges, the
+// planks, the walls' rails and the flat drawings' box lines as box line
+// letters, so the room is made of text as the flat board is.
 //
 // The world's units: one is a cell's width, and a cell is two units tall.
 // x goes right, y up, and z out of the back wall toward the viewer. The
@@ -248,9 +251,11 @@ type r3texel struct {
 	q      [4]uint32
 	fg, bg uint32
 	glyph  string
-	wide   bool // the letter is two cells wide
-	blank  bool // a space
-	arms   int8 // a box line: its arms (see boxArms)
+	wide   bool   // the letter is two cells wide
+	blank  bool   // a space
+	arms   int8   // a box line: its arms (see boxArms)
+	style  uint8  // a box line: heavy, double, dashed or round (see boxStyle)
+	mark   string // a sign the text layer shows as it is, seen big enough: a shade, braille, a slanting line (design_3d_text.go)
 }
 
 // quadMask is which quarters of a cell each block letter from ▀ (U+2580)
@@ -290,17 +295,21 @@ func texelOf(cell *uv.Cell, defFG, defBG uint32) r3texel {
 		t.blank = true
 	case s == "▒":
 		all(mix32(t.bg, t.fg, 0.5))
+		t.mark = s
 	case s == "░":
 		all(mix32(t.bg, t.fg, 0.25))
+		t.mark = s
 	case s == "▓":
 		all(mix32(t.bg, t.fg, 0.75))
+		t.mark = s
 	case ru >= 0x2500 && ru <= 0x257f && size == len(s):
 		// A box line, the edge of a thing: each quarter is tinted by the
 		// arms of the line that touch it, so a corner stays a corner.
 		arms := boxArms(ru)
-		t.arms = int8(arms)
+		t.arms, t.style = int8(arms), boxStyle(ru)
 		if arms == 0 {
 			all(mix32(t.bg, t.fg, 0.55))
+			t.mark = s // ╱ ╲ ╳
 			break
 		}
 		touch := [4]int{1 | 4, 1 | 8, 2 | 4, 2 | 8} // up and left touch the top left quarter, and so on
@@ -313,8 +322,10 @@ func texelOf(cell *uv.Cell, defFG, defBG uint32) r3texel {
 		}
 	case ru >= 0x2580 && ru <= 0x259f && ru != '▏' && size == len(s):
 		all(mix32(t.bg, t.fg, 0.45)) // the other blocks (▁ ▂ … ▉ ▊ …): about half the cell
+		t.mark = s
 	case ru >= 0x2800 && ru <= 0x28ff && size == len(s):
 		all(mix32(t.bg, t.fg, 0.4)) // braille dots: a picture
+		t.mark = s
 	default:
 		// A letter (or the caret ▏): the face shows only its background,
 		// and the letter itself is drawn over it as a letter.
@@ -1065,7 +1076,23 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 		r.shadeRows(&c, j0, j1)
 	})
 
+	// The back wall's cells a block stands on: the block's front shows
+	// their words and lines, not the wall.
+	for _, b := range r.blocks {
+		for y := max(b.y0, rm.ty0); y < min(b.y1, rm.ty0+rm.th); y++ {
+			row := r.cover[(y-rm.ty0)*rm.tw:]
+			for x := max(b.x0, rm.tx0); x < min(b.x1, rm.tx0+rm.tw); x++ {
+				row[x-rm.tx0] = r.stamp
+			}
+		}
+	}
+	if !r.plain {
+		r.textLayer(&c) // the room in letters (design_3d_text.go)
+	}
 	r.words(&v, rm)
+	if !r.plain {
+		r.finishInk()
+	}
 	if r.pix {
 		r.writeCells(w, h, sb)
 	} else {
@@ -1187,7 +1214,7 @@ func (r *room3D) shadeRows(c *r3shade, j0, j1 int) {
 			}
 		case matSolid:
 			col = fc.col
-			if fc.edge {
+			if fc.edge && r.plain { // in text, the edges are lines of letters (design_3d_text.go)
 				q := p.sub(fc.o)
 				u, v := q.dot(fc.eu), q.dot(fc.ev)
 				// Its edges, a little darker: a band e wide, blurred to
@@ -1328,16 +1355,6 @@ func (r *room3D) words(v *r3view, rm *r3room) {
 	w, h := rm.w, rm.h
 	if len(r.chars) != w*h {
 		r.chars = make([]r3char, w*h)
-	}
-	// The back wall's cells a block stands on: the block's front shows
-	// their words, not the wall.
-	for _, b := range r.blocks {
-		for y := max(b.y0, rm.ty0); y < min(b.y1, rm.ty0+rm.th); y++ {
-			row := r.cover[(y-rm.ty0)*rm.tw:]
-			for x := max(b.x0, rm.tx0); x < min(b.x1, rm.tx0+rm.tw); x++ {
-				row[x-rm.tx0] = r.stamp
-			}
-		}
 	}
 	r.order = r.order[:0]
 	for fi := range r.faces {
@@ -2001,6 +2018,8 @@ func (r *room3D) write(w, h int, sb *strings.Builder) {
 					continue // the second half of a wide letter: drawn with it
 				}
 				top, bot, glyph = ch.fg, ch.bg, ch.s
+			} else if k := r.inkAt(row*w + col); k != nil {
+				top, bot, glyph = k.fg, k.bg, k.s // the text layer's letter (design_3d_text.go)
 			} else {
 				px[0], px[1], px[2], px[3] = r.pixel(tl), r.pixel(tl+1), r.pixel(tl+pw), r.pixel(tl+pw+1)
 				mask, a, b := quads(&px)
