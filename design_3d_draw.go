@@ -481,6 +481,7 @@ type r3face struct {
 	// rows of half cells py0 ≤ y < py1 (the back wall and the blocks).
 	cx0, cx1, py0, py1 int
 	seen               bool // drawn this frame (it faced the camera)
+	inside             bool // its words hide behind its own block's other faces too (a cabinet's, design_3d_cabinet.go)
 }
 
 // depthOf is how far a kind of structure comes out of the wall, at 100%.
@@ -554,6 +555,9 @@ func (r *room3D) scene(rm *r3room, z float64, lamp r3vec) {
 		o := b.o
 		// A block on top of another on the flat board comes out a hair further.
 		dep := b.dep + 1e-5*float64(i)
+		if o.Kind == kCabinet && r.cabinetBlock(rm, b, dep) {
+			continue // a cupboard with doors that open (design_3d_cabinet.go)
+		}
 		X0, X1 := float64(b.x0)-hw, float64(b.x1)-hw
 		Yt, Yb := hh-float64(2*b.y0), hh-float64(2*b.y1)
 		// The front: an octagon for a shape drawn whole as one, else a rectangle.
@@ -1574,7 +1578,7 @@ func (r *room3D) inSight(at int, fi int32, own int, n r3vec, num float64) bool {
 	bad := 0
 	for _, i := range [4]int{tl, tl + 1, tl + pw, tl + pw + 1} {
 		f := r.face[i]
-		if f < 0 || f == fi || r.faces[f].own < 0 || r.faces[f].own == own {
+		if f < 0 || f == fi || r.faces[f].own < 0 || r.faces[f].own == own && !r.faces[fi].inside {
 			continue // nothing, the face itself, the room, or its own block's sides (behind its front)
 		}
 		d := r.dirs[i]

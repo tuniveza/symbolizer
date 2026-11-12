@@ -123,6 +123,7 @@ type room3D struct {
 	inkBox         [4]int // where the pen's ink is on the board (see ink), kept until it changes
 	inkVer, inkLen int
 	hexes          map[string]uint32 // colours read from their "#rrggbb"
+	cab            map[int]*r3cab    // the cabinets this frame: their doors and shelves (design_3d_cabinet.go)
 	view           r3view            // the camera of the last drawing, for the mouse
 	rm             r3room            // the room of the last drawing
 	frame          string            // the last drawing, for frames where only the mouse moved
@@ -737,6 +738,7 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 	// floats over it (the mini map, the list of name plates).
 	corner, plates := d.mapCorner, d.platesOpen
 	d.mapCorner, d.platesOpen = 0, false
+	r.cabinets(d, w, h) // how open each cabinet is this frame, for the flat drawing and the 3D doors alike
 	c := m.designCanvas()
 	d.mapCorner, d.platesOpen = corner, plates
 	rm := r.area(d, w, h, d.z())
