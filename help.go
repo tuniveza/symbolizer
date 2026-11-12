@@ -129,7 +129,7 @@ var helpGroups = []helpGroup{
 		{"+ · − · 0", "zoom in · out · back to 100%, around the chosen structure (it stays in the middle); the keypad's + and − too"},
 		{"Ctrl + arrows", "3D: Left · Right turn the board's room, Up · Down tilt it (5° a press; held: it keeps turning). Each structure is a block on the back wall, lit by a lamp. Esc (or straight on again): the flat board"},
 		{"  3D: the mouse", "  drag the empty room: turn it · middle or right drag: move the camera · wheel (or + −): closer · further · 0: the camera back"},
-		{"  3D: keys", "  arrows (Shift too): turn and tilt, the blocks stay put · W A S D: walk (starts free roam) · P: the picture with painted words (kitty), shape letters, or text over the picture"},
+		{"  3D: keys", "  arrows (Shift too): turn and tilt, the blocks stay put · W A S D: walk (starts free roam) · F: face the card under the mouse · P: the picture with painted words (kitty), shape letters, or text over the picture"},
 		{"  3D: font", "  sy --font: installs Sy Geometry, the shape letters that draw the room's edges at their own angle (restart kitty)"},
 		{"  3D: room", "  fills the screen: papered walls, floor, ceiling · a box is open, its things inside by layer · a cabinet's doors swing out on hinges · kitty: a sharp picture"},
 		{"  3D: blocks", "  click, double-click and drag them as on the flat board: drawers, lids, rows, pins, ✕, titles; other keys work as flat too"},

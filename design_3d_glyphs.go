@@ -282,16 +282,35 @@ func (r *room3D) cleanCards(rm *r3room) {
 		}
 		room := w - 4
 		top, bottom := y+1, y+h-1 // rows for words: top ≤ row < bottom
-		if o.Header != "" {
-			line(ansi.Truncate(o.Header, room, "…"), top, head, true)
+		editing := partNone
+		if d.sel == o.ID {
+			editing = d.editing
+		}
+		// typed is part s while it is being written: its end, with the caret.
+		typed := func(s string, part int) string {
+			if editing != part {
+				return ansi.Truncate(s, room, "…")
+			}
+			return ansi.TruncateLeft(s, max(0, ansi.StringWidth(s)-(room-1)), "…") + "▏"
+		}
+		if o.Header != "" || editing == partHeader {
+			line(typed(o.Header, partHeader), top, head, true)
 			top += 2
 		}
-		if o.Footer != "" && bottom-top >= 2 {
+		if (o.Footer != "" || editing == partFooter) && bottom-top >= 2 {
 			bottom--
-			line(ansi.Truncate(o.Footer, room, "…"), bottom, dim, false)
+			line(typed(o.Footer, partFooter), bottom, dim, false)
 			bottom-- // a blank row above it
 		}
-		if o.Kind == kDrawing && o.Body != "" && bottom > top {
+		if editing == partBody && bottom > top {
+			// Being written: the end of the text, where the typing is, and the caret.
+			lines := strings.Split(ansi.Wrap(o.Body, room-1, ""), "\n")
+			lines = lines[max(0, len(lines)-(bottom-top)):]
+			lines[len(lines)-1] += "▏"
+			for i, l := range lines {
+				line(l, top+i, text, false)
+			}
+		} else if o.Kind == kDrawing && o.Body != "" && bottom > top {
 			// A drawing keeps its lines as they are, one under another,
 			// the whole of it in the middle.
 			lines := strings.Split(o.Body, "\n")

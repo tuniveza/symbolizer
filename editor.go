@@ -308,6 +308,9 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	if _, ok := msg.(designHoldMsg); ok {
 		return m, tea.Batch(m.designHold(), m.designFrameCmd(), m.designSaveCmd())
 	}
+	if _, ok := msg.(room3DFaceMsg); ok { // F: the camera gliding to a card (design_3d_face.go)
+		return m, m.design3DFaceStep()
+	}
 	if _, ok := msg.(room3DWalkMsg); ok { // free roam: walking on while a key is held (design_3d.go)
 		return m, m.design3DWalkStep()
 	}

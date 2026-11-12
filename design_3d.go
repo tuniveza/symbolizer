@@ -65,9 +65,9 @@ const (
 	walkFast     = 3   // with Shift: this many times faster
 	walkTap      = 0.06 * float64(time.Second)
 	walkEvery    = 20 * time.Millisecond // held: a step every 20 ms, as far as the time since the last one
-	roomHint     = "3D view · arrows/drag: turn · WASD: walk · right-drag: move · wheel: zoom · P: picture · Esc: flat"
-	roomHintPic  = "3D view · arrows/drag: turn · WASD: walk · right-drag: move · wheel: zoom · P: text · Esc: flat"
-	roomFreeHint = "Free roam  ·  W A S D: walk  ·  Q E: down, up  ·  Shift: fast  ·  arrows or drag: look  ·  Esc: back"
+	roomHint     = "3D view · arrows/drag: turn · F: face a card · WASD: walk · wheel: zoom · P: picture · Esc: flat"
+	roomHintPic  = "3D view · arrows/drag: turn · F: face a card · WASD: walk · wheel: zoom · P: text · Esc: flat"
+	roomFreeHint = "Free roam · F: face a card · WASD: walk · Q E: down, up · Shift: fast · arrows: look · Esc: back"
 )
 
 // What a drag with the mouse does to the camera.
@@ -94,6 +94,7 @@ type room3D struct {
 	startPos  r3vec
 	startLook [2]float64
 	held      map[rune]bool // W A S D Q E held down (kitty says when they are let go)
+	glide     r3glide       // F: the camera gliding to face a card (design_3d_face.go)
 	heldAt    time.Time
 	stepAt    time.Time // the last walking step
 	walking   bool      // the walking ticks are going
@@ -177,7 +178,7 @@ func (r *room3D) hint() string {
 // ---- keys --------------------------------------------------------------------------------
 
 // design3DKey handles the keys of the 3D view: Ctrl + arrows and Ctrl + F
-// at any time, and while it shows Esc, + − 0, P (text or picture) and, in free
+// at any time, and while it shows Esc, + − 0, F (face a card), P (text or picture) and, in free
 // roam, W A S D Q E.
 // While writing in a structure those type as usual (Esc stops writing).
 // Every other key does what it does on the flat board. It says whether it
@@ -237,6 +238,11 @@ func (m *Model) design3DKey(k tea.Key, name string) (bool, tea.Cmd) {
 			m.say("3D view: the camera where it starts.")
 		}
 		return true, nil
+	case "f", "F", "shift+f":
+		if d.placing || d.pin.active {
+			return false, nil // Alt+N, F; a pin flips
+		}
+		return true, m.design3DFace()
 	case "p", "P", "shift+p":
 		if d.placing {
 			return false, nil // Alt+N, P: a page
@@ -312,6 +318,7 @@ func walkKey(name string) rune {
 // the camera looks that way instead.
 func (m *Model) design3DTurn(dir string, glide bool) {
 	r := &m.ds().room
+	r.glide.on = false // the camera stops gliding to a card (F) and turns
 	if r.free {
 		step := float64(turnStep)
 		if glide {
@@ -451,7 +458,7 @@ func (m *Model) design3DFree() {
 // flat board, when it was straight on).
 func (m *Model) design3DLeaveFree() {
 	r := &m.ds().room
-	r.free, r.walking = false, false
+	r.free, r.walking, r.glide.on = false, false, false
 	clear(r.held)
 	if r.on() {
 		m.say("Free roam over: back to the turned room.")
@@ -463,6 +470,7 @@ func (m *Model) design3DLeaveFree() {
 // design3DWalkKey takes W A S D Q E pressed in free roam.
 func (m *Model) design3DWalkKey(k tea.Key, key rune) tea.Cmd {
 	r := &m.ds().room
+	r.glide.on = false // it walks from where the glide (F) has got to
 	fast := m.keys.shift || k.Mod.Contains(tea.ModShift)
 	if !m.releases {
 		// Other terminals: each press and repeat walks a step.
