@@ -157,7 +157,7 @@ func (rm *r3room) enclose(cam r3vec) {
 
 // The margin between the outermost blocks and the walls, in cells: two
 // across, one down (one unit is a cell's width, a cell is two units tall).
-const roomMarginX, roomMarginY = 2, 1
+const roomMarginX, roomMarginY = 3, 2
 
 // area works out the room for a w×h board area at zoom z, and which
 // structures are blocks in it. The room is fitted to what shows: the
@@ -196,6 +196,10 @@ func (r *room3D) area(d *designState, w, h int, z float64) r3room {
 	if x0 > x1 {
 		x0, y0, x1, y1 = 0, 0, w, h // nothing shows: the screen
 	}
+	// The wall reaches past the screen's sides and top, so every block
+	// stays well inside the room, under the ceiling and between the side
+	// walls, at every turn; the floor stays just under the lowest block.
+	x0, y0, x1 = min(x0, 0), min(y0, 0), max(x1, w)
 	x0, y0, x1, y1 = x0-roomMarginX, y0-roomMarginY, x1+roomMarginX, y1+roomMarginY
 	rm := r3room{w: w, h: h, hw: float64(w) / 2, hh: float64(h), tx0: x0, ty0: y0, tw: x1 - x0, th: y1 - y0, big: big}
 	rm.x0, rm.x1 = float64(x0)-rm.hw, float64(x1)-rm.hw
@@ -860,20 +864,22 @@ func (r *room3D) orbitView(rm *r3room) r3view {
 	depth := rm.depth
 	dist0 := depth + 1.05*rm.big // the camera's distance from the back wall, straight on
 	f := dist0                   // so straight on, the back wall is the board area cell for cell
-	pivot := r3vec{0, 0, depth / 2}
-	rad := dist0 - depth/2
+	// The camera turns round the middle of the screen on the back wall, at
+	// the same distance and with the same lens at every turn: the wall and
+	// the blocks on it stay where they are on the screen, only seen from
+	// another side. Nothing is fitted or zoomed as it turns.
+	pivot := r3vec{0, 0, 0}
+	rad := dist0
 	ya, pa := -float64(r.yaw)*math.Pi/180, float64(r.pitch)*math.Pi/180
 	way := r3vec{math.Sin(ya) * math.Cos(pa), math.Sin(pa), math.Cos(ya) * math.Cos(pa)}
 	cam := pivot.add(way.mul(rad))
 	fwd := pivot.sub(cam).norm()
 	right := fwd.cross(r3vec{0, 1, 0}).norm()
 	up := right.cross(fwd)
-	angle := math.Max(math.Abs(float64(r.yaw)), math.Abs(float64(r.pitch)))
-	scale, ox, oy := fitRoom(cam, right, up, fwd, f, fw/2, fh/2, rm, angle)
-	// The camera closer or further (+ and -) and moved sideways (a drag with the
-	// middle or right button), after the fitting, which would undo the move.
+	// The camera closer or further (+ and -) and moved sideways (a drag with
+	// the middle or right button).
 	cam = pivot.add(r.pan).add(way.mul(rad * math.Pow(0.87, float64(r.near))))
-	return r3view{cam: cam, right: right, up: up, fwd: fwd, f: f * scale, px: fw/2 + ox, py: fh/2 + oy}
+	return r3view{cam: cam, right: right, up: up, fwd: fwd, f: f, px: fw / 2, py: fh / 2}
 }
 
 // freeView is the camera of free roam: where it is, looking that way.
@@ -883,32 +889,6 @@ func (r *room3D) freeView(rm *r3room) r3view {
 	right := fwd.cross(r3vec{0, 1, 0}).norm()
 	up := right.cross(fwd)
 	return r3view{cam: r.pos, right: right, up: up, fwd: fwd, f: r.ff, px: float64(rm.w) / 2, py: float64(rm.h)}
-}
-
-// fitRoom is how much smaller than the board the view is drawn, and how
-// far its middle is moved (ox, oy units), so the room fits on the screen:
-// close to straight on, the back wall is the board cell for cell (as flat);
-// the further it is turned, the more the whole room is fitted and centred,
-// fully from 30° on.
-func fitRoom(cam, right, up, fwd r3vec, f, hw, hh float64, rm *r3room, angle float64) (s, ox, oy float64) {
-	x0, x1, y0, y1 := math.Inf(1), math.Inf(-1), math.Inf(1), math.Inf(-1)
-	for _, p := range []r3vec{{rm.x0, rm.y0, 0}, {rm.x1, rm.y0, 0}, {rm.x1, rm.y1, 0}, {rm.x0, rm.y1, 0},
-		{rm.x0, rm.y0, rm.depth}, {rm.x1, rm.y0, rm.depth}, {rm.x1, rm.y1, rm.depth}, {rm.x0, rm.y1, rm.depth}} {
-		q := p.sub(cam)
-		x, y, z := q.dot(right), q.dot(up), q.dot(fwd)
-		if z < 1 {
-			continue
-		}
-		x0, x1 = math.Min(x0, f*x/z), math.Max(x1, f*x/z)
-		y0, y1 = math.Min(y0, -f*y/z), math.Max(y1, -f*y/z)
-	}
-	if x1 <= x0 || y1 <= y0 {
-		return 1, 0, 0
-	}
-	room := math.Min(2.5, 0.96*math.Min(2*hw/(x1-x0), 2*hh/(y1-y0))) // a small room is drawn bigger, up to 2.5 times
-	a := math.Min(1, angle/30)
-	a *= a
-	return (1 - a) + room*a, -a * room * (x0 + x1) / 2, -a * room * (y0 + y1) / 2
 }
 
 // floorAt is the floor's colour at (x, z), seen with px units to a pixel:
@@ -1554,6 +1534,12 @@ func (r *room3D) faceWords(o *r3near, v *r3view, rm *r3room, titles bool) {
 						}
 					}
 				}
+				if title && !good(shift) {
+					// Still nowhere along its side (the face seen at a slant,
+					// its top off the screen): the first row, from the top,
+					// where enough of the face is seen in a row for it.
+					r.titleAnywhere(int32(fi), fc, &at[0], shift, min(words[0].x1-words[0].x0, 4))
+				}
 			}
 		}
 		low := math.MinInt
@@ -1639,6 +1625,29 @@ func (r *room3D) firstSeen(fi int32) (col, row, n int, ok bool) {
 		n++
 	}
 	return col, row, n, true
+}
+
+// titleAnywhere moves a title (at: its column, row less shift, and
+// room) to the first screen row, from the top, where face fi shows in
+// sight for need cells in a row, when there is one.
+func (r *room3D) titleAnywhere(fi int32, fc *r3face, at *[3]int, shift, need int) {
+	w := r.rm.w
+	for row := 0; row < r.rm.h; row++ {
+		for c := 0; c < w; c++ {
+			if r.face[r.cellFour(c, row)[0]] != fi {
+				continue
+			}
+			n := 0
+			for c+n < w && r.face[r.cellFour(c+n, row)[0]] == fi {
+				n++
+			}
+			if n >= need && r.room(fi, fc, c, row, n, true) >= need {
+				*at = [3]int{c, row - shift, n}
+				return
+			}
+			c += n
+		}
+	}
 }
 
 // room is how many cells from (col, row) to the right, up to n, a line

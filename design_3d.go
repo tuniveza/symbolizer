@@ -180,6 +180,18 @@ func (m *Model) design3DKey(k tea.Key, name string) (bool, tea.Cmd) {
 		}
 		return true, nil
 	}
+	if r.on() {
+		switch name {
+		case "left", "right", "up", "down", "shift+left", "shift+right", "shift+up", "shift+down":
+			// The arrows look round, as the mouse does: they turn the room
+			// (in free roam the camera looks that way), and stop writing as
+			// any arrow does. With Shift too: in 3D the board under the
+			// room never scrolls, so the blocks stay where they are on the
+			// wall until one is moved (Alt + arrows, a drag).
+			d.editing = partNone
+			return true, m.design3DTurnKey(k, arrowDir(name))
+		}
+	}
 	if !r.on() || d.editing != partNone {
 		return false, nil
 	}
@@ -207,10 +219,6 @@ func (m *Model) design3DKey(k tea.Key, name string) (bool, tea.Cmd) {
 			m.say("3D view: the camera where it starts.")
 		}
 		return true, nil
-	case "left", "right", "up", "down":
-		// The arrows look round, as the mouse does: they turn the room
-		// (in free roam the camera looks that way).
-		return true, m.design3DTurnKey(k, name)
 	}
 	if key := walkKey(name); key != 0 {
 		if !r.free {

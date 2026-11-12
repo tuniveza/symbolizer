@@ -48,6 +48,24 @@ func room3DCell(t *testing.T, m *Model, mat int) (int, int) {
 	return 0, 0
 }
 
+// roomSurface is a screen cell showing some empty part of the room (a
+// wall, the floor, the ceiling or the empty board).
+func roomSurface(t *testing.T, m *Model) (int, int) {
+	t.Helper()
+	boardRows(m)
+	r := &m.ds().room
+	for _, mat := range []int{matFloor, matWall, matBack, matCeiling} {
+		for row := m.boardH() - 1; row >= 0; row-- {
+			for col := m.width - 1; col >= 0; col-- {
+				if h := r.pickAt(col, row); h.ok && h.own < 0 && r.faces[h.face].mat == mat {
+					return col, row + m.boardTop()
+				}
+			}
+		}
+	}
+	return room3DCell(t, m, matBoard)
+}
+
 // actAt is whether a click on flat board cell (sx, sy) does an action
 // starting with act (pull:1, boxlid, item:…).
 func actAt(d *designState, act string) func(sx, sy int) bool {
@@ -88,8 +106,8 @@ func TestDesign3DRoomFits(t *testing.T) {
 						low, left, right = math.Min(low, p.y), math.Min(left, p.x), math.Max(right, p.x)
 					}
 				}
-				if len(r.blocks) > 0 && (low-rm.y0 != 2*roomMarginY || left-rm.x0 != roomMarginX || rm.x1-right != roomMarginX) {
-					t.Fatalf("%s: the floor should be just under the lowest block, the walls just beyond the outermost: %+v, blocks %.1f to %.1f, lowest %.1f",
+				if len(r.blocks) > 0 && (low-rm.y0 < 2*roomMarginY || left-rm.x0 < roomMarginX || rm.x1-right < roomMarginX) {
+					t.Fatalf("%s: the floor should be under the lowest block, the walls beyond the outermost, with room to spare: %+v, blocks %.1f to %.1f, lowest %.1f",
 						what, rm, left, right, low)
 				}
 				for _, b := range r.blocks {
@@ -165,12 +183,12 @@ func TestDesign3DMouseCamera(t *testing.T) {
 	d := m.ds()
 	r := &d.room
 	r.yaw, r.pitch = 20, 10
-	x, y := room3DCell(t, m, matFloor)
+	x, y := roomSurface(t, m)
 	dragTo(m, x, y, x+6, y, tea.MouseLeft)
 	if r.yaw != 20+int(math.Round(6*turnPerCol)) || r.pitch != 10 {
 		t.Fatalf("a drag of 6 cells right on the floor: yaw %d pitch %d", r.yaw, r.pitch)
 	}
-	x, y = room3DCell(t, m, matFloor)
+	x, y = roomSurface(t, m)
 	dragTo(m, x, y, x, y-2, tea.MouseLeft)
 	if r.pitch != 10-int(2*turnPerRow) {
 		t.Fatalf("a drag of 2 rows up: pitch %d", r.pitch)
@@ -228,10 +246,21 @@ func TestDesign3DKeysPass(t *testing.T) {
 	if d.byID(o.ID) != nil {
 		t.Fatal("X X in 3D: the chosen structure deleted")
 	}
-	camX := d.camX
+	camX, camY, yaw := d.camX, d.camY, d.room.yaw
 	press(m, "shift+right")
-	if d.camX == camX {
-		t.Fatal("Shift + arrows in 3D: the board moves")
+	press(m, "right")
+	press(m, "left")
+	if d.camX != camX || d.camY != camY || d.room.yaw != yaw+turnStep {
+		t.Fatalf("arrows and Shift + arrows in 3D: the room turns (yaw %d, want %d), the board stays still (moved %v, %v)",
+			d.room.yaw, yaw+turnStep, d.camX-camX, d.camY-camY)
+	}
+	// While writing, an arrow stops writing and turns the room.
+	d.sel = d.octs[0].ID
+	press(m, "tab")
+	pitch := d.room.pitch
+	press(m, "up")
+	if d.editing != partNone || d.room.pitch != pitch-turnStep {
+		t.Fatalf("an arrow while writing in 3D: writing stops and the room tilts: editing %v, pitch %d from %d", d.editing, d.room.pitch, pitch)
 	}
 	near := d.room.near
 	typeKeys(m, "+")
