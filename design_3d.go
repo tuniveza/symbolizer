@@ -30,6 +30,10 @@ package main
 // the room and through the blocks. In the turned room the arrows turn it
 // as Ctrl + arrows do, and W A S D start free roam from where the camera is.
 //
+// The room is drawn in letters over its picture (design_3d_text.go): its
+// edges, planks and rails as box line letters, the fronts' own frames as
+// on the flat board. P switches to the plain picture and back.
+//
 // Straight on again (or Esc), it is the flat board, exactly as before. The
 // turn is only a way of looking: it is not an undo step and is not saved.
 // The drawing itself is in design_3d_draw.go.
@@ -60,7 +64,8 @@ const (
 	walkFast     = 3   // with Shift: this many times faster
 	walkTap      = 0.06 * float64(time.Second)
 	walkEvery    = 20 * time.Millisecond // held: a step every 20 ms, as far as the time since the last one
-	roomHint     = "3D view  ·  arrows/drag: turn  ·  W A S D: walk  ·  right-drag: move  ·  wheel: zoom  ·  Esc: flat"
+	roomHint     = "3D view · arrows/drag: turn · WASD: walk · right-drag: move · wheel: zoom · P: picture · Esc: flat"
+	roomHintPic  = "3D view · arrows/drag: turn · WASD: walk · right-drag: move · wheel: zoom · P: text · Esc: flat"
 	roomFreeHint = "Free roam  ·  W A S D: walk  ·  Q E: down, up  ·  Shift: fast  ·  arrows or drag: look  ·  Esc: back"
 )
 
@@ -144,6 +149,10 @@ type room3D struct {
 	frameW, frameH int
 	cost           time.Duration // how long the last drawing took
 	ds             *designState  // the board it shows (a box's inside: design_3d_box.go)
+	plain          bool          // P: the plain picture, without the text layer (design_3d_text.go)
+	cells          []r3ink       // per screen cell: the text layer's letter
+	edgeAt         map[r3edgeKey]int32
+	edges          []r3edge // the blocks' edges this frame, and the faces either side (see edgeInk)
 }
 
 // on is whether the board area shows the room in 3D: turned, or in free roam.
@@ -151,8 +160,11 @@ func (r *room3D) on() bool { return r.free || r.yaw != 0 || r.pitch != 0 }
 
 // hint is the status bar's line for the 3D view.
 func (r *room3D) hint() string {
-	if r.free {
+	switch {
+	case r.free:
 		return roomFreeHint
+	case r.plain:
+		return roomHintPic
 	}
 	return roomHint
 }
@@ -160,7 +172,8 @@ func (r *room3D) hint() string {
 // ---- keys --------------------------------------------------------------------------------
 
 // design3DKey handles the keys of the 3D view: Ctrl + arrows and Ctrl + F
-// at any time, and while it shows Esc, + − 0 and, in free roam, W A S D Q E.
+// at any time, and while it shows Esc, + − 0, P (text or picture) and, in free
+// roam, W A S D Q E.
 // While writing in a structure those type as usual (Esc stops writing).
 // Every other key does what it does on the flat board. It says whether it
 // took the key.
@@ -205,6 +218,18 @@ func (m *Model) design3DKey(k tea.Key, name string) (bool, tea.Cmd) {
 		} else {
 			r.near, r.pan = 0, r3vec{}
 			m.say("3D view: the camera where it starts.")
+		}
+		return true, nil
+	case "p", "P", "shift+p":
+		if d.placing {
+			return false, nil // Alt+N, P: a page
+		}
+		// The room drawn in text (design_3d_text.go), or the plain picture.
+		r.plain = !r.plain
+		if r.plain {
+			m.say("3D view: the plain picture.  P: drawn in text again.")
+		} else {
+			m.say("3D view: drawn in text, its edges, planks and shades in letters.  P: the plain picture.")
 		}
 		return true, nil
 	case "left", "right", "up", "down":
