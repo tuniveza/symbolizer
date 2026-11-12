@@ -56,7 +56,7 @@ const (
 	walkFast     = 3   // with Shift: this many times faster
 	walkTap      = 0.06 * float64(time.Second)
 	walkEvery    = 20 * time.Millisecond // held: a step every 20 ms, as far as the time since the last one
-	roomHint     = "3D  ·  arrows/drag: turn  ·  W A S D: walk  ·  right-drag: move  ·  wheel: closer  ·  Esc: flat"
+	roomHint     = "3D view  ·  arrows/drag: turn  ·  W A S D: walk  ·  right-drag: move  ·  wheel: zoom  ·  Esc: flat"
 	roomFreeHint = "Free roam  ·  W A S D: walk  ·  Q E: down, up  ·  Shift: fast  ·  arrows or drag: look  ·  Esc: back"
 )
 
