@@ -251,12 +251,12 @@ type r3texel struct {
 	q      [4]uint32
 	fg, bg uint32
 	glyph  string
-	wide   bool   // the letter is two cells wide
-	blank  bool   // a space
-	arms   int8   // a box line: its arms (see boxArms)
-	style  uint8  // a box line: heavy, double, dashed or round (see boxStyle)
-	mark   string // a sign the text layer shows as it is, seen big enough: a shade, braille, a slanting line (design_3d_text.go)
-	bold   bool   // its letter is bold
+	wide   bool     // the letter is two cells wide
+	blank  bool     // a space
+	arms   int8     // a box line: its arms (see boxArms)
+	style  uint8    // a box line: heavy, double, dashed or round (see boxStyle)
+	mark   string   // a sign the text layer shows as it is, seen big enough: a shade, braille, a slanting line (design_3d_text.go)
+	bold   bool     // its letter is bold
 	gl     *r3glyph // its letter painted on the face (design_3d_glyphs.go), or nil
 	gx     int8     // 1: the right half of a wide letter (gl is the letter)
 }
