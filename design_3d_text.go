@@ -141,6 +141,12 @@ func (r *room3D) finishInk() {
 		if s == "" {
 			continue
 		}
+		if r.pix && k.level < inkLine && r.cellSpread(i%w, i/w) > evenCell {
+			// In the picture a letter's cell is one flat colour: a texture's
+			// letter goes only where the picture under it is about even
+			// already, so the walls and the floor show no patches.
+			continue
+		}
 		bg := r.cellMean(i%w, i/w, k.face)
 		fg := k.col
 		switch {
@@ -151,6 +157,22 @@ func (r *room3D) finishInk() {
 		}
 		k.s, k.fg, k.bg = s, fg, bg
 	}
+}
+
+// evenCell is how far apart (in lightness, 0 to 255) the lightest and
+// darkest pixels of a cell may be for a texture's letter to go there.
+const evenCell = 14
+
+// cellSpread is how far apart the lightest and darkest pixels of screen
+// cell (col, row) are, in lightness (0 to 255).
+func (r *room3D) cellSpread(col, row int) float64 {
+	lo, hi := math.Inf(1), math.Inf(-1)
+	r.cellSamples(col, row, func(i int) {
+		cr, cg, cb := chans(r.pixel(i))
+		l := 0.299*cr + 0.587*cg + 0.114*cb
+		lo, hi = math.Min(lo, l), math.Max(hi, l)
+	})
+	return hi - lo
 }
 
 // inkAt is the text layer's letter in screen cell i of the last drawing,
