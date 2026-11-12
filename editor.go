@@ -266,8 +266,27 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			panic(r)
 		}
 	}()
+	if _, ok := msg.(tea.RawMsg); ok {
+		// A picture of the 3D room on its way to kitty (design_3d_kitty.go):
+		// nothing changed, so the board is not drawn again for it.
+		if m.design != nil {
+			m.design.hoverOnly = true
+		}
+		return m, nil
+	}
+	defer func() { // the 3D room: drawn sharp once the camera stops; its picture deleted when it goes
+		if c := m.design3DAfter(); c != nil {
+			cmd = tea.Batch(cmd, c)
+		}
+	}()
 	if m.design != nil {
 		m.design.hoverOnly = false // set again below if this is only the mouse moving (designHover)
+	}
+	if _, ok := msg.(room3DSharpMsg); ok { // the camera stopped: the View after this draws the room sharp
+		if m.design != nil {
+			m.design.room.sharpTick = false
+		}
+		return m, nil
 	}
 	if c, ok := m.dndMsg(msg); ok { // kitty's drag and drop (design_dnd.go)
 		return m, tea.Batch(c, m.designFrameCmd(), m.designSaveCmd(), m.dropsCmd())

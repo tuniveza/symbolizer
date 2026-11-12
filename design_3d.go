@@ -96,10 +96,19 @@ type room3D struct {
 	dragDist       float64 // how far in front of the camera the press was: a pan moves that much under the mouse
 	click          r3hit   // the empty wall pressed: let go without a drag, a click there
 	clickOn        bool
-	passing        bool      // a mouse event handed on to the flat board (designPress and the rest)
-	plane          float64   // a drag handed on: the mouse is followed on the plane this far out of the wall
-	mapX, mapY     int       // the flat board cell the mouse was last followed to
-	pw, ph         int       // the pixels: twice the board area's width, and twice its height
+	passing        bool     // a mouse event handed on to the flat board (designPress and the rest)
+	plane          float64  // a drag handed on: the mouse is followed on the plane this far out of the wall
+	mapX, mapY     int      // the flat board cell the mouse was last followed to
+	pw, ph         int      // the pixels: twice the board area's width and height (quarter blocks), or a picture's (kitty)
+	kx, ky         float64  // the pixels a unit across and a unit down (2 and 1 in quarter blocks)
+	want           [2]int   // the picture's size for the next drawing (see room3DDensity), or 0: quarter blocks
+	pix            bool     // the last drawing is a picture (kitty, see design_3d_kitty.go)
+	fdraw          []r3draw // per face: how it is drawn this frame
+	polys          [][2]float64
+	camWas         r3camKey  // the camera of the last drawing
+	movedAt        time.Time // when the camera last moved: until room3DSettle after, fewer pixels
+	lowRes         bool      // the last picture was drawn with fewer pixels, the camera moving
+	sharpTick      bool      // a room3DSharpMsg is on its way
 	base           []uint32  // each pixel's colour before the light
 	mul            []float32 // the light on it: base times mul, plus add of the lamp's colour
 	add            []float32
@@ -496,15 +505,14 @@ type r3hit struct {
 }
 
 // pickAt is what the last drawing shows in screen cell (col, row) of the
-// board area: of its four pixels, the nearest surface.
+// board area: of its four quarters (see cellFour), the nearest surface.
 func (r *room3D) pickAt(col, row int) r3hit {
 	pw := r.pw
-	if pw == 0 || col < 0 || row < 0 || 2*col+1 >= pw || 2*row+1 >= r.ph || len(r.face) != pw*r.ph {
+	if pw == 0 || col < 0 || row < 0 || col >= r.rm.w || row >= r.rm.h || len(r.face) != pw*r.ph {
 		return r3hit{own: -1}
 	}
-	tl := 2*row*pw + 2*col
 	best := -1
-	for _, i := range [4]int{tl, tl + 1, tl + pw, tl + pw + 1} {
+	for _, i := range r.cellFour(col, row) {
 		if f := r.face[i]; f >= 0 && int(f) < len(r.faces) && (best < 0 || r.zb[i] < r.zb[best]) {
 			best = i
 		}
@@ -742,9 +750,84 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 	rm := r.area(d, w, h, d.z())
 	r.takeRoom(d, c, &rm)
 	r.mipmap(&rm)
+	r.want, r.lowRes = [2]int{}, false
+	if room3DPixels && w <= len(kittyMarks) && h <= len(kittyMarks) {
+		// A picture (kitty): fewer pixels while the camera moves.
+		moving := r.moving(w, h, start)
+		limit := room3DStill
+		if moving {
+			limit = room3DMoving
+		}
+		if room3DRemote {
+			limit /= 3 // over SSH every pixel goes down the line
+		}
+		cw, ch := termCell(m.width, m.height)
+		pw, ph := room3DDensity(w, h, cw, ch, limit)
+		r.want, r.lowRes = [2]int{pw, ph}, moving
+	}
 	var fb strings.Builder
 	r.draw(&rm, d.z(), &fb)
 	r.frame, r.frameW, r.frameH = fb.String(), w, h
+	if r.pix {
+		kittyPic.show(&kittyFrame{rgb: r.picture(kittyPic.buffer()), pw: r.pw, ph: r.ph, cols: w, rows: h})
+	}
 	r.cost = time.Since(start)
 	sb.WriteString(r.frame)
+}
+
+// r3camKey is where the camera is: when it changes, the camera moved.
+type r3camKey struct {
+	yaw, pitch, near int
+	pan, pos         r3vec
+	look             [2]float64
+	free             bool
+	w, h             int
+}
+
+// camKey is the camera now, for a w×h board area.
+func (r *room3D) camKey(w, h int) r3camKey {
+	return r3camKey{r.yaw, r.pitch, r.near, r.pan, r.pos, r.look, r.free, w, h}
+}
+
+// moving is whether the camera moved within room3DSettle before now (for
+// a w×h board area): a picture drawn now is drawn with fewer pixels.
+func (r *room3D) moving(w, h int, now time.Time) bool {
+	if k := r.camKey(w, h); k != r.camWas {
+		r.camWas, r.movedAt = k, now
+	}
+	return now.Sub(r.movedAt) < room3DSettle
+}
+
+// room3DSharpMsg: the camera may have stopped, so the room is drawn sharp.
+type room3DSharpMsg struct{}
+
+// design3DAfter runs after every message (see Update): it asks for the
+// room to be drawn sharp once the camera stops (room3DSharpMsg), and has
+// kitty delete the picture once the board does not show the room.
+func (m *Model) design3DAfter() tea.Cmd {
+	d := m.design
+	if d == nil || !m.inDesign() || !d.room.on() {
+		if kittyPic.isShown() {
+			kittyPic.remove()
+			if d != nil {
+				d.room.frame = "" // its placeholders, without the picture now
+			}
+		}
+		return nil
+	}
+	r := &d.room
+	if !room3DPixels || r.sharpTick {
+		return nil
+	}
+	// Will the next drawing be one with fewer pixels? Then a sharp one
+	// after it, once the camera has been still for room3DSettle.
+	wait := room3DSettle - time.Since(r.movedAt)
+	if r.camKey(m.width, m.boardH()) != r.camWas {
+		wait = room3DSettle
+	}
+	if wait <= 0 {
+		return nil // the next drawing is sharp anyway
+	}
+	r.sharpTick = true
+	return tea.Tick(wait+5*time.Millisecond, func(time.Time) tea.Msg { return room3DSharpMsg{} })
 }
