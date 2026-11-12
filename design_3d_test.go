@@ -205,7 +205,7 @@ func TestDesign3DPictures(t *testing.T) {
 	}
 	m := room3DModel(t, 200, 60)
 	r := &m.ds().room
-	for _, a := range [][2]int{{5, 0}, {-30, 0}, {30, 0}, {0, -30}, {0, 30}, {35, 25}, {80, 75}, {-80, -75}} {
+	for _, a := range [][2]int{{5, 0}, {-25, 10}, {25, 10}, {0, -45}, {0, 75}, {35, 25}, {80, 0}, {-80, 0}, {80, 75}, {-80, -45}} {
 		r.yaw, r.pitch = a[0], a[1]
 		boardRows(m)
 		img := image.NewRGBA(image.Rect(0, 0, r.pw*2, r.ph*4)) // a pixel is half a cell: twice as tall as wide
