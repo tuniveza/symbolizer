@@ -279,3 +279,44 @@ func BenchmarkDesign3DWords(b *testing.B) {
 	}
 	b.ReportMetric(float64(r.cost)/float64(time.Millisecond), "ms/last")
 }
+
+// In 3D the plain arrows look round (they turn the room, or the camera in
+// free roam) and W A S D walk: from the turned room they start free roam.
+func TestDesign3DArrowsLookWASDWalk(t *testing.T) {
+	m := room3DModel(t, 120, 40)
+	designFrames = false
+	d := m.ds()
+	press(m, "left")
+	if d.room.on() {
+		t.Fatalf("flat board: the arrows must not turn the room")
+	}
+	press(m, "ctrl+right")
+	press(m, "right")
+	if d.room.yaw != 2*turnStep {
+		t.Fatalf("an arrow in 3D: yaw %d, want %d", d.room.yaw, 2*turnStep)
+	}
+	press(m, "down")
+	if d.room.pitch != turnStep {
+		t.Fatalf("down in 3D: pitch %d, want %d", d.room.pitch, turnStep)
+	}
+	boardRows(m)
+	press(m, "w")
+	if !d.room.free {
+		t.Fatalf("W in the turned room: want free roam")
+	}
+	at := d.room.pos
+	press(m, "w")
+	if d.room.pos == at {
+		t.Fatalf("W in free roam: the camera did not move")
+	}
+	look := d.room.look
+	press(m, "left")
+	if d.room.look[0] >= look[0] {
+		t.Fatalf("left in free roam: look %v, want it turned left of %v", d.room.look, look)
+	}
+	press(m, "esc")
+	press(m, "esc")
+	if d.room.on() {
+		t.Fatalf("Esc twice: want the flat board")
+	}
+}

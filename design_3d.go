@@ -22,8 +22,9 @@ package main
 // The middle or right button moves the camera sideways, the wheel closer.
 //
 // Ctrl + F is free roam: the camera walks (W A S D, Q and E down and up,
-// Shift faster) and looks round (a drag, or Ctrl + arrows), anywhere, into
-// the room and through the blocks.
+// Shift faster) and looks round (the arrows, or a drag), anywhere, into
+// the room and through the blocks. In the turned room the arrows turn it
+// as Ctrl + arrows do, and W A S D start free roam from where the camera is.
 //
 // Straight on again (or Esc), it is the flat board, exactly as before. The
 // turn is only a way of looking: it is not an undo step and is not saved.
@@ -55,8 +56,8 @@ const (
 	walkFast     = 3   // with Shift: this many times faster
 	walkTap      = 0.06 * float64(time.Second)
 	walkEvery    = 20 * time.Millisecond // held: a step every 20 ms, as far as the time since the last one
-	roomHint     = "3D view  ·  drag: turn  ·  right-drag: move  ·  wheel: closer  ·  Ctrl+F: free roam  ·  Esc: flat"
-	roomFreeHint = "Free roam  ·  W A S D: walk  ·  Q E: down, up  ·  Shift: fast  ·  drag: look  ·  Esc: back"
+	roomHint     = "3D  ·  arrows/drag: turn  ·  W A S D: walk  ·  right-drag: move  ·  wheel: closer  ·  Esc: flat"
+	roomFreeHint = "Free roam  ·  W A S D: walk  ·  Q E: down, up  ·  Shift: fast  ·  arrows or drag: look  ·  Esc: back"
 )
 
 // What a drag with the mouse does to the camera.
@@ -154,25 +155,7 @@ func (m *Model) design3DKey(k tea.Key, name string) (bool, tea.Cmd) {
 	switch name {
 	case "ctrl+left", "ctrl+right", "ctrl+up", "ctrl+down":
 		d.editing = partNone // writing stops, as with any arrow
-		dir := arrowDir(name)
-		if m.releases {
-			// kitty says when the key is let go: a glide turns while it is
-			// held, and the terminal's own repeats only say it still is.
-			m.chord.held[dir] = true
-			d.heldAt = time.Now()
-			if k.IsRepeat {
-				return true, nil
-			}
-			m.design3DTurn(dir, false)
-			d.holdMods = "ctrl+"
-			if d.holdTick {
-				return true, nil
-			}
-			d.holdTick = true
-			return true, tea.Tick(turnStart, func(time.Time) tea.Msg { return designHoldMsg{} })
-		}
-		m.design3DTurn(dir, false) // other terminals: each press and repeat turns a step
-		return true, nil
+		return true, m.design3DTurnKey(k, arrowDir(name))
 	case "ctrl+f":
 		d.editing = partNone
 		if r.free {
@@ -210,14 +193,44 @@ func (m *Model) design3DKey(k tea.Key, name string) (bool, tea.Cmd) {
 		}
 		return true, nil
 	case "left", "right", "up", "down":
-		if d.holdTick && d.holdMods == "ctrl+" {
-			return true, nil // the arrow of a turn being held (Ctrl let go first): not a move
-		}
+		// The arrows look round, as the mouse does: they turn the room
+		// (in free roam the camera looks that way).
+		return true, m.design3DTurnKey(k, name)
 	}
-	if key := walkKey(name); key != 0 && r.free {
+	if key := walkKey(name); key != 0 {
+		if !r.free {
+			if key == 'q' || key == 'e' {
+				return false, nil // down and up only in free roam
+			}
+			m.design3DFree() // W A S D walk off from where the camera is
+		}
 		return true, m.design3DWalkKey(k, key)
 	}
 	return false, nil
+}
+
+// design3DTurnKey turns the room (or, in free roam, the camera's look)
+// for an arrow pressed, with or without Ctrl. Held in kitty, which says
+// when the key is let go, it glides on while held.
+func (m *Model) design3DTurnKey(k tea.Key, dir string) tea.Cmd {
+	d := m.ds()
+	if !m.releases {
+		m.design3DTurn(dir, false) // other terminals: each press and repeat turns a step
+		return nil
+	}
+	// The terminal's own repeats only say it is still held.
+	m.chord.held[dir] = true
+	d.heldAt = time.Now()
+	if k.IsRepeat {
+		return nil
+	}
+	m.design3DTurn(dir, false)
+	d.holdMods = "ctrl+" // designHold sends the glide steps to design3DHold
+	if d.holdTick {
+		return nil
+	}
+	d.holdTick = true
+	return tea.Tick(turnStart, func(time.Time) tea.Msg { return designHoldMsg{} })
 }
 
 // walkKey is the free roam key that name is (w a s d q e, with or without
@@ -367,7 +380,7 @@ func (m *Model) design3DFree() {
 	r.pos, r.ff, r.rm = v.cam, v.f, rm
 	r.startPos, r.startLook = r.pos, r.look
 	r.free = true
-	m.say("Free roam: W A S D walk, Q E down and up, Shift faster; drag or Ctrl + arrows look round.  Esc: back.")
+	m.say("Free roam: W A S D walk, Q E down and up, Shift faster; the arrows or a drag look round.  Esc: back.")
 }
 
 // design3DLeaveFree goes back from free roam to the turned room (or the
