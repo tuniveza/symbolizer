@@ -152,15 +152,8 @@ func wallAt(base, text uint32, u, y, foot, gk float64, rm *r3room) uint32 {
 }
 
 // backWallAt is the back wall's colour round the board at (x, y): papered
-// as the side walls are, with a frame round the board (a band in the
-// rails' shade), so the board hangs on it like a panel.
+// as the side walls are. The empty board is the same wall (see shadeRows),
+// so there is no frame between them.
 func backWallAt(base, text uint32, x, y, foot, gk float64, rm *r3room) uint32 {
-	col := wallAt(base, text, x, y, foot, gk, rm)
-	out := max(rm.x0-x, x-rm.x1, rm.y0-y, y-rm.y1) // how far outside the board
-	if out < 0.8+foot {
-		if c := cover(out, 0, 0.8, foot); c > 0 {
-			col = mix32(col, mix32(base, text, 0.22), c)
-		}
-	}
-	return col
+	return wallAt(base, text, x, y, foot, gk, rm) // the board on it is the same wall: no frame between
 }

@@ -79,6 +79,12 @@ func boxLookOf(o *dOct) boxLook {
 	case boxGift:
 		l.extra = "#e5c07b"                                   // gold ribbon
 		l.floorC = toRGB("#ece4d4").mix(b, 0.15).shade(-0.42) // tissue paper
+		// In the box's shadow it is never lighter than the box itself
+		// (a dark gift box would otherwise seem to have a lit floor).
+		lum := func(c rgbf) float64 { return 0.299*c.r + 0.587*c.g + 0.114*c.b }
+		if lb, lf := lum(b), lum(l.floorC); lf > 0.7*lb && lf > 0 {
+			l.floorC = l.floorC.mix(rgbBlack, 1-0.7*lb/lf)
+		}
 	case boxHat:
 		l.extra = "#f6e6ef" // stripes
 	}

@@ -953,6 +953,7 @@ type r3shade struct {
 	rm             *r3room
 	textCol, outer uint32
 	bgPlain        uint32  // the board's own background: an empty cell of it
+	wallCol        uint32  // the walls' colour, which the empty board takes too
 	gk             float64 // how strong the walls' grain is in this theme (see grainFor)
 }
 
@@ -1059,7 +1060,7 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 	c := r3shade{cam: cam, lamp: lamp, f: f, invR2: 1 / (1.15 * rm.big * 1.15 * rm.big), light: light,
 		hw: rm.hw, hh: rm.hh, tx0: rm.tx0, ty0: rm.ty0, kx: kx, ky: ky, kpx: math.Max(2/kx, 1/ky),
 		minU: 0.06, minV: 0.06, rm: rm, textCol: hex32(cText),
-		outer: outside, bgPlain: bgPlain, gk: gk}
+		outer: outside, bgPlain: bgPlain, wallCol: mix32(bgPlain, hex32(cText), 0.08), gk: gk}
 	if r.pix {
 		c.minV = 0.03 // a cell is twice as tall as wide: a line across as thin as one down
 	}
@@ -1197,7 +1198,10 @@ func (r *room3D) shadeRows(c *r3shade, j0, j1 int) {
 			}
 			if fc.mat == matBoard {
 				if col == c.bgPlain {
-					col = plasterAt(col, p.x, p.y, foot(), boardGrain*c.gk) // the empty board: the wall round it, carried on
+					// The empty board is the room's own wall, papered as the
+					// side walls are: the structures hang on it, with no
+					// dark panel behind them.
+					col = wallAt(c.wallCol, c.textCol, p.x, p.y, foot(), c.gk, rm)
 				}
 				shade = 1 - 0.7*r.shadowAt(fx-float64(tx0), hh-p.y-float64(2*ty0))
 			}
