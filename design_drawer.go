@@ -506,7 +506,7 @@ func (d *designState) drawerLayers(o *dOct) []*lipgloss.Layer {
 	l := d.drawerLayout(o, w, h)
 	iw := l.iw
 	e := st(edge, fill)
-	wood := mixHex(o.Color, fill, 0.5)   // the fronts' wood
+	wood := mixHex(o.Color, fill, 0.5)         // the fronts' wood
 	inside := mixHex(boardBG(), o.Color, 0.08) // a tray, in its shadow (tinted with its drawer's colour below)
 	wall := mixHex(o.Color, boardBG(), 0.45)
 	headBG := fill // with several drawers the name is on the frame, with one on its front

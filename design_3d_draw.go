@@ -1093,7 +1093,9 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 	if !r.plain {
 		r.finishInk()
 	}
-	if r.pix {
+	if r.pix && r.shapes() {
+		r.writeShapes(w, h, sb) // design_3d_shapes.go
+	} else if r.pix {
 		r.writeCells(w, h, sb)
 	} else {
 		r.write(w, h, sb)

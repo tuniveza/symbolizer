@@ -73,13 +73,15 @@ type r3ink struct {
 	// Where in the cell a line across (or down) runs: the sum of the
 	// points seen in it, 0 its top (left) to 1 its bottom (right), and how
 	// many; a line across or down only is drawn there (⎺ ⎻ ─ ⎼ ⎽, ▏ │ ▕).
-	pos   float32
-	posN  uint16
-	need  uint8   // how far its colour's lightness is kept from the background's (see clearInkBy)
-	depth float32 // how far in front of the camera it is: the nearest mark gives the colour
-	col   uint32  // its colour, lit
-	face  int32   // the face it is on (the nearest mark's): the cell's background is that face's colour
-	glyph string  // a dot's or a shade's letter (a line's comes from its arms)
+	pos    float32
+	posN   uint16
+	need   uint8      // how far its colour's lightness is kept from the background's (see clearInkBy)
+	depth  float32    // how far in front of the camera it is: the nearest mark gives the colour
+	col    uint32     // its colour, lit
+	face   int32      // the face it is on (the nearest mark's): the cell's background is that face's colour
+	glyph  string     // a dot's or a shade's letter (a line's comes from its arms)
+	seg    [4]float32 // the nearest line's point on the screen and way, for its shape letter (design_3d_shapes.go)
+	hasSeg bool
 	// The cell as written (see finishInk): its letter and colours.
 	s      string
 	fg, bg uint32
@@ -137,8 +139,23 @@ func (r *room3D) finishInk() {
 		s := k.glyph
 		if s == "" {
 			s = lineGlyph(k, r.pix)
+			if r.shapes() && k.hasSeg && (k.arms&3 == 0 || k.arms&12 == 0) {
+				// A line at its own angle and place in the cell
+				// (design_3d_shapes.go); a corner or a crossing keeps its box letter.
+				g := k.seg
+				if l := geoLineFor(float64(g[0]), float64(g[1]), float64(g[2]), float64(g[3]), i%w, i/w); l != "" {
+					s = l
+				} else if k.diag != 0 {
+					s = "" // a cell the sloping line only steps through: the picture's own
+				}
+			}
 		}
 		if s == "" {
+			continue
+		}
+		if r.shapes() && k.level <= inkLine && r.cellSpread(i%w, i/w) > splitCell {
+			// In shape letters a cell an edge of the picture runs through
+			// is that edge (design_3d_shapes.go), not one flat colour.
 			continue
 		}
 		if r.pix && k.level < inkLine && r.cellSpread(i%w, i/w) > evenCell {
@@ -162,6 +179,11 @@ func (r *room3D) finishInk() {
 // evenCell is how far apart (in lightness, 0 to 255) the lightest and
 // darkest pixels of a cell may be for a texture's letter to go there.
 const evenCell = 14
+
+// splitCell is how far apart they may be for a line's letter to go there
+// when the room is drawn in shape letters: more, and the cell shows the
+// edge itself.
+const splitCell = 40
 
 // cellSpread is how far apart the lightest and darkest pixels of screen
 // cell (col, row) are, in lightness (0 to 255).
@@ -319,6 +341,7 @@ func (r *room3D) mark(col, row int, arms, diag, lone uint8, pos float32, m *r3ma
 	case k.stamp != r.stamp || m.level > k.level:
 		*k = r3ink{stamp: r.stamp, level: m.level, arms: arms, diag: diag, lone: lone, style: m.style,
 			need: m.need, depth: depth, col: r.lit(m.col, pix), face: m.face, glyph: m.glyph}
+		k.seg, k.hasSeg = r.seg, r.segOn
 		if pos >= 0 {
 			k.pos, k.posN = pos, 1
 		}
@@ -329,6 +352,9 @@ func (r *room3D) mark(col, row int, arms, diag, lone uint8, pos float32, m *r3ma
 		}
 		if depth < k.depth { // the nearer one's colour
 			k.depth, k.col, k.need, k.face = depth, r.lit(m.col, pix), m.need, m.face
+			if r.segOn {
+				k.seg, k.hasSeg = r.seg, true
+			}
 			if m.glyph != "" {
 				k.glyph = m.glyph
 			}
@@ -483,6 +509,8 @@ func (r *room3D) line(s *r3seg, plain uint32) {
 	default:
 		lone = 1 | 2
 	}
+	r.seg, r.segOn = [4]float32{float32(ax), float32(ay / 2), float32(bx - ax), float32((by - ay) / 2)}, true
+	defer func() { r.segOn = false }()
 	n := min(int(math.Ceil(long*(s1-s0)*2))+1, 4000)
 	iza, izb := 1/ca.z, 1/cb.z
 	pc, pr, have := 0, 0, false

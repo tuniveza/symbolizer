@@ -556,7 +556,7 @@ func (d *designState) boxEdges(g *boxGrid, o *dOct, s boxShape, lk boxLook, shut
 		hi = min(hi, w-6) // the ✕ that deletes it is at its top right
 	}
 	head := boxInk(g.c[y][min(max((lo+hi)/2, 0), w-1)].bg) // the words on its rim (or lid), as they are drawn there
-	btnBG := mixHex(boardBG(), lk.wall, 0.2)                     // a button: dark, so it reads on any wall
+	btnBG := mixHex(boardBG(), lk.wall, 0.2)               // a button: dark, so it reads on any wall
 	if d.sel == o.ID {
 		lid := "[shut]"
 		if shut {

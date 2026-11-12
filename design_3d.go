@@ -32,7 +32,8 @@ package main
 //
 // The room is drawn in letters over its picture (design_3d_text.go): its
 // edges, planks and rails as box line letters, the fronts' own frames as
-// on the flat board. P switches to the plain picture and back.
+// on the flat board. P goes through shape letters (with sy --font's font,
+// design_3d_shapes.go), text over the picture, and the plain picture.
 //
 // Straight on again (or Esc), it is the flat board, exactly as before. The
 // turn is only a way of looking: it is not an undo step and is not saved.
@@ -150,7 +151,10 @@ type room3D struct {
 	cost           time.Duration // how long the last drawing took
 	ds             *designState  // the board it shows (a box's inside: design_3d_box.go)
 	plain          bool          // P: the plain picture, without the text layer (design_3d_text.go)
+	noShapes       bool          // P: the text layer over the picture, not shape letters (design_3d_shapes.go)
 	cells          []r3ink       // per screen cell: the text layer's letter
+	seg            [4]float32    // the line being marked: a point on the screen (cells, rows) and its way (see line)
+	segOn          bool
 	edgeAt         map[r3edgeKey]int32
 	edges          []r3edge // the blocks' edges this frame, and the faces either side (see edgeInk)
 }
@@ -236,12 +240,22 @@ func (m *Model) design3DKey(k tea.Key, name string) (bool, tea.Cmd) {
 		if d.placing {
 			return false, nil // Alt+N, P: a page
 		}
-		// The room drawn in text (design_3d_text.go), or the plain picture.
-		r.plain = !r.plain
-		if r.plain {
-			m.say("3D view: the plain picture.  P: drawn in text again.")
-		} else {
-			m.say("3D view: drawn in text, its edges, planks and shades in letters.  P: the plain picture.")
+		// Shape letters (design_3d_shapes.go), the room drawn in text over
+		// the picture (design_3d_text.go), or the plain picture.
+		switch {
+		case r.shapes():
+			r.noShapes = true
+			m.say("3D view: drawn in text over the picture.  P: the plain picture.")
+		case !r.plain:
+			r.plain = true
+			m.say("3D view: the plain picture.  P: drawn in letters again.")
+		default:
+			r.plain, r.noShapes = false, false
+			if r.shapes() {
+				m.say("3D view: all in letters, its edges in shape letters.  P: text over the picture.")
+			} else {
+				m.say("3D view: drawn in text, its edges, planks and shades in letters.  P: the plain picture.")
+			}
 		}
 		return true, nil
 	}
@@ -805,7 +819,19 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 	r.takeRoom(d, c, &rm)
 	r.mipmap(&rm)
 	r.want, r.lowRes = [2]int{}, false
-	if room3DPixels && w <= len(kittyMarks) && h <= len(kittyMarks) {
+	if r.shapes() {
+		// Shape letters (design_3d_shapes.go): 8 × 16 pixels a cell to
+		// fit each one to, half that each way while the camera moves.
+		moving := r.moving(w, h, start)
+		k := 1
+		if moving {
+			k = 2
+		}
+		r.want, r.lowRes = [2]int{w * geoSX / k, h * geoSY / k}, moving
+		if kittyPic.isShown() {
+			kittyPic.remove()
+		}
+	} else if room3DPixels && w <= len(kittyMarks) && h <= len(kittyMarks) {
 		// A picture (kitty): fewer pixels while the camera moves.
 		moving := r.moving(w, h, start)
 		limit := room3DStill
@@ -822,7 +848,7 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 	var fb strings.Builder
 	r.draw(&rm, d.z(), &fb)
 	r.frame, r.frameW, r.frameH = fb.String(), w, h
-	if r.pix {
+	if r.pix && !r.shapes() {
 		kittyPic.show(&kittyFrame{rgb: r.picture(kittyPic.buffer()), pw: r.pw, ph: r.ph, cols: w, rows: h})
 	}
 	r.cost = time.Since(start)
@@ -870,7 +896,7 @@ func (m *Model) design3DAfter() tea.Cmd {
 		return nil
 	}
 	r := &d.room
-	if !room3DPixels || r.sharpTick {
+	if !room3DPixels && !r.shapes() || r.sharpTick {
 		return nil
 	}
 	// Will the next drawing be one with fewer pixels? Then a sharp one

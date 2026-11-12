@@ -43,11 +43,18 @@ func main() {
 				"  sy FOLDER          open FOLDER as a project, with the file manager\n" +
 				"  sy -t [FOLDER]     open the text files in FOLDER (or here), subfolders too, as tabs\n" +
 				"  sy FILE +LINE      open FILE at line LINE\n" +
-				"  sy --keys          check which keys reach Symbolizer\n\n" +
+				"  sy --keys          check which keys reach Symbolizer\n" +
+				"  sy --font          install the shape letters font for Design mode's 3D room (and tell kitty)\n\n" +
 				"Inside, press F1 to see every key. Alt+Q quits.")
 			return
 		case a == "--keys":
 			if _, err := tea.NewProgram(&keyCheck{releases: "waiting for the terminal to answer…"}).Run(); err != nil {
+				fmt.Fprintln(os.Stderr, "sy: "+err.Error())
+				os.Exit(1)
+			}
+			return
+		case a == "--font":
+			if err := geoInstall(os.Stdout); err != nil {
 				fmt.Fprintln(os.Stderr, "sy: "+err.Error())
 				os.Exit(1)
 			}
