@@ -130,6 +130,7 @@ var helpGroups = []helpGroup{
 		{"Ctrl + arrows", "3D: Left · Right turn the board's room, Up · Down tilt it (5° a press; held: it keeps turning). Each structure is a block on the back wall, lit by a lamp. Esc (or straight on again): the flat board"},
 		{"  3D: the mouse", "  drag the empty room: turn it · middle or right drag: move the camera · wheel (or + −): closer · further · 0: the camera back"},
 		{"  3D: keys", "  arrows: turn and tilt, as Ctrl + arrows (look round) · W A S D: walk (starts free roam)"},
+		{"  3D: room", "  fills the screen: papered walls, floor, ceiling · a box is open, its things inside by layer · a cabinet's doors swing out on hinges · kitty: a sharp picture"},
 		{"  3D: blocks", "  click, double-click and drag them as on the flat board: drawers, lids, rows, pins, ✕, titles; other keys work as flat too"},
 		{"Ctrl + F", "3D free roam: W A S D walk, Q · E down · up, Shift faster; the arrows or a drag look round (all the way); 0: back to the start; Esc: back"},
 		{"1–8", "highlighter pen colours (press the same one again to put it down)"},
