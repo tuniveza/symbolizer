@@ -202,6 +202,7 @@ func TestKittyTextLayer(t *testing.T) {
 	withPixels(t, m, 10, 20)
 	r := &m.ds().room
 	r.yaw, r.pitch = 25, 15
+	r.looked, r.plain = true, false // P: text over the picture, not the picture with words painted on
 	rows := boardRows(m)
 	if !r.pix {
 		t.Fatal("want a picture")

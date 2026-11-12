@@ -62,6 +62,7 @@ func TestKittyPlaceholderRows(t *testing.T) {
 	withPixels(t, m, 10, 20)
 	r := &m.ds().room
 	r.yaw, r.pitch = 20, 10
+	r.looked, r.plain = true, false // P: words as letters over the picture
 	rows := boardRows(m)
 	if !r.pix || r.pw <= 2*m.width {
 		t.Fatalf("not a picture: pix %v, %d×%d pixels", r.pix, r.pw, r.ph)

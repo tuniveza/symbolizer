@@ -256,6 +256,9 @@ type r3texel struct {
 	arms   int8   // a box line: its arms (see boxArms)
 	style  uint8  // a box line: heavy, double, dashed or round (see boxStyle)
 	mark   string // a sign the text layer shows as it is, seen big enough: a shade, braille, a slanting line (design_3d_text.go)
+	bold   bool   // its letter is bold
+	gl     *r3glyph // its letter painted on the face (design_3d_glyphs.go), or nil
+	gx     int8     // 1: the right half of a wide letter (gl is the letter)
 }
 
 // quadMask is which quarters of a cell each block letter from ▀ (U+2580)
@@ -272,7 +275,7 @@ var quadGlyph = [16]string{" ", "▘", "▝", "▀", "▖", "▌", "▞", "▛",
 
 // texelOf reads one cell of the flat board.
 func texelOf(cell *uv.Cell, defFG, defBG uint32) r3texel {
-	t := r3texel{fg: colour32(cell.Style.Fg, defFG), bg: colour32(cell.Style.Bg, defBG)}
+	t := r3texel{fg: colour32(cell.Style.Fg, defFG), bg: colour32(cell.Style.Bg, defBG), bold: cell.Style.Attrs&uv.AttrBold != 0}
 	if cell.Style.Attrs&uv.AttrReverse != 0 {
 		t.fg, t.bg = t.bg, t.fg
 	}
@@ -457,6 +460,10 @@ func (r *room3D) takeRoom(d *designState, c *boardCanvas, rm *r3room) {
 		for x := 0; x < w && x < len(line); x++ {
 			put(x, y, &line[x])
 		}
+	}
+	if r.paint {
+		r.cleanCards(rm)
+		r.paintGlyphs(rm)
 	}
 }
 
@@ -956,6 +963,7 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 	w, h := rm.w, rm.h
 	pw, ph := 2*w, 2*h
 	r.pix = r.want[0] > 0 && r.want[1] > 0
+	r.paint = r.paint && r.pix && r.plain
 	if r.pix {
 		pw, ph = r.want[0], r.want[1]
 	}
@@ -1089,7 +1097,11 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 	if !r.plain {
 		r.textLayer(&c) // the room in letters (design_3d_text.go)
 	}
-	r.words(&v, rm)
+	if !r.paint {
+		r.words(&v, rm)
+	} else if len(r.chars) != w*h {
+		r.chars = make([]r3char, w*h) // none: in the picture the words are painted on (design_3d_glyphs.go)
+	}
 	if !r.plain {
 		r.finishInk()
 	}
@@ -1196,7 +1208,16 @@ func (r *room3D) shadeRows(c *r3shade, j0, j1 int) {
 				k++
 			}
 			col = r.mips[k][(ty>>k)*r.mipW[k]+tx>>k]
-			if s < 0.75 {
+			if k == 0 && r.paint {
+				// A letter, painted (design_3d_glyphs.go).
+				cy := hy >> 1
+				if t := &r.tex[(cy-ty0)*rm.tw+cx-tx0]; t.gl != nil {
+					u := fx - float64(cx) + float64(t.gx)
+					v := (hh-p.y)/2 - float64(cy)
+					col = mix32(t.bg, t.fg, t.gl.cover(u, v, s0/c.kx, s0/(2*c.ky)))
+				}
+			}
+			if s < 0.75 && !r.paint {
 				// Seen bigger than on the flat board: a box line is
 				// drawn as a thin line, not a whole cell's tint.
 				cy := hy >> 1

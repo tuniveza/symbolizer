@@ -149,6 +149,8 @@ type room3D struct {
 	cost           time.Duration // how long the last drawing took
 	ds             *designState  // the board it shows (a box's inside: design_3d_box.go)
 	plain          bool          // P: the plain picture, without the text layer (design_3d_text.go)
+	looked         bool          // P was pressed: plain is the person's choice, not the default (the picture where kitty can show it)
+	paint          bool          // this drawing: the plain picture, its words painted on the faces (design_3d_glyphs.go)
 	noShapes       bool          // P: the text layer over the picture, not shape letters (design_3d_shapes.go)
 	cells          []r3ink       // per screen cell: the text layer's letter
 	seg            [4]float32    // the line being marked: a point on the screen (cells, rows) and its way (see line)
@@ -238,6 +240,7 @@ func (m *Model) design3DKey(k tea.Key, name string) (bool, tea.Cmd) {
 		if d.placing {
 			return false, nil // Alt+N, P: a page
 		}
+		r.looked = true
 		// Shape letters (design_3d_shapes.go), the room drawn in text over
 		// the picture (design_3d_text.go), or the plain picture.
 		switch {
@@ -246,7 +249,7 @@ func (m *Model) design3DKey(k tea.Key, name string) (bool, tea.Cmd) {
 			m.say("3D view: drawn in text over the picture.  P: the plain picture.")
 		case !r.plain:
 			r.plain = true
-			m.say("3D view: the plain picture.  P: drawn in letters again.")
+			m.say("3D view: a picture, the words painted on the cards.  P: drawn in letters.")
 		default:
 			r.plain, r.noShapes = false, false
 			if r.shapes() {
@@ -813,6 +816,11 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 	c := m.designCanvas()
 	d.mapCorner, d.platesOpen = corner, plates
 	r.ds = d
+	pic := room3DPixels && w <= len(kittyMarks) && h <= len(kittyMarks)
+	if !r.looked {
+		r.plain = pic // where kitty shows pictures the room is a picture, its words painted on
+	}
+	r.paint = pic && r.plain
 	rm := r.area(d, w, h, d.z())
 	r.takeRoom(d, c, &rm)
 	r.mipmap(&rm)
