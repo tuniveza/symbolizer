@@ -10,7 +10,9 @@ package main
 // together are one plain cell, so lit surfaces stay smooth. The faces show
 // the flat board's cells by their background (and box lines as lines),
 // and every word is drawn over them in the terminal's own letters, upright
-// and crisp, wherever it is seen (see words).
+// and crisp, wherever it is seen (see words). In kitty the pixels are a
+// real picture instead, as many as the terminal's own (see
+// design_3d_kitty.go): the same drawing, with more pixels to a cell.
 //
 // The world's units: one is a cell's width, and a cell is two units tall.
 // x goes right, y up, and z out of the back wall toward the viewer. The
@@ -21,9 +23,11 @@ package main
 import (
 	"image/color"
 	"math"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 
@@ -328,11 +332,18 @@ func texelOf(cell *uv.Cell, defFG, defBG uint32) r3texel {
 // covers: the line about a pixel thick (never thinner than a tenth of the
 // cell), its arms running to the cell's edges.
 func lineCover(arms int, u, v, px float64) float64 {
-	hw := math.Max(0.06, 0.5*px)              // half the line's thickness
-	over := func(c, lo, hi float64) float64 { // how much of [c - px/2, c + px/2] is in [lo, hi]
+	return lineCoverUV(arms, u, v, px, px, 0.06, 0.06)
+}
+
+// lineCoverUV is lineCover for a pixel pu of a cell wide and pv of it
+// tall, the line's half thickness at least minU of the cell across (a
+// line up and down) and minV down (a line across).
+func lineCoverUV(arms int, u, v, pu, pv, minU, minV float64) float64 {
+	hu, hv := math.Max(minU, 0.5*pu), math.Max(minV, 0.5*pv) // half the lines' thickness
+	over := func(c, lo, hi, px float64) float64 {            // how much of [c - px/2, c + px/2] is in [lo, hi]
 		return clampF((math.Min(c+px/2, hi)-math.Max(c-px/2, lo))/px, 0, 1)
 	}
-	span := func(a, b int) (lo, hi float64) { // the arms a (to 0) and b (to 1) along one way
+	span := func(a, b int, hw float64) (lo, hi float64) { // the arms a (to 0) and b (to 1) along one way
 		lo, hi = 0.5-hw, 0.5+hw
 		if arms&a != 0 {
 			lo = -1
@@ -344,12 +355,12 @@ func lineCover(arms int, u, v, px float64) float64 {
 	}
 	cov := 0.0
 	if arms&(4|8) != 0 { // across
-		lo, hi := span(4, 8)
-		cov = over(u, lo, hi) * over(v, 0.5-hw, 0.5+hw)
+		lo, hi := span(4, 8, hu)
+		cov = over(u, lo, hi, pu) * over(v, 0.5-hv, 0.5+hv, pv)
 	}
 	if arms&(1|2) != 0 { // up and down
-		lo, hi := span(1, 2)
-		cov = math.Max(cov, over(v, lo, hi)*over(u, 0.5-hw, 0.5+hw))
+		lo, hi := span(1, 2, hv)
+		cov = math.Max(cov, over(v, lo, hi, pv)*over(u, 0.5-hu, 0.5+hu, pu))
 	}
 	return cov
 }
@@ -788,12 +799,17 @@ func fillHull(pts [][2]float64, mask []float32, w, h int) {
 // spans calls fill with each row of pixels (whose middles are) inside the
 // convex polygon poly, cut to a w×h screen: row y, columns x0 to x1.
 func spans(poly [][2]float64, w, h int, fill func(y, x0, x1 int)) {
+	spansIn(poly, w, 0, h, fill)
+}
+
+// spansIn is spans for rows y0 ≤ y < y1 of the screen only.
+func spansIn(poly [][2]float64, w, y0, y1 int, fill func(y, x0, x1 int)) {
 	ymin, ymax := math.Inf(1), math.Inf(-1)
 	for _, p := range poly {
 		ymin, ymax = math.Min(ymin, p[1]), math.Max(ymax, p[1])
 	}
-	ymin, ymax = clampF(ymin, -1, float64(h)+1), clampF(ymax, -1, float64(h)+1)
-	j0, j1 := max(0, int(math.Ceil(ymin-0.5))), min(h-1, int(math.Ceil(ymax-0.5))-1)
+	ymin, ymax = clampF(ymin, float64(y0)-1, float64(y1)+1), clampF(ymax, float64(y0)-1, float64(y1)+1)
+	j0, j1 := max(y0, int(math.Ceil(ymin-0.5))), min(y1-1, int(math.Ceil(ymax-0.5))-1)
 	for j := j0; j <= j1; j++ {
 		yc := float64(j) + 0.5
 		xl, xr := math.Inf(1), math.Inf(-1)
@@ -911,16 +927,50 @@ func floorAt(base uint32, x, z, px float64) uint32 {
 	return mix32(base, 0, dark)
 }
 
-// draw draws the room into sb: rm.h lines of rm.w cells.
+// r3draw is how a face is drawn in this frame: the side of it the camera
+// sees (its plane n · p = k, num = k − n · camera; inside: seen from
+// behind), and its outline on the screen in pixels, polys[p0 : p0+pn].
+type r3draw struct {
+	n       r3vec
+	num     float64
+	inside  bool
+	p0, pn  int
+	top, bo float64 // the outline's top and bottom, pixels
+}
+
+// r3shade is what lighting a pixel needs, the same for all of a frame.
+type r3shade struct {
+	cam, lamp      r3vec
+	f, invR2       float64
+	light          r3light
+	hw, hh         float64
+	tx0, ty0       int
+	kx, ky, kpx    float64 // the pixels a unit across and down, and how big a wall pixel is to a screen pixel at f (see draw)
+	minU, minV     float64 // a box line's least half thickness, across and down (see lineCoverUV)
+	rm             *r3room
+	textCol, outer uint32
+	bgPlain        uint32  // the board's own background: an empty cell of it
+	gk             float64 // how strong the walls' grain is in this theme (see grainFor)
+}
+
+// draw draws the room into sb: rm.h lines of rm.w cells. The screen is
+// r.pw × r.ph pixels, kx a unit across and ky a unit down: r.want of them
+// as a picture (kitty, see design_3d_kitty.go), or else four a cell, two
+// across and two down, drawn as quarter blocks.
 func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 	w, h := rm.w, rm.h
 	pw, ph := 2*w, 2*h
+	r.pix = r.want[0] > 0 && r.want[1] > 0
+	if r.pix {
+		pw, ph = r.want[0], r.want[1]
+	}
 	if r.pw != pw || r.ph != ph || len(r.base) != pw*ph {
 		r.pw, r.ph = pw, ph
 		n := pw * ph
 		r.base, r.mul, r.add = make([]uint32, n), make([]float32, n), make([]float32, n)
 		r.zb, r.face, r.dirs = make([]float32, n), make([]int32, n), make([]r3vec, n)
 	}
+	r.kx, r.ky = float64(pw)/float64(w), float64(ph)/float64(2*h)
 	r.stamp++
 	var v r3view
 	if r.free {
@@ -936,37 +986,28 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 	r.view, r.rm = v, *rm
 	cam, right, up, fwd, f, px, py := v.cam, v.right, v.up, v.fwd, v.f, v.px, v.py
 	lamp := lampAt(rm)
-	invR2 := 1 / (1.15 * rm.big * 1.15 * rm.big)
 	light := lightFor(cBG)
 	gk := grainFor(light.lightness)
 
 	r.scene(rm, z, lamp)
 	r.shadows(rm, lamp)
 
-	// A ray for every pixel (two across a cell, two down it), and a clean screen.
 	// Beyond the room (only seen from outside it, in free roam): the walls'
 	// colour in the light they mostly have, so it reads as more room.
-	bgPlain, textC := hex32(cBG), hex32(cText)
-	wr, wg, wb := chans(mix32(bgPlain, textC, 0.08))
+	bgPlain := hex32(cBG)
+	wr, wg, wb := chans(mix32(bgPlain, hex32(cText), 0.08))
 	wl := light.ambient + 0.85*light.fill + 0.12*light.lamp
 	outside := rgb32(byteOf(wr*wl), byteOf(wg*wl), byteOf(wb*wl))
-	for j := 0; j < ph; j++ {
-		dy := -(float64(j) + 0.5 - py) / f
-		row := j * pw
-		for i := 0; i < pw; i++ {
-			dx := ((float64(i)+0.5)/2 - px) / f
-			r.dirs[row+i] = r3vec{fwd.x + right.x*dx + up.x*dy, fwd.y + right.y*dx + up.y*dy, fwd.z + right.z*dx + up.z*dy}
-		}
-	}
-	for i := range r.base {
-		r.base[i], r.mul[i], r.add[i] = outside, 1, 0
-		r.zb[i], r.face[i] = math.MaxFloat32, -1
-	}
+
+	// Each face the camera sees, as an outline on the screen.
 	const near = 0.25 // faces closer to the camera than this are cut off
-	hw, hh := rm.hw, rm.hh
-	tx0, ty0 := rm.tx0, rm.ty0
+	kx, ky := r.kx, r.ky
+	if cap(r.fdraw) < len(r.faces) {
+		r.fdraw = make([]r3draw, len(r.faces))
+	}
+	r.fdraw = r.fdraw[:len(r.faces)]
+	r.polys = r.polys[:0]
 	var cs, clip [20]r3vec
-	var poly [20][2]float64
 	for fi := range r.faces {
 		fc := &r.faces[fi]
 		fc.seen = false
@@ -1000,137 +1041,257 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 		if m < 3 {
 			continue
 		}
+		fd := r3draw{n: n, num: k - n.dot(cam), inside: inside, p0: len(r.polys), pn: m, top: math.Inf(1), bo: math.Inf(-1)}
 		for i := 0; i < m; i++ {
-			poly[i] = [2]float64{2 * (px + f*clip[i].x/clip[i].z), py - f*clip[i].y/clip[i].z}
+			p := [2]float64{kx * (px + f*clip[i].x/clip[i].z), ky * (py - f*clip[i].y/clip[i].z)}
+			r.polys = append(r.polys, p)
+			fd.top, fd.bo = math.Min(fd.top, p[1]), math.Max(fd.bo, p[1])
 		}
+		r.fdraw[fi] = fd
 		fc.seen = true
-		num := k - n.dot(cam)
-		fid := int32(fi)
-		spans(poly[:m], pw, ph, func(j, i0, i1 int) {
-			row := j * pw
-			for i := i0; i <= i1; i++ {
-				idx := row + i
-				dir := r.dirs[idx]
-				nd := n.x*dir.x + n.y*dir.y + n.z*dir.z
-				if nd >= -1e-12 {
-					continue
-				}
-				t := num / nd
-				if t <= 0 || float32(t) >= r.zb[idx] {
-					continue
-				}
-				p := r3vec{cam.x + dir.x*t, cam.y + dir.y*t, cam.z + dir.z*t}
-				var col uint32
-				shade := float32(1)
-				dl := 1 / math.Sqrt(dir.x*dir.x+dir.y*dir.y+dir.z*dir.z)
-				// foot is how many units of the face one pixel spans here
-				// (more where it is seen at a slant): a texture's details
-				// finer than that fade out instead of flickering.
-				foot := func() float64 { return t / f / max(-nd*dl, 0.12) }
-				switch fc.mat {
-				case matBoard, matFront:
-					fx := p.x + hw
-					cx := max(fc.cx0, min(fc.cx1-1, int(math.Floor(fx))))
-					hy := max(fc.py0, min(fc.py1-1, int(math.Floor(hh-p.y))))
-					// The wall's pixel here (two a cell across, two down), from
-					// the picture about as fine as the screen's pixels are.
-					tx := 2*(cx-tx0) + int(2*(fx-float64(cx)))
-					ty := hy - 2*ty0
-					// How many of the wall's pixels one of the screen's takes
-					// (more where the face is seen at a slant), and so which
-					// picture.
-					k, s := 0, t/f
-					if s > 1.25 || nd > -0.5 {
-						s /= math.Sqrt(max(-nd*dl, 0.03))
-					}
-					for ss := s; k < len(r.mips)-1 && ss > 1.6; ss /= 2 {
-						k++
-					}
-					col = r.mips[k][(ty>>k)*r.mipW[k]+tx>>k]
-					if s < 0.75 {
-						// Seen bigger than on the flat board: a box line is
-						// drawn as a thin line, not a whole cell's tint.
-						cy := hy >> 1
-						if t := &r.tex[(cy-ty0)*rm.tw+cx-tx0]; t.arms != 0 {
-							cov := lineCover(int(t.arms), fx-float64(cx), (hh-p.y)/2-float64(cy), 0.5*s)
-							col = mix32(t.bg, t.fg, 0.85*cov)
-						}
-					}
-					if fc.mat == matBoard {
-						shade = 1 - 0.7*r.shadowAt(fx-float64(tx0), hh-p.y-float64(2*ty0))
-						if col == bgPlain {
-							col = plasterAt(col, p.x, p.y, foot(), boardGrain*gk) // the empty board: the wall round it, carried on
-						}
-					}
-				case matSolid:
-					col = fc.col
-					if fc.edge {
-						q := p.sub(fc.o)
-						u, v := q.dot(fc.eu), q.dot(fc.ev)
-						// Its edges, a little darker: a band e wide, blurred to
-						// a pixel's width (px) so far away it does not flicker.
-						e := math.Min(0.45, 0.25*math.Min(fc.lu, fc.lv))
-						px := math.Max(t/f, 0.1)
-						d := math.Min(math.Min(u, v), math.Min(fc.lu-u, fc.lv-v))
-						if cov := clampF((e-d)/px+0.5, 0, 1); cov > 0 {
-							col = mix32(col, 0, 0.3*cov*math.Min(1, 2*e/px))
-						}
-					}
-				case matFloor:
-					col = floorAt(fc.col, p.x+hw, p.z, t/f)
-				case matWall:
-					u := p.z // along the wall
-					if n.z != 0 {
-						u = p.x
-					}
-					col = wallAt(fc.col, textC, u, p.y, foot(), gk, rm)
-				case matBack:
-					col = backWallAt(fc.col, textC, p.x, p.y, foot(), gk, rm)
-				case matCeiling:
-					col = plasterAt(fc.col, p.x, p.z, foot(), ceilingGrain*gk)
-				case matLamp, matShade:
-					col = fc.col
-				}
-				r.zb[idx], r.face[idx], r.base[idx] = float32(t), fid, col
-
-				// The light here.
-				vx, vy, vz := -dir.x*dl, -dir.y*dl, -dir.z*dl
-				fill := n.x*vx + n.y*vy + n.z*vz
-				if fc.mat == matLamp {
-					r.mul[idx], r.add[idx] = float32(0.85+0.15*fill), 0
-					continue
-				}
-				lx, ly, lz := lamp.x-p.x, lamp.y-p.y, lamp.z-p.z
-				d2 := lx*lx + ly*ly + lz*lz
-				il := 1 / math.Sqrt(d2)
-				lx, ly, lz = lx*il, ly*il, lz*il
-				att := 1 / (1 + d2*invR2)
-				ndl := n.x*lx + n.y*ly + n.z*lz
-				if fc.mat == matShade && inside {
-					ndl = 1 // the shade's inside is lit by the bulb right next to it
-				}
-				diff, spec := 0.0, 0.0
-				if ndl > 0 {
-					diff = ndl * att * float64(shade)
-					hx, hy, hz := lx+vx, ly+vy, lz+vz
-					hn := (n.x*hx + n.y*hy + n.z*hz) / math.Sqrt(hx*hx+hy*hy+hz*hz)
-					if hn > 0 {
-						s := hn * hn
-						s *= s
-						s *= s
-						s *= s
-						s *= s // to the 32nd
-						spec = s * att * fc.gloss * float64(shade)
-					}
-				}
-				r.mul[idx] = float32(light.ambient + light.fill*fill + light.lamp*diff)
-				r.add[idx] = float32(light.glow*diff + light.spec*spec)
-			}
-		})
 	}
 
+	// The pixels, in bands of rows side by side (one a processor): a ray
+	// for each, the nearest face each sees, and then that face lit there.
+	c := r3shade{cam: cam, lamp: lamp, f: f, invR2: 1 / (1.15 * rm.big * 1.15 * rm.big), light: light,
+		hw: rm.hw, hh: rm.hh, tx0: rm.tx0, ty0: rm.ty0, kx: kx, ky: ky, kpx: math.Max(2/kx, 1/ky),
+		minU: 0.06, minV: 0.06, rm: rm, textCol: hex32(cText),
+		outer: outside, bgPlain: bgPlain, gk: gk}
+	if r.pix {
+		c.minV = 0.03 // a cell is twice as tall as wide: a line across as thin as one down
+	}
+	r.bands(ph, func(j0, j1 int) {
+		for j := j0; j < j1; j++ {
+			dy := -((float64(j)+0.5)/ky - py) / f
+			row := j * pw
+			for i := 0; i < pw; i++ {
+				dx := ((float64(i)+0.5)/kx - px) / f
+				r.dirs[row+i] = r3vec{fwd.x + right.x*dx + up.x*dy, fwd.y + right.y*dx + up.y*dy, fwd.z + right.z*dx + up.z*dy}
+			}
+		}
+		for i := j0 * pw; i < j1*pw; i++ {
+			r.base[i], r.mul[i], r.add[i] = c.outer, 1, 0
+			r.zb[i], r.face[i] = math.MaxFloat32, -1
+		}
+		for fi := range r.faces {
+			if r.faces[fi].seen {
+				r.depthRows(int32(fi), j0, j1)
+			}
+		}
+		r.shadeRows(&c, j0, j1)
+	})
+
 	r.words(&v, rm)
-	r.write(w, h, sb)
+	if r.pix {
+		r.writeCells(w, h, sb)
+	} else {
+		r.write(w, h, sb)
+	}
+}
+
+// bands calls do for bands of the rows 0 to ph (j0 ≤ row < j1), side by
+// side, one a processor, and waits for them all.
+func (r *room3D) bands(ph int, do func(j0, j1 int)) {
+	n := min(runtime.GOMAXPROCS(0), max(1, ph/16), 32)
+	if n <= 1 {
+		do(0, ph)
+		return
+	}
+	var wg sync.WaitGroup
+	for b := range n {
+		j0, j1 := ph*b/n, ph*(b+1)/n
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			do(j0, j1)
+		}()
+	}
+	wg.Wait()
+}
+
+// depthRows finds where face fi is the nearest yet, in rows j0 to j1 of
+// the screen: those pixels show it.
+func (r *room3D) depthRows(fi int32, j0, j1 int) {
+	fd := &r.fdraw[fi]
+	if fd.bo < float64(j0) || fd.top > float64(j1) {
+		return
+	}
+	n, num, pw := fd.n, fd.num, r.pw
+	spansIn(r.polys[fd.p0:fd.p0+fd.pn], pw, j0, j1, func(j, i0, i1 int) {
+		row := j * pw
+		for i := i0; i <= i1; i++ {
+			idx := row + i
+			dir := &r.dirs[idx]
+			nd := n.x*dir.x + n.y*dir.y + n.z*dir.z
+			if nd >= -1e-12 {
+				continue
+			}
+			t := num / nd
+			if t <= 0 || float32(t) >= r.zb[idx] {
+				continue
+			}
+			r.zb[idx], r.face[idx] = float32(t), fi
+		}
+	})
+}
+
+// shadeRows colours and lights each pixel of rows j0 to j1 for the face
+// it shows.
+func (r *room3D) shadeRows(c *r3shade, j0, j1 int) {
+	rm := c.rm
+	cam, lamp, f, light := c.cam, c.lamp, c.f, c.light
+	hw, hh, tx0, ty0 := c.hw, c.hh, c.tx0, c.ty0
+	for idx := j0 * r.pw; idx < j1*r.pw; idx++ {
+		fi := r.face[idx]
+		if fi < 0 {
+			continue
+		}
+		fc, fd := &r.faces[fi], &r.fdraw[fi]
+		n, inside := fd.n, fd.inside
+		dir := r.dirs[idx]
+		nd := n.x*dir.x + n.y*dir.y + n.z*dir.z
+		t := fd.num / nd
+		p := r3vec{cam.x + dir.x*t, cam.y + dir.y*t, cam.z + dir.z*t}
+		var col uint32
+		shade := float32(1)
+		dl := 1 / math.Sqrt(dir.x*dir.x+dir.y*dir.y+dir.z*dir.z)
+		// foot is how many units of the face one pixel spans here (more
+		// where it is seen at a slant): a texture's details finer than
+		// that fade out instead of flickering.
+		foot := func() float64 { return t / f * c.kpx / max(-nd*dl, 0.12) }
+		switch fc.mat {
+		case matBoard, matFront:
+			fx := p.x + hw
+			cx := max(fc.cx0, min(fc.cx1-1, int(math.Floor(fx))))
+			hy := max(fc.py0, min(fc.py1-1, int(math.Floor(hh-p.y))))
+			// The wall's pixel here (two a cell across, two down), from
+			// the picture about as fine as the screen's pixels are.
+			tx := 2*(cx-tx0) + int(2*(fx-float64(cx)))
+			ty := hy - 2*ty0
+			// How many of the wall's pixels one of the screen's takes
+			// (more where the face is seen at a slant), and so which
+			// picture. s0 is how many units of the face a unit of the
+			// screen is.
+			k, s0 := 0, t/f
+			s := s0 * c.kpx
+			if s > 1.25 || nd > -0.5 {
+				q := math.Sqrt(math.Max(-nd/math.Sqrt(dir.x*dir.x+dir.y*dir.y+dir.z*dir.z), 0.03))
+				s /= q
+				s0 /= q
+			}
+			for ss := s; k < len(r.mips)-1 && ss > 1.6; ss /= 2 {
+				k++
+			}
+			col = r.mips[k][(ty>>k)*r.mipW[k]+tx>>k]
+			if s < 0.75 {
+				// Seen bigger than on the flat board: a box line is
+				// drawn as a thin line, not a whole cell's tint.
+				cy := hy >> 1
+				if t := &r.tex[(cy-ty0)*rm.tw+cx-tx0]; t.arms != 0 {
+					cov := lineCoverUV(int(t.arms), fx-float64(cx), (hh-p.y)/2-float64(cy), s0/c.kx, s0/(2*c.ky), c.minU, c.minV)
+					col = mix32(t.bg, t.fg, 0.85*cov)
+				}
+			}
+			if fc.mat == matBoard {
+				if col == c.bgPlain {
+					col = plasterAt(col, p.x, p.y, foot(), boardGrain*c.gk) // the empty board: the wall round it, carried on
+				}
+				shade = 1 - 0.7*r.shadowAt(fx-float64(tx0), hh-p.y-float64(2*ty0))
+			}
+		case matSolid:
+			col = fc.col
+			if fc.edge {
+				q := p.sub(fc.o)
+				u, v := q.dot(fc.eu), q.dot(fc.ev)
+				// Its edges, a little darker: a band e wide, blurred to
+				// a pixel's width (px) so far away it does not flicker.
+				e := math.Min(0.45, 0.25*math.Min(fc.lu, fc.lv))
+				px := math.Max(t/f*c.kpx, 0.1*c.kpx)
+				d := math.Min(math.Min(u, v), math.Min(fc.lu-u, fc.lv-v))
+				if cov := clampF((e-d)/px+0.5, 0, 1); cov > 0 {
+					col = mix32(col, 0, 0.3*cov*math.Min(1, 2*e/px))
+				}
+			}
+		case matFloor:
+			col = floorAt(fc.col, p.x+hw, p.z, t/f*c.kpx)
+		case matWall:
+			u := p.z // along the wall
+			if n.z != 0 {
+				u = p.x
+			}
+			col = wallAt(fc.col, c.textCol, u, p.y, foot(), c.gk, rm)
+		case matBack:
+			col = backWallAt(fc.col, c.textCol, p.x, p.y, foot(), c.gk, rm)
+		case matCeiling:
+			col = plasterAt(fc.col, p.x, p.z, foot(), ceilingGrain*c.gk)
+		case matLamp, matShade:
+			col = fc.col
+		}
+		r.base[idx] = col
+
+		// The light here.
+		vx, vy, vz := -dir.x*dl, -dir.y*dl, -dir.z*dl
+		fill := n.x*vx + n.y*vy + n.z*vz
+		if fc.mat == matLamp {
+			r.mul[idx], r.add[idx] = float32(0.85+0.15*fill), 0
+			continue
+		}
+		lx, ly, lz := lamp.x-p.x, lamp.y-p.y, lamp.z-p.z
+		d2 := lx*lx + ly*ly + lz*lz
+		il := 1 / math.Sqrt(d2)
+		lx, ly, lz = lx*il, ly*il, lz*il
+		att := 1 / (1 + d2*c.invR2)
+		ndl := n.x*lx + n.y*ly + n.z*lz
+		if fc.mat == matShade && inside {
+			ndl = 1 // the shade's inside is lit by the bulb right next to it
+		}
+		diff, spec := 0.0, 0.0
+		if ndl > 0 {
+			diff = ndl * att * float64(shade)
+			hx, hy, hz := lx+vx, ly+vy, lz+vz
+			hn := (n.x*hx + n.y*hy + n.z*hz) / math.Sqrt(hx*hx+hy*hy+hz*hz)
+			if hn > 0 {
+				s := hn * hn
+				s *= s
+				s *= s
+				s *= s
+				s *= s // to the 32nd
+				spec = s * att * fc.gloss * float64(shade)
+			}
+		}
+		r.mul[idx] = float32(light.ambient + light.fill*fill + light.lamp*diff)
+		r.add[idx] = float32(light.glow*diff + light.spec*spec)
+	}
+}
+
+// cellBox is the pixels of screen cell (col, row) of the last drawing:
+// columns x0 ≤ x < x1, rows y0 ≤ y < y1.
+func (r *room3D) cellBox(col, row int) (x0, y0, x1, y1 int) {
+	w, h := r.rm.w, r.rm.h
+	return col * r.pw / w, row * r.ph / h, (col + 1) * r.pw / w, (row + 1) * r.ph / h
+}
+
+// cellFour is four pixels of screen cell (col, row), one in the middle of
+// each quarter of it: top left, top right, bottom left, bottom right. In
+// quarter blocks, where a cell is four pixels, those four.
+func (r *room3D) cellFour(col, row int) [4]int {
+	x0, y0, x1, y1 := r.cellBox(col, row)
+	xa, xb := x0+(x1-x0)/4, x0+3*(x1-x0)/4
+	ya, yb := y0+(y1-y0)/4, y0+3*(y1-y0)/4
+	return [4]int{ya*r.pw + xa, ya*r.pw + xb, yb*r.pw + xa, yb*r.pw + xb}
+}
+
+// cellSamples calls see with pixels spread evenly over screen cell (col,
+// row): all four in quarter blocks, at most 4×4 of a picture's.
+func (r *room3D) cellSamples(col, row int, see func(i int)) {
+	x0, y0, x1, y1 := r.cellBox(col, row)
+	nx, ny := min(x1-x0, 4), min(y1-y0, 4)
+	for b := 0; b < ny; b++ {
+		y := y0 + (2*b+1)*(y1-y0)/(2*ny)
+		for a := 0; a < nx; a++ {
+			see(y*r.pw + x0 + (2*a+1)*(x1-x0)/(2*nx))
+		}
+	}
 }
 
 // ---- the words ----------------------------------------------------------------------------
@@ -1429,14 +1590,13 @@ func (r *room3D) faceWords(o *r3near, v *r3view, rm *r3room, titles bool) {
 }
 
 // firstSeen is the first screen cell, row by row, that shows face fi
-// (three of its four pixels at least), and how many cells from it along
-// the row do.
+// (three of its four quarters at least, see cellFour), and how many cells
+// from it along the row do.
 func (r *room3D) firstSeen(fi int32) (col, row, n int, ok bool) {
-	w, pw := r.rm.w, r.pw
+	w := r.rm.w
 	shows := func(c, row int, fi int32) bool {
-		tl := 2*row*pw + 2*c
 		k := 0
-		for _, i := range [4]int{tl, tl + 1, tl + pw, tl + pw + 1} {
+		for _, i := range r.cellFour(c, row) {
 			if r.face[i] == fi {
 				k++
 			}
@@ -1456,7 +1616,7 @@ func (r *room3D) firstSeen(fi int32) (col, row, n int, ok bool) {
 		}
 		for row := 0; row < r.rm.h; row++ {
 			for c := 0; c < w; c++ {
-				if f := r.face[2*row*pw+2*c]; f >= 0 && r.firstAt[f] < 0 && shows(c, row, f) {
+				if f := r.face[r.cellFour(c, row)[0]]; f >= 0 && r.firstAt[f] < 0 && shows(c, row, f) {
 					r.firstAt[f] = int32(row*w + c)
 				}
 			}
@@ -1631,17 +1791,16 @@ func frameGlyph(g string) bool {
 func isWordRune(c rune) bool { return unicode.IsLetter(c) || unicode.IsDigit(c) }
 
 // inSight is whether a letter of face fi (of structure own) can show in
-// screen cell at: fewer than three of its four pixels show another
+// screen cell at: fewer than three of its four quarters show another
 // structure nearer than the face's plane (n · p = k, num = k − n · camera).
 //
 // The room itself never hides words: seen from inside, its walls and
 // floor are behind everything in it, so they cover only a line that
 // stands out past its face; and the lamp is too small to hide a word.
 func (r *room3D) inSight(at int, fi int32, own int, n r3vec, num float64) bool {
-	pw, w := r.pw, r.rm.w
-	tl := at/w*2*pw + 2*(at%w)
+	w := r.rm.w
 	bad := 0
-	for _, i := range [4]int{tl, tl + 1, tl + pw, tl + pw + 1} {
+	for _, i := range r.cellFour(at%w, at/w) {
 		f := r.face[i]
 		if f < 0 || f == fi || r.faces[f].own < 0 || r.faces[f].own == own && !r.faces[fi].inside {
 			continue // nothing, the face itself, the room, or its own block's sides (behind its front)
@@ -1673,23 +1832,23 @@ func (r *room3D) over(fi int32, p r3vec) bool {
 }
 
 // setChar puts letter s of the flat board's cell t, on face fi, in screen
-// cell at: its background is the face's colour there, and its letter's
-// colour is lit a little by the face's light, kept clear of the background.
+// cell at: its background is the mean of the pixels under it (the face's
+// colour there, lit), and its letter's colour is lit a little by the
+// face's light, kept clear of the background.
 func (r *room3D) setChar(at int, fi int32, s string, t *r3texel) {
-	pw, w := r.pw, r.rm.w
-	tl := at/w*2*pw + 2*(at%w)
-	var sr, sg, sb, m, a float64
-	for _, i := range [4]int{tl, tl + 1, tl + pw, tl + pw + 1} {
+	w := r.rm.w
+	var sr, sg, sb, m, a, k float64
+	r.cellSamples(at%w, at/w, func(i int) {
 		col := r.lit(r.base[i], i)
 		if r.face[i] == fi {
 			col = r.lit(t.bg, i)
 		}
 		cr, cg, cb := chans(col)
 		sr, sg, sb = sr+cr, sg+cg, sb+cb
-		m, a = m+float64(r.mul[i]), a+float64(r.add[i])
-	}
-	bg := rgb32(sr/4+0.5, sg/4+0.5, sb/4+0.5)
-	m, a = 0.55+0.45*m/4, 0.4*a/4
+		m, a, k = m+float64(r.mul[i]), a+float64(r.add[i]), k+1
+	})
+	bg := rgb32(sr/k+0.5, sg/k+0.5, sb/k+0.5)
+	m, a = 0.55+0.45*m/k, 0.4*a/k
 	fr, fg, fb := chans(t.fg)
 	ink := rgb32(byteOf(fr*m+a*lampWarm[0]), byteOf(fg*m+a*lampWarm[1]), byteOf(fb*m+a*lampWarm[2]))
 	r.chars[at] = r3char{s: s, fg: clearInk(ink, bg), bg: bg, stamp: r.stamp, face: fi}

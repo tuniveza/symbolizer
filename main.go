@@ -85,7 +85,13 @@ func main() {
 	}
 	designFrames, designSaveLater, designAnims = true, true, true
 	p := tea.NewProgram(m, tea.WithFPS(120)) // the most Bubble Tea allows: smoother scrolling
+	if room3DPixels = kittyWanted(os.Getenv); room3DPixels {
+		// The 3D room as a picture: sent to kitty in order with the frames (design_3d_kitty.go).
+		room3DRemote = kittyRemote(os.Getenv)
+		startKitty(func(s string) { p.Send(tea.RawMsg{Msg: s}) })
+	}
 	_, err = p.Run()
+	kittyPic.stop(os.Stdout) // the 3D room's picture deleted
 	if m.design != nil {
 		m.design.flushSave() // the board's last changes
 	}
