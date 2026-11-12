@@ -143,6 +143,7 @@ type room3D struct {
 	frame          string            // the last drawing, for frames where only the mouse moved
 	frameW, frameH int
 	cost           time.Duration // how long the last drawing took
+	ds             *designState  // the board it shows (a box's inside: design_3d_box.go)
 }
 
 // on is whether the board area shows the room in 3D: turned, or in free roam.
@@ -766,6 +767,7 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 	r.cabinets(d, w, h) // how open each cabinet is this frame, for the flat drawing and the 3D doors alike
 	c := m.designCanvas()
 	d.mapCorner, d.platesOpen = corner, plates
+	r.ds = d
 	rm := r.area(d, w, h, d.z())
 	r.takeRoom(d, c, &rm)
 	r.mipmap(&rm)

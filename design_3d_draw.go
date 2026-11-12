@@ -611,6 +611,9 @@ func (r *room3D) scene(rm *r3room, z float64, lamp r3vec) {
 		if o.Kind == kCabinet && r.cabinetBlock(rm, b, dep) {
 			continue // a cupboard with doors that open (design_3d_cabinet.go)
 		}
+		if o.Kind == kBox && r.boxBlock(b, dep, hw, hh) {
+			continue // an open box, its walls and what is in it (design_3d_box.go)
+		}
 		X0, X1 := float64(b.x0)-hw, float64(b.x1)-hw
 		Yt, Yb := hh-float64(2*b.y0), hh-float64(2*b.y1)
 		// The front: an octagon for a shape drawn whole as one, else a rectangle.
