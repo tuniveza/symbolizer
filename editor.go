@@ -151,6 +151,7 @@ type Model struct {
 	lamps      string       // lock-key state (lamps.go)
 	plate      *lockPlate   // the lock plate while it shows (lockplate.go)
 	blurred    bool         // the terminal says another window has the keyboard
+	pxm        pixelMouse   // the mouse reported to the pixel in the 3D view (design_3d_mouse.go)
 	diary      *diaryState  // diary mode: chapters, pages, the page in focus (diary.go)
 	design     *designState // design mode: the board, its structures, links and pen (design.go)
 	startDir   string       // folder sy was started in
@@ -266,6 +267,9 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			panic(r)
 		}
 	}()
+	if msg = m.pixelMouseIn(msg); msg == nil {
+		return m, nil // a mouse report from before the mouse left pixel mode (design_3d_mouse.go)
+	}
 	if _, ok := msg.(tea.RawMsg); ok {
 		// A picture of the 3D room on its way to kitty (design_3d_kitty.go):
 		// nothing changed, so the board is not drawn again for it.
@@ -276,6 +280,9 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	}
 	defer func() { // the 3D room: drawn sharp once the camera stops; its picture deleted when it goes
 		if c := m.design3DAfter(); c != nil {
+			cmd = tea.Batch(cmd, c)
+		}
+		if c := m.pixelMouseCmd(); c != nil { // the mouse to the pixel while the room is in 3D (design_3d_mouse.go)
 			cmd = tea.Batch(cmd, c)
 		}
 	}()
@@ -310,6 +317,9 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	}
 	if _, ok := msg.(room3DWalkMsg); ok { // 3D: moving on while W A S D are held (design_3d.go)
 		return m, m.design3DWalkStep()
+	}
+	if c, ok := m.design3DMouseMsg(msg); ok { // 3D: the look easing, the edge turning, pixel mode (design_3d_mouse.go)
+		return m, c
 	}
 	if _, ok := msg.(designFrameMsg); ok {
 		m.ds().frameTick = false // the View after this draws the board afresh
@@ -543,9 +553,12 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			return m.designMotion(msg.Mouse())
 		}
 		if m.inDesign() && m.design != nil && msg.Mouse().Button == tea.MouseNone {
-			m.design3DLook(msg.Mouse()) // in 3D the mouse looks round on its own (design_3d.go)
-			m.designHover(msg.Mouse())  // what is under the mouse, for Space (design_select.go)
-			return nil
+			turned, cmd := m.design3DLook(msg.Mouse()) // in 3D the mouse looks round on its own (design_3d.go)
+			m.designHover(msg.Mouse())                 // what is under the mouse, for Space (design_select.go)
+			if turned {
+				m.design.hoverOnly = false // the camera turned: the room is drawn again
+			}
+			return cmd
 		}
 		if m.dragMargin != "" {
 			m.marginDrag(msg.Mouse().X)

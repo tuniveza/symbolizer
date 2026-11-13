@@ -49,16 +49,15 @@ import (
 
 const (
 	turnStep   = 5                      // degrees an arrow press looks round
-	turnGlide  = 2                      // degrees a glide step, an arrow held
-	turnStart  = 160 * time.Millisecond // held: the first glide step (a quick tap is one step)
-	turnEvery  = 30 * time.Millisecond  // then 33 steps a second: about 65° a second
+	turnRate   = 65.0                   // degrees a second an arrow held looks round
+	turnStart  = 160 * time.Millisecond // held: the glide starts (a quick tap is one step)
+	moveEvery  = 4 * time.Millisecond   // held arrows and W A S D move this often, as far as the time since: every frame
 	turnPerCol = 1.5                    // degrees the camera turns for a cell the mouse moves across
 	turnPerRow = 3.0                    // and for a row it moves down (a row is twice as tall)
 	walkSpeed  = 0.4                    // the screen's bigger side a second, moving
 	walkFast   = 3                      // with Shift: this many times faster
 	walkTap    = 0.06 * float64(time.Second)
-	walkEvery  = 20 * time.Millisecond // held: a step every 20 ms, as far as the time since the last one
-	outWalk    = 0.3                   // the blocks are all the way out of the wall once the camera has moved this much of the screen's bigger side (see outK)
+	outWalk    = 0.3 // the blocks are all the way out of the wall once the camera has moved this much of the screen's bigger side (see outK)
 	roomHint   = "3D view · mouse or arrows: look · W A S D: move · Shift: faster · Esc: flat board"
 )
 
@@ -92,6 +91,7 @@ type room3D struct {
 	heldAt    time.Time
 	stepAt    time.Time // the last walking step
 	walking   bool      // the walking ticks are going
+	turnAt    time.Time // held arrows: the last glide step (or when the glide starts)
 
 	// The mouse.
 	camDrag        int // camNone or camTurn
@@ -100,16 +100,23 @@ type room3D struct {
 	look0          [2]float64
 	click          r3hit // the empty wall pressed: let go without a drag, a click there
 	clickOn        bool
-	hoverX, hoverY int      // mouse look with no button: where the mouse was last seen
-	hoverOn        bool     // hoverX and hoverY are set (false: the next move only sets them)
-	passing        bool     // a mouse event handed on to the flat board (designPress and the rest)
-	plane          float64  // a drag handed on: the mouse is followed on the plane this far out of the wall
-	mapX, mapY     int      // the flat board cell the mouse was last followed to
-	pw, ph         int      // the pixels: twice the board area's width and height (quarter blocks), or a picture's (kitty)
-	kx, ky         float64  // the pixels a unit across and a unit down (2 and 1 in quarter blocks)
-	want           [2]int   // the picture's size for the next drawing (see room3DDensity), or 0: quarter blocks
-	pix            bool     // the last drawing is a picture (kitty, see design_3d_kitty.go)
-	fdraw          []r3draw // per face: how it is drawn this frame
+	pressF, lastF  [2]float64 // the same to a fraction of a cell (pixel mouse: see design_3d_mouse.go)
+	hoverX, hoverY float64    // mouse look with no button: where the mouse was last seen (cells, to a fraction)
+	hoverOn        bool       // hoverX and hoverY are set (false: the next move only sets them)
+	aim            [2]float64 // easing: where the look is going (design_3d_mouse.go)
+	easing         bool       // the look is easing towards aim
+	easeAt         time.Time  // the last easing step
+	edge           [2]int     // the mouse rests at the window's edge: the way it turns on (-1, 0, 1 across and down)
+	edgeOn         bool       // the edge ticks are going
+	edgeStep       time.Time  // the last edge step
+	passing        bool       // a mouse event handed on to the flat board (designPress and the rest)
+	plane          float64    // a drag handed on: the mouse is followed on the plane this far out of the wall
+	mapX, mapY     int        // the flat board cell the mouse was last followed to
+	pw, ph         int        // the pixels: twice the board area's width and height (quarter blocks), or a picture's (kitty)
+	kx, ky         float64    // the pixels a unit across and a unit down (2 and 1 in quarter blocks)
+	want           [2]int     // the picture's size for the next drawing (see room3DDensity), or 0: quarter blocks
+	pix            bool       // the last drawing is a picture (kitty, see design_3d_kitty.go)
+	fdraw          []r3draw   // per face: how it is drawn this frame
 	polys          [][2]float64
 	drawnAt        time.Time // when the last drawing started
 	drawnTill      time.Time // and when it ended (see drawNow)
@@ -217,7 +224,7 @@ func (m *Model) design3DKey(k tea.Key, name string) (bool, tea.Cmd) {
 func (m *Model) design3DTurnKey(k tea.Key, dir string) tea.Cmd {
 	d := m.ds()
 	if !m.releases {
-		m.design3DTurn(dir, false) // other terminals: each press and repeat turns a step
+		m.design3DTurn(dir, turnStep) // other terminals: each press and repeat turns a step
 		return nil
 	}
 	// The terminal's own repeats only say it is still held.
@@ -226,12 +233,13 @@ func (m *Model) design3DTurnKey(k tea.Key, dir string) tea.Cmd {
 	if k.IsRepeat {
 		return nil
 	}
-	m.design3DTurn(dir, false)
+	m.design3DTurn(dir, turnStep)
 	d.holdMods = hold3D // designHold sends the glide steps to design3DHold
 	if d.holdTick {
 		return nil
 	}
 	d.holdTick = true
+	d.room.turnAt = time.Now().Add(turnStart) // the glide turns from then on
 	return tea.Tick(turnStart, func(time.Time) tea.Msg { return designHoldMsg{} })
 }
 
@@ -248,16 +256,12 @@ func walkKey(name string) rune {
 	return 0
 }
 
-// design3DTurn looks that way (an arrow): turnStep° a press, turnGlide°
-// a glide step (held).
-func (m *Model) design3DTurn(dir string, glide bool) {
+// design3DTurn looks step degrees that way (an arrow): turnStep a press,
+// a glide step's share of turnRate while held.
+func (m *Model) design3DTurn(dir string, step float64) {
 	r := &m.ds().room
 	if !r.free {
 		m.design3DFree() // the tests' fixed camera: first person from where it is
-	}
-	step := float64(turnStep)
-	if glide {
-		step = turnGlide
 	}
 	switch dir {
 	case "left":
@@ -276,6 +280,10 @@ func (m *Model) design3DTurn(dir string, glide bool) {
 func (r *room3D) lookBy(dx, dy float64) {
 	r.look[0] = math.Mod(r.look[0]+dx+540, 360) - 180
 	r.look[1] = clampF(r.look[1]+dy, -89, 89)
+	if r.easing { // the mouse's easing goes on from where the arrow turned (design_3d_mouse.go)
+		r.aim[0] += dx
+		r.aim[1] = clampF(r.aim[1]+dy, -89, 89)
+	}
 }
 
 // design3DHold is a glide step while arrows are held in 3D (designHold
@@ -283,10 +291,16 @@ func (r *room3D) lookBy(dx, dy float64) {
 func (m *Model) design3DHold() tea.Cmd {
 	d := m.design
 	any := false
+	r := &m.ds().room // (a box's inside has its own room)
+	now := time.Now()
+	step := turnRate * math.Max(0, math.Min(now.Sub(r.turnAt).Seconds(), 0.05))
+	if now.After(r.turnAt) {
+		r.turnAt = now
+	}
 	if m.inDesign() && !m.help && time.Since(d.heldAt) <= holdLost {
 		for _, dir := range []string{"left", "right", "up", "down"} {
 			if m.chord.held[dir] {
-				m.design3DTurn(dir, true)
+				m.design3DTurn(dir, step)
 				any = true
 			}
 		}
@@ -298,7 +312,7 @@ func (m *Model) design3DHold() tea.Cmd {
 		}
 		return nil
 	}
-	return tea.Tick(turnEvery, func(time.Time) tea.Msg { return designHoldMsg{} })
+	return tea.Tick(moveEvery, func(time.Time) tea.Msg { return designHoldMsg{} })
 }
 
 // ---- the first-person camera ------------------------------------------------------------
@@ -321,7 +335,7 @@ func (m *Model) design3DFree() {
 	r.pos, r.ff, r.rm = v.cam, v.f, rm
 	r.startPos, r.startLook = r.pos, r.look
 	r.freeK = r.outK() // the blocks as far out as they were: they do not jump
-	r.free = true
+	r.free, r.easing = true, false
 	m.say("3D: move the mouse to look round, W A S D to move, Shift faster.  Esc: flat board.")
 }
 
@@ -351,7 +365,7 @@ func (m *Model) design3DWalkKey(k tea.Key, key rune) tea.Cmd {
 		return nil
 	}
 	r.walking, r.stepAt = true, time.Now()
-	return tea.Tick(walkEvery, func(time.Time) tea.Msg { return room3DWalkMsg{} })
+	return tea.Tick(moveEvery, func(time.Time) tea.Msg { return room3DWalkMsg{} })
 }
 
 // design3DKeyUp: a key let go (kitty): W A S D stop moving.
@@ -386,7 +400,7 @@ func (m *Model) design3DWalkStep() tea.Cmd {
 	dt := math.Min(now.Sub(r.stepAt).Seconds(), 0.1)
 	r.stepAt = now
 	r.walk(r.held, dt, m.keys.shift)
-	return tea.Tick(walkEvery, func(time.Time) tea.Msg { return room3DWalkMsg{} })
+	return tea.Tick(moveEvery, func(time.Time) tea.Msg { return room3DWalkMsg{} })
 }
 
 // walk moves the camera for secs seconds with keys held: W and S forward
@@ -495,7 +509,10 @@ func (m *Model) design3DPress(ms tea.Mouse) (bool, tea.Cmd) {
 	hit := r.pickAt(col, row)
 	r.camDrag, r.clickOn, r.hoverOn = camNone, false, false
 	r.pressX, r.pressY, r.lastX, r.lastY = col, row, col, row
-	r.look0 = r.look
+	fx, fy := m.mouseAt(ms)
+	r.pressF = [2]float64{fx, fy}
+	r.look0 = r.aimNow()
+	r.edge = [2]int{}
 	switch ms.Button {
 	case tea.MouseRight:
 		if m.ds().pen >= 0 && hit.flat {
@@ -564,6 +581,7 @@ func (m *Model) design3DThrough(ms tea.Mouse) tea.Mouse {
 func (m *Model) design3DMotion(ms tea.Mouse) tea.Cmd {
 	r := &m.ds().room
 	col, row := ms.X, ms.Y-m.boardTop()
+	var cmd tea.Cmd
 	if r.camDrag == camTurn {
 		dx, dy := col-r.pressX, row-r.pressY
 		if dx == 0 && dy == 0 && r.clickOn {
@@ -574,36 +592,46 @@ func (m *Model) design3DMotion(ms tea.Mouse) tea.Cmd {
 			m.design3DFree() // the tests' fixed camera: first person from where it is
 			r.look0 = r.look
 		}
-		r.look = r.look0
-		r.lookBy(float64(dx)*turnPerCol, float64(dy)*turnPerRow)
+		fx, fy := m.mouseAt(ms)
+		cmd = r.turnTo(r.look0[0]+(fx-r.pressF[0])*turnPerCol, r.look0[1]+(fy-r.pressF[1])*turnPerRow)
 	}
 	r.lastX, r.lastY = col, row
-	return nil
+	return cmd
 }
 
 // hoverJump is how far (cells) the mouse may move between two reports and
 // still turn the camera: further, it has been out of the window and come
 // back in somewhere else, so the camera does not jump.
-const hoverJump = 8
+const hoverJump = 16
 
 // design3DLook: the mouse moved with no button down in the 3D view. That is
 // mouse look: the camera stays where it is and turns the way the mouse
 // goes. The first move after a press, a jump or the flat board only notes
-// where the mouse is.
-func (m *Model) design3DLook(ms tea.Mouse) {
+// where the mouse is. Resting at the window's edge it turns on by itself
+// (see design3DEdge). It says whether the camera turned, and the ticks of
+// the easing or the edge turning to start.
+func (m *Model) design3DLook(ms tea.Mouse) (bool, tea.Cmd) {
 	r := &m.ds().room
-	col, row := ms.X, ms.Y-m.boardTop()
-	dx, dy := col-r.hoverX, row-r.hoverY
+	fx, fy := m.mouseAt(ms)
+	fy -= float64(m.boardTop())
+	dx, dy := fx-r.hoverX, fy-r.hoverY
 	was := r.hoverOn
-	r.hoverX, r.hoverY, r.hoverOn = col, row, r.on()
-	if !was || !r.on() || r.passing || (dx == 0 && dy == 0) ||
-		max(dx, -dx) > hoverJump || max(dy, -dy) > hoverJump {
-		return
+	r.hoverX, r.hoverY, r.hoverOn = fx, fy, r.on()
+	if !was || !r.on() || r.passing {
+		r.edge = [2]int{}
+		return false, nil
+	}
+	if math.Abs(dx) > hoverJump || math.Abs(dy) > hoverJump {
+		return false, m.design3DEdge(fx, fy+float64(m.boardTop()), 0, 0)
+	}
+	edge := m.design3DEdge(fx, fy+float64(m.boardTop()), dx, dy)
+	if dx == 0 && dy == 0 {
+		return false, edge
 	}
 	if !r.free {
 		m.design3DFree()
 	}
-	r.lookBy(float64(dx)*turnPerCol, float64(dy)*turnPerRow)
+	return true, tea.Batch(r.turnBy(dx*turnPerCol, dy*turnPerRow), edge)
 }
 
 // design3DRelease: the button let go after a press on the empty room or a
@@ -845,6 +873,7 @@ func (m *Model) design3DModeEsc() bool {
 func (m *Model) design3DEsc() {
 	r := &m.ds().room
 	r.free, r.walking, r.camDrag = false, false, camNone
+	r.easing, r.edge = false, [2]int{}
 	clear(r.held)
 	r.yaw, r.pitch, r.near, r.pan = 0, 0, 0, r3vec{}
 	m.say("Flat board.")

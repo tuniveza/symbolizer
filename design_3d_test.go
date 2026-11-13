@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -145,12 +146,14 @@ func TestDesign3DHold(t *testing.T) {
 	if d.room.look[0] != turnStep {
 		t.Fatalf("a press and a repeat: looks %v°, want one step (the glide does the rest)", d.room.look[0])
 	}
+	d.room.turnAt = time.Now() // the glide has started
 	for i := 0; i < 3; i++ {
+		d.room.turnAt = d.room.turnAt.Add(-40 * time.Millisecond) // 40 ms gone by
 		m.Update(designHoldMsg{})
 	}
-	held := float64(turnStep + 3*turnGlide)
-	if d.room.look[0] != held {
-		t.Fatalf("held for three glide steps: looks %v°, want %v", d.room.look[0], held)
+	held := d.room.look[0]
+	if want := turnStep + 3*0.04*turnRate; math.Abs(held-want) > 0.3 {
+		t.Fatalf("held for three 40 ms glide steps: looks %v°, want about %v", held, want)
 	}
 	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyRight}))
 	_, cmd := m.Update(designHoldMsg{})

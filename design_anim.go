@@ -23,7 +23,7 @@ var designAnims = false
 // is drawn every openAnimFrame while it moves.
 const (
 	openAnimFor   = 280 * time.Millisecond
-	openAnimFrame = 16 * time.Millisecond
+	openAnimFrame = 7 * time.Millisecond // as often as the 3D room is drawn (room3DEvery)
 )
 
 // openAnim is a door or drawer moving: since when, and which way.

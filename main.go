@@ -90,7 +90,7 @@ func main() {
 		m.mode = startMode
 		m.say(modes[startMode].Icon() + "  " + modes[startMode].name + " mode. Alt+M switches modes.")
 	}
-	designFrames, designSaveLater, designAnims, room3DPace, room3DGPU = true, true, true, true, true
+	designFrames, designSaveLater, designAnims, room3DPace, room3DGPU, room3DEase = true, true, true, true, true, true
 	p := tea.NewProgram(m, tea.WithFPS(120)) // the most Bubble Tea allows: smoother scrolling
 	if room3DPixels = kittyWanted(os.Getenv); room3DPixels {
 		// The 3D room as a picture: sent to kitty in order with the frames (design_3d_kitty.go).
@@ -99,6 +99,9 @@ func main() {
 	}
 	_, err = p.Run()
 	kittyPic.stop(os.Stdout) // the 3D room's picture deleted
+	if room3DPixels {
+		fmt.Print(pixelMouseOff) // the mouse back to cells (design_3d_mouse.go)
+	}
 	if m.design != nil {
 		m.design.flushSave() // the board's last changes
 	}
