@@ -303,6 +303,7 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			cmd = tea.Batch(cmd, c)
 		}
 		m.pointerCmd() // the pointer hidden while the room is in 3D (design_3d_pointer.go)
+		m.soundCmd()   // the music played while the room is in 3D (design_3d_sound.go)
 	}()
 	if m.design != nil {
 		m.design.hoverOnly = false // set again below if this is only the mouse moving (designHover)
