@@ -715,7 +715,7 @@ func (r *room3D) roomInk(c *r3shade) {
 	const plankW, plankL = 7.0, 34.0
 	mod := func(a, b float64) float64 { return a - b*math.Floor(a/b) }
 	join := r3mark{level: inkTexture, col: mix32(r.faces[faceFloor].col, 0, 0.4), need: 20}
-	for p := math.Ceil((rm.wx0 + rm.hw) / plankW); p*plankW-rm.hw <= rm.wx1; p++ {
+	for p := math.Ceil((rm.wx0 + rm.hw) / plankW); rm.floor == floorPlanks && p*plankW-rm.hw <= rm.wx1; p++ { // other floors: no lines (design_3d_finish.go)
 		x := p*plankW - rm.hw
 		s := seg(r3vec{x, rm.fy, 0}, r3vec{x, rm.fy, rm.fz}, join, faceFloor)
 		s.off, s.sep = r3vec{plankW, 0, 0}, 2.5
@@ -756,15 +756,15 @@ func (r *room3D) roomInk(c *r3shade) {
 			y float64
 			m r3mark
 		}{{rm.fy + skirt/2, trim}, {rm.fy + dado + railH/2, rail}, {rm.fy + pic + railH/2, rail}} {
-			if l.y >= rm.cy {
-				continue
+			if l.y >= rm.cy || (!wallHasRails(rm.walls) && (l.y > rm.fy+skirt || rm.walls != wallPanels)) {
+				continue // a finish without rails (and but for wood panels, without a skirting board)
 			}
 			s := seg(wl.at(wl.u0, l.y), wl.at(wl.u1, l.y), l.m, faces...)
 			s.plain = wl.plain
 			r.line(&s, plainBG)
 		}
 		const period = 6.0
-		for u := math.Ceil(wl.u0/period) * period; u <= wl.u1; u += period {
+		for u := math.Ceil(wl.u0/period) * period; rm.walls == wallPaper && u <= wl.u1; u += period { // stripes on paper only
 			s := seg(wl.at(u, rm.fy+dado+railH), wl.at(u, top), stripe, faces...)
 			s.plain = wl.plain
 			s.off, s.sep = wl.at(u+period, 0).sub(wl.at(u, 0)), 2.5

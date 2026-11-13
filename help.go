@@ -132,6 +132,7 @@ var helpGroups = []helpGroup{
 		{"  3D: click", "  clicks and drags act at the cross in the middle, not at the mouse (the pointer is hidden)"},
 		{"  3D: choosing", "  the cross in the middle chooses: what it is on is the chosen structure · keys and clicks work as on the flat board"},
 		{"  3D: blocks", "  click, double-click and drag them as on the flat board: drawers, lids, rows, pins, ✕, titles"},
+		{"  3D: walls · floor", "  T: the next finish for the walls (paper, brick, wood panels, concrete, tiles, trellis paper, felt panels), Shift + T: back · F: the next floor (planks, parquet, carpet tiles, concrete, marble, oak, slate), Shift + F: back · kept with the board"},
 		{"  3D: font", "  sy --font: installs Sy Geometry, the shape letters that draw the room's edges at their own angle outside kitty's picture (restart kitty)"},
 		{"1–8", "highlighter pen colours (press the same one again to put it down)"},
 		{"  ⌫ · over/under on the toolbar", "  rubber · pen under the text or over it; right-drag rubs out too"},
