@@ -33,8 +33,11 @@ func fakeHyprPtr(t *testing.T, theirs bool) (calls func() []string) {
 		if args[0] == "getoption" {
 			return map[bool]string{true: "bool: true\nset: true\n", false: "bool: false\nset: false\n"}[theirs], nil
 		}
-		if args[0] == "eval" {
+		if args[0] == "eval" || args[0] == "dispatch" {
 			return "ok", nil
+		}
+		if args[0] == "j/activewindow" {
+			return `{"title": "board — Symbolizer", "at": [100, 50], "size": [1200, 800]}`, nil
 		}
 		return "unknown request", nil
 	}
@@ -106,5 +109,46 @@ func TestDesign3DClickAtCross(t *testing.T) {
 	}
 	if h := d.room.pickAt(2, 1); h.own == o.ID {
 		t.Fatal("(the page should not be under the mouse too)")
+	}
+}
+
+// Far from the window's middle, the hidden pointer is put back there; the
+// report of that jump does not turn the camera back.
+func TestDesign3DPointerRecenter(t *testing.T) {
+	calls := fakeHyprPtr(t, false)
+	m := room3DModel(t, 120, 40)
+	d := m.ds()
+	r := &d.room
+	press(m, "ctrl+f")
+	calls()
+	move := func(x, y int) { m.Update(tea.MouseMotionMsg(tea.Mouse{X: x, Y: y})) }
+	move(60, 20)
+	move(70, 20) // still near the middle
+	if got := calls(); len(got) != 3 {
+		t.Fatalf("near the middle the pointer stays: %v", got[3:])
+	}
+	look := r.look
+	for x := 75; x <= 90; x += 5 { // to over a quarter of the width from the middle
+		move(x, 20)
+	}
+	got := calls()
+	want := []string{"j/activewindow", "dispatch hl.dsp.cursor.move({ x = 700, y = 450 })"}
+	if strings.Join(got[3:], "|") != strings.Join(want, "|") {
+		t.Fatalf("far from the middle: %v, want %v", got[3:], want)
+	}
+	if r.look == look {
+		t.Fatal("the moves themselves turn the camera")
+	}
+	look = r.look
+	move(60, 20) // the jump back
+	if r.look != look {
+		t.Fatalf("the pointer put back turned the camera: %v, was %v", r.look, look)
+	}
+	move(62, 20)
+	if r.look == look {
+		t.Fatal("after it, the mouse looks round again")
+	}
+	if got := calls(); len(got) != 5 {
+		t.Fatalf("near the middle again: no more put back: %v", got[5:])
 	}
 }

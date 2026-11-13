@@ -108,6 +108,8 @@ type room3D struct {
 	edge           [2]int    // the mouse rests at the window's edge: the way it turns on (-1, 0, 1 across and down)
 	edgeOn         bool      // the edge ticks are going
 	edgeStep       time.Time // the last edge step
+	warpOn         bool      // the pointer is being put back in the window's middle (design_3d_pointer.go)
+	warpAt         time.Time // when it was asked for
 	passing        bool      // a mouse event handed on to the flat board (designPress and the rest)
 	plane          float64   // a drag handed on: the mouse is followed on the plane this far out of the wall
 	mapX, mapY     int       // the flat board cell the mouse was last followed to
@@ -646,6 +648,10 @@ func (m *Model) design3DLook(ms tea.Mouse) (bool, tea.Cmd) {
 	dx, dy := fx-r.hoverX, fy-r.hoverY
 	was := r.hoverOn
 	r.hoverX, r.hoverY, r.hoverOn = fx, fy, r.on()
+	if was && m.pointerWarped(fx, fy+float64(m.boardTop()), dx, dy) {
+		r.edge = [2]int{}
+		return false, nil // the pointer put back in the middle: it only notes where it is
+	}
 	if !was || !r.on() || r.passing {
 		r.edge = [2]int{}
 		return false, nil
@@ -660,6 +666,7 @@ func (m *Model) design3DLook(ms tea.Mouse) (bool, tea.Cmd) {
 	if !r.free {
 		m.design3DFree()
 	}
+	m.pointerRecenter(fx, fy+float64(m.boardTop())) // far from the middle: put back there, so it never meets the edge
 	return true, tea.Batch(r.turnBy(dx*turnPerCol, dy*turnPerRow), edge)
 }
 
