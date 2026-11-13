@@ -1,0 +1,110 @@
+package main
+
+import (
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+)
+
+// fakeHyprPtr stands in for hyprctl: it notes the calls, and its
+// cursor:invisible starts as theirs.
+func fakeHyprPtr(t *testing.T, theirs bool) (calls func() []string) {
+	t.Helper()
+	var mu sync.Mutex
+	var got []string
+	oldCtl, oldOn, oldWatch, oldPtr := hyprctl, hyprOn, hideWatch, hyprPtr
+	t.Cleanup(func() {
+		hyprPtr.show()
+		hyprctl, hyprOn, hideWatch, hyprPtr = oldCtl, oldOn, oldWatch, oldPtr
+	})
+	hyprPtr, hyprOn = &hyprPointer{}, true
+	hideWatch = func() {
+		mu.Lock()
+		got = append(got, "watch")
+		mu.Unlock()
+	}
+	hyprctl = func(args ...string) (string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		got = append(got, strings.Join(args, " "))
+		if args[0] == "getoption" {
+			return map[bool]string{true: "bool: true\nset: true\n", false: "bool: false\nset: false\n"}[theirs], nil
+		}
+		if args[0] == "eval" {
+			return "ok", nil
+		}
+		return "unknown request", nil
+	}
+	return func() []string {
+		hyprPtr.done.Wait()
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), got...)
+	}
+}
+
+// The pointer is hidden while the room is in 3D and shown again as it
+// goes flat, as sy loses the keyboard, and as sy ends; a watcher is
+// started before it is first hidden.
+func TestDesign3DPointerHidden(t *testing.T) {
+	calls := fakeHyprPtr(t, false)
+	m := room3DModel(t, 120, 40)
+	d := m.ds()
+	m.Update(tea.MouseMotionMsg(tea.Mouse{X: 5, Y: 5}))
+	if got := calls(); len(got) != 0 {
+		t.Fatalf("on the flat board the pointer is left alone: %v", got)
+	}
+	press(m, "ctrl+f")
+	if !d.room.on() {
+		t.Fatal("Ctrl+F: 3D")
+	}
+	want := []string{"getoption cursor:invisible", "watch", "eval hl.config({ cursor = { invisible = true } })"}
+	if got := calls(); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("into 3D: %v, want %v", got, want)
+	}
+	m.Update(tea.BlurMsg{})
+	m.Update(tea.FocusMsg{})
+	press(m, "esc")
+	want = append(want, "eval hl.config({ cursor = { invisible = false } })", "eval hl.config({ cursor = { invisible = true } })", "eval hl.config({ cursor = { invisible = false } })")
+	if got := calls(); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("another window, back, then the flat board: %v, want %v", got, want)
+	}
+	press(m, "ctrl+f")
+	hyprPtr.show() // sy ending
+	want = append(want, "eval hl.config({ cursor = { invisible = true } })", "eval hl.config({ cursor = { invisible = false } })")
+	if got := calls(); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("3D again, then sy ends: %v, want %v", got, want)
+	}
+}
+
+// A pointer the person hid in Hyprland's own settings is left alone.
+func TestDesign3DPointerTheirs(t *testing.T) {
+	calls := fakeHyprPtr(t, true)
+	m := room3DModel(t, 120, 40)
+	press(m, "ctrl+f")
+	press(m, "esc")
+	hyprPtr.show()
+	if got := calls(); len(got) != 1 || got[0] != "getoption cursor:invisible" {
+		t.Fatalf("their own hidden pointer: only asked about, got %v", got)
+	}
+}
+
+// In 3D a click acts where the cross is, wherever the mouse is.
+func TestDesign3DClickAtCross(t *testing.T) {
+	m := room3DModel(t, 120, 40)
+	d := m.ds()
+	d.room.yaw, d.room.pitch = 20, 15
+	o := d.octs[1] // a page
+	cell3D(t, m, o.ID, func(sx, sy int) bool { return true })
+	d.sel, d.lastClick = -1, time.Time{}
+	click(m, 2, m.boardTop()+1, tea.MouseLeft) // the mouse at the top left corner
+	if d.sel != o.ID {
+		t.Fatalf("a click with the cross on the page chose %d, want %d", d.sel, o.ID)
+	}
+	if h := d.room.pickAt(2, 1); h.own == o.ID {
+		t.Fatal("(the page should not be under the mouse too)")
+	}
+}

@@ -302,6 +302,7 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		if c := m.pixelMouseCmd(); c != nil { // the mouse to the pixel while the room is in 3D (design_3d_mouse.go)
 			cmd = tea.Batch(cmd, c)
 		}
+		m.pointerCmd() // the pointer hidden while the room is in 3D (design_3d_pointer.go)
 	}()
 	if m.design != nil {
 		m.design.hoverOnly = false // set again below if this is only the mouse moving (designHover)
@@ -463,7 +464,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			m.designSpaceUp()
 			return tea.Batch(m.designFrameCmd(), m.designSaveCmd())
 		}
-		m.design3DKeyUp(msg.Key()) // 3D: W A S D let go (design_3d.go)
+		m.design3DKeyUp(msg.Key()) // 3D: W A S D Q E let go (design_3d.go)
 		m.keys.release(msg.Key(), m.altGr.down)
 		return nil
 	case tea.KeyPressMsg:
@@ -580,6 +581,10 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			return m.design3DMotion(msg.Mouse()) // 3D: a drag on the empty room looks round (design_3d.go)
 		}
 		if m.inDesign() && m.design != nil && (m.design.drag != dragNone || m.design.rackPress != nil || m.design.pinPress != nil) {
+			if m.design.room.on() { // 3D: the mouse turns the camera, and what is dragged follows the cross (design_3d.go)
+				_, look := m.design3DLook(msg.Mouse())
+				return tea.Batch(look, m.designMotion(msg.Mouse()))
+			}
 			return m.designMotion(msg.Mouse())
 		}
 		if m.inDesign() && m.design != nil && msg.Mouse().Button == tea.MouseNone {

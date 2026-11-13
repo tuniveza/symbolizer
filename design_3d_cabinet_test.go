@@ -223,18 +223,7 @@ func TestDesign3DCabinetClicks(t *testing.T) {
 			doors[int32(fi)] = true
 		}
 	}
-	col, row = -1, -1
-	for y := 0; y < m.boardH() && col < 0; y++ {
-		for c := 0; c < m.width; c++ {
-			if h := r.pickAt(c, y); h.ok && doors[h.face] {
-				col, row = c, y+m.boardTop()
-				break
-			}
-		}
-	}
-	if col < 0 {
-		t.Fatal("the 3D view shows no open door")
-	}
+	col, row = aim3D(t, m, "an open door", func(h r3hit) bool { return doors[h.face] })
 	d.lastClick = time.Time{}
 	click(m, col, row, tea.MouseLeft)
 	if cab.DrawerOpen {

@@ -87,7 +87,15 @@ func TestDesign3DFirstPerson(t *testing.T) {
 	if d.room.pos.sub(pos).len() < 1e-6 {
 		t.Fatal("W: the camera should move")
 	}
-	for _, k := range []string{"=", "-", "0", "p", "f", "q", "e"} {
+	for _, k := range []string{"q", "e"} { // straight up, straight down
+		pos := d.room.pos
+		press(m, k)
+		if dy := d.room.pos.y - pos.y; (k == "q") != (dy > 1e-6) || (k == "e") != (dy < -1e-6) ||
+			math.Abs(d.room.pos.x-pos.x) > 1e-9 || math.Abs(d.room.pos.z-pos.z) > 1e-9 {
+			t.Fatalf("%s: the camera should move straight %s: %v to %v", k, map[string]string{"q": "up", "e": "down"}[k], pos, d.room.pos)
+		}
+	}
+	for _, k := range []string{"=", "-", "0", "p", "f"} {
 		look, pos := d.room.look, d.room.pos
 		press(m, k)
 		if d.room.look != look || d.room.pos != pos || !d.room.on() {

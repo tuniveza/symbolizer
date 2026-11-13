@@ -10,60 +10,95 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// cell3D is a screen cell (with the board's top added, as a click wants
-// it) where the 3D view shows the front of structure own at a flat board
-// cell for which want is true.
-func cell3D(t *testing.T, m *Model, own int, want func(sx, sy int) bool) (int, int) {
-	t.Helper()
-	boardRows(m)
-	r := &m.ds().room
-	for row := 0; row < m.boardH(); row++ {
-		for col := 0; col < m.width; col++ {
-			h := r.pickAt(col, row)
-			if h.flat && h.own == own && r.faces[h.face].mat == matFront && want(h.sx, h.sy) {
-				return col, row + m.boardTop()
-			}
-		}
-	}
-	t.Fatalf("the 3D view shows no such cell of structure %d", own)
-	return 0, 0
-}
+// In 3D a click acts where the cross is (the middle of the view), so the
+// helpers below turn the camera until the cross is on what is wanted, and
+// give the cross's screen cell (with the board's top added, as a click
+// wants it): the mouse is there too.
 
-// room3DCell is a screen cell (board's top added) showing a face of the
-// room that is (made of) mat, with nothing of a structure on it.
-func room3DCell(t *testing.T, m *Model, mat int) (int, int) {
+// aim3D finds a board area cell for which ok is true, turns the camera so
+// the cross is on the point it shows, and checks the cross is on such a
+// thing in the room drawn again. It gives the cross's screen cell.
+func aim3D(t *testing.T, m *Model, what string, ok func(h r3hit) bool) (int, int) {
 	t.Helper()
-	boardRows(m)
-	d := m.ds()
-	r := &d.room
-	for row := m.boardH() - 1; row >= 0; row-- {
-		for col := m.width - 1; col >= 0; col-- {
-			h := r.pickAt(col, row)
-			if h.ok && h.own < 0 && r.faces[h.face].mat == mat && (mat != matBoard || h.flat && d.hit(h.sx, h.sy).o == nil) {
-				return col, row + m.boardTop()
-			}
-		}
-	}
-	t.Fatalf("the 3D view shows no empty face of the room made of %d", mat)
-	return 0, 0
-}
-
-// roomSurface is a screen cell showing some empty part of the room (a
-// wall, the floor, the ceiling or the empty board).
-func roomSurface(t *testing.T, m *Model) (int, int) {
-	t.Helper()
-	boardRows(m)
 	r := &m.ds().room
-	for _, mat := range []int{matFloor, matWall, matBack, matCeiling} {
-		for row := m.boardH() - 1; row >= 0; row-- {
-			for col := m.width - 1; col >= 0; col-- {
-				if h := r.pickAt(col, row); h.ok && h.own < 0 && r.faces[h.face].mat == mat {
-					return col, row + m.boardTop()
+	for try := 0; try < 6; try++ {
+		boardRows(m)
+		var found *r3hit
+		if h := r.pickAim(); h.ok && ok(h) {
+			found = &h
+		}
+		// A cell well inside what is wanted (its neighbours are too), so
+		// the cross is not put on its very edge; else any.
+		inside := func(col, row int) bool {
+			for _, c := range [4][2]int{{-1, 0}, {1, 0}, {0, -1}, {0, 1}} {
+				if h := r.pickAt(col+c[0], row+c[1]); !h.ok || !ok(h) {
+					return false
+				}
+			}
+			return true
+		}
+		for pass := 0; pass < 2 && found == nil; pass++ {
+			for row := m.boardH() - 1; found == nil && row >= 0; row-- {
+				for col := m.width - 1; col >= 0; col-- {
+					if h := r.pickAt(col, row); h.ok && ok(h) && (pass == 1 || inside(col, row)) {
+						found = &h
+						break
+					}
 				}
 			}
 		}
+		if found == nil {
+			if !r.free || r.pos == r.startPos && r.look == r.startLook {
+				break
+			}
+			r.pos, r.look = r.startPos, r.startLook // out of sight: look from where 3D started
+			continue
+		}
+		if !r.free {
+			m.design3DFree()
+		}
+		c := found.p.sub(r.pos).norm()
+		r.look = [2]float64{math.Atan2(c.x, -c.z) * 180 / math.Pi, math.Asin(clampF(-c.y, -1, 1)) * 180 / math.Pi}
+		boardRows(m)
+		if h := r.pickAim(); h.ok && ok(h) {
+			col, row := r.aim()
+			return col, row + m.boardTop()
+		}
 	}
-	return room3DCell(t, m, matBoard)
+	t.Fatalf("the cross cannot be put on %s in the 3D view", what)
+	return 0, 0
+}
+
+// cell3D aims the cross at the front of structure own, at a flat board
+// cell for which want is true.
+func cell3D(t *testing.T, m *Model, own int, want func(sx, sy int) bool) (int, int) {
+	t.Helper()
+	r := &m.ds().room
+	return aim3D(t, m, fmt.Sprintf("a cell of structure %d", own), func(h r3hit) bool {
+		return h.flat && h.own == own && r.faces[h.face].mat == matFront && want(h.sx, h.sy)
+	})
+}
+
+// room3DCell aims the cross at a face of the room that is (made of) mat,
+// with nothing of a structure on it.
+func room3DCell(t *testing.T, m *Model, mat int) (int, int) {
+	t.Helper()
+	d := m.ds()
+	r := &d.room
+	return aim3D(t, m, fmt.Sprintf("an empty face of the room made of %d", mat), func(h r3hit) bool {
+		return h.own < 0 && r.faces[h.face].mat == mat && (mat != matBoard || h.flat && d.hit(h.sx, h.sy).o == nil)
+	})
+}
+
+// roomSurface aims the cross at some empty part of the room (a wall, the
+// floor, the ceiling or the empty board).
+func roomSurface(t *testing.T, m *Model) (int, int) {
+	t.Helper()
+	d := m.ds()
+	r := &d.room
+	return aim3D(t, m, "the empty room", func(h r3hit) bool {
+		return h.own < 0 && (r.faces[h.face].mat != matBoard || h.flat && d.hit(h.sx, h.sy).o == nil)
+	})
 }
 
 // actAt is whether a click on flat board cell (sx, sy) does an action
@@ -186,7 +221,7 @@ func TestDesign3DMouseLookNoButton(t *testing.T) {
 	r.yaw, r.pitch = 20, 10
 	boardRows(m)
 	cam := r.view.cam
-	x, y := roomSurface(t, m)
+	x, y := 60, 20 // anywhere: with no button the mouse only looks round
 	move := func(x, y int) { m.Update(tea.MouseMotionMsg(tea.Mouse{X: x, Y: y})) }
 	move(x, y)
 	if r.free {
@@ -236,17 +271,18 @@ func TestDesign3DMouseCamera(t *testing.T) {
 	cam := r.view.cam
 	x, y := roomSurface(t, m)
 	m.Update(tea.MouseClickMsg(tea.Mouse{X: x, Y: y, Button: tea.MouseLeft}))
-	m.Update(tea.MouseMotionMsg(tea.Mouse{X: x + 6, Y: y, Button: tea.MouseLeft}))
+	m.Update(tea.MouseMotionMsg(tea.Mouse{X: x + 1, Y: y, Button: tea.MouseLeft}))
 	if !r.free {
 		t.Fatal("a left drag on the empty room: mouse look (free roam from where the camera is)")
 	}
+	start := r.look
+	m.Update(tea.MouseMotionMsg(tea.Mouse{X: x + 7, Y: y, Button: tea.MouseLeft}))
 	look := r.look
-	start := r.look0
 	if math.Abs(look[0]-start[0]-6*turnPerCol) > 1e-9 || look[1] != start[1] {
 		t.Fatalf("a drag of 6 cells right: look %v, from %v", look, start)
 	}
-	m.Update(tea.MouseMotionMsg(tea.Mouse{X: x + 6, Y: y - 2, Button: tea.MouseLeft}))
-	m.Update(tea.MouseReleaseMsg(tea.Mouse{X: x + 6, Y: y - 2, Button: tea.MouseLeft}))
+	m.Update(tea.MouseMotionMsg(tea.Mouse{X: x + 7, Y: y - 2, Button: tea.MouseLeft}))
+	m.Update(tea.MouseReleaseMsg(tea.Mouse{X: x + 7, Y: y - 2, Button: tea.MouseLeft}))
 	if math.Abs(r.look[1]-(start[1]-2*turnPerRow)) > 1e-9 {
 		t.Fatalf("and 2 rows up: look %v, from %v", r.look, start)
 	}
@@ -260,9 +296,8 @@ func TestDesign3DMouseCamera(t *testing.T) {
 		t.Fatal("let go: no camera drag")
 	}
 	for _, b := range []tea.MouseButton{tea.MouseMiddle, tea.MouseRight} {
-		boardRows(m)
-		pos, look := r.pos, r.look
 		x, y := roomSurface(t, m)
+		pos, look := r.pos, r.look
 		m.Update(tea.MouseClickMsg(tea.Mouse{X: x, Y: y, Button: b}))
 		m.Update(tea.MouseMotionMsg(tea.Mouse{X: x + 6, Y: y + 2, Button: b}))
 		m.Update(tea.MouseReleaseMsg(tea.Mouse{X: x + 6, Y: y + 2, Button: b}))
@@ -467,9 +502,19 @@ func TestDesign3DClicks(t *testing.T) {
 		t.Fatalf("a click in 3D on the first drawer's front should pull it out: %v", dr.Pulled)
 	}
 	x, y = cell3D(t, m, dr.ID, actAt(d, "item:"))
-	tx, ty := room3DCell(t, m, matBoard)
 	d.lastClick = time.Time{}
-	dragTo(m, x, y, tx, ty, tea.MouseLeft)
+	// Pressed with the cross on Saw, the mouse turns the camera down until
+	// the cross is on the wall below the unit, and is let go there.
+	m.Update(tea.MouseClickMsg(tea.Mouse{X: x, Y: y, Button: tea.MouseLeft}))
+	_, dy, _, dh := d.rect(dr)
+	for i := 1; i <= 40; i++ {
+		y++
+		m.Update(tea.MouseMotionMsg(tea.Mouse{X: x, Y: y, Button: tea.MouseLeft}))
+		if _, sy, ok := m.design3DMiddle(); ok && sy > dy+dh+2 {
+			break
+		}
+	}
+	m.Update(tea.MouseReleaseMsg(tea.Mouse{X: x, Y: y, Button: tea.MouseLeft}))
 	if d.byID(401) == nil || len(dr.Items) != 0 {
 		t.Fatalf("Saw dragged in 3D out of the drawer onto the wall: on the board %v, the unit holds %d", d.byID(401) != nil, len(dr.Items))
 	}
@@ -491,7 +536,8 @@ func TestDesign3DClicks(t *testing.T) {
 	checkRows(t, m, "after the clicks")
 }
 
-// A structure dragged in 3D moves on the board under the mouse.
+// A structure dragged in 3D moves on the board under the cross, as the
+// mouse turns the camera.
 func TestDesign3DDrag(t *testing.T) {
 	m := room3DModel(t, 120, 40)
 	d := m.ds()
@@ -503,7 +549,7 @@ func TestDesign3DDrag(t *testing.T) {
 		_, py, _, _ := d.rect(o)
 		return d.hit(sx, sy).o == o && sy > py+2
 	})
-	dragTo(m, x, y, x+10, y+4, tea.MouseLeft)
+	dragTo(m, x, y, x+3, y+1, tea.MouseLeft) // the camera turns right and down: the cross, and the page, go that way
 	if o.X <= x0 || o.Y <= y0 {
 		t.Fatalf("dragged right and down in 3D: at %d,%d (was %d,%d)", o.X, o.Y, x0, y0)
 	}

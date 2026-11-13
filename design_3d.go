@@ -6,10 +6,13 @@ package main
 // camera and nothing else: moving the mouse looks round (no button
 // needed), the arrows look round too (the mouse stops at the window's
 // edge, they do not), W A S D move (W and S the way the camera looks, A
-// and D sideways), and Shift moves faster. There is no turning, tilting,
+// and D sideways), Q and E move straight up and down, and Shift moves
+// faster. The mouse pointer is hidden (design_3d_pointer.go). There is no turning, tilting,
 // zooming or moving the room: the camera is the only way to look at it.
 // Whatever the middle of the camera's view is on is the chosen structure
-// (a small cross marks it), so keys act on it as on the flat board.
+// (a small cross marks it), so keys act on it as on the flat board, and
+// the mouse's buttons, wheel and drags act there too, not where the
+// pointer is: the cross is the pointer.
 //
 // The board is the back wall of a room, with a floor and two side walls,
 // and every structure on the screen comes out of the wall as a block.
@@ -24,9 +27,10 @@ package main
 // blocks come out of the wall as it looks away or moves (outK), so going
 // into 3D has no jump.
 //
-// The room works as the flat board does: a click on a block's front is a
-// click on that cell of its flat drawing (a drawer pulls out, a lid opens,
-// a title is written in), a drag moves it along the wall under the mouse,
+// The room works as the flat board does: a click with the cross on a
+// block's front is a click on that cell of its flat drawing (a drawer
+// pulls out, a lid opens, a title is written in), a drag moves it along
+// the wall under the cross as the mouse turns the camera,
 // and keys other than the 3D view's own do what they do on the flat board.
 //
 // The room is drawn in letters over its picture (design_3d_text.go), or
@@ -51,14 +55,14 @@ const (
 	turnStep   = 5                      // degrees an arrow press looks round
 	turnRate   = 65.0                   // degrees a second an arrow held looks round
 	turnStart  = 160 * time.Millisecond // held: the glide starts (a quick tap is one step)
-	moveEvery  = 4 * time.Millisecond   // held arrows and W A S D move this often, as far as the time since: every frame
+	moveEvery  = 4 * time.Millisecond   // held arrows and W A S D Q E move this often, as far as the time since: every frame
 	turnPerCol = 1.5                    // degrees the camera turns for a cell the mouse moves across
 	turnPerRow = 3.0                    // and for a row it moves down (a row is twice as tall)
 	walkSpeed  = 0.4                    // the screen's bigger side a second, moving
 	walkFast   = 3                      // with Shift: this many times faster
 	walkTap    = 0.06 * float64(time.Second)
 	outWalk    = 0.3 // the blocks are all the way out of the wall once the camera has moved this much of the screen's bigger side (see outK)
-	roomHint   = "3D view · mouse or arrows: look · W A S D: move · Shift: faster · Esc: flat board"
+	roomHint   = "3D view · mouse or arrows: look · W A S D: move · Q E: up, down · Shift: faster · Esc: flat board"
 )
 
 // What a drag with the mouse does to the camera.
@@ -87,7 +91,7 @@ type room3D struct {
 	freeK     float64 // how far out of the wall the blocks are (see outK)
 	startPos  r3vec
 	startLook [2]float64
-	held      map[rune]bool // W A S D held down (kitty says when they are let go)
+	held      map[rune]bool // W A S D Q E held down (kitty says when they are let go)
 	heldAt    time.Time
 	stepAt    time.Time // the last walking step
 	walking   bool      // the walking ticks are going
@@ -97,23 +101,21 @@ type room3D struct {
 	camDrag        int // camNone or camTurn
 	pressX, pressY int // where it was pressed (screen cells of the board area)
 	lastX, lastY   int
-	look0          [2]float64
 	click          r3hit // the empty wall pressed: let go without a drag, a click there
 	clickOn        bool
-	pressF, lastF  [2]float64 // the same to a fraction of a cell (pixel mouse: see design_3d_mouse.go)
-	hoverX, hoverY float64    // mouse look with no button: where the mouse was last seen (cells, to a fraction)
-	hoverOn        bool       // hoverX and hoverY are set (false: the next move only sets them)
-	edge           [2]int     // the mouse rests at the window's edge: the way it turns on (-1, 0, 1 across and down)
-	edgeOn         bool       // the edge ticks are going
-	edgeStep       time.Time  // the last edge step
-	passing        bool       // a mouse event handed on to the flat board (designPress and the rest)
-	plane          float64    // a drag handed on: the mouse is followed on the plane this far out of the wall
-	mapX, mapY     int        // the flat board cell the mouse was last followed to
-	pw, ph         int        // the pixels: twice the board area's width and height (quarter blocks), or a picture's (kitty)
-	kx, ky         float64    // the pixels a unit across and a unit down (2 and 1 in quarter blocks)
-	want           [2]int     // the picture's size for the next drawing (see room3DDensity), or 0: quarter blocks
-	pix            bool       // the last drawing is a picture (kitty, see design_3d_kitty.go)
-	fdraw          []r3draw   // per face: how it is drawn this frame
+	hoverX, hoverY float64   // mouse look with no button: where the mouse was last seen (cells, to a fraction)
+	hoverOn        bool      // hoverX and hoverY are set (false: the next move only sets them)
+	edge           [2]int    // the mouse rests at the window's edge: the way it turns on (-1, 0, 1 across and down)
+	edgeOn         bool      // the edge ticks are going
+	edgeStep       time.Time // the last edge step
+	passing        bool      // a mouse event handed on to the flat board (designPress and the rest)
+	plane          float64   // a drag handed on: the mouse is followed on the plane this far out of the wall
+	mapX, mapY     int       // the flat board cell the mouse was last followed to
+	pw, ph         int       // the pixels: twice the board area's width and height (quarter blocks), or a picture's (kitty)
+	kx, ky         float64   // the pixels a unit across and a unit down (2 and 1 in quarter blocks)
+	want           [2]int    // the picture's size for the next drawing (see room3DDensity), or 0: quarter blocks
+	pix            bool      // the last drawing is a picture (kitty, see design_3d_kitty.go)
+	fdraw          []r3draw  // per face: how it is drawn this frame
 	polys          [][2]float64
 	drawnAt        time.Time // when the last drawing started
 	drawnTill      time.Time // and when it ended (see drawNow)
@@ -176,8 +178,8 @@ func (r *room3D) hint() string { return roomHint }
 // ---- keys --------------------------------------------------------------------------------
 
 // design3DKey handles the keys of the 3D view: Ctrl + F at any time (into
-// 3D and out), and while it shows the arrows (look round), W A S D (move)
-// and Esc (the flat board). While writing in a structure letters type as
+// 3D and out), and while it shows the arrows (look round), W A S D Q E
+// (move) and Esc (the flat board). While writing in a structure letters type as
 // usual (Esc stops writing). Every other key does what it does on the flat
 // board, to the chosen structure (the one in the middle of the view). It
 // says whether it took the key.
@@ -247,11 +249,14 @@ func (m *Model) design3DTurnKey(k tea.Key, dir string) tea.Cmd {
 // hold3D is designState.holdMods while arrows held look round in 3D.
 const hold3D = "3d"
 
-// walkKey is the moving key that name is (w a s d, with or without
+// walkKeys are the keys that move the camera in 3D.
+const walkKeys = "wasdqe"
+
+// walkKey is the moving key that name is (w a s d q e, with or without
 // Shift), or 0.
 func walkKey(name string) rune {
 	name = strings.TrimPrefix(name, "shift+")
-	if len(name) == 1 && strings.Contains("wasd", name) {
+	if len(name) == 1 && strings.Contains(walkKeys, name) {
 		return rune(name[0])
 	}
 	return 0
@@ -314,7 +319,7 @@ func (m *Model) design3DHold() tea.Cmd {
 
 // ---- the first-person camera ------------------------------------------------------------
 
-// room3DWalkMsg is the next step while W A S D are held.
+// room3DWalkMsg is the next step while W A S D Q E are held.
 type room3DWalkMsg struct{}
 
 // design3DFree goes into 3D: the first-person camera, where the flat
@@ -333,10 +338,10 @@ func (m *Model) design3DFree() {
 	r.startPos, r.startLook = r.pos, r.look
 	r.freeK = r.outK() // the blocks as far out as they were: they do not jump
 	r.free = true
-	m.say("3D: move the mouse to look round, W A S D to move, Shift faster.  Esc: flat board.")
+	m.say("3D: the mouse looks, W A S D Q E move, clicks act at the cross.  Esc: flat board.")
 }
 
-// design3DWalkKey takes W A S D pressed in 3D.
+// design3DWalkKey takes W A S D Q E pressed in 3D.
 func (m *Model) design3DWalkKey(k tea.Key, key rune) tea.Cmd {
 	r := &m.ds().room
 	if !r.free {
@@ -365,13 +370,13 @@ func (m *Model) design3DWalkKey(k tea.Key, key rune) tea.Cmd {
 	return tea.Tick(moveEvery, func(time.Time) tea.Msg { return room3DWalkMsg{} })
 }
 
-// design3DKeyUp: a key let go (kitty): W A S D stop moving.
+// design3DKeyUp: a key let go (kitty): W A S D Q E stop moving.
 func (m *Model) design3DKeyUp(k tea.Key) {
 	if m.design == nil {
 		return
 	}
 	r := &m.design.room
-	if key := unicode.ToLower(rune(k.Code)); r.held != nil && strings.ContainsRune("wasd", key) {
+	if key := unicode.ToLower(rune(k.Code)); r.held != nil && strings.ContainsRune(walkKeys, key) {
 		r.held[key] = false
 	}
 }
@@ -402,7 +407,7 @@ func (m *Model) design3DWalkStep() tea.Cmd {
 
 // walk moves the camera for secs seconds with keys held: W and S forward
 // and back the way it looks (up and down too, when it looks up or down),
-// and A and D sideways, level.
+// A and D sideways, level, and Q and E straight up and down.
 func (r *room3D) walk(keys map[rune]bool, secs float64, fast bool) {
 	ly, lp := r.look[0]*math.Pi/180, r.look[1]*math.Pi/180
 	ahead := r3vec{math.Sin(ly) * math.Cos(lp), -math.Sin(lp), -math.Cos(ly) * math.Cos(lp)}
@@ -421,6 +426,10 @@ func (r *room3D) walk(keys map[rune]bool, secs float64, fast bool) {
 			way = way.add(side)
 		case 'a':
 			way = way.sub(side)
+		case 'q':
+			way = way.add(r3vec{0, 1, 0})
+		case 'e':
+			way = way.sub(r3vec{0, 1, 0})
 		}
 	}
 	if way.dot(way) < 1e-9 {
@@ -455,8 +464,10 @@ func (r *room3D) pickAt(col, row int) r3hit {
 	if pw == 0 || col < 0 || row < 0 || col >= r.rm.w || row >= r.rm.h || !r.gpuDrawn && len(r.face) != pw*r.ph {
 		return r3hit{own: -1}
 	}
+	x, y := float64(col)+0.5, float64(2*row)+1
 	best, bestF, bestZ := -1, int32(-1), float32(0)
 	for _, i := range r.cellFour(col, row) {
+
 		f, z := r.hitAt(i)
 		if f >= 0 && int(f) < len(r.faces) && (best < 0 || z < bestZ) {
 			best, bestF, bestZ = i, f, z
@@ -468,14 +479,39 @@ func (r *room3D) pickAt(col, row int) r3hit {
 	fc := &r.faces[bestF]
 	v := &r.view
 	p := v.cam.add(r.dirAt(best).mul(float64(bestZ)))
-	// The cell's middle on that face's plane: the point the mouse is on.
-	dir := v.ray(float64(col)+0.5, float64(2*row)+1)
+	// (x, y) on that face's plane: the point the mouse is on.
+	dir := v.ray(x, y)
 	if nd := fc.n.dot(dir); math.Abs(nd) > 1e-12 {
 		if t := (fc.k - fc.n.dot(v.cam)) / nd; t > 0 {
 			p = v.cam.add(dir.mul(t))
 		}
 	}
-	h := r3hit{ok: true, face: bestF, own: fc.own, p: p, dist: p.sub(v.cam).dot(v.fwd)}
+	return r.hitOn(int(bestF), p, v)
+}
+
+// aim is the board area cell the cross is on (the middle of the camera's
+// view).
+func (r *room3D) aim() (col, row int) {
+	return r.rm.w / 2, r.rm.h / 2
+}
+
+// pickAim is what the cross is on (see pickAt): what the middle of the
+// camera's view is on, the camera as it is now, the blocks as last drawn,
+// exactly as the chosen structure is found (middleHit). In 3D the cross
+// is the pointer.
+func (r *room3D) pickAim() r3hit {
+	fi, p, ok := r.middleFace()
+	if !ok {
+		return r3hit{own: -1}
+	}
+	v, _ := r.nowView()
+	return r.hitOn(fi, p, &v)
+}
+
+// hitOn is the r3hit of point p on face fi, seen by camera v.
+func (r *room3D) hitOn(fi int, p r3vec, v *r3view) r3hit {
+	fc := &r.faces[fi]
+	h := r3hit{ok: true, face: int32(fi), own: fc.own, p: p, dist: p.sub(v.cam).dot(v.fwd)}
 	rm := &r.rm
 	h.sx, h.sy = int(math.Floor(p.x+rm.hw)), int(math.Floor((rm.hh-p.y)/2))
 	switch {
@@ -490,12 +526,14 @@ func (r *room3D) pickAt(col, row int) r3hit {
 	return h
 }
 
-// design3DPress: a press in the 3D view. The left button on a block (or
-// on the wall where the flat board has something: a pulled out drawer, the
-// pen) is a press on its flat board cell; on the empty room a drag looks
-// round, as the mouse with no button does, and let go without a drag it is
-// a click on the empty board there. The right button rubs out with the pen
-// out; else the other buttons do nothing. It says whether it took the press.
+// design3DPress: a press in the 3D view. It acts where the cross is, not
+// where the pointer is (the pointer is hidden). The left button with the
+// cross on a block (or on the wall where the flat board has something: a
+// pulled out drawer, the pen) is a press on its flat board cell, and a drag
+// after it turns the camera and drags it along under the cross; on the
+// empty room a drag looks round, as the mouse with no button does, and let
+// go without a drag it is a click on the empty board there. The right
+// button rubs out with the pen out; else the other buttons do nothing. It says whether it took the press.
 func (m *Model) design3DPress(ms tea.Mouse) (bool, tea.Cmd) {
 	d := m.ds()
 	r := &d.room
@@ -503,12 +541,11 @@ func (m *Model) design3DPress(ms tea.Mouse) (bool, tea.Cmd) {
 		return false, nil
 	}
 	col, row := ms.X, ms.Y-m.boardTop()
-	hit := r.pickAt(col, row)
-	r.camDrag, r.clickOn, r.hoverOn = camNone, false, false
+	hit := r.pickAim()
+	r.camDrag, r.clickOn = camNone, false
 	r.pressX, r.pressY, r.lastX, r.lastY = col, row, col, row
 	fx, fy := m.mouseAt(ms)
-	r.pressF = [2]float64{fx, fy}
-	r.look0 = r.look
+	r.hoverX, r.hoverY, r.hoverOn = fx, fy-float64(m.boardTop()), true // a drag turns from here (design3DLook)
 	r.edge = [2]int{}
 	switch ms.Button {
 	case tea.MouseRight:
@@ -538,7 +575,7 @@ func (m *Model) design3DTakes(hit r3hit, ms tea.Mouse) bool {
 }
 
 // design3DPass hands a press on to the flat board, as if it were on the
-// flat board cell under the mouse. A drag after it follows the mouse on
+// flat board cell under the cross. A drag after it follows the cross on
 // the plane of the point pressed, so what is dragged stays under it.
 func (m *Model) design3DPass(ms tea.Mouse, hit r3hit) tea.Cmd {
 	r := &m.ds().room
@@ -553,13 +590,13 @@ func (m *Model) design3DPass(ms tea.Mouse, hit r3hit) tea.Cmd {
 	return m.designPress(ms)
 }
 
-// design3DThrough turns a mouse position in the 3D view into the flat
-// board cell it is over, on the plane of the drag (see design3DPass).
+// design3DThrough is the flat board cell the cross is over in the 3D view
+// (the camera as it is now), on the plane of the drag (see design3DPass),
+// as a mouse position with ms's buttons.
 func (m *Model) design3DThrough(ms tea.Mouse) tea.Mouse {
 	r := &m.ds().room
-	v := &r.view
-	if v.f > 0 {
-		dir := v.ray(float64(ms.X)+0.5, 2*float64(ms.Y-m.boardTop())+1)
+	if v, ok := r.nowView(); ok && v.f > 0 {
+		dir := v.ray(v.px, v.py)
 		if math.Abs(dir.z) > 1e-9 {
 			if t := (r.plane - v.cam.z) / dir.z; t > 0 {
 				p := v.cam.add(dir.mul(t))
@@ -585,12 +622,7 @@ func (m *Model) design3DMotion(ms tea.Mouse) tea.Cmd {
 			return nil // not moved yet: it may still be a click
 		}
 		r.clickOn = false
-		if !r.free {
-			m.design3DFree() // the tests' fixed camera: first person from where it is
-			r.look0 = r.look
-		}
-		fx, fy := m.mouseAt(ms)
-		cmd = r.turnTo(r.look0[0]+(fx-r.pressF[0])*turnPerCol, r.look0[1]+(fy-r.pressF[1])*turnPerRow)
+		_, cmd = m.design3DLook(ms) // as the mouse with no button: from where it last was
 	}
 	r.lastX, r.lastY = col, row
 	return cmd
@@ -601,8 +633,8 @@ func (m *Model) design3DMotion(ms tea.Mouse) tea.Cmd {
 // back in somewhere else, so the camera does not jump.
 const hoverJump = 16
 
-// design3DLook: the mouse moved with no button down in the 3D view. That is
-// mouse look: the camera stays where it is and turns the way the mouse
+// design3DLook: the mouse moved in the 3D view (no button, or dragging
+// from a press). That is mouse look: the camera stays where it is and turns the way the mouse
 // goes. The first move after a press, a jump or the flat board only notes
 // where the mouse is. Resting at the window's edge it turns on by itself
 // (see design3DEdge). It says whether the camera turned, and the ticks of
@@ -632,8 +664,8 @@ func (m *Model) design3DLook(ms tea.Mouse) (bool, tea.Cmd) {
 }
 
 // design3DRelease: the button let go after a press on the empty room or a
-// camera drag. Not dragged, a press on the empty wall is a click on the
-// empty board there (a double click places a structure, as on the flat board).
+// camera drag. Not dragged, a press with the cross on the empty wall is a
+// click on the empty board there (a double click places a structure, as on the flat board).
 func (m *Model) design3DRelease(ms tea.Mouse) tea.Cmd {
 	r := &m.ds().room
 	was, click := r.camDrag, r.clickOn
@@ -656,15 +688,15 @@ func (m *Model) design3DRelease(ms tea.Mouse) tea.Cmd {
 }
 
 // design3DWheel: the wheel does nothing to the camera in 3D. With Shift
-// over a block it does what it does on the flat board (scrolls a page's
-// text). It says whether it took it.
+// and the cross on a block it does what it does on the flat board
+// (scrolls a page's text). It says whether it took it.
 func (m *Model) design3DWheel(ms tea.Mouse) (bool, tea.Cmd) {
 	r := &m.ds().room
 	if !r.on() || r.passing {
 		return false, nil
 	}
 	if ms.Mod.Contains(tea.ModShift) {
-		if hit := r.pickAt(ms.X, ms.Y-m.boardTop()); hit.flat && hit.own >= 0 {
+		if hit := r.pickAim(); hit.flat && hit.own >= 0 {
 			r.passing = true
 			defer func() { r.passing = false }()
 			ms.X, ms.Y = hit.sx, hit.sy+m.boardTop()
@@ -674,10 +706,10 @@ func (m *Model) design3DWheel(ms tea.Mouse) (bool, tea.Cmd) {
 	return true, nil
 }
 
-// design3DHover is the flat board cell the mouse is over in the 3D view
-// (for Space, which opens what is under the mouse), and whether there is one.
+// design3DHover is the flat board cell the cross is on in the 3D view
+// (for Space, which opens what is under the pointer), and whether there is one.
 func (m *Model) design3DHover(ms tea.Mouse) (tea.Mouse, bool) {
-	hit := m.ds().room.pickAt(ms.X, ms.Y-m.boardTop())
+	hit := m.ds().room.pickAim()
 	if !hit.flat {
 		return ms, false
 	}
@@ -958,13 +990,23 @@ func (r *room3D) nowView() (r3view, bool) {
 // the blocks as they were last drawn (moving the camera does not move
 // them). False before any drawing.
 func (r *room3D) middleHit() (own int, p r3vec, ok bool) {
+	fi, p, ok := r.middleFace()
+	if !ok {
+		return -1, p, false
+	}
+	return r.faces[fi].own, p, true
+}
+
+// middleFace is the face the middle of the camera's view is on (see
+// middleHit), and the point.
+func (r *room3D) middleFace() (fi int, p r3vec, ok bool) {
 	v, ok := r.nowView()
 	if !ok {
 		return -1, r3vec{}, false
 	}
 	dir := v.ray(v.px, v.py)
 	best := math.Inf(1)
-	own = -1
+	fi = -1
 	for i := range r.faces {
 		fc := &r.faces[i]
 		if fc.n.dot(v.cam)-fc.k <= 1e-9 && !fc.both {
@@ -982,9 +1024,9 @@ func (r *room3D) middleHit() (own int, p r3vec, ok bool) {
 		if !inFace(r.pts[fc.p0:fc.p0+fc.pn], fc.n, q) {
 			continue
 		}
-		best, own, p = t, fc.own, q
+		best, fi, p = t, i, q
 	}
-	return own, p, !math.IsInf(best, 1)
+	return fi, p, fi >= 0
 }
 
 // inFace is whether point q, on the plane of a flat convex face with
@@ -1103,10 +1145,11 @@ func (m *Model) screenMiddle() (sx, sy int) {
 }
 
 // design3DCell is the flat board cell under board area cell (col, row):
-// in 3D, the cell of the block or wall drawn there; else the same cell.
+// in 3D, the cell of the block or wall the cross is on (the cross is the
+// pointer); else the same cell.
 func (m *Model) design3DCell(col, row int) (sx, sy int) {
 	if r := &m.ds().room; r.on() {
-		if hit := r.pickAt(col, row); hit.flat {
+		if hit := r.pickAim(); hit.flat {
 			return hit.sx, hit.sy
 		}
 	}
