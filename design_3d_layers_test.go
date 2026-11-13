@@ -258,3 +258,36 @@ func TestDesign3DPlaceNotFar(t *testing.T) {
 		t.Fatalf("placed too far off: layer %d (z %.0f), camera at z %.0f", o.Layer, z, r.pos.z)
 	}
 }
+
+// Every kind out on a layer keeps its drawing for its front (cabinets,
+// drawer units, racks and boards are drawn in parts read only when put on
+// the screen: they are read for the kept copy too).
+func TestDesign3DLayerCopyEveryKind(t *testing.T) {
+	m := room3DModel(t, 120, 40)
+	withPixels(t, m, 8, 16)
+	d := m.ds()
+	press(m, "ctrl+f")
+	r := &d.room
+	for _, o := range d.octs {
+		o.Layer = 1
+		boardRows(m)
+		for _, b := range r.blocks {
+			if b.o != o {
+				continue
+			}
+			x, y, w, h := d.rect(o)
+			n := 0
+			for cy := y; cy < y+h; cy++ {
+				for cx := x; cx < x+w; cx++ {
+					if r.tex[(cy+b.shift-r.rm.ty0)*r.rm.tw+cx-r.rm.tx0].glyph != "" {
+						n++
+					}
+				}
+			}
+			if n == 0 {
+				t.Errorf("%s %q on a layer: its kept drawing is empty", o.Kind, o.Header)
+			}
+		}
+		o.Layer = 0
+	}
+}

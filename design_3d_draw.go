@@ -512,9 +512,7 @@ func (r *room3D) takeRoom(d *designState, c *boardCanvas, rm *r3room) {
 			d.drawn[b.o.ID] = kept
 		}
 		for _, p := range kept[0].parts {
-			if p.cells == nil {
-				continue
-			}
+			p.read() // (drawn but never put on the screen: its cells not read yet)
 			// Only the rows and columns of it that are in the room.
 			px, py := p.l.GetX(), p.l.GetY()
 			for cy := max(0, rm.ty0-py); cy < min(p.cells.Height(), rm.ty0+rm.th-py); cy++ {

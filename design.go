@@ -1536,11 +1536,7 @@ type drawnPart struct {
 // copying just the cells that show, keeps every frame about one screen's work.
 func (p *drawnPart) paint(c *boardCanvas) {
 	x, y := p.l.GetX(), p.l.GetY()
-	if p.cells == nil {
-		s := p.l.GetContent()
-		p.cells = newBoardCanvas(lipgloss.Width(s), lipgloss.Height(s))
-		uv.NewStyledString(s).Draw(p.cells, p.cells.Bounds())
-	}
+	p.read()
 	w, h := p.cells.Width(), p.cells.Height()
 	c0, c1 := max(0, -x), min(w, c.Width()-x)
 	if c0 >= c1 {
@@ -1548,6 +1544,15 @@ func (p *drawnPart) paint(c *boardCanvas) {
 	}
 	for cy := max(0, -y); cy < min(h, c.Height()-y); cy++ {
 		c.copyCells(x+c0, y+cy, p.cells.Lines[cy][c0:c1])
+	}
+}
+
+// read reads the part's cells from its layer, once.
+func (p *drawnPart) read() {
+	if p.cells == nil {
+		s := p.l.GetContent()
+		p.cells = newBoardCanvas(lipgloss.Width(s), lipgloss.Height(s))
+		uv.NewStyledString(s).Draw(p.cells, p.cells.Bounds())
 	}
 }
 
