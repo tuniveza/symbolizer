@@ -103,9 +103,6 @@ type room3D struct {
 	pressF, lastF  [2]float64 // the same to a fraction of a cell (pixel mouse: see design_3d_mouse.go)
 	hoverX, hoverY float64    // mouse look with no button: where the mouse was last seen (cells, to a fraction)
 	hoverOn        bool       // hoverX and hoverY are set (false: the next move only sets them)
-	aim            [2]float64 // easing: where the look is going (design_3d_mouse.go)
-	easing         bool       // the look is easing towards aim
-	easeAt         time.Time  // the last easing step
 	edge           [2]int     // the mouse rests at the window's edge: the way it turns on (-1, 0, 1 across and down)
 	edgeOn         bool       // the edge ticks are going
 	edgeStep       time.Time  // the last edge step
@@ -122,6 +119,10 @@ type room3D struct {
 	drawnTill      time.Time // and when it ended (see drawNow)
 	frameTick      bool      // a room3DFrameMsg is on its way
 	chosenCam      r3camKey  // the camera when the middle of its view last chose (see design3DChooseMiddle)
+	drawnCam       r3camKey  // the camera at the last drawing
+	movedAt        time.Time // when the camera last moved (see room3DMovingPixels)
+	light          bool      // the last picture has fewer pixels than the screen: the camera was moving
+	sharpTick      bool      // a room3DSharpMsg is on its way
 	rgbOut         []byte    // this drawing's picture for kitty, made as it is drawn (see draw)
 	rgbDone        bool      // and it was
 	gpuDrawn       bool      // the last drawing's picture was drawn on the graphics card (design_3d_gpu.go): no pixel buffers
@@ -280,10 +281,6 @@ func (m *Model) design3DTurn(dir string, step float64) {
 func (r *room3D) lookBy(dx, dy float64) {
 	r.look[0] = math.Mod(r.look[0]+dx+540, 360) - 180
 	r.look[1] = clampF(r.look[1]+dy, -89, 89)
-	if r.easing { // the mouse's easing goes on from where the arrow turned (design_3d_mouse.go)
-		r.aim[0] += dx
-		r.aim[1] = clampF(r.aim[1]+dy, -89, 89)
-	}
 }
 
 // design3DHold is a glide step while arrows are held in 3D (designHold
@@ -335,7 +332,7 @@ func (m *Model) design3DFree() {
 	r.pos, r.ff, r.rm = v.cam, v.f, rm
 	r.startPos, r.startLook = r.pos, r.look
 	r.freeK = r.outK() // the blocks as far out as they were: they do not jump
-	r.free, r.easing = true, false
+	r.free = true
 	m.say("3D: move the mouse to look round, W A S D to move, Shift faster.  Esc: flat board.")
 }
 
@@ -511,7 +508,7 @@ func (m *Model) design3DPress(ms tea.Mouse) (bool, tea.Cmd) {
 	r.pressX, r.pressY, r.lastX, r.lastY = col, row, col, row
 	fx, fy := m.mouseAt(ms)
 	r.pressF = [2]float64{fx, fy}
-	r.look0 = r.aimNow()
+	r.look0 = r.look
 	r.edge = [2]int{}
 	switch ms.Button {
 	case tea.MouseRight:
@@ -609,7 +606,7 @@ const hoverJump = 16
 // goes. The first move after a press, a jump or the flat board only notes
 // where the mouse is. Resting at the window's edge it turns on by itself
 // (see design3DEdge). It says whether the camera turned, and the ticks of
-// the easing or the edge turning to start.
+// the edge turning to start.
 func (m *Model) design3DLook(ms tea.Mouse) (bool, tea.Cmd) {
 	r := &m.ds().room
 	fx, fy := m.mouseAt(ms)
@@ -736,7 +733,7 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 	rm := r.area(d, w, h, d.z())
 	r.takeRoom(d, c, &rm)
 	r.mipmap(&rm)
-	r.want = [2]int{}
+	r.want, r.light = [2]int{}, false
 	if r.shapes() {
 		// Shape letters (design_3d_shapes.go): 8 × 16 pixels a cell to
 		// fit each one to.
@@ -745,14 +742,25 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 			kittyPic.remove()
 		}
 	} else if room3DPixels && w <= len(kittyMarks) && h <= len(kittyMarks) {
-		// A picture (kitty): one pixel for each of the screen's, still or
-		// moving, so it is never blurred by being stretched.
+		// A picture (kitty): one pixel for each of the screen's when still.
+		// While the camera moves, a big window's picture has fewer
+		// (room3DMovingPixels), which kitty stretches: kitty takes a
+		// picture in a time that grows with its pixels, and the full
+		// screen's would hold the frames to 60 a second.
 		limit := room3DMaxPixels
 		if room3DRemote {
 			limit = room3DRemotePixels // over SSH every pixel goes down the line
 		}
+		if k := r.camKey(w, h); k != r.drawnCam {
+			r.drawnCam, r.movedAt = k, start
+		}
 		cw, ch := termCell(m.width, m.height)
+		full := w * cw * h * ch
+		if start.Sub(r.movedAt) < room3DStill {
+			limit = min(limit, room3DMovingPixels)
+		}
 		r.want[0], r.want[1] = room3DDensity(w, h, cw, ch, limit)
+		r.light = r.want[0]*r.want[1] < full
 	}
 	var fb strings.Builder
 	r.rgbOut, r.rgbDone = nil, false
@@ -789,6 +797,7 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 	r.rgbOut = nil
 	r.drawnAt, r.drawnTill = start, time.Now()
 	r.cost = r.drawnTill.Sub(start)
+	traceDraw(r.cost)
 	sb.WriteString(r.frame)
 }
 
@@ -797,9 +806,21 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 // but the room is drawn with all of them in it, not once for each, so the
 // picture keeps up with the hand instead of falling behind it.
 const (
-	room3DEvery = 7 * time.Millisecond // from the start of one drawing to the next: at most about 140 a second
-	room3DGap   = 3 * time.Millisecond // and after one ends: time to take what came in while it was drawn
+	room3DEvery = 4 * time.Millisecond // from the start of one drawing to the next: at most 250 a second
+	room3DGap   = 2 * time.Millisecond // and after one ends: time to take what came in while it was drawn
 )
+
+// While the camera moves, the picture has at most room3DMovingPixels
+// (about a 1366×768 screen's), so kitty takes it in a few milliseconds and
+// the room keeps up with the hand in a window of any size; room3DStill
+// after the camera stops, it is drawn sharp, every pixel.
+const (
+	room3DMovingPixels = 1_000_000
+	room3DStill        = 120 * time.Millisecond
+)
+
+// room3DSharpMsg: the camera may have stopped; draw the room sharp if so.
+type room3DSharpMsg struct{}
 
 // room3DSeeRGB, when set (tests), is shown each kitty picture as it goes.
 var room3DSeeRGB func(rgb []byte, pw, ph int)
@@ -810,6 +831,11 @@ var room3DPace = false
 
 // drawNow is whether the room may be drawn again now (see room3DEvery).
 func (r *room3D) drawNow(now time.Time) bool {
+	return r.paced(now) && kittyPic.ready()
+}
+
+// paced is whether room3DEvery has gone by since the last drawing.
+func (r *room3D) paced(now time.Time) bool {
 	return !room3DPace || now.Sub(r.drawnAt) >= room3DEvery && now.Sub(r.drawnTill) >= room3DGap
 }
 
@@ -837,16 +863,30 @@ func (m *Model) design3DAfter() tea.Cmd {
 	}
 	r := &d.room
 	m.design3DChooseMiddle() // the camera moved: what the middle of its view is on is chosen
+	var sharp tea.Cmd
+	if r.light && !r.sharpTick {
+		// The last picture was drawn light, the camera moving: drawn
+		// sharp once it has stopped.
+		r.sharpTick = true
+		wait := max(room3DStill-time.Since(r.movedAt), 0) + time.Millisecond
+		sharp = tea.Tick(wait, func(time.Time) tea.Msg { return room3DSharpMsg{} })
+	}
 	if r.frameTick || d.hoverOnly || r.frame == "" {
-		return nil
+		return sharp
 	}
 	now := time.Now()
-	if r.drawNow(now) {
-		return nil
+	if r.paced(now) {
+		if !kittyPic.ready() {
+			// kitty still takes in a picture and the next is waiting to
+			// go: the room is drawn again once that goes (kittyOut.wakeUp).
+			r.frameTick = true
+		}
+		return sharp
 	}
+	// Drawn a moment ago: a tick once room3DEvery has gone by.
 	wait := max(room3DEvery-now.Sub(r.drawnAt), room3DGap-now.Sub(r.drawnTill), time.Millisecond)
 	r.frameTick = true
-	return tea.Tick(wait, func(time.Time) tea.Msg { return room3DFrameMsg{} })
+	return tea.Batch(sharp, tea.Tick(wait, func(time.Time) tea.Msg { return room3DFrameMsg{} }))
 }
 
 // ---- Esc -----------------------------------------------------------------------------------
@@ -873,7 +913,7 @@ func (m *Model) design3DModeEsc() bool {
 func (m *Model) design3DEsc() {
 	r := &m.ds().room
 	r.free, r.walking, r.camDrag = false, false, camNone
-	r.easing, r.edge = false, [2]int{}
+	r.edge = [2]int{}
 	clear(r.held)
 	r.yaw, r.pitch, r.near, r.pan = 0, 0, 0, r3vec{}
 	m.say("Flat board.")

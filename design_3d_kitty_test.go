@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"hash/maphash"
 	"io"
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -353,7 +354,7 @@ func BenchmarkDesign3DPixelsMoving(b *testing.B) {
 // (with a tick that asks for it), and going flat deletes the picture.
 func TestKittyInTheProgram(t *testing.T) {
 	sent := make(chan string, 64)
-	startKitty(func(s string) { sent <- s })
+	startKitty(func(s string) { sent <- s }, func() {})
 	remote, pace := room3DRemote, room3DPace
 	room3DRemote, room3DPace = true, true // the pixels in the code: no files left behind by the test
 	t.Cleanup(func() { room3DRemote, room3DPace = remote, pace })
@@ -419,5 +420,128 @@ func TestKittyInTheProgram(t *testing.T) {
 		case <-time.After(2 * time.Second):
 			t.Fatal("flat: the picture was not deleted")
 		}
+	}
+}
+
+// A picture waits while kitty still takes in the last one: it goes when
+// kitty answers, and sy is told it may draw the next. A terminal that
+// never answers is not waited for after a few pictures.
+func TestKittyWaitsForKitty(t *testing.T) {
+	var k kittyOut
+	sent := make(chan string, 10)
+	woken := make(chan struct{}, 10)
+	k.send = func(s string) { sent <- s }
+	k.wakeUp = func() { woken <- struct{}{} }
+	k.dir, k.seed = t.TempDir(), maphash.MakeSeed()
+	k.done = make(chan struct{})
+	k.wake = sync.NewCond(&k.mu)
+	go k.loop()
+	t.Cleanup(func() { k.stop(io.Discard) })
+	n := byte(0)
+	frame := func() *kittyFrame {
+		n++
+		return &kittyFrame{rgb: []byte{n, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, pw: 2, ph: 2, cols: 1, rows: 1}
+	}
+	k.show(frame())
+	<-sent
+	k.ack()
+	k.show(frame())
+	<-sent // kitty answered the first: the second goes at once
+	k.show(frame())
+	if k.ready() {
+		t.Fatal("a picture waits to go: not ready for the next")
+	}
+	select {
+	case s := <-sent:
+		t.Fatalf("sent before kitty answered: %q", s)
+	case <-time.After(kittyAckWait / 2):
+	}
+	k.ack()
+	select {
+	case <-sent:
+	case <-time.After(kittyAckWait / 2):
+		t.Fatal("kitty answered: the waiting picture did not go")
+	}
+	select {
+	case <-woken:
+	case <-time.After(time.Second):
+		t.Fatal("sy was not told it may draw")
+	}
+	if !k.ready() {
+		t.Fatal("nothing waits now: ready")
+	}
+
+	// A terminal that does not answer: each picture waits kittyAckWait at
+	// most, and after kittyUnheard of them, not at all.
+	var q kittyOut
+	q.send = func(s string) { sent <- s }
+	q.dir, q.seed = t.TempDir(), maphash.MakeSeed()
+	q.done = make(chan struct{})
+	q.wake = sync.NewCond(&q.mu)
+	go q.loop()
+	t.Cleanup(func() { q.stop(io.Discard) })
+	start := time.Now()
+	for range kittyUnheard + 4 {
+		q.show(frame())
+		select {
+		case <-sent:
+		case <-time.After(2 * kittyAckWait):
+			t.Fatal("a picture waited past kittyAckWait")
+		}
+	}
+	if d := time.Since(start); d > time.Duration(kittyUnheard+2)*kittyAckWait {
+		t.Fatalf("kept waiting for a terminal that does not answer: %v", d)
+	}
+}
+
+// While the camera moves, a big window's picture has at most
+// room3DMovingPixels; once it has stopped, room3DSharpMsg draws it with
+// every pixel.
+func TestDesign3DLightWhileMoving(t *testing.T) {
+	m := wordsScene(t, 200, 60)
+	withPixels(t, m, 14, 28) // 2800 × 1600-odd pixels: a 4K-ish window
+	r := &m.ds().room
+	press(m, "ctrl+f")
+	m.View()
+	full := m.width * 14 * m.boardH() * 28
+	r.movedAt = time.Now().Add(-time.Second) // still a while
+	m.Update(room3DSharpMsg{})
+	m.View()
+	if r.light || r.pw*r.ph != full {
+		t.Fatalf("still: want every pixel (%d), got %d×%d (light %v)", full, r.pw, r.ph, r.light)
+	}
+	r.look[0] += 5 // the camera turns
+	m.ds().hoverOnly, r.frame = false, ""
+	m.View()
+	if !r.light || r.pw*r.ph > room3DMovingPixels*101/100 { // rounded to whole pixels
+		t.Fatalf("moving: want at most %d pixels, got %d×%d (light %v)", room3DMovingPixels, r.pw, r.ph, r.light)
+	}
+	if a, b := float64(r.pw)/float64(r.ph), float64(m.width*14)/float64(m.boardH()*28); math.Abs(a-b) > 0.01 {
+		t.Fatalf("the light picture is out of shape: %v, want %v", a, b)
+	}
+	_, cmd := m.Update(room3DSharpMsg{}) // too soon: still light, asks again
+	m.View()
+	if !r.light || cmd == nil || !r.sharpTick {
+		t.Fatal("just moved: still light, with a tick to sharpen it later")
+	}
+	r.movedAt = time.Now().Add(-room3DStill)
+	r.sharpTick = false
+	m.Update(room3DSharpMsg{})
+	m.View()
+	if r.light || r.pw*r.ph != full {
+		t.Fatalf("stopped: want every pixel again (%d), got %d×%d", full, r.pw, r.ph)
+	}
+
+	// A small window has every pixel even while moving.
+	m2 := wordsScene(t, 80, 30)
+	withPixels(t, m2, 10, 20)
+	press(m2, "ctrl+f")
+	r2 := &m2.ds().room
+	m2.View()
+	r2.look[0] += 5
+	m2.ds().hoverOnly, r2.frame = false, ""
+	m2.View()
+	if r2.light || r2.pw != 80*10 {
+		t.Fatalf("small window moving: want every pixel, got %d across (light %v)", r2.pw, r2.light)
 	}
 }

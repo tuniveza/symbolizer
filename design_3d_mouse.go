@@ -8,9 +8,8 @@ package main
 //     kitty it is turned on, every mouse report is turned back into cells
 //     for the rest of sy (pixelMouseIn), and mouse look uses the fraction
 //     too (mouseAt), so the camera turns pixel by pixel.
-//   - Easing. The mouse sets where the look is going (aim); the look eases
-//     there in a few milliseconds (design3DEase), so uneven reports and
-//     frames do not jerk the picture.
+//   - No easing. The look turns the moment the mouse moves, by exactly
+//     as much: smoothing it would make it lag behind the hand.
 //   - The window's edge. A terminal cannot hold the mouse in the window as
 //     a game does, so resting at the window's edge the camera turns on by
 //     itself that way (design3DEdge), until the mouse leaves the edge.
@@ -28,17 +27,11 @@ const (
 	pixelMouseLag = 30 * time.Millisecond // after the room goes 3D: Bubble Tea's own mouse modes are written first
 	pixelMouseOld = 300 * time.Millisecond
 
-	easeTau    = 0.02                 // seconds: the look is 63% of the way to where the mouse sent it after this
-	easeEvery  = 6 * time.Millisecond // an easing step
-	edgeBand   = 0.6                  // cells from the window's edge that count as resting on it
-	edgeAcross = 100.0                // degrees a second the camera turns at the left or right edge
-	edgeDown   = 50.0                 // and at the top or bottom
+	edgeBand   = 0.6   // cells from the window's edge that count as resting on it
+	edgeAcross = 100.0 // degrees a second the camera turns at the left or right edge
+	edgeDown   = 50.0  // and at the top or bottom
 	edgeEvery  = 8 * time.Millisecond
 )
-
-// room3DEase: the look eases to where the mouse sends it. Set in main.go;
-// off in tests, which look at the camera straight after a mouse move.
-var room3DEase = false
 
 // pixelMouse is the terminal's pixel mode for the mouse.
 type pixelMouse struct {
@@ -53,11 +46,8 @@ type pixelMouse struct {
 // pixelMouseMsg: time to turn pixel mode on.
 type pixelMouseMsg struct{}
 
-// room3DEaseMsg is the next easing step; room3DEdgeMsg the next turn at the edge.
-type (
-	room3DEaseMsg struct{}
-	room3DEdgeMsg struct{}
-)
+// room3DEdgeMsg is the next turn at the window's edge.
+type room3DEdgeMsg struct{}
 
 // pixelMouseWanted is whether the mouse should report pixels now: kitty,
 // the board in 3D.
@@ -144,74 +134,21 @@ func (m *Model) design3DMouseMsg(msg tea.Msg) (tea.Cmd, bool) {
 		p.cw, p.ch = termCell(m.width, m.height)
 		m.design.room.hoverOn = false // the next report only notes where the mouse is
 		return tea.Raw(pixelMouseOn), true
-	case room3DEaseMsg:
-		return m.design3DEase(), true
 	case room3DEdgeMsg:
 		return m.design3DEdgeStep(), true
 	}
 	return nil, false
 }
 
-// aimNow is where the look is going: the aim while it eases, else the look.
-func (r *room3D) aimNow() [2]float64 {
-	if r.easing {
-		return r.aim
-	}
-	return r.look
-}
-
-// turnBy turns the look dx degrees right and dy down, from where it is going.
+// turnBy turns the look dx degrees right and dy down, at once.
 func (r *room3D) turnBy(dx, dy float64) tea.Cmd {
-	a := r.aimNow()
-	return r.turnTo(a[0]+dx, a[1]+dy)
+	return r.turnTo(r.look[0]+dx, r.look[1]+dy)
 }
 
-// turnTo sends the look to yaw, pitch (degrees): at once, or easing there
-// (room3DEase); it gives the first easing tick when the easing starts.
+// turnTo turns the look to yaw, pitch (degrees), at once.
 func (r *room3D) turnTo(yaw, pitch float64) tea.Cmd {
-	pitch = clampF(pitch, -89, 89)
-	if !room3DEase {
-		r.look = [2]float64{wrap180(yaw), pitch}
-		return nil
-	}
-	// The aim right or left of the look the short way round, not wrapped:
-	// the easing goes the way the mouse went.
-	r.aim = [2]float64{r.look[0] + wrap180(yaw-r.look[0]), pitch}
-	if r.easing {
-		return nil
-	}
-	r.easing, r.easeAt = true, time.Now()
-	return tea.Tick(easeEvery, func(time.Time) tea.Msg { return room3DEaseMsg{} })
-}
-
-// design3DEase is an easing step: the look goes part of the way to its aim
-// (more the longer since the last step), until it is there.
-func (m *Model) design3DEase() tea.Cmd {
-	if m.design == nil {
-		return nil
-	}
-	r := &m.design.room
-	if !r.easing {
-		return nil
-	}
-	if !m.inDesign() || !r.free {
-		r.easing = false
-		return nil
-	}
-	now := time.Now()
-	dt := math.Min(now.Sub(r.easeAt).Seconds(), 0.05)
-	r.easeAt = now
-	d0, d1 := r.aim[0]-r.look[0], r.aim[1]-r.look[1]
-	if math.Abs(d0) < 0.01 && math.Abs(d1) < 0.01 {
-		r.look = [2]float64{wrap180(r.aim[0]), r.aim[1]}
-		r.easing = false
-		return nil
-	}
-	k := 1 - math.Exp(-dt/easeTau)
-	look := r.look[0] + d0*k
-	r.look = [2]float64{wrap180(look), r.look[1] + d1*k}
-	r.aim[0] = r.look[0] + (r.aim[0] - look) // the aim kept beside the wrapped look
-	return tea.Tick(easeEvery, func(time.Time) tea.Msg { return room3DEaseMsg{} })
+	r.look = [2]float64{wrap180(yaw), clampF(pitch, -89, 89)}
+	return nil
 }
 
 // wrap180 is a ∈ [-180, 180).

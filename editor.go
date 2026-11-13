@@ -11,6 +11,7 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 
 	"symbolizer/emmet"
 )
@@ -270,9 +271,25 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	if msg = m.pixelMouseIn(msg); msg == nil {
 		return m, nil // a mouse report from before the mouse left pixel mode (design_3d_mouse.go)
 	}
+	traceMsg(msg) // SY_3D_TRACE: timings of the 3D view (design_3d_trace.go)
+	if traceOn() {
+		defer traceSlow(msg, time.Now())
+	}
+	if g, ok := msg.(uv.KittyGraphicsEvent); ok {
+		// kitty's answer to a picture of the 3D room: it has it, the next
+		// may go (design_3d_kitty.go). Nothing changed on the board.
+		if uint32(g.Options.ID) == room3DImageID {
+			kittyPic.ack()
+		}
+		if m.design != nil {
+			m.design.hoverOnly = true
+		}
+		return m, nil
+	}
 	if _, ok := msg.(tea.RawMsg); ok {
-		// A picture of the 3D room on its way to kitty (design_3d_kitty.go):
-		// nothing changed, so the board is not drawn again for it.
+		// An escape code on its way to the terminal (the mouse's pixel
+		// mode, design_3d_mouse.go): nothing changed, so the board is not
+		// drawn again for it.
 		if m.design != nil {
 			m.design.hoverOnly = true
 		}
@@ -289,8 +306,21 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	if m.design != nil {
 		m.design.hoverOnly = false // set again below if this is only the mouse moving (designHover)
 	}
+	if _, ok := msg.(room3DSharpMsg); ok { // the camera stopped: the room drawn sharp (design_3d.go)
+		if m.design != nil {
+			r := &m.design.room
+			r.sharpTick = false
+			if !r.light || time.Since(r.movedAt) < room3DStill {
+				m.design.hoverOnly = true // sharp already, or still moving (a tick again after)
+			}
+		}
+		return m, nil
+	}
 	if _, ok := msg.(room3DFrameMsg); ok { // the View after this draws the room with what changed (see drawNow)
 		if m.design != nil {
+			if !m.design.room.frameTick {
+				m.design.hoverOnly = true // drawn already since it was asked for
+			}
 			m.design.room.frameTick = false
 		}
 		return m, nil

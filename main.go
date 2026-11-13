@@ -90,12 +90,13 @@ func main() {
 		m.mode = startMode
 		m.say(modes[startMode].Icon() + "  " + modes[startMode].name + " mode. Alt+M switches modes.")
 	}
-	designFrames, designSaveLater, designAnims, room3DPace, room3DGPU, room3DEase = true, true, true, true, true, true
-	p := tea.NewProgram(m, tea.WithFPS(120)) // the most Bubble Tea allows: smoother scrolling
+	designFrames, designSaveLater, designAnims, room3DPace, room3DGPU = true, true, true, true, true
+	out := &termOut{File: os.Stdout}                              // Bubble Tea's frames and the 3D room's pictures share it (design_3d_kitty.go)
+	p := tea.NewProgram(m, tea.WithFPS(120), tea.WithOutput(out)) // 120: the most Bubble Tea allows, smoother scrolling
 	if room3DPixels = kittyWanted(os.Getenv); room3DPixels {
-		// The 3D room as a picture: sent to kitty in order with the frames (design_3d_kitty.go).
+		// The 3D room as a picture: written to kitty between Bubble Tea's frames (design_3d_kitty.go).
 		room3DRemote = kittyRemote(os.Getenv)
-		startKitty(func(s string) { p.Send(tea.RawMsg{Msg: s}) })
+		startKitty(out.WriteString, func() { p.Send(room3DFrameMsg{}) })
 	}
 	_, err = p.Run()
 	kittyPic.stop(os.Stdout) // the 3D room's picture deleted

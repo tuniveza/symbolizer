@@ -63,12 +63,9 @@ func TestDesign3DPixelMouse(t *testing.T) {
 	}
 }
 
-// With easing the look follows the mouse in a few steps and ends exactly
-// where the mouse sent it.
-func TestDesign3DEase(t *testing.T) {
-	was := room3DEase
-	room3DEase = true
-	t.Cleanup(func() { room3DEase = was })
+// The look turns the moment the mouse moves, by exactly as much: no
+// easing, which would make it lag behind the hand.
+func TestDesign3DLookAtOnce(t *testing.T) {
 	m := room3DModel(t, 120, 40)
 	r := &m.ds().room
 	r.yaw, r.pitch = 20, 10
@@ -78,15 +75,8 @@ func TestDesign3DEase(t *testing.T) {
 	m.Update(tea.MouseMotionMsg(tea.Mouse{X: x + 4, Y: y + 1}))
 	start := r.startLook
 	want := [2]float64{wrap180(start[0] + 4*turnPerCol), start[1] + turnPerRow}
-	if !r.easing || r.look == want {
-		t.Fatal("the look eases, it does not jump")
-	}
-	for i := 0; i < 40 && r.easing; i++ {
-		r.easeAt = r.easeAt.Add(-20 * time.Millisecond)
-		m.design3DEase()
-	}
-	if r.easing || math.Abs(r.look[0]-want[0]) > 0.02 || math.Abs(r.look[1]-want[1]) > 0.02 {
-		t.Fatalf("eased to %v (easing %v), want %v", r.look, r.easing, want)
+	if math.Abs(r.look[0]-want[0]) > 1e-9 || math.Abs(r.look[1]-want[1]) > 1e-9 {
+		t.Fatalf("looked to %v, want %v at once", r.look, want)
 	}
 	if wrap180(190) != -170 || wrap180(-180) != -180 || wrap180(-190) != 170 {
 		t.Fatal("wrap180")

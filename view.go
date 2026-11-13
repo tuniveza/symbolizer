@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -25,6 +26,9 @@ func runeWidth(r rune, x int) int {
 }
 
 func (m *Model) View() tea.View {
+	if traceOn() {
+		defer traceSlow("View", time.Now())
+	}
 	var sb strings.Builder
 	sb.Grow(m.width * m.height * 4)
 	switch {

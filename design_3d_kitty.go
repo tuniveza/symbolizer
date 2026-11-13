@@ -14,10 +14,11 @@ package main
 // only what changed all work as with any other text. The words stay real
 // letters in the cells over the picture (see writeCells).
 //
-// The escape code cannot go in the View's text: it goes to Bubble Tea as a
-// tea.RawMsg, which it writes in order with its frames. A frame is drawn
-// in View, so one goroutine (kittyPic) sends the newest picture and drops
-// any older one not sent yet. On this computer the pixels go through a
+// The escape code cannot go in the View's text: one goroutine (kittyPic)
+// writes it straight to the terminal between Bubble Tea's frames (termOut),
+// the newest picture only, and never while kitty still takes in the last
+// one (it answers each): pictures do not queue up on the way, so the one
+// on the screen is never far behind the hand. On this computer the pixels go through a
 // file kitty reads and deletes (t=t, quick); over SSH they go in the code
 // itself, packed (zlib) and in base64 (t=d, o=z).
 
@@ -248,6 +249,32 @@ type kittyFrame struct {
 	cols, rows int
 }
 
+// termOut is the terminal's output, shared by Bubble Tea and the pictures:
+// each writes whole escape codes at a time (Bubble Tea a frame in one
+// Write), so neither cuts into the other. The pictures go straight to it,
+// not through Bubble Tea's messages, which wait while the room is drawn:
+// kitty takes in a picture while the next is drawn.
+type termOut struct {
+	*os.File
+	mu sync.Mutex
+}
+
+func (t *termOut) Write(b []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if traceOn() {
+		defer traceSlow(fmt.Sprintf("write %d bytes", len(b)), time.Now())
+	}
+	return t.File.Write(b)
+}
+
+// WriteString writes s whole (a picture's escape code).
+func (t *termOut) WriteString(s string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	_, _ = io.WriteString(t.File, s)
+}
+
 // kittyOut sends the pictures, one goroutine for them all.
 type kittyOut struct {
 	mu      sync.Mutex
@@ -256,7 +283,7 @@ type kittyOut struct {
 	del     bool        // the picture is to go (the room went flat)
 	stopped bool
 	done    chan struct{}
-	send    func(string) // to Bubble Tea (a tea.RawMsg)
+	send    func(string) // to the terminal (termOut.WriteString)
 	shown   bool         // a picture was sent, and not deleted since
 	n       int          // files written: each its own name
 	pool    sync.Pool    // pixel buffers, used again
@@ -265,7 +292,23 @@ type kittyOut struct {
 	last    uint64 // the last picture sent, summed up (see loop)
 	again   bool   // next is the first picture, going once more (see loop)
 	sentN   int    // the number (n) of the newest picture sent
+	// Kitty's answers (see ack): a picture is not sent while kitty still
+	// takes in the last one, so pictures never queue up on the way to it.
+	busy     bool      // kitty has not answered the last picture yet
+	sentAt   time.Time // when it went
+	answered bool      // kitty has answered a picture: it does, so it is waited for
+	unheard  int       // pictures in a row kitty did not answer in time
+	wakeWant bool      // sy waits to draw until the newest picture is on its way (see ready)
+	wakeUp   func()    // to Bubble Tea: draw the room again (a room3DFrameMsg)
 }
+
+// kittyAckWait is how long a picture waits at most for kitty's answer to
+// the last; kittyUnheard pictures in a row with none, before any came, and
+// it is not waited for (a terminal that does not answer).
+const (
+	kittyAckWait = 50 * time.Millisecond
+	kittyUnheard = 3
+)
 
 // kittyAgain is how long after the first picture it goes once more (see loop).
 const kittyAgain = 120 * time.Millisecond
@@ -274,8 +317,9 @@ const kittyAgain = 120 * time.Millisecond
 // it (startKitty); before that, pictures are drawn but not sent.
 var kittyPic kittyOut
 
-// startKitty starts sending pictures with send.
-func startKitty(send func(string)) {
+// startKitty starts sending pictures with send; wake asks Bubble Tea to
+// draw the room again (see ready).
+func startKitty(send func(string), wake func()) {
 	k := &kittyPic
 	k.mu.Lock()
 	defer k.mu.Unlock()
@@ -283,7 +327,7 @@ func startKitty(send func(string)) {
 		return
 	}
 	k.wake = sync.NewCond(&k.mu)
-	k.send, k.done, k.dir, k.seed = send, make(chan struct{}), kittyDir(), maphash.MakeSeed()
+	k.send, k.wakeUp, k.done, k.dir, k.seed = send, wake, make(chan struct{}), kittyDir(), maphash.MakeSeed()
 	go k.loop()
 }
 
@@ -335,6 +379,30 @@ func (k *kittyOut) remove() {
 	k.wake.Signal()
 }
 
+// ready is whether a new picture may be drawn now: none is waiting to be
+// sent (kitty still takes in the last). When none may, the room is drawn
+// again once the waiting one goes (wakeUp), with every key and mouse move
+// up to then in it: drawn sooner, it would only be dropped.
+func (k *kittyOut) ready() bool {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.send == nil || k.next == nil {
+		return true
+	}
+	k.wakeWant = true
+	return false
+}
+
+// ack is kitty's answer to a picture: it has it.
+func (k *kittyOut) ack() {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.busy, k.answered, k.unheard = false, true, 0
+	if k.wake != nil {
+		k.wake.Signal()
+	}
+}
+
 // isShown is whether a picture is in kitty now.
 func (k *kittyOut) isShown() bool {
 	k.mu.Lock()
@@ -347,7 +415,7 @@ func (k *kittyOut) loop() {
 	defer close(k.done)
 	for {
 		k.mu.Lock()
-		for k.next == nil && !k.del && !k.stopped {
+		for !k.stopped && (k.next == nil && !k.del || k.next != nil && !k.del && k.waitKitty()) {
 			k.wake.Wait()
 		}
 		if k.stopped {
@@ -358,7 +426,12 @@ func (k *kittyOut) loop() {
 		k.next, k.del, k.again = nil, false, false
 		k.n++
 		n := k.n
+		wake := k.wakeWant && f != nil
+		k.wakeWant = false
 		k.mu.Unlock()
+		if wake && k.wakeUp != nil {
+			k.wakeUp() // sy may draw the next picture now (see ready)
+		}
 		if del {
 			k.send(kittyDelete())
 			k.last = 0
@@ -377,6 +450,7 @@ func (k *kittyOut) loop() {
 			k.sentN = n // the newest picture sent
 			k.mu.Unlock()
 			var seq string
+			wrote := time.Now()
 			if room3DRemote {
 				seq = kittyDirect(f)
 			} else {
@@ -400,10 +474,42 @@ func (k *kittyOut) loop() {
 				k.pool.Put(f.rgb[:0])
 			}
 			if seq != "" {
+				k.mu.Lock()
+				k.busy, k.sentAt = true, time.Now()
+				k.mu.Unlock()
 				k.send(seq)
+				if traceOn() {
+					traceLine("sent %d %.2f", n, ms(time.Since(wrote)))
+				}
 			}
 		}
 	}
+}
+
+// waitKitty is whether the next picture waits for kitty to answer the
+// last (k.mu held). A wait has an end: kittyAckWait, when the goroutine is
+// woken to look again.
+func (k *kittyOut) waitKitty() bool {
+	if !k.busy {
+		return false
+	}
+	gone := time.Since(k.sentAt)
+	if gone >= kittyAckWait {
+		k.busy = false
+		if !k.answered {
+			k.unheard++
+		}
+		return false
+	}
+	if !k.answered && k.unheard >= kittyUnheard {
+		return false // this terminal does not answer
+	}
+	time.AfterFunc(kittyAckWait-gone, func() {
+		k.mu.Lock()
+		k.wake.Signal()
+		k.mu.Unlock()
+	})
+	return true
 }
 
 // stop ends the sending (sy is closing): it waits for the goroutine, tells
@@ -431,7 +537,8 @@ func (k *kittyOut) stop(out io.Writer) {
 // kittyHead is the start of the escape code that sends a picture and
 // shows it as a virtual placement, c×r cells, for the placeholders.
 func kittyHead(f *kittyFrame) string {
-	return fmt.Sprintf("\x1b_Ga=T,U=1,i=%d,c=%d,r=%d,f=24,s=%d,v=%d,q=2", room3DImageID, f.cols, f.rows, f.pw, f.ph)
+	// No q=: kitty answers when it has the picture (see ack).
+	return fmt.Sprintf("\x1b_Ga=T,U=1,i=%d,c=%d,r=%d,f=24,s=%d,v=%d", room3DImageID, f.cols, f.rows, f.pw, f.ph)
 }
 
 // kittyFile writes the pixels to a file kitty reads and then deletes (its
@@ -464,9 +571,12 @@ func kittyDirect(f *kittyFrame) string {
 		if at == 0 {
 			sb.WriteString(kittyHead(f) + ",t=d,o=z")
 		} else {
-			sb.WriteString("\x1b_Gq=2")
+			sb.WriteString("\x1b_G")
 		}
-		sb.WriteString(",m=" + strconv.Itoa(more) + ";")
+		if at == 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("m=" + strconv.Itoa(more) + ";")
 		sb.WriteString(data[at:end])
 		sb.WriteString("\x1b\\")
 	}
