@@ -116,6 +116,8 @@ type r3block struct {
 	x0, y0, x1, y1 int
 	whole          bool    // not cut: all of it is in the room
 	dep            float64 // how far it comes out of the wall
+	off            float64 // how far out its back stands: its layer (design_3d_layers.go)
+	shift          int     // rows its drawing is kept below its place in the picture (layerCopies)
 }
 
 // r3room is the room's size. The board on the back wall is the flat
@@ -194,7 +196,8 @@ func (r *room3D) area(d *designState, w, h int, z float64) r3room {
 		b := r3block{o: o, x0: max(x, lx0), y0: max(y, ly0), x1: min(x+ow, lx1), y1: min(y+oh, ly1)}
 		b.whole = b.x0 == x && b.y0 == y && b.x1 == x+ow && b.y1 == y+oh
 		b.dep = blockDepth(&b, z, big)
-		deepest = math.Max(deepest, b.dep)
+		b.off = float64(o.Layer) * layerStep
+		deepest = math.Max(deepest, b.off+b.dep)
 		r.blocks = append(r.blocks, b)
 		take(b.x0, b.y0, b.x1, b.y1)
 		if o.DrawerOpen && o.Kind != kCabinet {
@@ -225,7 +228,9 @@ func (r *room3D) area(d *designState, w, h int, z float64) r3room {
 	k := r.outK()
 	for i := range r.blocks {
 		r.blocks[i].dep = math.Max(0.02, r.blocks[i].dep*k)
+		r.blocks[i].off *= k
 	}
+	r.layerCopies(d, &rm)
 	return rm
 }
 
@@ -484,7 +489,7 @@ func (r *room3D) takeRoom(d *designState, c *boardCanvas, rm *r3room) {
 	defer func() { clean3D = false }()
 	for _, b := range r.blocks {
 		x, y, ow, oh := d.rect(b.o)
-		if x >= 0 && y >= 0 && x+ow <= w && y+oh <= h {
+		if b.shift == 0 && x >= 0 && y >= 0 && x+ow <= w && y+oh <= h {
 			continue // all of it on the screen: it is read from there
 		}
 		k, ok := d.drawKeyOf(b.o)
@@ -514,7 +519,9 @@ func (r *room3D) takeRoom(d *designState, c *boardCanvas, rm *r3room) {
 			for cy := max(0, rm.ty0-py); cy < min(p.cells.Height(), rm.ty0+rm.th-py); cy++ {
 				line := p.cells.Lines[cy]
 				for cx := max(0, rm.tx0-px); cx < min(len(line), rm.tx0+rm.tw-px); cx++ {
-					if sx, sy := px+cx, py+cy; sx < 0 || sy < 0 || sx >= w || sy >= h {
+					if sx, sy := px+cx, py+cy; b.shift != 0 {
+						put(sx, sy+b.shift, &line[cx]) // on a layer: below the board (layerCopies)
+					} else if sx < 0 || sy < 0 || sx >= w || sy >= h {
 						put(sx, sy, &line[cx])
 					}
 				}
@@ -623,8 +630,10 @@ type r3face struct {
 	// The flat board cells it shows or stands on: columns cx0 ≤ x < cx1,
 	// rows of half cells py0 ≤ y < py1 (the back wall and the blocks).
 	cx0, cx1, py0, py1 int
-	seen               bool // drawn this frame (it faced the camera)
-	inside             bool // its words hide behind its own block's other faces too (a cabinet's, design_3d_cabinet.go)
+	seen               bool    // drawn this frame (it faced the camera)
+	inside             bool    // its words hide behind its own block's other faces too (a cabinet's, design_3d_cabinet.go)
+	back               float64 // a block's: how far out its back stands (its layer)
+	tdy                int     // half rows its drawing is below its cells in the picture (a block on a layer, layerCopies)
 }
 
 // depthOf is how far a kind of structure comes out of the wall, at 100%.
@@ -706,17 +715,28 @@ func (r *room3D) scene(rm *r3room, z float64, lamp r3vec) {
 	r.quadFace(r3face{n: r3vec{0, -1, 0}, mat: matSolid, own: -1, col: back},
 		r3vec{wx0, rm.fy - 0.05, -lap}, across, out)
 
-	// Every structure that shows, as a block.
+	// Every structure that shows, as a block, built against the wall and
+	// then moved out to its layer (layerOut).
 	for i := range r.blocks {
+		f0, p0 := len(r.faces), len(r.pts)
+		r.block(rm, i, hw, hh, text)
+		r.layerOut(&r.blocks[i], f0, p0, hw, hh)
+	}
+	r.lamp(rm, lamp, text, bg, accent)
+}
+
+// block adds block i's faces, against the wall.
+func (r *room3D) block(rm *r3room, i int, hw, hh float64, text uint32) {
+	{
 		b := &r.blocks[i]
 		o := b.o
 		// A block on top of another on the flat board comes out a hair further.
 		dep := b.dep + 1e-5*float64(i)
 		if o.Kind == kCabinet && r.cabinetBlock(rm, b, dep) {
-			continue // a cupboard with doors that open (design_3d_cabinet.go)
+			return // a cupboard with doors that open (design_3d_cabinet.go)
 		}
 		if o.Kind == kBox && r.boxBlock(b, dep, hw, hh) {
-			continue // an open box, its walls and what is in it (design_3d_box.go)
+			return // an open box, its walls and what is in it (design_3d_box.go)
 		}
 		X0, X1 := float64(b.x0)-hw, float64(b.x1)-hw
 		Yt, Yb := hh-float64(2*b.y0), hh-float64(2*b.y1)
@@ -753,8 +773,10 @@ func (r *room3D) scene(rm *r3room, z float64, lamp r3vec) {
 			r.quadFace(f, a0, e, r3vec{0, 0, dep})
 		}
 	}
+}
 
-	// The lamp: a bulb under a shade, hung on a cord from above the walls.
+// lamp adds the lamp: a bulb under a shade, hung on a cord from above the walls.
+func (r *room3D) lamp(rm *r3room, lamp r3vec, text, bg, accent uint32) {
 	rb := math.Max(1, 0.012*rm.big)
 	warm := hex32("#fff4d6")
 	for _, sx := range []float64{-1, 1} {
@@ -809,7 +831,8 @@ func (r *room3D) shadows(rm *r3room, lamp r3vec) {
 			continue
 		}
 		// The shadow is the outline of the block's front, seen from the
-		// lamp on the wall, joined to the block's own outline on it.
+		// lamp on the wall, joined to the outline of its back (on the
+		// wall, or out on its layer) seen the same way.
 		dep := r.pts[f.p0].z
 		if lamp.z-dep < 0.5 {
 			continue
@@ -818,8 +841,9 @@ func (r *room3D) shadows(rm *r3room, lamp r3vec) {
 		Yt, Yb := hh-float64(f.py0), hh-float64(f.py1)
 		n := 0
 		k := lamp.z / (lamp.z - dep)
+		kb := lamp.z / (lamp.z - f.back)
 		for _, c := range [4][2]float64{{X0, Yt}, {X1, Yt}, {X1, Yb}, {X0, Yb}} {
-			pts[n] = [2]float64{c[0] - rm.x0, rm.y1 - c[1]}
+			pts[n] = [2]float64{lamp.x + (c[0]-lamp.x)*kb - rm.x0, rm.y1 - (lamp.y + (c[1]-lamp.y)*kb)}
 			sx := lamp.x + (c[0]-lamp.x)*k
 			sy := lamp.y + (c[1]-lamp.y)*k
 			pts[n+4] = [2]float64{sx - rm.x0, rm.y1 - sy}
@@ -988,7 +1012,15 @@ func (r *room3D) freeView(rm *r3room) r3view {
 	fwd := r3vec{math.Sin(ly) * math.Cos(lp), -math.Sin(lp), -math.Cos(ly) * math.Cos(lp)}
 	right := fwd.cross(r3vec{0, 1, 0}).norm()
 	up := right.cross(fwd)
-	return r3view{cam: r.pos, right: right, up: up, fwd: fwd, f: r.ff, px: float64(rm.w) / 2, py: float64(rm.h)}
+	return r3view{cam: r.pos, right: right, up: up, fwd: fwd, f: r.ff * r.lensK(), px: float64(rm.w) / 2, py: float64(rm.h)}
+}
+
+// lensK is the lens's zoom (1 before it is set).
+func (r *room3D) lensK() float64 {
+	if r.lens <= 0 {
+		return 1
+	}
+	return r.lens
 }
 
 // floorAt is the floor's colour at (x, z), seen with px units to a pixel:
@@ -1336,8 +1368,10 @@ func (r *room3D) shadePixel(c *r3shade, idx, anchor int, dir r3vec) {
 		switch fc.mat {
 		case matBoard, matFront:
 			fx := p.x + hw
+			hp := hh - p.y + float64(fc.tdy) // half rows down the picture
 			cx := max(fc.cx0, min(fc.cx1-1, int(ffloor(fx))))
-			hy := max(fc.py0, min(fc.py1-1, int(ffloor(hh-p.y))))
+			hy := max(fc.py0, min(fc.py1-1, int(ffloor(hp))-fc.tdy))
+			hy += fc.tdy // a block out on a layer: its drawing is kept below the board (layerCopies)
 			// The wall's pixel here (two a cell across, two down), from
 			// the picture about as fine as the screen's pixels are.
 			tx := 2*(cx-tx0) + int(2*(fx-float64(cx)))
@@ -1361,14 +1395,14 @@ func (r *room3D) shadePixel(c *r3shade, idx, anchor int, dir r3vec) {
 				// The picture between its pixels, smoothly: a texture, a
 				// picture in half blocks, a coloured strip have soft edges,
 				// not squares.
-				col = r.smooth(2*(fx-float64(tx0)), hh-p.y-float64(2*ty0), s)
+				col = r.smooth(2*(fx-float64(tx0)), hp-float64(2*ty0), s)
 			}
 			if k == 0 && r.paint {
 				// A letter, painted (design_3d_glyphs.go).
 				cy := hy >> 1
 				if t := &r.tex[(cy-ty0)*rm.tw+cx-tx0]; t.gl != nil {
 					u := fx - float64(cx) + float64(t.gx)
-					v := (hh-p.y)/2 - float64(cy)
+					v := hp/2 - float64(cy)
 					col = mix32(t.bg, t.fg, t.gl.cover(u, v, s0/c.kx, s0/(2*c.ky)))
 				}
 			}
@@ -1377,7 +1411,7 @@ func (r *room3D) shadePixel(c *r3shade, idx, anchor int, dir r3vec) {
 				// drawn as a thin line, not a whole cell's tint.
 				cy := hy >> 1
 				if t := &r.tex[(cy-ty0)*rm.tw+cx-tx0]; t.arms != 0 {
-					cov := lineCoverUV(int(t.arms), fx-float64(cx), (hh-p.y)/2-float64(cy), s0/c.kx, s0/(2*c.ky), c.minU, c.minV)
+					cov := lineCoverUV(int(t.arms), fx-float64(cx), hp/2-float64(cy), s0/c.kx, s0/(2*c.ky), c.minU, c.minV)
 					col = mix32(t.bg, t.fg, 0.85*cov)
 				}
 			}
@@ -1917,7 +1951,8 @@ func (r *room3D) surfaceWords(o *r3near, v *r3view, rm *r3room) {
 	if fade <= 0 {
 		return // seen edge-on (or from behind): no words
 	}
-	tex := func(x, y int) *r3texel { return &r.tex[(y-ty0)*tw+x-tx0] }
+	sh := fc.tdy / 2 // a block on a layer: its drawing is kept below the board (layerCopies)
+	tex := func(x, y int) *r3texel { return &r.tex[(y+sh-ty0)*tw+x-tx0] }
 	covered := func(x, y int) bool { return wall && r.cover[(y-ty0)*tw+x-tx0] == r.stamp }
 	num := fc.k - fc.n.dot(cam)
 	w := rm.w
@@ -2011,7 +2046,7 @@ func (r *room3D) surfaceWords(o *r3near, v *r3view, rm *r3room) {
 				x = e
 			}
 			for x := ru.x0; x < ru.x1; x++ {
-				ti := int32((cy-ty0)*tw + x - tx0)
+				ti := int32((cy+sh-ty0)*tw + x - tx0)
 				t := &r.tex[ti]
 				c := col + x - ru.x0
 				if skip[x] {

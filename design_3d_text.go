@@ -790,12 +790,14 @@ func (r *room3D) boardInk(c *r3shade) {
 	rm := &r.rm
 	hw, hh := rm.hw, rm.hh
 	tx0, ty0, tw, th := rm.tx0, rm.ty0, rm.tw, rm.th
-	tex := func(x, y int) *r3texel { return &r.tex[(y-ty0)*tw+x-tx0] }
+	sh := 0 // the face's block on a layer: its drawing is kept below the board (layerCopies)
+	tex := func(x, y int) *r3texel { return &r.tex[(y+sh-ty0)*tw+x-tx0] }
 	for fi := range r.faces {
 		fc := &r.faces[fi]
 		if !fc.seen || (fc.mat != matBoard && fc.mat != matFront) {
 			continue
 		}
+		sh = fc.tdy / 2
 		z := r.pts[fc.p0].z
 		x0, x1 := max(fc.cx0, tx0), min(fc.cx1, tx0+tw)
 		y0, y1 := max(fc.py0>>1, ty0), min(fc.py1>>1, ty0+th)
@@ -1087,7 +1089,7 @@ func (r *room3D) framed(e r3edge) bool {
 			}
 			x, y := int(math.Floor(p.x+rm.hw)), int(math.Floor((rm.hh-p.y)/2))
 			if x >= max(fc.cx0, rm.tx0) && x < min(fc.cx1, rm.tx0+rm.tw) && y >= max(fc.py0>>1, rm.ty0) && y < min(fc.py1>>1, rm.ty0+rm.th) &&
-				r.tex[(y-rm.ty0)*rm.tw+x-rm.tx0].arms != 0 {
+				r.tex[(y+fc.tdy/2-rm.ty0)*rm.tw+x-rm.tx0].arms != 0 {
 				return true
 			}
 		}

@@ -241,6 +241,7 @@ func (r *room3D) cleanCards(rm *r3room) {
 		if w < 6 || h < 3 {
 			continue
 		}
+		y += b.shift // on a layer: its drawing is kept below the board (layerCopies)
 		fill := hex32(mixHex(boardBG(), o.Color, 0.2))
 		edge := hex32(o.Color)
 		head := hex32(mixHex(o.Color, cText, 0.35))

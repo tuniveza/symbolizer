@@ -93,6 +93,7 @@ type dOct struct {
 	LabelTitle string `json:"labelTitle,omitempty"`
 	Plate      string `json:"plate,omitempty"` // its name plate: all with the same one are a group
 	Tf         *dTf   `json:"tf,omitempty"`    // pinned on a board: how it is turned and stretched (design_board.go)
+	Layer      int    `json:"layer,omitempty"` // in 3D: how many layers out from the wall it stands (0: on the wall; design_3d_layers.go)
 
 	// The body wrapped at wrapW columns, kept so a long page is not wrapped
 	// again on every frame while it scrolls. wrapParas keeps each paragraph's
@@ -395,7 +396,7 @@ func copyOcts(os []*dOct) []*dOct {
 		c := dOct{X: o.X, Y: o.Y, ID: o.ID, W: o.W, H: o.H, Header: o.Header, Body: o.Body, Footer: o.Footer, Color: o.Color,
 			Kind: o.Kind, Layout: o.Layout, Image: o.Image, DrawerOpen: o.DrawerOpen, OpenStack: o.OpenStack, Scroll: o.Scroll, From: o.From,
 			Drawers: o.Drawers, Slot: o.Slot, Pulled: append([]bool(nil), o.Pulled...), Fronts: append([]dFront(nil), o.Fronts...),
-			LabelStyle: o.LabelStyle, LabelColor: o.LabelColor, LabelIcon: o.LabelIcon, LabelTitle: o.LabelTitle, Plate: o.Plate}
+			LabelStyle: o.LabelStyle, LabelColor: o.LabelColor, LabelIcon: o.LabelIcon, LabelTitle: o.LabelTitle, Plate: o.Plate, Layer: o.Layer}
 		c.Items = copyOcts(o.Items)
 		if o.Tf != nil {
 			t := *o.Tf
@@ -797,6 +798,11 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 	if d.placing { // Alt+N was pressed: this key says what to place
 		d.placing = false
 		if kind, ok := placeKeys[name]; ok {
+			if m.design3DPlace(kind) { // in 3D: where the cross is, on its layer (design_3d_layers.go)
+				d.editing = partHeader
+				m.say(newHint(kind))
+				return nil
+			}
 			if sx, sy, ok := m.design3DMiddle(); ok {
 				cx, cy = sx, sy // in 3D: where the middle of the camera looks on the wall
 			}

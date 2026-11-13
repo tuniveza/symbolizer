@@ -184,7 +184,7 @@ func (d *designState) clearSpot(o *dOct) bool {
 	type box struct{ x, y, w, h int }
 	var others []box
 	for _, p := range d.octs {
-		if p != nil && p.ID != o.ID {
+		if p != nil && p.ID != o.ID && p.Layer == o.Layer { // (in 3D, other layers stand clear of it)
 			pw, ph := d.size(p)
 			others = append(others, box{p.X - 1, p.Y - 1, pw + 2, ph + 2})
 		}

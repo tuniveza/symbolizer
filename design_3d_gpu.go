@@ -193,7 +193,7 @@ func (r *room3D) gpuData(rm *r3room) {
 		put4(v[4:], float64(fc.mat), float64(fc.col), fc.gloss, float64(flags))
 		put4(v[8:], fc.o.x, fc.o.y, fc.o.z, fc.lu)
 		put4(v[12:], fc.eu.x, fc.eu.y, fc.eu.z, fc.lv)
-		put4(v[16:], fc.ev.x, fc.ev.y, fc.ev.z, 0)
+		put4(v[16:], fc.ev.x, fc.ev.y, fc.ev.z, float64(fc.tdy))
 		put4(v[20:], float64(fc.cx0), float64(fc.cx1), float64(fc.py0), float64(fc.py1))
 	}
 	// The faces' outlines on the screen, as triangles: x, y and the face.

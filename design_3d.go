@@ -103,21 +103,27 @@ type room3D struct {
 	lastX, lastY   int
 	click          r3hit // the empty wall pressed: let go without a drag, a click there
 	clickOn        bool
-	hoverX, hoverY float64   // mouse look with no button: where the mouse was last seen (cells, to a fraction)
-	hoverOn        bool      // hoverX and hoverY are set (false: the next move only sets them)
-	edge           [2]int    // the mouse rests at the window's edge: the way it turns on (-1, 0, 1 across and down)
-	edgeOn         bool      // the edge ticks are going
-	edgeStep       time.Time // the last edge step
-	warpOn         bool      // the pointer is being put back in the window's middle (design_3d_pointer.go)
-	warpAt         time.Time // when it was asked for
-	passing        bool      // a mouse event handed on to the flat board (designPress and the rest)
-	plane          float64   // a drag handed on: the mouse is followed on the plane this far out of the wall
-	mapX, mapY     int       // the flat board cell the mouse was last followed to
-	pw, ph         int       // the pixels: twice the board area's width and height (quarter blocks), or a picture's (kitty)
-	kx, ky         float64   // the pixels a unit across and a unit down (2 and 1 in quarter blocks)
-	want           [2]int    // the picture's size for the next drawing (see room3DDensity), or 0: quarter blocks
-	pix            bool      // the last drawing is a picture (kitty, see design_3d_kitty.go)
-	fdraw          []r3draw  // per face: how it is drawn this frame
+	hoverX, hoverY float64    // mouse look with no button: where the mouse was last seen (cells, to a fraction)
+	hoverOn        bool       // hoverX and hoverY are set (false: the next move only sets them)
+	edge           [2]int     // the mouse rests at the window's edge: the way it turns on (-1, 0, 1 across and down)
+	edgeOn         bool       // the edge ticks are going
+	edgeStep       time.Time  // the last edge step
+	lens           float64    // the lens: 1 normal, more zooms in (= and − in 3D, design_3d_layers.go)
+	ff0            float64    // the focal length 3D started with
+	anchor         [2]float64 // the flat board's camX, camY at the last drawing (keepCamera)
+	flatZoom       int        // the flat board's zoom before 3D set it to 100% (design3DAt100)
+	flatCam        [2]float64 // and its camX, camY
+	flatSaved      bool       // flatZoom and flatCam are kept
+	warpOn         bool       // the pointer is being put back in the window's middle (design_3d_pointer.go)
+	warpAt         time.Time  // when it was asked for
+	passing        bool       // a mouse event handed on to the flat board (designPress and the rest)
+	plane          float64    // a drag handed on: the mouse is followed on the plane this far out of the wall
+	mapX, mapY     int        // the flat board cell the mouse was last followed to
+	pw, ph         int        // the pixels: twice the board area's width and height (quarter blocks), or a picture's (kitty)
+	kx, ky         float64    // the pixels a unit across and a unit down (2 and 1 in quarter blocks)
+	want           [2]int     // the picture's size for the next drawing (see room3DDensity), or 0: quarter blocks
+	pix            bool       // the last drawing is a picture (kitty, see design_3d_kitty.go)
+	fdraw          []r3draw   // per face: how it is drawn this frame
 	polys          [][2]float64
 	drawnAt        time.Time // when the last drawing started
 	drawnTill      time.Time // and when it ended (see drawNow)
@@ -220,6 +226,9 @@ func (m *Model) design3DKey(k tea.Key, name string) (bool, tea.Cmd) {
 	}
 	if key := walkKey(name); key != 0 {
 		return true, m.design3DWalkKey(k, key)
+	}
+	if ok := m.design3DLayerKey(name); ok { // = − 0: the lens; Shift + = and Shift + −: the chosen one's layer (design_3d_layers.go)
+		return true, nil
 	}
 	return false, nil
 }
@@ -331,12 +340,15 @@ type room3DWalkMsg struct{}
 func (m *Model) design3DFree() {
 	d := m.ds()
 	r := &d.room
+	was := m.design3DAt100() // 3D always shows the board at 100% (design_3d_layers.go)
 	rm := r.area(d, m.width, m.boardH(), d.z())
 	v := r.orbitView(&rm)
 	c := v.ray(float64(rm.w)/2, float64(rm.h)).norm() // straight ahead on the screen
 	r.look = [2]float64{math.Atan2(c.x, -c.z) * 180 / math.Pi, math.Asin(clampF(-c.y, -1, 1)) * 180 / math.Pi}
 	r.look[1] = clampF(r.look[1], -89, 89)
 	r.pos, r.ff, r.rm = v.cam, v.f, rm
+	r.pullBack(v, was) // as far back as the flat board's zoom showed the wall: no jump
+	r.ff0, r.lens, r.anchor = r.ff, 1, [2]float64{d.camX, d.camY}
 	r.startPos, r.startLook = r.pos, r.look
 	r.freeK = r.outK() // the blocks as far out as they were: they do not jump
 	r.free = true
@@ -646,6 +658,9 @@ func (m *Model) design3DLook(ms tea.Mouse) (bool, tea.Cmd) {
 	fx, fy := m.mouseAt(ms)
 	fy -= float64(m.boardTop())
 	dx, dy := fx-r.hoverX, fy-r.hoverY
+	if r.lens > 1 { // zoomed in: the mouse turns as much less, so it aims as finely
+		dx, dy = dx/r.lens, dy/r.lens
+	}
 	was := r.hoverOn
 	r.hoverX, r.hoverY, r.hoverOn = fx, fy, r.on()
 	if was && m.pointerWarped(fx, fy+float64(m.boardTop()), dx, dy) {
@@ -765,10 +780,16 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 	}
 	r.paint = pic && r.plain
 	clean3D = r.paint // the structures drawn without the flat board's counts and tabs
+	all := d.octs
+	if d.layered() {
+		d.octs = d.onWall() // the wall without what stands out on layers (layerCopies, design_3d_layers.go)
+	}
 	c := m.designCanvas()
+	d.octs = all
 	clean3D = false
 	d.mapCorner, d.platesOpen = corner, plates
 	r.ds = d
+	r.keepCamera(d, w, h) // the window or the board under it changed: the camera stays on the same spot (design_3d_layers.go)
 	rm := r.area(d, w, h, d.z())
 	r.takeRoom(d, c, &rm)
 	r.mipmap(&rm)
@@ -955,6 +976,7 @@ func (m *Model) design3DEsc() {
 	r.edge = [2]int{}
 	clear(r.held)
 	r.yaw, r.pitch, r.near, r.pan = 0, 0, 0, r3vec{}
+	m.design3DFlatZoom() // the flat board's own zoom back (design_3d_layers.go)
 	m.say("Flat board.")
 }
 

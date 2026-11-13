@@ -277,9 +277,11 @@ void main() {
 	if (mat == matBoard || mat == matFront) {
 		vec4 r5 = faceRow(fi, 5);
 		int cx0 = int(r5.x), cx1 = int(r5.y), py0 = int(r5.z), py1 = int(r5.w);
+		int tdy = int(faceRow(fi, 4).w); // a block out on a layer: its drawing is kept below the board
 		float fx = p.x + hw;
+		float hp = hh - p.y + float(tdy);
 		int cx = max(cx0, min(cx1 - 1, int(floor(fx))));
-		int hy = max(py0, min(py1 - 1, int(floor(hh - p.y))));
+		int hy = max(py0, min(py1 - 1, int(floor(hh - p.y)))) + tdy;
 		int tx = 2 * (cx - tx0) + int(2.0 * (fx - float(cx)));
 		int ty = hy - 2 * ty0;
 		int k = 0;
@@ -295,16 +297,16 @@ void main() {
 		int cy = hy >> 1;
 		uvec4 cell = texelFetch(cells, ivec2(clamp(cx - tx0, 0, tw - 1), clamp(cy - ty0, 0, th - 1)), 0);
 		if (k == 0) {
-			col = smoothAt(2.0 * (fx - float(tx0)), hh - p.y - float(2 * ty0), s);
+			col = smoothAt(2.0 * (fx - float(tx0)), hp - float(2 * ty0), s);
 			uint gi = cell.z & 0xffffu;
 			if (gi != 0u) {
 				float u = fx - float(cx) + float((cell.z >> 16) & 1u);
-				float v = (hh - p.y) / 2.0 - float(cy);
+				float v = hp / 2.0 - float(cy);
 				col = mix32(cell.y, cell.x, glyphCover(int(gi) - 1, u, v, s0 / kx, s0 / (2.0 * ky)));
 			}
 		}
 		if (s < 0.75 && cell.w != 0u) {
-			float cov = lineCoverUV(int(cell.w), fx - float(cx), (hh - p.y) / 2.0 - float(cy), s0 / kx, s0 / (2.0 * ky), minU, minV);
+			float cov = lineCoverUV(int(cell.w), fx - float(cx), hp / 2.0 - float(cy), s0 / kx, s0 / (2.0 * ky), minU, minV);
 			col = mix32(cell.y, cell.x, 0.85 * cov);
 		}
 		if (mat == matBoard) {
