@@ -9,6 +9,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+// Tests never hide the real pointer: only fakeHyprPtr turns Hyprland on.
+func init() { hyprOn = false }
+
 // fakeHyprPtr stands in for hyprctl: it notes the calls, and its
 // cursor:invisible starts as theirs.
 func fakeHyprPtr(t *testing.T, theirs bool) (calls func() []string) {
