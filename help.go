@@ -129,6 +129,7 @@ var helpGroups = []helpGroup{
 		{"+ · − · 0", "zoom in · out · back to 100%, around the chosen structure (it stays in the middle); the keypad's + and − too"},
 		{"Ctrl + F", "3D: a first-person camera in the board's room (each structure a block on the back wall, lit by a lamp). Ctrl + F again or Esc: the flat board"},
 		{"  3D: look · move", "  move the mouse (or the arrows) to look round · W A S D: move (W goes where you look) · Q E: up, down · Shift: faster"},
+		{"  3D: music", "  M: the lounge music and office sounds off or on (SY_3D_SOUND=0: never)"},
 		{"  3D: click", "  clicks and drags act at the cross in the middle, not at the mouse (the pointer is hidden)"},
 		{"  3D: choosing", "  the cross in the middle chooses: what it is on is the chosen structure · keys and clicks work as on the flat board"},
 		{"  3D: blocks", "  click, double-click and drag them as on the flat board: drawers, lids, rows, pins, ✕, titles"},

@@ -62,7 +62,7 @@ const (
 	walkFast   = 3                      // with Shift: this many times faster
 	walkTap    = 0.06 * float64(time.Second)
 	outWalk    = 0.3 // the blocks are all the way out of the wall once the camera has moved this much of the screen's bigger side (see outK)
-	roomHint   = "3D view · mouse or arrows: look · W A S D: move · Q E: up, down · Shift: faster · Esc: flat board"
+	roomHint   = "3D view · mouse: look · W A S D: move · Q E: up, down · Shift: faster · M: music · Esc: flat board"
 )
 
 // What a drag with the mouse does to the camera.
@@ -220,6 +220,10 @@ func (m *Model) design3DKey(k tea.Key, name string) (bool, tea.Cmd) {
 	}
 	if key := walkKey(name); key != 0 {
 		return true, m.design3DWalkKey(k, key)
+	}
+	if name == "m" || name == "shift+m" {
+		m.soundMute() // the music off or on (design_3d_sound.go)
+		return true, nil
 	}
 	return false, nil
 }

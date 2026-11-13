@@ -101,6 +101,7 @@ func main() {
 	_, err = p.Run()
 	kittyPic.stop(os.Stdout) // the 3D room's picture deleted
 	hyprPtr.show()           // the pointer shown again (design_3d_pointer.go)
+	roomSound.quiet()        // the music stopped (design_3d_sound.go)
 	if room3DPixels {
 		fmt.Print(pixelMouseOff) // the mouse back to cells (design_3d_mouse.go)
 	}
