@@ -282,9 +282,9 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	if m.design != nil {
 		m.design.hoverOnly = false // set again below if this is only the mouse moving (designHover)
 	}
-	if _, ok := msg.(room3DSharpMsg); ok { // the camera stopped: the View after this draws the room sharp
+	if _, ok := msg.(room3DFrameMsg); ok { // the View after this draws the room with what changed (see drawNow)
 		if m.design != nil {
-			m.design.room.sharpTick = false
+			m.design.room.frameTick = false
 		}
 		return m, nil
 	}
@@ -308,10 +308,7 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	if _, ok := msg.(designHoldMsg); ok {
 		return m, tea.Batch(m.designHold(), m.designFrameCmd(), m.designSaveCmd())
 	}
-	if _, ok := msg.(room3DFaceMsg); ok { // F: the camera gliding to a card (design_3d_face.go)
-		return m, m.design3DFaceStep()
-	}
-	if _, ok := msg.(room3DWalkMsg); ok { // free roam: walking on while a key is held (design_3d.go)
+	if _, ok := msg.(room3DWalkMsg); ok { // 3D: moving on while W A S D are held (design_3d.go)
 		return m, m.design3DWalkStep()
 	}
 	if _, ok := msg.(designFrameMsg); ok {
@@ -426,7 +423,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			m.designSpaceUp()
 			return tea.Batch(m.designFrameCmd(), m.designSaveCmd())
 		}
-		m.design3DKeyUp(msg.Key()) // free roam: W A S D let go (design_3d.go)
+		m.design3DKeyUp(msg.Key()) // 3D: W A S D let go (design_3d.go)
 		m.keys.release(msg.Key(), m.altGr.down)
 		return nil
 	case tea.KeyPressMsg:
@@ -540,13 +537,14 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return m.mouseClick(msg.Mouse())
 	case tea.MouseMotionMsg:
 		if m.inDesign() && m.design != nil && m.design.room.camDrag != camNone {
-			return m.design3DMotion(msg.Mouse()) // the 3D view turned or moved by the mouse (design_3d.go)
+			return m.design3DMotion(msg.Mouse()) // 3D: a drag on the empty room looks round (design_3d.go)
 		}
 		if m.inDesign() && m.design != nil && (m.design.drag != dragNone || m.design.rackPress != nil || m.design.pinPress != nil) {
 			return m.designMotion(msg.Mouse())
 		}
 		if m.inDesign() && m.design != nil && msg.Mouse().Button == tea.MouseNone {
-			m.designHover(msg.Mouse()) // what is under the mouse, for Space (design_select.go)
+			m.design3DLook(msg.Mouse()) // in 3D the mouse looks round on its own (design_3d.go)
+			m.designHover(msg.Mouse())  // what is under the mouse, for Space (design_select.go)
 			return nil
 		}
 		if m.dragMargin != "" {

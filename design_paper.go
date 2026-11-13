@@ -1114,7 +1114,7 @@ func (m *Model) designPaste(text string) tea.Cmd {
 		// dropped file as its path), even while writing, so the file goes
 		// in rather than its name being typed.
 		d.editing = partNone
-		cx, cy := d.world(m.width/2, m.boardH()/2)
+		cx, cy := d.world(m.screenMiddle())
 		return m.dropFiles(paths, o, cx, cy)
 	}
 	if d.editing != partNone && o != nil {
@@ -1140,7 +1140,7 @@ func (m *Model) designPaste(text string) tea.Cmd {
 		return m.designUseFile(path)
 	}
 	if o == nil || o.Kind == kOct || o.Kind == kCabinet {
-		cx, cy := d.world(m.width/2, m.boardH()/2)
+		cx, cy := d.world(m.screenMiddle())
 		o = d.newKind(kPage, int(cx), int(cy))
 	}
 	m.designAddText(o, textLike(text))

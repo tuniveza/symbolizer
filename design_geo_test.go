@@ -84,13 +84,8 @@ func TestDesign3DShapes(t *testing.T) {
 	t.Cleanup(func() { shapesWanted = was })
 	m := room3DModel(t, 120, 40)
 	designFrames = false
-	press(m, "ctrl+left")
-	for range 8 {
-		press(m, "ctrl+left")
-	}
-	press(m, "ctrl+down")
-	press(m, "ctrl+down")
 	r := &m.ds().room
+	r.yaw, r.pitch = -45, 10
 	rows := strings.Join(boardRows(m), "\n")
 	plain := ansi.Strip(rows)
 	wedges, lines := 0, 0
@@ -117,15 +112,7 @@ func TestDesign3DShapes(t *testing.T) {
 		t.Fatalf("shape letters are fitted to 8×16 points a cell: picture %d wide", r.pw)
 	}
 	press(m, "p")
-	if r.shapes() || r.plain {
-		t.Fatal("P: the text over the picture")
-	}
-	press(m, "p")
-	if !r.plain {
-		t.Fatal("P again: the plain picture")
-	}
-	press(m, "p")
 	if !r.shapes() {
-		t.Fatal("P a third time: shape letters again")
+		t.Fatal("P in 3D: no key of its own now, shape letters stay")
 	}
 }

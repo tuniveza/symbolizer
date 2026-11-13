@@ -113,7 +113,7 @@ func checkNoWordThrough(t *testing.T, r *room3D, what string) {
 			if f < 0 || f == ch.face || r.faces[f].own < 0 || r.faces[f].own == fc.own {
 				continue
 			}
-			d := r.dirs[i]
+			d := r.dirAt(i)
 			if nd := fc.n.dot(d); nd < 0 && float64(r.zb[i]) < num/nd-0.05 {
 				bad++
 			}
@@ -136,7 +136,7 @@ func TestDesign3DTitlesEverywhere(t *testing.T) {
 	for _, zoom := range []int{0, 2, 4, designZoom100, 8} { // 25%, 50%, 80%, 100%, 200%
 		d.zoom = zoom
 		for _, a := range [][2]int{{5, 0}, {20, 10}, {35, 30}, {-35, -30}, {80, 0}, {-80, 0}, {0, 70}, {0, -45}, {60, 45}, {80, 75}} {
-			for _, near := range []int{roomNearMin, 0, 3} {
+			for _, near := range []int{-6, 0, 3} {
 				r.yaw, r.pitch, r.near = a[0], a[1], near
 				what := fmt.Sprintf("zoom %.0f%%, turned %d°, tilted %d°, camera %d", 100*d.z(), a[0], a[1], near)
 				checkRows(t, m, what)

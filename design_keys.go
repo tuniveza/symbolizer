@@ -217,6 +217,9 @@ func (d *designState) partRows(o *dOct, p int) (int, int) {
 // A part taller than the screen shows from its top.
 func (m *Model) viewToPart(o *dOct, p int) {
 	d := m.ds()
+	if d.room.on() {
+		return // the room in 3D: the flat board under it never scrolls, so the blocks stay put on the wall
+	}
 	if o == nil {
 		return
 	}
@@ -392,6 +395,9 @@ func (m *Model) designFit() {
 // where the typing is).
 func (m *Model) keepInView(o *dOct, bottom bool) {
 	d := m.ds()
+	if d.room.on() {
+		return // the room in 3D: the flat board under it never scrolls, so the blocks stay put on the wall
+	}
 	x, y, w, h := d.rect(o)
 	sw, sh := m.width, m.boardH()
 	z := d.z()
@@ -459,8 +465,8 @@ func (m *Model) designHold() tea.Cmd {
 	if d == nil {
 		return nil
 	}
-	if d.holdMods == "ctrl+" {
-		return m.design3DHold() // Ctrl + arrows held: the room turns (design_3d.go)
+	if d.holdMods == hold3D {
+		return m.design3DHold() // arrows held in 3D: the camera looks round (design_3d.go)
 	}
 	var dx, dy int
 	for dir, down := range m.chord.held {
@@ -512,6 +518,9 @@ func (m *Model) designHold() tea.Cmd {
 // in the middle of the screen.
 func (m *Model) designPan(dx, dy, step int) {
 	d := m.ds()
+	if d.room.on() {
+		return // the room in 3D: the flat board under it never scrolls, so the blocks stay put on the wall
+	}
 	z := d.z()
 	d.camX += float64(dx*step*4) / z
 	d.camY += float64(dy*step*2) / z
@@ -563,6 +572,9 @@ func (d *designState) nextThatWay(from *dOct, fx, fy float64, dx, dy int) *dOct 
 // taller than the screen shows from its top).
 func (m *Model) centreOn(o *dOct) {
 	d := m.ds()
+	if d.room.on() {
+		return // the room in 3D: the flat board under it never scrolls, so the blocks stay put on the wall
+	}
 	z := d.z()
 	if isContainer(o.Kind) || (d.opened.active && o.ID == d.opened.id) {
 		// Its size on the screen is not its board size times the zoom (a
@@ -624,6 +636,9 @@ func (m *Model) designJump(dx, dy int) bool {
 // toward the pointer instead.
 func (m *Model) designZoomTo(i int) {
 	d := m.ds()
+	if d.room.on() {
+		return // in 3D the camera is first person: nothing zooms
+	}
 	cx, cy := m.width/2, m.boardH()/2
 	o := d.byID(d.sel)
 	if o == nil {
@@ -652,6 +667,10 @@ func (m *Model) designAltTap() bool {
 		return false
 	}
 	d.altTapAt = time.Time{}
+	if d.room.on() && !m.design3DModeEsc() {
+		m.design3DEsc() // in 3D with nothing to leave: as Esc there, back to the flat board
+		return true
+	}
 	m.designEscape()
 	return true
 }

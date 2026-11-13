@@ -47,13 +47,12 @@ var room3DPixels = false
 // packed. Fewer of them, then.
 var room3DRemote = false
 
-// The most pixels the picture has: still, and while the camera moves (a
-// drag, a turn held, walking), when a frame has to be quick. About 150 ms
-// after the camera stops, the room is drawn again sharp (room3DSettle).
+// The most pixels the picture has: on this computer as many as the
+// screen has (a 4K screen is 8.3 million); over SSH, where every pixel
+// goes down the line, fewer.
 const (
-	room3DStill  = 2_400_000
-	room3DMoving = 360_000
-	room3DSettle = 150 * time.Millisecond
+	room3DMaxPixels    = 40_000_000
+	room3DRemotePixels = 800_000
 )
 
 // kittyWanted is whether the 3D room is drawn as a kitty picture, from the
@@ -264,7 +263,12 @@ type kittyOut struct {
 	dir     string       // where the files go
 	seed    maphash.Seed
 	last    uint64 // the last picture sent, summed up (see loop)
+	again   bool   // next is the first picture, going once more (see loop)
+	sentN   int    // the number (n) of the newest picture sent
 }
+
+// kittyAgain is how long after the first picture it goes once more (see loop).
+const kittyAgain = 120 * time.Millisecond
 
 // kittyPic is the sender of the 3D room's pictures, once main.go starts
 // it (startKitty); before that, pictures are drawn but not sent.
@@ -350,8 +354,8 @@ func (k *kittyOut) loop() {
 			k.mu.Unlock()
 			return
 		}
-		f, del := k.next, k.del
-		k.next, k.del = nil, false
+		f, del, again := k.next, k.del, k.again
+		k.next, k.del, k.again = nil, false, false
 		k.n++
 		n := k.n
 		k.mu.Unlock()
@@ -363,18 +367,38 @@ func (k *kittyOut) loop() {
 			// The same picture as the last one sent (the room drawn again
 			// for a key let go, a minute gone by): kitty has it already.
 			sum := maphash.Bytes(k.seed, f.rgb) ^ uint64(f.pw)<<40 ^ uint64(f.ph)<<20 ^ uint64(f.cols)<<8 ^ uint64(f.rows)
-			if sum == k.last {
+			if sum == k.last && !again {
 				k.pool.Put(f.rgb[:0])
 				continue
 			}
+			first := k.last == 0
 			k.last = sum
+			k.mu.Lock()
+			k.sentN = n // the newest picture sent
+			k.mu.Unlock()
 			var seq string
 			if room3DRemote {
 				seq = kittyDirect(f)
 			} else {
 				seq = kittyFile(f, filepath.Join(k.dir, fmt.Sprintf("sy-%d-%d-tty-graphics-protocol.rgb", os.Getpid(), n)))
 			}
-			k.pool.Put(f.rgb[:0])
+			if first {
+				// The first picture since none was shown: kitty may have
+				// drawn the placeholder cells before it came, found no
+				// picture, and does not look again until the picture
+				// changes. So it goes once more, shortly, unless a newer
+				// one has gone by then.
+				time.AfterFunc(kittyAgain, func() {
+					k.mu.Lock()
+					defer k.mu.Unlock()
+					if k.sentN == n && k.next == nil && !k.del && !k.stopped && k.shown {
+						k.next, k.again = f, true
+						k.wake.Signal()
+					}
+				})
+			} else {
+				k.pool.Put(f.rgb[:0])
+			}
 			if seq != "" {
 				k.send(seq)
 			}

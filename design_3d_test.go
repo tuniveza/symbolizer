@@ -54,55 +54,57 @@ func checkRows(t *testing.T, m *Model, what string) {
 	}
 }
 
-func TestDesign3DTurnAndBack(t *testing.T) {
+// Ctrl + F goes into 3D, first person: the mouse and arrows look round,
+// W A S D move, and Esc (or Ctrl + F again) is the flat board as before.
+// Ctrl + arrows no longer turn anything.
+func TestDesign3DFirstPerson(t *testing.T) {
 	m := room3DModel(t, 120, 40)
 	designFrames = false
 	flat := boardRows(m)
-	press(m, "ctrl+right")
 	d := m.ds()
-	if !d.room.on() || d.room.yaw != turnStep {
-		t.Fatalf("Ctrl+Right: yaw %d, want %d", d.room.yaw, turnStep)
+	for _, k := range []string{"ctrl+right", "ctrl+up", "=", "p"} {
+		press(m, k)
+		if d.room.on() {
+			t.Fatalf("%s on the flat board: no 3D", k)
+		}
 	}
-	turned := boardRows(m)
-	if strings.Join(turned, "\n") == strings.Join(flat, "\n") {
-		t.Fatal("turned, the board area should show the room")
+	flat = boardRows(m)
+	press(m, "ctrl+f")
+	if !d.room.on() || !d.room.free {
+		t.Fatal("Ctrl+F: the first-person camera")
 	}
-	checkRows(t, m, "turned 5°")
-	if !strings.Contains(ansi.Strip(strings.Join(turned, "\n")), "Some words on it.") {
-		t.Fatal("turned 5°, the words on the structures should still read:\n" + ansi.Strip(strings.Join(turned, "\n")))
+	checkRows(t, m, "3D")
+	if !strings.Contains(m.designStatus(), "3D") {
+		t.Fatalf("the status bar should say it is 3D: %q", m.designStatus())
 	}
-	if !strings.Contains(m.designStatus(), "3D view") {
-		t.Fatalf("the status bar should say it is the 3D view: %q", m.designStatus())
+	press(m, "right")
+	if d.room.look[0] != turnStep {
+		t.Fatalf("Right: looks %v° right, want %d", d.room.look[0], turnStep)
 	}
-	press(m, "ctrl+left")
-	if d.room.on() {
-		t.Fatal("Ctrl+Left back to straight on: the flat board")
+	pos := d.room.pos
+	press(m, "w")
+	if d.room.pos.sub(pos).len() < 1e-6 {
+		t.Fatal("W: the camera should move")
 	}
-	if strings.Join(boardRows(m), "\n") != strings.Join(flat, "\n") {
-		t.Fatal("straight on again, the flat board should be exactly as before")
-	}
-	press(m, "ctrl+down")
-	press(m, "ctrl+down")
-	if d.room.pitch != 2*turnStep {
-		t.Fatalf("Ctrl+Down twice: pitch %d", d.room.pitch)
+	for _, k := range []string{"=", "-", "0", "p", "f", "q", "e"} {
+		look, pos := d.room.look, d.room.pos
+		press(m, k)
+		if d.room.look != look || d.room.pos != pos || !d.room.on() {
+			t.Fatalf("%s: the camera should not change (looks %v, at %v)", k, d.room.look, d.room.pos)
+		}
 	}
 	press(m, "esc")
 	if d.room.on() {
 		t.Fatal("Esc in 3D: the flat board")
 	}
-}
-
-func TestDesign3DLimits(t *testing.T) {
-	m := room3DModel(t, 80, 24)
-	for i := 0; i < 40; i++ {
-		press(m, "ctrl+right")
-		press(m, "ctrl+up")
+	if strings.Join(boardRows(m), "\n") != strings.Join(flat, "\n") {
+		t.Fatal("out of 3D, the flat board should be exactly as before")
 	}
-	r := m.ds().room
-	if r.yaw != turnYawMax || r.pitch != -turnPitchUp {
-		t.Fatalf("held long: yaw %d pitch %d, want %d and %d", r.yaw, r.pitch, turnYawMax, -turnPitchUp)
+	press(m, "ctrl+f")
+	press(m, "ctrl+f")
+	if d.room.on() {
+		t.Fatal("Ctrl+F twice: the flat board")
 	}
-	checkRows(t, m, "at the limits")
 }
 
 // Every angle, camera distance and screen size: whole lines, no panics,
@@ -116,9 +118,9 @@ func TestDesign3DEveryAngle(t *testing.T) {
 				m.ds().idIndex = nil
 			}
 			r := &m.ds().room
-			for yaw := -turnYawMax; yaw <= turnYawMax; yaw += 20 {
-				for pitch := -turnPitchMax; pitch <= turnPitchMax; pitch += 15 {
-					for _, near := range []int{roomNearMin, 0, roomNearMax} {
+			for yaw := -80; yaw <= 80; yaw += 20 {
+				for pitch := -75; pitch <= 75; pitch += 15 {
+					for _, near := range []int{-6, 0, 10} {
 						r.yaw, r.pitch, r.near = yaw, pitch, near
 						if !r.on() {
 							continue
@@ -131,32 +133,29 @@ func TestDesign3DEveryAngle(t *testing.T) {
 	}
 }
 
-// kitty says when keys are let go: held, Ctrl + an arrow keeps turning;
-// let go, it stops.
+// kitty says when keys are let go: held, an arrow in 3D keeps looking
+// round; let go, it stops.
 func TestDesign3DHold(t *testing.T) {
 	m := room3DModel(t, 80, 24)
 	m.releases = true
 	d := m.ds()
-	press(m, "ctrl+right")
-	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyRight, Mod: tea.ModCtrl, IsRepeat: true}))
-	if d.room.yaw != turnStep {
-		t.Fatalf("a press and a repeat: yaw %d, want one step (the glide does the rest)", d.room.yaw)
+	press(m, "ctrl+f")
+	press(m, "right")
+	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyRight, IsRepeat: true}))
+	if d.room.look[0] != turnStep {
+		t.Fatalf("a press and a repeat: looks %v°, want one step (the glide does the rest)", d.room.look[0])
 	}
 	for i := 0; i < 3; i++ {
 		m.Update(designHoldMsg{})
 	}
-	held := turnStep + 3*turnGlide
-	if d.room.yaw != held {
-		t.Fatalf("held for three glide steps: yaw %d, want %d", d.room.yaw, held)
+	held := float64(turnStep + 3*turnGlide)
+	if d.room.look[0] != held {
+		t.Fatalf("held for three glide steps: looks %v°, want %v", d.room.look[0], held)
 	}
-	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyRight, Mod: tea.ModCtrl}))
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeyRight}))
 	_, cmd := m.Update(designHoldMsg{})
-	if d.room.yaw != held || d.holdTick || cmd != nil {
-		t.Fatalf("let go: yaw %d (want %d), glide still going %v", d.room.yaw, held, d.holdTick)
-	}
-	press(m, "ctrl+left")
-	if d.room.yaw != turnStep*(held/turnStep) {
-		t.Fatalf("a press after a glide: to the next multiple of %d°, got %d", turnStep, d.room.yaw)
+	if d.room.look[0] != held || d.holdTick || cmd != nil {
+		t.Fatalf("let go: looks %v° (want %v), glide still going %v", d.room.look[0], held, d.holdTick)
 	}
 }
 
@@ -280,30 +279,27 @@ func BenchmarkDesign3DWords(b *testing.B) {
 	b.ReportMetric(float64(r.cost)/float64(time.Millisecond), "ms/last")
 }
 
-// In 3D the plain arrows look round (they turn the room, or the camera in
-// free roam) and W A S D walk: from the turned room they start free roam.
+// In 3D the arrows look round and W A S D move; on the flat board they
+// do not.
 func TestDesign3DArrowsLookWASDWalk(t *testing.T) {
 	m := room3DModel(t, 120, 40)
 	designFrames = false
 	d := m.ds()
 	press(m, "left")
+	press(m, "w")
 	if d.room.on() {
-		t.Fatalf("flat board: the arrows must not turn the room")
+		t.Fatalf("flat board: the arrows and W must not go into 3D")
 	}
-	press(m, "ctrl+right")
+	press(m, "ctrl+f")
 	press(m, "right")
-	if d.room.yaw != 2*turnStep {
-		t.Fatalf("an arrow in 3D: yaw %d, want %d", d.room.yaw, 2*turnStep)
+	if d.room.look[0] != turnStep {
+		t.Fatalf("an arrow in 3D: look %v, want %d right", d.room.look, turnStep)
 	}
 	press(m, "down")
-	if d.room.pitch != turnStep {
-		t.Fatalf("down in 3D: pitch %d, want %d", d.room.pitch, turnStep)
+	if d.room.look[1] != turnStep {
+		t.Fatalf("down in 3D: look %v, want %d down", d.room.look, turnStep)
 	}
 	boardRows(m)
-	press(m, "w")
-	if !d.room.free {
-		t.Fatalf("W in the turned room: want free roam")
-	}
 	at := d.room.pos
 	press(m, "w")
 	if d.room.pos == at {
@@ -315,8 +311,7 @@ func TestDesign3DArrowsLookWASDWalk(t *testing.T) {
 		t.Fatalf("left in free roam: look %v, want it turned left of %v", d.room.look, look)
 	}
 	press(m, "esc")
-	press(m, "esc")
 	if d.room.on() {
-		t.Fatalf("Esc twice: want the flat board")
+		t.Fatalf("Esc: want the flat board")
 	}
 }

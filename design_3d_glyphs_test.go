@@ -45,7 +45,8 @@ func TestPaintedWords(t *testing.T) {
 }
 
 // A clean card shows its words and none of the flat board's frame or
-// placeholders; drawers, boxes and cabinets show no counts or layer tabs.
+// placeholders; drawers, boxes and cabinets show no counts. A box's layer
+// tabs show, as they can be clicked in 3D as on the flat board.
 func TestCleanCardTexels(t *testing.T) {
 	m := wordsScene(t, 140, 40)
 	withPixels(t, m, 10, 20)
@@ -66,7 +67,10 @@ func TestCleanCardTexels(t *testing.T) {
 			t.Errorf("no %q in the cards' words", want)
 		}
 	}
-	for _, not := range []string{"footer", "lines", "Tools·", "Cardbox·", "top1", "middle"} {
+	if !strings.Contains(s, "top1") {
+		t.Error("no layer tabs on the box")
+	}
+	for _, not := range []string{"footer", "lines", "Tools·", "Cardbox·"} {
 		if strings.Contains(s, not) {
 			t.Errorf("placeholder %q on a card", not)
 		}

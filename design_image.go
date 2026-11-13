@@ -434,7 +434,7 @@ func (m *Model) designUseFileAt(path string, o *dOct, at *[2]float64) tea.Cmd {
 		if at != nil {
 			return at[0], at[1]
 		}
-		return d.world(m.width/2, m.boardH()/2)
+		return d.world(m.screenMiddle())
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {

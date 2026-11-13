@@ -40,10 +40,33 @@ var noiseTile = func() (t [64 * 64]float32) {
 	return t
 }()
 
+// noiseFine is the tile blended softly between its values, worked out
+// once at noiseK points a unit each way, so noise is one look-up a pixel
+// rather than four and a blend (it runs for every pixel of every wall).
+const noiseK = 16
+
+var noiseFine = func() []float32 {
+	const n = 64 * noiseK
+	t := make([]float32, n*n)
+	for y := range n {
+		for x := range n {
+			t[y*n+x] = float32(noiseAt(float64(x)/noiseK, float64(y)/noiseK))
+		}
+	}
+	return t
+}()
+
 // noise is a smooth random value at (x, y), from about −1 to 1: the
-// tile's values sit on whole numbers, blended softly between them.
+// tile's values sit on whole numbers, blended softly between them (to a
+// sixteenth of a unit, see noiseFine).
 func noise(x, y float64) float64 {
-	fx, fy := math.Floor(x), math.Floor(y)
+	ix, iy := int(ffloor(x*noiseK))&(64*noiseK-1), int(ffloor(y*noiseK))&(64*noiseK-1)
+	return float64(noiseFine[iy*64*noiseK+ix])
+}
+
+// noiseAt is noise worked out exactly.
+func noiseAt(x, y float64) float64 {
+	fx, fy := ffloor(x), ffloor(y)
 	u, v := x-fx, y-fy
 	u, v = u*u*(3-2*u), v*v*(3-2*v)
 	ix, iy := int(fx)&63, int(fy)&63
@@ -86,6 +109,11 @@ func plasterAt(base uint32, u, v, foot, amp float64) uint32 {
 	return shade32(base, amp*plaster(u, v, foot))
 }
 
+// plasterLit is plasterAt with the plaster already worked out (pl).
+func plasterLit(base uint32, pl, amp float64) uint32 {
+	return shade32(base, amp*pl)
+}
+
 // shade32 is colour c with d added to each of red, green and blue.
 func shade32(c uint32, d float64) uint32 {
 	r, g, b := chans(c)
@@ -106,6 +134,12 @@ func cover(h, lo, hi, foot float64) float64 {
 // colour text, as the skirting board always was; the paper's patterns are
 // gk times as strong as on a light board (see grainFor).
 func wallAt(base, text uint32, u, y, foot, gk float64, rm *r3room) uint32 {
+	return wallWith(base, text, u, y, foot, gk, plaster(u, y, foot), rm)
+}
+
+// wallWith is wallAt with the plaster at (u, y) already worked out (pl):
+// it changes slowly, so neighbouring pixels can share it (see shadePixel).
+func wallWith(base, text uint32, u, y, foot, gk, pl float64, rm *r3room) uint32 {
 	h := y - rm.fy // how high above the floor
 	const skirt, rail = 3.0, 1.2
 	dado := max(9, 0.14*rm.big)
@@ -113,7 +147,7 @@ func wallAt(base, text uint32, u, y, foot, gk float64, rm *r3room) uint32 {
 	if pic < dado+8 {
 		pic = math.Inf(1) // a low room: no picture rail
 	}
-	d := gk * wallGrain * plaster(u, y, foot)
+	d := gk * wallGrain * pl
 	switch {
 	case h < dado:
 		d -= 3 * gk // the lower part: a shade darker
@@ -123,7 +157,7 @@ func wallAt(base, text uint32, u, y, foot, gk float64, rm *r3room) uint32 {
 		// would be too fine to show.
 		const period = 6.0
 		if a := clamp01(period/foot/3 - 0.5); a > 0 {
-			k := u/period - math.Floor(u/period+0.5) // from the nearest line, in periods: −½ to ½
+			k := u/period - ffloor(u/period+0.5) // from the nearest line, in periods: −½ to ½
 			d += 2.5 * gk * a * (1 - 8*k*k)
 			d -= 6 * gk * a * cover(k*period, -0.15, 0.15, foot)
 		}
@@ -156,4 +190,16 @@ func wallAt(base, text uint32, u, y, foot, gk float64, rm *r3room) uint32 {
 // so there is no frame between them.
 func backWallAt(base, text uint32, x, y, foot, gk float64, rm *r3room) uint32 {
 	return wallAt(base, text, x, y, foot, gk, rm) // the board on it is the same wall: no frame between
+}
+
+// ffloor is math.Floor for the per-pixel sums: the largest whole number
+// not above x (x well within ±2^62). Plain sums the compiler keeps inline,
+// where math.Floor is a call on most of this computer's processors' basic
+// instruction set.
+func ffloor(x float64) float64 {
+	i := float64(int64(x))
+	if i > x {
+		i--
+	}
+	return i
 }

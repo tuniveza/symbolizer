@@ -126,8 +126,6 @@ func TestKittyPickSameCell(t *testing.T) {
 			quad[i] = pick{hit.own, hit.sx, hit.sy, hit.flat}
 		}
 		withPixels(t, m, 10, 20)
-		r.camWas = r.camKey(w, h) // still: all the pixels
-		r.movedAt = time.Time{}
 		boardRows(m)
 		if r.pw != 10*w || r.ph != 20*h {
 			t.Fatalf("picture: %d×%d pixels, want %d×%d", r.pw, r.ph, 10*w, 20*h)
@@ -328,7 +326,6 @@ func BenchmarkDesign3DPixelsStill(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		r.yaw, r.pitch = 35+i%2, 20
-		r.camWas, r.movedAt = r.camKey(m.width, m.boardH()), time.Time{}
 		var sb strings.Builder
 		m.designRows(&sb)
 	}
@@ -350,28 +347,26 @@ func BenchmarkDesign3DPixelsMoving(b *testing.B) {
 	b.ReportMetric(float64(r.pw*r.ph), "pixels")
 }
 
-// In the program: a picture goes to kitty with each drawing, a RawMsg
-// coming back does not draw the room again, a still camera asks for a
-// sharp drawing, and going flat deletes the picture.
+// In the program: a picture goes to kitty with each drawing, all the
+// pixels even while the camera moves, a RawMsg coming back does not draw
+// the room again, a key straight after a drawing is drawn a moment later
+// (with a tick that asks for it), and going flat deletes the picture.
 func TestKittyInTheProgram(t *testing.T) {
 	sent := make(chan string, 64)
 	startKitty(func(s string) { sent <- s })
-	remote := room3DRemote
-	room3DRemote = true // the pixels in the code: no files left behind by the test
-	t.Cleanup(func() { room3DRemote = remote })
+	remote, pace := room3DRemote, room3DPace
+	room3DRemote, room3DPace = true, true // the pixels in the code: no files left behind by the test
+	t.Cleanup(func() { room3DRemote, room3DPace = remote, pace })
 	m := wordsScene(t, 100, 33)
 	withPixels(t, m, 10, 20)
 	r := &m.ds().room
-	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyRight, Mod: tea.ModCtrl}))
+	press(m, "ctrl+f")
 	if !r.on() {
-		t.Fatal("not turned")
-	}
-	if cmd == nil || !r.sharpTick {
-		t.Fatal("the camera moved: want a tick for the sharp drawing")
+		t.Fatal("Ctrl+F: not 3D")
 	}
 	m.View()
-	if !r.pix || !r.lowRes {
-		t.Fatalf("moving: want a picture with fewer pixels (pix %v, low %v)", r.pix, r.lowRes)
+	if !r.pix || r.pw != 10*m.width {
+		t.Fatalf("moving: want all the pixels, got %d across (pix %v)", r.pw, r.pix)
 	}
 	select {
 	case s := <-sent:
@@ -381,17 +376,34 @@ func TestKittyInTheProgram(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("no picture sent")
 	}
+	select { // the first picture goes once more: kitty may have drawn the cells before it came
+	case s := <-sent:
+		if !strings.HasPrefix(strings.TrimPrefix(s, syncStart), "\x1b_Ga=T,U=1,") {
+			t.Fatalf("want the first picture sent again: %.40q", s)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the first picture was not sent again")
+	}
 	stamp := r.stamp
 	m.Update(tea.RawMsg{Msg: "x"})
 	m.View()
 	if r.stamp != stamp {
 		t.Fatal("a RawMsg drew the room again")
 	}
-	r.movedAt = time.Now().Add(-time.Second) // still for a while
-	m.Update(room3DSharpMsg{})
+	r.drawnAt, r.drawnTill = time.Now(), time.Now() // as if it had just been drawn
+	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
+	if cmd == nil || !r.frameTick {
+		t.Fatal("drawn a moment ago: want a tick to draw it again")
+	}
 	m.View()
-	if !r.pix || r.lowRes || r.pw != 10*m.width {
-		t.Fatalf("still: want all the pixels, got %d across (low %v)", r.pw, r.lowRes)
+	if r.stamp != stamp {
+		t.Fatal("drawn again at once, not a moment later")
+	}
+	time.Sleep(room3DEvery)
+	m.Update(room3DFrameMsg{})
+	m.View()
+	if r.stamp == stamp || r.frameTick {
+		t.Fatal("the tick did not draw the room again")
 	}
 	<-sent
 	press(m, "esc")

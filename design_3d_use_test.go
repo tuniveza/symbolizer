@@ -155,7 +155,7 @@ func TestDesign3DRoomFillsScreen(t *testing.T) {
 			for _, pan := range [][2]float64{{0, 0}, {-30, -12}, {60, -20}} {
 				d.zoom, d.camX, d.camY = zoom, pan[0], pan[1]
 				for _, a := range [][2]int{{5, 0}, {-25, 10}, {25, -10}, {80, 0}, {-80, 75}, {80, -45}, {0, 75}, {-40, -45}} {
-					for _, near := range []int{roomNearMin, 0, roomNearMax} {
+					for _, near := range []int{-6, 0, 10} {
 						r.yaw, r.pitch, r.near = a[0], a[1], near
 						check(fmt.Sprintf("zoom %d, board at %v, turned %v, %d steps closer, empty %v", zoom, pan, a, near, empty))
 					}
@@ -175,39 +175,105 @@ func TestDesign3DRoomFillsScreen(t *testing.T) {
 	check("free roam, at the start")
 }
 
-// The mouse turns the room (left drag on the empty room), moves the camera
-// (middle or right drag) and brings it closer (the wheel); a click on the
-// empty wall is a click on the empty board.
+// Moving the mouse with no button looks round on its own: the first move
+// only notes where it is, then each cell turns the camera as a drag does,
+// from where it is (free roam), and a jump (out of the window and back)
+// does not turn it.
+func TestDesign3DMouseLookNoButton(t *testing.T) {
+	m := room3DModel(t, 120, 40)
+	d := m.ds()
+	r := &d.room
+	r.yaw, r.pitch = 20, 10
+	boardRows(m)
+	cam := r.view.cam
+	x, y := roomSurface(t, m)
+	move := func(x, y int) { m.Update(tea.MouseMotionMsg(tea.Mouse{X: x, Y: y})) }
+	move(x, y)
+	if r.free {
+		t.Fatal("the first move only notes where the mouse is")
+	}
+	move(x+4, y)
+	if !r.free {
+		t.Fatal("moving the mouse in 3D: mouse look (free roam from where the camera is)")
+	}
+	start := r.startLook
+	if math.Abs(r.look[0]-start[0]-4*turnPerCol) > 1e-9 || r.look[1] != start[1] {
+		t.Fatalf("4 cells right: look %v, from %v", r.look, start)
+	}
+	move(x+4, y-2)
+	if math.Abs(r.look[1]-(start[1]-2*turnPerRow)) > 1e-9 {
+		t.Fatalf("and 2 rows up: look %v, from %v", r.look, start)
+	}
+	if r.pos.sub(cam).len() > 1e-9 {
+		t.Fatalf("mouse look moved the camera: %v, was at %v", r.pos, cam)
+	}
+	look := r.look
+	move(x+4+hoverJump+1, y-2)
+	if r.look != look {
+		t.Fatalf("a jump turned the camera: %v, was %v", r.look, look)
+	}
+	press(m, "esc")
+	if r.on() {
+		t.Fatal("Esc: the flat board")
+	}
+	move(x, y)
+	move(x+3, y)
+	if r.free || r.on() {
+		t.Fatal("on the flat board the mouse does not look round")
+	}
+}
+
+// The mouse looks round (left drag on the empty room: the camera stays
+// where it is and turns); the middle and right buttons and the wheel do
+// nothing to the camera; a click on the empty wall is a click on the
+// empty board.
 func TestDesign3DMouseCamera(t *testing.T) {
 	m := room3DModel(t, 120, 40)
 	d := m.ds()
 	r := &d.room
 	r.yaw, r.pitch = 20, 10
+	boardRows(m)
+	cam := r.view.cam
 	x, y := roomSurface(t, m)
-	dragTo(m, x, y, x+6, y, tea.MouseLeft)
-	if r.yaw != 20+int(math.Round(6*turnPerCol)) || r.pitch != 10 {
-		t.Fatalf("a drag of 6 cells right on the floor: yaw %d pitch %d", r.yaw, r.pitch)
+	m.Update(tea.MouseClickMsg(tea.Mouse{X: x, Y: y, Button: tea.MouseLeft}))
+	m.Update(tea.MouseMotionMsg(tea.Mouse{X: x + 6, Y: y, Button: tea.MouseLeft}))
+	if !r.free {
+		t.Fatal("a left drag on the empty room: mouse look (free roam from where the camera is)")
 	}
-	x, y = roomSurface(t, m)
-	dragTo(m, x, y, x, y-2, tea.MouseLeft)
-	if r.pitch != 10-int(2*turnPerRow) {
-		t.Fatalf("a drag of 2 rows up: pitch %d", r.pitch)
+	look := r.look
+	start := r.look0
+	if math.Abs(look[0]-start[0]-6*turnPerCol) > 1e-9 || look[1] != start[1] {
+		t.Fatalf("a drag of 6 cells right: look %v, from %v", look, start)
+	}
+	m.Update(tea.MouseMotionMsg(tea.Mouse{X: x + 6, Y: y - 2, Button: tea.MouseLeft}))
+	m.Update(tea.MouseReleaseMsg(tea.Mouse{X: x + 6, Y: y - 2, Button: tea.MouseLeft}))
+	if math.Abs(r.look[1]-(start[1]-2*turnPerRow)) > 1e-9 {
+		t.Fatalf("and 2 rows up: look %v, from %v", r.look, start)
+	}
+	if r.pos.sub(cam).len() > 1e-9 {
+		t.Fatalf("mouse look moved the camera: %v, was at %v", r.pos, cam)
+	}
+	if r.yaw != 20 || r.pitch != 10 {
+		t.Fatalf("mouse look turned the room: yaw %d pitch %d", r.yaw, r.pitch)
 	}
 	if r.camDrag != camNone {
 		t.Fatal("let go: no camera drag")
 	}
 	for _, b := range []tea.MouseButton{tea.MouseMiddle, tea.MouseRight} {
-		r.pan = r3vec{}
 		boardRows(m)
-		dragTo(m, 50, 20, 56, 22, b)
-		if r.pan.len() < 1 {
-			t.Fatalf("a drag with button %v should move the camera: %v", b, r.pan)
+		pos, look := r.pos, r.look
+		x, y := roomSurface(t, m)
+		m.Update(tea.MouseClickMsg(tea.Mouse{X: x, Y: y, Button: b}))
+		m.Update(tea.MouseMotionMsg(tea.Mouse{X: x + 6, Y: y + 2, Button: b}))
+		m.Update(tea.MouseReleaseMsg(tea.Mouse{X: x + 6, Y: y + 2, Button: b}))
+		if r.pos != pos || r.look != look {
+			t.Fatalf("a drag with button %v moved the camera: %v %v", b, r.pos, r.look)
 		}
 	}
-	near := r.near
+	pos, zoom := r.pos, d.zoom
 	m.Update(tea.MouseWheelMsg(tea.Mouse{X: 50, Y: 20, Button: tea.MouseWheelUp}))
-	if r.near != near+1 {
-		t.Fatal("the wheel up: the camera closer")
+	if r.pos != pos || d.zoom != zoom {
+		t.Fatal("the wheel: no zoom and no camera move in 3D")
 	}
 	// A click on the empty wall lets go of the chosen structure; a double
 	// click there places a new one, as on the flat board.
@@ -232,7 +298,8 @@ func TestDesign3DKeysPass(t *testing.T) {
 	d := m.ds()
 	o := d.octs[0]
 	d.sel = o.ID
-	press(m, "ctrl+right")
+	press(m, "ctrl+f")
+	d.sel = o.ID // as a click would
 	press(m, "tab")
 	if d.editing == partNone {
 		t.Fatal("Tab in 3D: writing in the chosen structure, as on the flat board")
@@ -246,26 +313,26 @@ func TestDesign3DKeysPass(t *testing.T) {
 	if d.byID(o.ID) != nil {
 		t.Fatal("X X in 3D: the chosen structure deleted")
 	}
-	camX, camY, yaw := d.camX, d.camY, d.room.yaw
+	camX, camY, yaw := d.camX, d.camY, d.room.look[0]
 	press(m, "shift+right")
 	press(m, "right")
 	press(m, "left")
-	if d.camX != camX || d.camY != camY || d.room.yaw != yaw+turnStep {
-		t.Fatalf("arrows and Shift + arrows in 3D: the room turns (yaw %d, want %d), the board stays still (moved %v, %v)",
-			d.room.yaw, yaw+turnStep, d.camX-camX, d.camY-camY)
+	if d.camX != camX || d.camY != camY || d.room.look[0] != yaw+turnStep {
+		t.Fatalf("arrows and Shift + arrows in 3D: the camera looks round (%v°, want %v), the board stays still (moved %v, %v)",
+			d.room.look[0], yaw+turnStep, d.camX-camX, d.camY-camY)
 	}
-	// While writing, an arrow stops writing and turns the room.
+	// While writing, an arrow stops writing and looks round.
 	d.sel = d.octs[0].ID
 	press(m, "tab")
-	pitch := d.room.pitch
+	pitch := d.room.look[1]
 	press(m, "up")
-	if d.editing != partNone || d.room.pitch != pitch-turnStep {
-		t.Fatalf("an arrow while writing in 3D: writing stops and the room tilts: editing %v, pitch %d from %d", d.editing, d.room.pitch, pitch)
+	if d.editing != partNone || d.room.look[1] != pitch-turnStep {
+		t.Fatalf("an arrow while writing in 3D: writing stops and the camera looks up: editing %v, look %v from %v", d.editing, d.room.look[1], pitch)
 	}
-	near := d.room.near
+	pos := d.room.pos
 	typeKeys(m, "+")
-	if d.room.near != near+1 || !d.room.on() {
-		t.Fatal("+ in 3D: the camera closer")
+	if d.room.pos != pos || !d.room.on() {
+		t.Fatal("+ in 3D: the camera stays")
 	}
 	press(m, "esc")
 	if d.room.on() {
@@ -273,8 +340,8 @@ func TestDesign3DKeysPass(t *testing.T) {
 	}
 }
 
-// Free roam: Ctrl+F, W A S D Q E walk (Shift faster), Ctrl + arrows and a
-// drag look round, through blocks too, and Esc goes back.
+// First person: Ctrl+F, W A S D move (Shift faster), the arrows and a drag
+// look round, through blocks too, and Esc goes back.
 func TestDesign3DFreeRoam(t *testing.T) {
 	m := room3DModel(t, 120, 40)
 	d := m.ds()
@@ -284,8 +351,8 @@ func TestDesign3DFreeRoam(t *testing.T) {
 		t.Fatal("Ctrl+F: free roam")
 	}
 	checkRows(t, m, "free roam")
-	if !strings.Contains(m.designStatus(), "Free roam") {
-		t.Fatalf("the status bar should say it is free roam: %q", m.designStatus())
+	if !strings.Contains(m.designStatus(), "3D view") {
+		t.Fatalf("the status bar should say it is 3D: %q", m.designStatus())
 	}
 	z0 := r.pos.z
 	press(m, "w")
@@ -298,15 +365,17 @@ func TestDesign3DFreeRoam(t *testing.T) {
 	if fast := z0 - r.pos.z; fast < 2*step {
 		t.Fatalf("Shift + W: faster, %.2f against %.2f", fast, step)
 	}
-	y0 := r.pos.y
-	press(m, "e")
-	if r.pos.y <= y0 {
-		t.Fatal("E: up")
-	}
-	press(m, "ctrl+right")
+	press(m, "right")
 	if r.look[0] != turnStep {
-		t.Fatalf("Ctrl + Right in free roam: look right %v", r.look)
+		t.Fatalf("Right in 3D: look right %v", r.look)
 	}
+	r.look[1] = 30 // looking down: W goes down too
+	y0 := r.pos.y
+	press(m, "w")
+	if r.pos.y >= y0 {
+		t.Fatalf("W looking down: the camera should go down: y %.1f → %.1f", y0, r.pos.y)
+	}
+	r.look[1] = 0
 	look := r.look
 	x, y := room3DCell(t, m, matBoard)
 	dragTo(m, x, y, x-6, y, tea.MouseLeft)
@@ -356,7 +425,7 @@ func TestDesign3DFreeRoam(t *testing.T) {
 	}
 	press(m, "esc")
 	if r.free || r.on() {
-		t.Fatal("Esc in free roam: back, and straight on that is the flat board")
+		t.Fatal("Esc in 3D: the flat board")
 	}
 	checkRows(t, m, "flat again")
 }

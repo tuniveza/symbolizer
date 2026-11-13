@@ -262,7 +262,7 @@ type designState struct {
 	idFor          **dOct // the octs it was made for: its first element and length
 	idLen          int
 	loadedFrom     string // the board's file
-	room           room3D // Ctrl + arrows: the board turned as a room in 3D (design_3d.go)
+	room           room3D // Ctrl + F: the board as a room in 3D, seen first person (design_3d.go)
 }
 
 type toolSpot struct {
@@ -774,7 +774,7 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 	d := m.ds()
 	defer d.save()
 	name := keyName(k)
-	if ok, cmd := m.design3DKey(k, name); ok { // Ctrl + arrows turn the room, Ctrl+F free roam; in 3D: its own keys (design_3d.go)
+	if ok, cmd := m.design3DKey(k, name); ok { // Ctrl + F: 3D; in 3D: its own keys (design_3d.go)
 		return cmd
 	}
 	switch name {
@@ -797,6 +797,9 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 	if d.placing { // Alt+N was pressed: this key says what to place
 		d.placing = false
 		if kind, ok := placeKeys[name]; ok {
+			if sx, sy, ok := m.design3DMiddle(); ok {
+				cx, cy = sx, sy // in 3D: where the middle of the camera looks on the wall
+			}
 			wx, wy := d.world(cx, cy)
 			if o := d.newKind(kind, int(wx), int(wy)); d.clearSpot(o) {
 				m.centreOn(o) // moved off what was there: the view follows it
@@ -1046,7 +1049,7 @@ func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 	if ms.Y == m.height-3 && !d.room.passing {
 		return m.designToolClick(ms.X)
 	}
-	if ok, cmd := m.design3DPress(ms); ok { // the room in 3D: turned, or handed on as a flat cell (design_3d.go)
+	if ok, cmd := m.design3DPress(ms); ok { // the room in 3D: a look round, or handed on as a flat cell (design_3d.go)
 		return cmd
 	}
 	sx, sy := ms.X, ms.Y-m.boardTop()
@@ -1320,7 +1323,7 @@ func (m *Model) designRelease() tea.Cmd {
 
 func (m *Model) designWheel(ms tea.Mouse) tea.Cmd {
 	d := m.ds()
-	if ok, cmd := m.design3DWheel(ms); ok { // the room in 3D: the wheel moves the camera
+	if ok, cmd := m.design3DWheel(ms); ok { // the room in 3D: the wheel leaves the camera alone
 		return cmd
 	}
 	sx, sy := ms.X, ms.Y-m.boardTop()
@@ -1337,6 +1340,9 @@ func (m *Model) designWheel(ms tea.Mouse) tea.Cmd {
 		d.dirty = true
 		d.save()
 		return nil
+	}
+	if d.room.passing {
+		return nil // handed on from the room in 3D: only a page's text scrolls; the camera is the 3D view's
 	}
 	switch ms.Button {
 	case tea.MouseWheelUp:

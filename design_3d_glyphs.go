@@ -359,12 +359,24 @@ func graphemes(s string) []string {
 
 // smooth is the back wall's finest picture at (x, y) (its pixels, two a
 // cell across, two a row down), between its four nearest pixels.
-func (r *room3D) smooth(x, y float64) uint32 {
+func (r *room3D) smooth(x, y, s float64) uint32 {
 	l, w, h := r.flat0, r.mipW[0], r.mipH[0]
 	x, y = x-0.5, y-0.5
-	x0, y0 := int(math.Floor(x)), int(math.Floor(y))
+	x0, y0 := int(ffloor(x)), int(ffloor(y))
 	fx, fy := x-float64(x0), y-float64(y0)
+	// Sharp, not soft: each of the wall's pixels is a clean square, and
+	// only the screen pixel on the edge between two is blended, so the
+	// edge is smooth but not blurred however close the camera comes. (s
+	// is how many of the wall's pixels a screen pixel spans.)
 	cl := func(v, n int) int { return max(0, min(n-1, v)) }
+	if s = max(s, 1e-3); s < 1 {
+		fx, fy = clamp01((fx-0.5)/s+0.5), clamp01((fy-0.5)/s+0.5)
+		if (fx == 0 || fx == 1) && (fy == 0 || fy == 1) {
+			// Inside one of the wall's pixels, away from its edges: that
+			// pixel's colour, with no blend (most of the screen's pixels).
+			return l[cl(y0+int(fy), h)*w+cl(x0+int(fx), w)]
+		}
+	}
 	xa, xb, ya, yb := cl(x0, w), cl(x0+1, w), cl(y0, h), cl(y0+1, h)
 	a, b, c, d := l[ya*w+xa], l[ya*w+xb], l[yb*w+xa], l[yb*w+xb]
 	if a == b && b == c && c == d {

@@ -584,9 +584,6 @@ func (d *designState) boxEdges(g *boxGrid, o *dOct, s boxShape, lk boxLook, shut
 	if shut || h < 6 {
 		return
 	}
-	if clean3D {
-		return // the layers' tabs are for working on the flat board
-	}
 	// The layers, with how many things each has.
 	y = h - 1
 	lo, hi = s.cut[y]+2, w-3-s.cut[y]

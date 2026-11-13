@@ -156,28 +156,20 @@ func TestDesign3DTextToggle(t *testing.T) {
 	if r.plain {
 		t.Fatal("P on the flat board: not the 3D view's key")
 	}
-	press(m, "ctrl+right")
-	press(m, "ctrl+right")
+	press(m, "ctrl+f")
+	r.look = [2]float64{10, 0}
 	text := strings.Join(boardRows(m), "\n")
-	if !strings.Contains(m.designStatus(), "P: picture") {
-		t.Fatalf("the hint should offer P: %q", m.designStatus())
-	}
-	press(m, "p")
-	if !r.plain {
-		t.Fatal("P in 3D: want the plain picture")
-	}
-	pic := strings.Join(boardRows(m), "\n")
-	if pic == text {
-		t.Fatal("the plain picture should differ from the room in letters")
-	}
-	inkCells(r, func(i int, k *r3ink) { t.Fatalf("the plain picture: cell %d holds the layer's %q", i, k.s) })
-	if !strings.Contains(m.designStatus(), "P: text") {
-		t.Fatalf("the hint should offer P: text: %q", m.designStatus())
+	if strings.Contains(m.designStatus(), "P:") {
+		t.Fatalf("the hint should not offer P: %q", m.designStatus())
 	}
 	press(m, "p")
 	if r.plain || strings.Join(boardRows(m), "\n") != text {
-		t.Fatal("P again: the room in letters, as before")
+		t.Fatal("P in 3D: no key of its own now, the room in letters as before")
 	}
+	r.plain, r.looked = true, true // the plain picture (kitty's look): no text layer
+	boardRows(m)
+	inkCells(r, func(i int, k *r3ink) { t.Fatalf("the plain picture: cell %d holds the layer's %q", i, k.s) })
+	r.plain = false
 	pages := len(d.octs)
 	press(m, "alt+n")
 	press(m, "p")
@@ -188,7 +180,7 @@ func TestDesign3DTextToggle(t *testing.T) {
 
 // The 3D view's hints fit a 100 column status bar.
 func TestDesign3DHintsFit(t *testing.T) {
-	for _, h := range []string{roomHint, roomHintPic} {
+	for _, h := range []string{roomHint} {
 		if !strings.HasPrefix(h, "3D view") || utf8.RuneCountInString(h) > 100 {
 			t.Fatalf("hint %q: want it to start with \"3D view\" and fit 100 columns (%d)", h, utf8.RuneCountInString(h))
 		}
