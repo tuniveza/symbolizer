@@ -144,6 +144,7 @@ type r3room struct {
 	// The room's walls (see enclose): the side walls at wx0 and wx1, the
 	// floor at fy, the ceiling at cy and the wall behind the camera at fz.
 	wx0, wx1, fy, cy, fz float64
+	walls, floor         int // the finishes (design_3d_finish.go)
 }
 
 // enclose stands the room's walls round the box of the blocks, and further
@@ -688,7 +689,8 @@ func (r *room3D) scene(rm *r3room, z float64, lamp r3vec) {
 	// (see enclose). Each wall runs a little past the ones it meets, so no
 	// pixel slips through the corners. The back wall and the floor have a
 	// back too, seen from behind or below by the first-person camera.
-	r.quadFace(r3face{n: r3vec{0, 0, 1}, mat: matBoard, own: -1, gloss: 0.15,
+	wg := wallGloss(rm.walls) // how shiny the walls' finish is
+	r.quadFace(r3face{n: r3vec{0, 0, 1}, mat: matBoard, own: -1, gloss: wg + 0.05,
 		cx0: rm.tx0, cx1: rm.tx0 + rm.tw, py0: 2 * rm.ty0, py1: 2 * (rm.ty0 + rm.th)},
 		r3vec{x0, y0, 0}, r3vec{wide, 0, 0}, r3vec{0, tall, 0})
 	const lap = 0.5
@@ -697,15 +699,15 @@ func (r *room3D) scene(rm *r3room, z float64, lamp r3vec) {
 	wall := mix32(bg, text, 0.08)
 	// The back wall round the board, a hair behind it (so the board is
 	// always seen in front of it): the board hangs on it like a panel.
-	r.quadFace(r3face{n: r3vec{0, 0, 1}, mat: matBack, own: -1, col: wall, gloss: 0.1},
+	r.quadFace(r3face{n: r3vec{0, 0, 1}, mat: matBack, own: -1, col: wall, gloss: wg},
 		r3vec{wx0, fy, -0.02}, across, up)
-	r.quadFace(r3face{n: r3vec{0, 1, 0}, mat: matFloor, own: -1, col: mix32(mix32(bg, text, 0.16), accent, 0.06), gloss: 0.6},
+	r.quadFace(r3face{n: r3vec{0, 1, 0}, mat: matFloor, own: -1, col: mix32(mix32(bg, text, 0.16), accent, 0.06), gloss: floorGloss(rm.floor)},
 		r3vec{wx0, rm.fy, -lap}, across, out)
-	r.quadFace(r3face{n: r3vec{1, 0, 0}, mat: matWall, own: -1, col: mix32(mix32(bg, text, 0.09), accent, 0.05), gloss: 0.1},
+	r.quadFace(r3face{n: r3vec{1, 0, 0}, mat: matWall, own: -1, col: mix32(mix32(bg, text, 0.09), accent, 0.05), gloss: wg},
 		r3vec{rm.wx0, fy, -lap}, up, out)
-	r.quadFace(r3face{n: r3vec{-1, 0, 0}, mat: matWall, own: -1, col: mix32(bg, text, 0.07), gloss: 0.1},
+	r.quadFace(r3face{n: r3vec{-1, 0, 0}, mat: matWall, own: -1, col: mix32(bg, text, 0.07), gloss: wg},
 		r3vec{rm.wx1, fy, -lap}, up, out)
-	r.quadFace(r3face{n: r3vec{0, 0, -1}, mat: matWall, own: -1, col: wall, gloss: 0.1},
+	r.quadFace(r3face{n: r3vec{0, 0, -1}, mat: matWall, own: -1, col: wall, gloss: wg},
 		r3vec{wx0, fy, rm.fz}, across, up)
 	r.quadFace(r3face{n: r3vec{0, -1, 0}, mat: matCeiling, own: -1, col: mix32(bg, text, 0.05), gloss: 0.05},
 		r3vec{wx0, rm.cy, -lap}, across, out)
@@ -1421,7 +1423,7 @@ func (r *room3D) shadePixel(c *r3shade, idx, anchor int, dir r3vec) {
 					// side walls are: the structures hang on it, with no
 					// dark panel behind them.
 					ft := foot()
-					col = wallWith(c.wallCol, c.textCol, p.x, p.y, ft, c.gk, plas(p.x, p.y, ft), rm)
+					col = wallFinish(rm.walls, c.wallCol, c.textCol, p.x, p.y, ft, c.gk, plas(p.x, p.y, ft), rm)
 				}
 				shadowOn = true // the blocks' shadows on it (see the light, below)
 			}
@@ -1440,17 +1442,17 @@ func (r *room3D) shadePixel(c *r3shade, idx, anchor int, dir r3vec) {
 				}
 			}
 		case matFloor:
-			col = floorAt(fc.col, p.x+hw, p.z, t/f*c.kpx)
+			col = floorFinish(rm.floor, fc.col, p.x+hw, p.z, t/f*c.kpx, foot())
 		case matWall:
 			u := p.z // along the wall
 			if n.z != 0 {
 				u = p.x
 			}
 			ft := foot()
-			col = wallWith(fc.col, c.textCol, u, p.y, ft, c.gk, plas(u, p.y, ft), rm)
+			col = wallFinish(rm.walls, fc.col, c.textCol, u, p.y, ft, c.gk, plas(u, p.y, ft), rm)
 		case matBack:
 			ft := foot()
-			col = wallWith(fc.col, c.textCol, p.x, p.y, ft, c.gk, plas(p.x, p.y, ft), rm)
+			col = wallFinish(rm.walls, fc.col, c.textCol, p.x, p.y, ft, c.gk, plas(p.x, p.y, ft), rm)
 		case matCeiling:
 			col = plasterLit(fc.col, plas(p.x, p.z, foot()), ceilingGrain*c.gk)
 		case matLamp, matShade:

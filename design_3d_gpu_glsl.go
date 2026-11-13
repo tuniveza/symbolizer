@@ -109,8 +109,9 @@ float cover(float h, float lo, float hi, float foot) {
 	return clamp01((min(h + foot / 2.0, hi) - max(h - foot / 2.0, lo)) / foot);
 }
 
-// wallWith
-uint wallWith(uint base, uint text, float u, float y, float foot, float pl) {
+// paperWall (wallWith; trellisPaper is in gpuFinish, design_3d_finish_glsl.go)
+uint trellisPaper(uint col, uint base, uint text, float u, float h, float foot);
+uint paperWall(uint base, uint text, float u, float y, float foot, float pl, bool trellis) {
 	float h = y - rmFy;
 	const float skirt = 3.0, rail = 1.2;
 	float dado = max(9.0, 0.14 * rmBig);
@@ -119,7 +120,7 @@ uint wallWith(uint base, uint text, float u, float y, float foot, float pl) {
 	float d = gk * 4.5 * pl;
 	if (h < dado) {
 		d -= 3.0 * gk;
-	} else if (!hasPic || h < pic) {
+	} else if (!trellis && (!hasPic || h < pic)) {
 		const float period = 6.0;
 		float a = clamp01(period / foot / 3.0 - 0.5);
 		if (a > 0.0) {
@@ -129,6 +130,7 @@ uint wallWith(uint base, uint text, float u, float y, float foot, float pl) {
 		}
 	}
 	uint col = shade32(base, d);
+	if (trellis && h >= dado && (!hasPic || h < pic)) col = trellisPaper(col, base, text, u, h, foot);
 	float near = rail + foot + 1.0;
 	if (h < skirt + near) {
 		uint trim = mix32(base, text, 0.13);
@@ -146,6 +148,7 @@ uint wallWith(uint base, uint text, float u, float y, float foot, float pl) {
 	}
 	return col;
 }
+uint wallWith(uint base, uint text, float u, float y, float foot, float pl) { return paperWall(base, text, u, y, foot, pl, false); }
 
 // floorAt
 uint floorAt(uint base, float x, float z, float pxs) {
@@ -249,7 +252,7 @@ float shadowAt(float u, float v) {
 }
 `
 
-// gpuFS2: step 2's main, shadePixel and lit.
+// gpuFS2: step 2's main, shadePixel and lit (after gpuFinish, design_3d_finish_glsl.go).
 const gpuFS2 = `
 void main() {
 	ivec2 pix = ivec2(gl_FragCoord.xy);
@@ -310,7 +313,7 @@ void main() {
 			col = mix32(cell.y, cell.x, 0.85 * cov);
 		}
 		if (mat == matBoard) {
-			if (col == bgPlain) col = wallWith(wallCol, textCol, p.x, p.y, foot, plaster(p.x, p.y, foot));
+			if (col == bgPlain) col = wallFinish(wallCol, textCol, p.x, p.y, foot, plaster(p.x, p.y, foot));
 			shadowOn = true;
 		}
 	} else if (mat == matSolid) {
@@ -325,12 +328,12 @@ void main() {
 			if (cov > 0.0) col = mix32(col, 0u, 0.3 * cov * min(1.0, 2.0 * e / pxs));
 		}
 	} else if (mat == matFloor) {
-		col = floorAt(fcol, p.x + hw, p.z, t / f * kpx);
+		col = floorFinish(fcol, p.x + hw, p.z, t / f * kpx, foot);
 	} else if (mat == matWall) {
 		float u = n.z != 0.0 ? p.x : p.z;
-		col = wallWith(fcol, textCol, u, p.y, foot, plaster(u, p.y, foot));
+		col = wallFinish(fcol, textCol, u, p.y, foot, plaster(u, p.y, foot));
 	} else if (mat == matBack) {
-		col = wallWith(fcol, textCol, p.x, p.y, foot, plaster(p.x, p.y, foot));
+		col = wallFinish(fcol, textCol, p.x, p.y, foot, plaster(p.x, p.y, foot));
 	} else if (mat == matCeiling) {
 		col = shade32(fcol, 5.0 * gk * plaster(p.x, p.z, foot));
 	}

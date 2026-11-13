@@ -75,6 +75,71 @@ func TestDesign3DGPUMatches(t *testing.T) {
 	}
 }
 
+// Every finish of the walls and the floor (design_3d_finish.go) is the
+// same on the graphics card as on the processor, near and far, from the
+// side and from above.
+func TestDesign3DGPUFinishes(t *testing.T) {
+	m := wordsScene(t, 100, 33)
+	for m.boardH() < 27 {
+		m.Update(tea.WindowSizeMsg{Width: 100, Height: m.height + 1})
+	}
+	withPixels(t, m, 10, 20)
+	room3DGPU = true
+	ok := gpuReady()
+	room3DGPU = false
+	if !ok {
+		t.Skip("no graphics card: " + gpuRoom.why)
+	}
+	d := m.ds()
+	r := &d.room
+	defer func() { d.walls, d.floor = 0, 0 }()
+	cams := []struct{ yaw, pitch, near int }{{35, 20, 0}, {-50, -15, 3}, {-70, 30, 8}}
+	first := make([][]byte, len(cams)) // paper and planks, from each camera
+	for i := range max(len(wallNames), len(floorNames)) {
+		d.walls, d.floor = min(i, len(wallNames)-1), min(i, len(floorNames)-1)
+		for ci, cam := range cams {
+			r.yaw, r.pitch, r.near = cam.yaw, cam.pitch, cam.near
+			cpu, _, _, _ := gpuPicture(t, m, false)
+			gpu, _, _, _ := gpuPicture(t, m, true)
+			if i == 0 {
+				first[ci] = cpu
+			} else if len(cpu) == len(first[ci]) {
+				// The finish shows: the room is not paper and planks.
+				changed := 0
+				for k := range cpu {
+					if abs(int(cpu[k])-int(first[ci][k])) > 6 {
+						changed++
+					}
+				}
+				if changed < len(cpu)/100 {
+					t.Errorf("walls %s, floor %s, %+v: only %d of %d bytes differ from paper and planks", wallNames[d.walls], floorNames[d.floor], cam, changed, len(cpu))
+				}
+				t.Logf("  %.1f%% of the picture changed from paper and planks", 100*float64(changed)/float64(len(cpu)))
+			}
+			if len(cpu) != len(gpu) || len(cpu) == 0 {
+				t.Fatalf("%s, %s: sizes cpu %d gpu %d", wallNames[d.walls], floorNames[d.floor], len(cpu), len(gpu))
+			}
+			far, sum := 0, 0
+			for k := 0; k < len(cpu); k += 3 {
+				dd := 0
+				for c := range 3 {
+					dd = max(dd, abs(int(cpu[k+c])-int(gpu[k+c])))
+				}
+				sum += dd
+				if dd > 40 {
+					far++
+				}
+			}
+			n := len(cpu) / 3
+			mean := float64(sum) / float64(n)
+			t.Logf("walls %s, floor %s, %+v: mean difference %.2f, %.3f%% far apart", wallNames[d.walls], floorNames[d.floor], cam, mean, 100*float64(far)/float64(n))
+			if mean > 2 || float64(far) > 0.005*float64(n) {
+				t.Errorf("walls %s, floor %s, %+v: the card's picture differs: mean %.2f, %d of %d pixels far apart",
+					wallNames[d.walls], floorNames[d.floor], cam, mean, far, n)
+			}
+		}
+	}
+}
 
 // The owner's screen: a board of 100×27 cells of 25×52 pixels (about
 // 2500×1400), turned, on the card and on the processor.

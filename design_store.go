@@ -37,6 +37,8 @@ type designIndex struct {
 	CamY    float64 `json:"camY"`
 	Zoom    int     `json:"zoom"`
 	NextID  int     `json:"nextID"`
+	Walls   string  `json:"walls,omitempty"` // the 3D room's finishes (design_3d_finish.go)
+	Floor   string  `json:"floor,omitempty"`
 }
 
 const designDiskVersion = 2
@@ -82,7 +84,8 @@ func readDesignFile(path string) (f designFile, inParts bool, err error) {
 	if err := json.Unmarshal(data, &idx); err != nil {
 		return f, true, err
 	}
-	f = designFile{Links: idx.Links, CamX: idx.CamX, CamY: idx.CamY, Zoom: idx.Zoom, NextID: idx.NextID}
+	f = designFile{Links: idx.Links, CamX: idx.CamX, CamY: idx.CamY, Zoom: idx.Zoom, NextID: idx.NextID,
+		Walls: idx.Walls, Floor: idx.Floor}
 	var missing []int
 	for _, id := range idx.Order {
 		var o dOct
@@ -145,7 +148,8 @@ func marksOf(ms []dMarkAt) map[[2]int]dMark {
 }
 
 func indexOf(f designFile) designIndex {
-	idx := designIndex{Version: designDiskVersion, Order: []int{}, Links: f.Links, CamX: f.CamX, CamY: f.CamY, Zoom: f.Zoom, NextID: f.NextID}
+	idx := designIndex{Version: designDiskVersion, Order: []int{}, Links: f.Links, CamX: f.CamX, CamY: f.CamY, Zoom: f.Zoom, NextID: f.NextID,
+		Walls: f.Walls, Floor: f.Floor}
 	if idx.Links == nil {
 		idx.Links = []dLink{}
 	}

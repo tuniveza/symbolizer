@@ -22,7 +22,8 @@ package main
 // its sides are its colour. A lamp hangs at the front left and lights it
 // all, and the blocks cast soft shadows on the back wall. The walls are
 // papered, with rails and a skirting board, and the board hangs on the
-// back wall like a panel in a frame (see design_3d_walls.go). The camera
+// back wall like a panel in a frame (see design_3d_walls.go); T and F
+// change what the walls and the floor are made of (design_3d_finish.go). The camera
 // starts square to the wall, exactly where the flat board was, and the
 // blocks come out of the wall as it looks away or moves (outK), so going
 // into 3D has no jump.
@@ -187,7 +188,8 @@ func (r *room3D) hint() string { return roomHint }
 
 // design3DKey handles the keys of the 3D view: Ctrl + F at any time (into
 // 3D and out), and while it shows the arrows (look round), W A S D Q E
-// (move) and Esc (the flat board). While writing in a structure letters type as
+// (move), T and F (the walls' and the floor's finish, design_3d_finish.go)
+// and Esc (the flat board). While writing in a structure letters type as
 // usual (Esc stops writing). Every other key does what it does on the flat
 // board, to the chosen structure (the one in the middle of the view). It
 // says whether it took the key.
@@ -228,6 +230,9 @@ func (m *Model) design3DKey(k tea.Key, name string) (bool, tea.Cmd) {
 		return true, m.design3DWalkKey(k, key)
 	}
 	if ok := m.design3DLayerKey(name); ok { // = − 0: the lens; Shift + = and Shift + −: the chosen one's layer (design_3d_layers.go)
+		return true, nil
+	}
+	if m.design3DFinishKey(name) { // T, F: the walls' and the floor's finish (design_3d_finish.go)
 		return true, nil
 	}
 	if name == "m" || name == "shift+m" {
@@ -795,6 +800,7 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 	r.ds = d
 	r.keepCamera(d, w, h) // the window or the board under it changed: the camera stays on the same spot (design_3d_layers.go)
 	rm := r.area(d, w, h, d.z())
+	rm.walls, rm.floor = d.walls, d.floor // the finishes (design_3d_finish.go)
 	r.takeRoom(d, c, &rm)
 	r.mipmap(&rm)
 	r.want, r.light = [2]int{}, false

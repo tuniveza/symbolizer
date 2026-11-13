@@ -140,6 +140,12 @@ func wallAt(base, text uint32, u, y, foot, gk float64, rm *r3room) uint32 {
 // wallWith is wallAt with the plaster at (u, y) already worked out (pl):
 // it changes slowly, so neighbouring pixels can share it (see shadePixel).
 func wallWith(base, text uint32, u, y, foot, gk, pl float64, rm *r3room) uint32 {
+	return paperWall(base, text, u, y, foot, gk, pl, rm, false)
+}
+
+// paperWall is wallWith, with a lattice of diamonds on the paper instead
+// of the stripes when trellis (design_3d_finish.go).
+func paperWall(base, text uint32, u, y, foot, gk, pl float64, rm *r3room, trellis bool) uint32 {
 	h := y - rm.fy // how high above the floor
 	const skirt, rail = 3.0, 1.2
 	dado := max(9, 0.14*rm.big)
@@ -151,7 +157,7 @@ func wallWith(base, text uint32, u, y, foot, gk, pl float64, rm *r3room) uint32 
 	switch {
 	case h < dado:
 		d -= 3 * gk // the lower part: a shade darker
-	case h < pic:
+	case h < pic && !trellis:
 		// The paper: wide soft stripes 6 units apart (a curve close to a
 		// wave, cheaper), a fine line between them; both fade where they
 		// would be too fine to show.
@@ -163,6 +169,9 @@ func wallWith(base, text uint32, u, y, foot, gk, pl float64, rm *r3room) uint32 
 		}
 	}
 	col := shade32(base, d)
+	if trellis && h >= dado && h < pic {
+		col = trellisPaper(col, base, text, u, h, foot)
+	}
 	// The skirting board, the dado rail and the picture rail, each with a
 	// thin shadow under it.
 	near := rail + foot + 1

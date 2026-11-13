@@ -128,6 +128,8 @@ type designFile struct {
 	CamY   float64   `json:"camY"`
 	Zoom   int       `json:"zoom"`
 	NextID int       `json:"nextID"`
+	Walls  string    `json:"walls,omitempty"` // the 3D room's finishes (design_3d_finish.go); "" the first
+	Floor  string    `json:"floor,omitempty"`
 
 	// The ink as a map, and its version (designState.marksVer): a save
 	// whose ink has not changed leaves marks.json alone. Not in the JSON.
@@ -238,6 +240,7 @@ type designState struct {
 	spaceAt        time.Time      // when Space was last seen (other terminals repeat it while held)
 	spacePanned    bool           // the view moved while Space was held: when it is let go, the view snaps
 	mapCorner      int            // where the mini map is: 0 hidden, 1–4 the corners (design_map.go)
+	walls, floor   int            // the room's finishes in 3D (design_3d_finish.go), kept with the board
 	altTapAt       time.Time      // when Alt was last tapped on its own: tapped again soon, it is Esc
 	opened         rackOpen       // a rack's thing opened over the view (design_containers.go)
 	multi          map[int]bool   // several chosen together, by ID (design_select.go)
@@ -331,6 +334,7 @@ func loadDesign(path string) *designState {
 		d.zoom = f.Zoom
 	}
 	d.nextID = max(d.nextID, f.NextID)
+	d.walls, d.floor = finishIndex(wallNames, f.Walls), finishIndex(floorNames, f.Floor)
 	d.detachDrawers() // drawers are containers of their own now (design_containers.go)
 	return d.startUndo()
 }
@@ -378,6 +382,7 @@ func (d *designState) snapshot() (int, designFile) {
 	// last one, so taking it costs little even on a large board.
 	st := d.state()
 	f := designFile{Octs: d.openPutBack(st.octs), Links: st.links, CamX: d.camX, CamY: d.camY, Zoom: d.zoom, NextID: d.nextID,
+		Walls: finishName(wallNames, d.walls), Floor: finishName(floorNames, d.floor),
 		marksMap: st.marks, marksVer: st.marksVer}
 	d.snapGen++
 	d.lastSnap = &f

@@ -105,7 +105,7 @@ func gpuSetUp() (bool, string) {
 	if err != nil {
 		return false, err.Error()
 	}
-	p2, err := glProgram(gpuVS2, gpuHead+gpuFS2)
+	p2, err := glProgram(gpuVS2, gpuHead+gpuFinish+gpuFS2)
 	if err != nil {
 		return false, err.Error()
 	}
@@ -372,6 +372,8 @@ func (r *room3D) gpuFrame(c *r3shade, rm *r3room) bool {
 	u.f("rmFy", rm.fy)
 	u.f("rmCy", rm.cy)
 	u.f("rmBig", rm.big)
+	u.i("wallFin", rm.walls) // the finishes (design_3d_finish.go)
+	u.i("floorFin", rm.floor)
 	var mw, mh, mo [6]int32
 	off := 0
 	for k := range min(len(r.mips), 6) {
