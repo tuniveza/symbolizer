@@ -1,16 +1,17 @@
-"""The console and its window, in plain English.
+"""The console and its own window on the desktop, in plain English. ("the window" means brick's own
+bitwin window: see bitwords.py. Here it's always "the console" or "the terminal".)
 
 Console first (works in any Linux terminal):
   write GO in the middle of the screen      put text anywhere, using the console's real size
   write score at row 2 column 10
   move to the bottom of the screen
-  set the title to My Game                  the window's title
+  set the title to My Game                  the console's title
   the width of the console / the height of the console
 
-The window itself (console codes first, then the desktop):
-  put the window on the left side of the screen
-  make the window full screen / bigger / smaller / 800 by 600
-  move the window right 200 / centre the window
+The console's window itself (console codes first, then the desktop):
+  put the console on the left side of the screen
+  make the console full screen / bigger / smaller / 800 by 600
+  move the console right 200 / centre the console
 A terminal can't move its own window on Wayland, so these also ask Hyprland. They only act on
 the program's own window, the one `brick` opens for it; anywhere else they do nothing.
 """
@@ -21,7 +22,7 @@ from asm import EQUAL, NOT_ABOVE, NOT_LESS, R8, RAX, RCX, RDX
 from expressions import Problem, read_value
 from reader import Word, read_number
 
-WINDOW_WORDS = {"window", "console", "terminal"}
+WINDOW_WORDS = {"console", "terminal"}         # "window" is brick's own window now (bitwords.py)
 FILLER = {"the", "of", "side", "edge", "corner", "half", "screen", "console", "window", "terminal",
           "and", "part", "a", "my", "this"}
 VERTICAL = {"top": "top", "bottom": "bottom", "upper": "top", "lower": "bottom"}
@@ -44,9 +45,9 @@ WINDOW_PLACES = {
     ("top", None): "put(0, 0, W, H / 2)", ("bottom", None): "put(0, H / 2, W, H / 2)",
     ("middle", "centre"): "put((W - sw) / 2, (H - sh) / 2, sw, sh)",
 }
-WINDOW_HELP = ("Window things I can do: put the window on the left side of the screen, "
-               "make the window full screen, make the window bigger, move the window right 200, "
-               "set the title to My Game.")
+WINDOW_HELP = ("Console things I can do: put the console on the left side of the screen, "
+               "make the console full screen, make the console bigger, move the console right 200, "
+               "set the title of the console to My Game.")
 
 
 def read_spot(words, names=lambda name: None):
@@ -268,7 +269,7 @@ class Window:
         self.a.call("write_text")
         self.show("\a")
 
-    # ---- the window itself ----
+    # ---- the console's window itself ----
 
     def window_action(self, words):
         said = [part for w in words if w.word for part in w.word.split("-")]     # "bottom-right"
@@ -298,7 +299,7 @@ class Window:
         else:
             lua = WINDOW_PLACES.get((vertical, horizontal))
         if lua is None:
-            raise Problem("What should the window do? " + WINDOW_HELP)
+            raise Problem("What should the console do? " + WINDOW_HELP)
         self.uses_window = True
         if console:
             self.show(console)

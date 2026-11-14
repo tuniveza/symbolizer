@@ -138,8 +138,8 @@ FILENAMES = ['notes.txt', 'scores.txt', 'names.txt', 'log.txt', 'todo.txt', 'wor
 VARIABLES = ['score', 'count', 'lives', 'total', 'level', 'guess', 'answer', 'age', 'points', 'steps']
 SIDES = ['left', 'right', 'top', 'bottom', 'top-left', 'top-right', 'bottom-left', 'bottom-right']
 WINDOW_SIZES = ['bigger', 'smaller', 'full screen', 'wider', '800 by 600', 'half the screen']
-SPOTS = ['to the right of the window', 'to the left of the window', 'at the top of the window',
-         'at the bottom of the window', 'in the middle of the window', 'in the corner of the screen']
+SPOTS = ['to the right of the console', 'to the left of the console', 'at the top of the console',
+         'at the bottom of the console', 'in the middle of the console', 'in the corner of the screen']
 LINKS_WORDS = ['First', 'Then', 'After that', 'Next', 'Now', 'Once that is done', 'Straight after']
 # How people really type: short forms, extra words, and none of the small words
 SHORT = {'seconds': 'secs', 'second': 'sec', 'minutes': 'mins', 'background': 'bg', 'please': 'pls',
@@ -288,13 +288,13 @@ class Maker:
             lambda: f'let the user guess the {p("number")}, and {p("show")} "too {p("big")}" or "too {p("small")}"',
             lambda: f'{p("show")} {t()} one letter at a time, {p("slowly")}',
             lambda: f'{p("carefully")} {p("delete")} {f} and {p("show")} {t()}',
-            # the window, its background, and text that comes and goes
-            lambda: f'{p("put")} the window on the {random.choice(SIDES)} side of the screen',
-            lambda: f'{p("put")} window at {random.choice(SIDES)} side of screen and make the background {c()}',
-            lambda: f'{p("put")} the window on the {random.choice(SIDES)} and {p("show")} {t()} in {c()}',
-            lambda: f'after {secs} {p("put")} the window on the {random.choice(SIDES)} and turn the background {c()}',
-            lambda: f'make the window {random.choice(WINDOW_SIZES)}',
-            lambda: f'make the window {random.choice(WINDOW_SIZES)} and {p("show")} {t()} {random.choice(SPOTS)}',
+            # the console, its background, and text that comes and goes
+            lambda: f'{p("put")} the console on the {random.choice(SIDES)} side of the screen',
+            lambda: f'{p("put")} console at {random.choice(SIDES)} side of screen and make the background {c()}',
+            lambda: f'{p("put")} the console on the {random.choice(SIDES)} and {p("show")} {t()} in {c()}',
+            lambda: f'after {secs} {p("put")} the console on the {random.choice(SIDES)} and turn the background {c()}',
+            lambda: f'make the console {random.choice(WINDOW_SIZES)}',
+            lambda: f'make the console {random.choice(WINDOW_SIZES)} and {p("show")} {t()} {random.choice(SPOTS)}',
             lambda: f'set the title to {t()}',
             lambda: f'make the background {c()}',
             lambda: f'turn the background {c()} and {p("show")} {t()} in {c()}',
@@ -321,7 +321,7 @@ class Maker:
             lambda: f'bg {c()}',
             lambda: f'{c()} background',
             lambda: f'text {c()}',
-            lambda: f'window {side}',
+            lambda: f'console {side}',
             lambda: f'{p("screen")} clear',
             lambda: f'{side} side of screen {p("show")} {self.phrase()} in {c()}',
         ]
@@ -749,15 +749,32 @@ def teach(line):
     and keep it only if every test and example that passed before still passes. -> (ok, message)."""
     path = universe.PATH if re.match(r"^[a-z ]+: ", line) and " = " not in line else dictionary.PATH
     builder = Builder()
+    replaced = same_key(path, line)       # a newer answer for the same words takes the old one's place
+    for old in replaced:
+        remove_line(path, old)
     add_line(path, line)
     found = broken(builder)
     if found:
         remove_line(path, line)
+        for old in replaced:
+            add_line(path, old)
         blamed = found - broken(builder)
         if blamed:
             return False, f"'{line}' broke {', '.join(sorted(os.path.basename(b) for b in blamed))}, so it's out again."
+        for old in replaced:
+            remove_line(path, old)
         add_line(path, line)
     return True, f"Taught: {line}. Every test still passes."
+
+
+def same_key(path, line):
+    """The dictionary lines that already give a meaning for the same words as this one (not the line itself)."""
+    if path != dictionary.PATH or "=" not in line:
+        return []
+    key = line.split("=", 1)[0].strip().lower()
+    with open(path, encoding="utf-8") as f:
+        return [old.strip() for old in f if "=" in old and not old.startswith("#") and old.strip() != line.strip()
+                and old.split("=", 1)[0].strip().lower() == key]
 
 
 HEARD = os.path.join(FOLDER, "heard.txt")
@@ -892,6 +909,20 @@ def only_one():
         return False
 
 
+def code_stamp():
+    """When brick's own code last changed: the newest .py file (or gui.html) in brick's folder.
+    brick gui and the factory compare it with the one they started with, and restart when it moves,
+    so an open brick kiln never runs older code than the files on disk."""
+    newest = 0.0
+    for name in os.listdir(HERE):
+        if name.endswith(".py") or name == "gui.html":
+            try:
+                newest = max(newest, os.path.getmtime(os.path.join(HERE, name)))
+            except OSError:
+                pass
+    return newest
+
+
 def running():
     """Is a factory running right now?"""
     if not os.path.isfile(os.path.join(FOLDER, "lock")):
@@ -955,9 +986,14 @@ def main(args=None):
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt))   # brick closed
     factory = Factory(quiet="--quiet" in args)
     factory.say("factory started" + (f" alongside brick (process {parent})" if parent else ""))
+    stamp = code_stamp()
     try:
         while parent is None or alive(parent):
             factory.round(list(dict.fromkeys(folders)))
+            if code_stamp() != stamp:                 # brick's code changed: carry on with the new code
+                factory.save(final=True)
+                factory.say("brick's code changed, so the factory restarts with it")
+                os.execv(sys.executable, [sys.executable, os.path.abspath(__file__)] + args)
             time.sleep(5)
     except KeyboardInterrupt:
         pass

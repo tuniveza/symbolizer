@@ -146,7 +146,7 @@ def test_input_ending_ends_the_program():
 
 
 def test_helpful_messages():
-    assert "What should the window do?" in refusal("put the window somewhere nice")
+    assert "What should the console do?" in refusal("put the console somewhere nice")
     assert "Did you mean 'score'?" in refusal("set score to 1, if scroe is 1 write hi")
     assert "missing its partner" in refusal('write "hello')
     assert "Did you mean 'write'?" in refusal("wirte hello")

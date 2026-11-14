@@ -1,4 +1,4 @@
-"""Tests for the console and window words. Programs run in a 20 x 40 pseudo-terminal.
+"""Tests for the console and its console words. Programs run in a 20 x 40 pseudo-terminal.
 
 Usage: python3 tests/test_console.py
 """
@@ -47,11 +47,11 @@ def test_putting_text_on_the_screen():
     assert output("place hi at row 2 column 10") == "\x1b[2;10Hhi\n"
     assert output('make a list called names\nput "Zed" at the top of names\nput "Bo" on the end of names\n'
                   "for each name in names write name") == "Zed\nBo\n"
-    assert output("add hi in red to the right of the window") == f"\x1b[39G{RED}hi{RESET}\n"
+    assert output("add hi in red to the right of the console") == f"\x1b[39G{RED}hi{RESET}\n"
     assert output("add red text saying hi at the top") == f"\x1b[1;1H{RED}hi{RESET}\n"
-    assert "What should the red text say?" in refusal("add red text to the right of the window")
+    assert "What should the red text say?" in refusal("add red text to the right of the console")
     assert output("put text on it that says hi") == "hi\n"
-    assert output("write a message in the window saying hello there") == "hello there\n"
+    assert output("write a message in the console saying hello there") == "hello there\n"
     assert output("put red text at the top that reads hi") == f"\x1b[1;1H{RED}hi{RESET}\n"
 
 
@@ -77,22 +77,22 @@ def test_moving_the_cursor():
 
 def test_title():
     assert output("set the title to My Game") == "\x1b]2;My Game\a"
-    assert output("set n to 3, name the window Level n") == "\x1b]2;Level 3\a"
+    assert output("set n to 3, name the console Level n") == "\x1b]2;Level 3\a"
 
 
-def test_window_words_are_safe_outside_their_own_window():
-    """In a terminal that isn't the program's own window, window words must not move anything."""
+def test_console_words_are_safe_outside_their_own_window():
+    """In a terminal that isn't the program's own console window, console words must not move anything."""
     env = dict(os.environ, BRICK_WINDOW="pid:1")      # names a process that has no window
     for line in ["put console at left side of screen and write in green ten",
-                 "make the window full screen, write ok",
-                 "make the window bigger, move the window right 200, centre the window, write ok",
-                 "make the window 800 by 600, write ok"]:
+                 "make the console full screen, write ok",
+                 "make the console bigger, move the console right 200, centre the console, write ok",
+                 "make the console 800 by 600, write ok"]:
         screen, code, _ = run(build(line, folder()), size=(20, 40), env=env)
         assert code == 0, (line, code, screen)
         assert screen.endswith("\n"), (line, screen)
-    screen, _, _ = run(build("make the window full screen, write ok", folder()), size=(20, 40), env=env)
+    screen, _, _ = run(build("make the console full screen, write ok", folder()), size=(20, 40), env=env)
     assert screen == "\x1b[9;1tok\n", repr(screen)                # the console code goes first
-    line = "place window at right side of the screen width 50px and height 50px then put text on it that says hi"
+    line = "place console at right side of the screen width 50px and height 50px then put text on it that says hi"
     program = build(line, folder())
     assert b"put(W - 50, y, 50, 50)" in open(program, "rb").read()
     screen, _, _ = run(program, size=(20, 40), env=env)

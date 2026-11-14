@@ -440,6 +440,34 @@ mark { background: rgba(255, 106, 31, .35); color: inherit; border-radius: 2px; 
 .card .msg { font-size: 12.5px; margin-top: 6px; }
 .card .msg.bad { color: #ff7a6b; }
 .card .msg.good { color: #7bd389; }
+.card.group .q { font-size: 14px; margin-bottom: 4px; }
+.card.group .q b { color: var(--gold); font-weight: normal; }
+.card.group .ex { font-family: var(--mono); font-size: 12px; color: var(--dim); margin: 2px 0; word-break: break-word; }
+.card.group .lines { margin-top: 10px; padding-left: 10px; border-left: 2px solid var(--line); }
+.words { padding: 14px 16px 24px; max-width: 860px; }
+.words .intro { color: var(--dim); font-size: 13px; margin: 0 0 12px; }
+.words h4 { margin: 0 0 8px; font-size: 14px; color: var(--gold); font-weight: 600; }
+.words .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.words input[type="text"], .words textarea { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-family: var(--mono); font-size: 13px; outline: none; min-width: 0; }
+.words input[type="text"]:focus, .words textarea:focus { border-color: var(--ember); }
+.words input.w { flex: 0 1 150px; }
+.words input.m { flex: 1 1 180px; }
+.words textarea { width: 100%; min-height: 58px; resize: vertical; box-sizing: border-box; }
+.words .means { color: var(--dim); font-size: 13px; }
+.words .where { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--dim); margin: 8px 0 4px; }
+.words .where label { display: flex; gap: 5px; align-items: center; cursor: pointer; }
+.words .ideas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-size: 12px; color: var(--faint); align-items: center; }
+.words .ideas button { padding: 2px 9px; font-size: 12px; border-radius: 999px; font-family: var(--mono); }
+.words .unk { border-top: 1px dashed var(--line); padding: 8px 0; }
+.words .unk:first-of-type { border-top: 0; }
+.words .unk .ln { font-family: var(--mono); font-size: 12.5px; color: var(--dim); margin: 2px 0 6px; word-break: break-word; }
+.words .unk .ln b { color: var(--gold); font-weight: normal; }
+.words .out { font-family: var(--mono); font-size: 13px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; word-break: break-word; margin-top: 8px; min-height: 20px; }
+.words .reads { font-size: 12.5px; color: var(--dim); margin-top: 6px; font-family: var(--mono); }
+.words .item { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px dashed var(--line); font-family: var(--mono); font-size: 13px; }
+.words .item span { flex: 1; word-break: break-word; }
+.words .empty { color: var(--faint); font-size: 12.5px; }
+.words .sub { color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; margin: 10px 0 4px; }
 .activity { margin-top: 20px; font-family: var(--mono); font-size: 12px; color: var(--dim); }
 .activity div { padding: 2px 0; border-bottom: 1px dashed var(--line); word-break: break-word; }
 .review-bar { display: none; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel2); font-size: 13px; }
@@ -493,7 +521,7 @@ mark { background: rgba(255, 106, 31, .35); color: inherit; border-radius: 2px; 
   <div class="spacer"></div>
   <div class="temp" id="temp"><span class="bulb"></span><span id="tempText">cold</span></div>
   <button id="buildBtn" title="Fire it into a program file, next to your .txt">Build</button>
-  <button id="windowBtn" title="Build and run in a console window of its own"><span class="label-long">Run in </span>window</button>
+  <button id="windowBtn" title="Build and run in a console window of its own"><span class="label-long">Run in </span>console</button>
   <button class="hot" id="runBtn" title="Build and run inside this page (Ctrl+Enter)">▶ Run</button>
   <button class="quiet" id="themeBtn" title="Light or dark">◐</button>
 </header>
@@ -520,6 +548,7 @@ write hi name</div>
       <button class="tab on" data-tab="consoleView">Console</button>
       <button class="tab" data-tab="vizView">How it's made</button>
       <button class="tab" data-tab="decideView" title="What brick couldn't settle by itself: decide, if you like">Decisions<span class="badge" id="decideBadge"></span></button>
+      <button class="tab" data-tab="wordsView" title="Teach brick new words, and try lines to see what brick does with them">Words<span class="badge" id="wordsBadge"></span></button>
       <button class="tab" data-tab="imagineView" title="What brick imagines, on its own or when you ask, and what its eye made of it">Imagination</button>
       <button class="tab" data-tab="helpView">Help</button>
     </div>
@@ -548,6 +577,40 @@ write hi name</div>
     </div>
 
     <div class="view" id="decideView"><div class="decide" id="decide"></div></div>
+
+    <div class="view" id="wordsView"><div class="words" id="words">
+      <p class="intro">Teach brick a new word, then use it like any of brick's own words. brick checks each word works before it keeps it.</p>
+      <div class="card">
+        <h4>1 · Teach a word</h4>
+        <div class="row">
+          <input type="text" class="w" id="wWord" placeholder="new word, like zap" spellcheck="false">
+          <span class="means">means</span>
+          <input type="text" class="m" id="wMeaning" list="wKnown" placeholder="a word brick knows, like write" spellcheck="false">
+          <button class="hot" id="wTeach">Teach</button>
+        </div>
+        <datalist id="wKnown"></datalist>
+        <div class="where">
+          <label><input type="radio" name="wWhere" value="every" checked> All my programs</label>
+          <label><input type="radio" name="wWhere" value="here"> Only programs in this folder</label>
+        </div>
+        <div class="ideas">Ideas: <button data-w="zap" data-m="write">zap → write</button><button data-w="nap" data-m="wait">nap → wait</button><button data-w="sunny" data-m="gold">sunny → gold</button><button data-w="ding" data-m="beep">ding → beep</button></div>
+        <div class="msg" id="wMsg"></div>
+      </div>
+      <div class="card">
+        <h4>2 · Words brick doesn't know in this program</h4>
+        <div id="wUnknown"><span class="empty">Looking…</span></div>
+      </div>
+      <div class="card">
+        <h4>3 · Try it</h4>
+        <textarea id="wTry" spellcheck="false" placeholder="type a line, like: zap hello in sunny"></textarea>
+        <div class="row" style="margin-top:6px"><button class="hot" id="wTryBtn">Try</button><button class="quiet" id="wAddBtn" title="Put these lines at the end of your program">Add to my program</button></div>
+        <div id="wResult"></div>
+      </div>
+      <div class="card">
+        <h4>4 · Your words</h4>
+        <div id="wMine"><span class="empty">Looking…</span></div>
+      </div>
+    </div></div>
 
     <div class="view" id="imagineView"><div class="imagine" id="imagine">
       <div class="subtabs" id="imagineTabs">
@@ -762,6 +825,7 @@ function showTab(id) {
   if (id === "helpView") drawHelp();
   if (id === "decideView") drawDecisions();
   if (id === "imagineView") drawImagination();
+  if (id === "wordsView") drawWords();
   if (id === "consoleView") fitTerm();
 }
 $$("#vizTabs .subtab").forEach(t => t.addEventListener("click", () => showViz(t.dataset.viz)));
@@ -1275,7 +1339,7 @@ async function run(where) {
     setRunState("Cracked in the kiln: see the lines marked on the left.");
     return;
   }
-  if (r.window) { termNote("It's running in a console window of its own; it asks there about any lines brick guessed."); setRunState("Running in its own window."); return; }
+  if (r.window) { termNote("It's running in a console window of its own; it asks there about any lines brick guessed."); setRunState("Running in its own console."); return; }
   state.guessed = r.guessed || [];
   state.session = {id: r.id, from: 0, done: false};
   $("#stopBtn").disabled = false;
@@ -1413,13 +1477,17 @@ async function openFix(n) {
 
 // ---------------- decisions: what brick couldn't settle by itself ----------------
 
+state.openGroups = new Set();
 async function drawDecisions() {
   let d;
   try { d = await api("/api/decisions"); } catch (e) { return; }
-  $("#decideBadge").textContent = d.items.length || "";
+  if (!d.items) return;
+  const groups = d.groups || [];
+  $("#decideBadge").textContent = groups.length || "";
   if (state.tab !== "decideView") return;
   const box = $("#decide");
   if (box.querySelector("input:focus")) return;          // don't redraw under someone typing
+  const byId = Object.fromEntries(d.items.map(x => [x.id, x]));
   const card = x => `<div class="card" data-id="${x.id}">
       <div class="line">${esc(x.line)}</div>
       <div class="lineb" data-line="${esc(x.line)}" style="display:flex;flex-wrap:wrap;gap:4px;margin:6px 0"></div>
@@ -1433,16 +1501,49 @@ async function drawDecisions() {
         <button class="quiet" data-act="director" title="Leave it for the English Director to fix in brick itself">For the Director</button>
         <button class="quiet" data-act="dismiss">Dismiss</button>
       </div><div class="msg"></div></div>`;
-  box.innerHTML = `<p class="intro">brick learns by itself either way. These are the few things it couldn't settle on its own;
-      deciding any of them just gets it there faster. It keeps working on them meanwhile, and ones it settles
-      by itself leave this list.</p>
+  // one card per root: one decision settles every line that grew from it
+  const group = g => {
+    const open = state.openGroups.has(g.key);
+    const lines = g.count === 1 ? "1 line" : `${g.count} lines`;
+    const teach = g.kind === "word" ? `
+        ${g.guess ? `<button class="hot" data-gact="word" data-meaning="${esc(g.guess)}">'${esc(g.word)}' means ${esc(g.guess)}</button>` : ""}
+        <button data-gact="filler" title="Like 'please' or 'ok': brick skips it and reads the rest">Skip it (it adds nothing)</button>
+        <input type="text" placeholder="'${esc(g.word)}' means… (like: write)"><button data-gact="word">Keep</button>` : "";
+    return `<div class="card group" data-key="${esc(g.key)}">
+      <div class="q">${esc(g.question)} <b>· settles ${lines}</b></div>
+      ${g.examples.slice(0, 3).map(x => `<div class="ex">${esc(x.line)}</div>`).join("")}
+      <div class="acts" style="margin-top:8px">${teach}
+        <button class="quiet" data-gact="open">${open ? "Hide the lines" : "Fix lines one by one"}</button>
+        <button class="quiet" data-gact="director" title="Leave every one of these for the English Director to fix in brick itself">All for the Director</button>
+        <button class="quiet" data-gact="dismiss">Dismiss all</button>
+      </div><div class="msg"></div>
+      ${open ? `<div class="lines">${g.ids.slice(0, 6).map(id => byId[id]).filter(Boolean).map(card).join("")}</div>` : ""}
+    </div>`;
+  };
+  const shown = groups.slice(0, 20);
+  box.innerHTML = `<p class="intro">brick learns by itself either way. Its practice lines fail for a few reasons,
+      mostly one word it doesn't know. So each card is one question: decide it once and every line that grew from it is settled.
+      Ones brick settles by itself leave this list.</p>
     <div class="status">The factory is <b>${d.running ? "learning right now" : "not running"}</b>${d.running ? "" : " (it runs while brick gui is open)"} ·
-      waiting for you: <b>${d.items.length}</b> · left for the Director: <b>${d.director}</b></div>
-    ${d.items.length ? `<div class="minitray" id="deskTray"></div>` + d.items.slice(0, 30).map(card).join("") : `<p class="intro">Nothing waiting. brick is settling everything by itself.</p>`}
+      questions: <b>${groups.length}</b> (covering ${d.items.length} lines) · left for the Director: <b>${d.director}</b></div>
+    ${groups.length ? `<div class="minitray" id="deskTray"></div>` + shown.map(group).join("") +
+      (groups.length > shown.length ? `<p class="intro">${groups.length - shown.length} smaller questions after these.</p>` : "")
+      : `<p class="intro">Nothing waiting. brick is settling everything by itself.</p>`}
     <div class="activity"><div style="color:var(--text)">What brick is doing</div>${d.activity.map(a => `<div>${esc(a)}</div>`).join("") || "<div>Nothing yet.</div>"}</div>`;
   box.querySelectorAll(".lineb").forEach(async b => { b.innerHTML = await lineBricks(b.dataset.line); });
   if ($("#deskTray", box)) renderTray($("#deskTray", box), {compact: true});
-  box.querySelectorAll(".card button[data-act]").forEach(b => b.addEventListener("click", async () => {
+  box.querySelectorAll(".card.group > .acts button[data-gact]").forEach(b => b.addEventListener("click", async () => {
+    const c = b.closest(".card.group"), msg = c.querySelector(":scope > .msg"), act = b.dataset.gact, key = c.dataset.key;
+    if (act === "open") { state.openGroups.has(key) ? state.openGroups.delete(key) : state.openGroups.add(key); return drawDecisions(); }
+    const meaning = b.dataset.meaning !== undefined ? b.dataset.meaning : (c.querySelector(':scope > .acts input[type="text"]') || {}).value || "";
+    if (act === "word" && !meaning.trim()) { msg.className = "msg bad"; msg.textContent = "Say what it means first, in brick's words."; return; }
+    c.querySelectorAll(":scope > .acts button").forEach(x => { x.disabled = true; });
+    msg.className = "msg"; msg.textContent = act === "word" || act === "filler" ? "Checking it with every test, then every line (about half a minute)…" : "…";
+    const r = await api("/api/decide-group", {key, action: act, meaning});
+    msg.className = "msg " + (r.ok ? "good" : "bad"); msg.textContent = r.message;
+    if (r.ok) setTimeout(drawDecisions, 2500); else c.querySelectorAll(":scope > .acts button").forEach(x => { x.disabled = false; });
+  }));
+  box.querySelectorAll(".card[data-id] button[data-act]").forEach(b => b.addEventListener("click", async () => {
     const c = b.closest(".card"), msg = c.querySelector(".msg"), act = b.dataset.act;
     const meaning = b.dataset.meaning !== undefined ? b.dataset.meaning : (c.querySelector('input[type="text"]') || {}).value || "";
     if (act === "means" && !meaning.trim()) { msg.className = "msg bad"; msg.textContent = "Say what it means first, in brick's words."; return; }
@@ -1454,7 +1555,29 @@ async function drawDecisions() {
   }));
 }
 setInterval(() => { if (state.tab === "decideView" || !document.hidden) drawDecisions(); }, 6000);
-setInterval(() => fetch("/api/alive").catch(() => {}), 20000);   // still open (brick gui --app closes once this stops)
+// still open (brick gui --app closes once this stops). Also: when brick's code changes, brick gui restarts
+// with it and says so with a new stamp; the page then reloads itself (or asks first, if there's unsaved work).
+state.stamp = null;
+async function stillHere() {
+  let d;
+  try { d = await (await fetch("/api/alive")).json(); } catch (e) { return; }
+  if (!d.stamp) return;
+  if (state.stamp === null) { state.stamp = d.stamp; return; }
+  if (d.stamp === state.stamp) return;
+  state.stamp = d.stamp;
+  if (!state.dirty) {                                  // come back to the same tab after the reload
+    try { sessionStorage.setItem("brick-tab", state.tab); } catch (e) {}
+    location.reload(); return;
+  }
+  termNote("brick was updated. Save your work, then reload this window (Ctrl+R) to get the new version.", "255;209;102");
+}
+stillHere();
+setInterval(stillHere, 10000);
+try {
+  const back = sessionStorage.getItem("brick-tab");
+  sessionStorage.removeItem("brick-tab");
+  if (back && document.getElementById(back)) setTimeout(() => showTab(back), 300);
+} catch (e) {}
 
 // ---------------- imagination: what brick imagined, and what its eye made of it ----------------
 
@@ -1467,7 +1590,12 @@ $$("#imagineTabs .subtab").forEach(t => t.addEventListener("click", () => {
 async function drawImagination() {
   if (state.tab !== "imagineView") return;
   let d;
-  try { d = await api("/api/imagination?origin=" + encodeURIComponent(state.origin) + "&most=60"); } catch (e) { return; }
+  try { d = await api("/api/imagination?origin=" + encodeURIComponent(state.origin) + "&most=60"); } catch (e) { d = null; }
+  if (!d || !d.totals) {                       // an older brick gui is serving this page, or it is restarting
+    $("#imagineStatus").innerHTML = "The brick gui behind this window can't show the imagination yet. " +
+      "It is either restarting with brick's new code (this fixes itself in a few seconds), or it is older than the imagination: close brick kiln and open it again.";
+    return;
+  }
   const t = d.totals || {};
   $("#imagineStatus").innerHTML = `brick ${d.running ? "<b>is dreaming right now</b> (a few pictures every few seconds)" : "dreams while the factory runs (it runs while brick gui is open)"} ·
     imagined so far: <b>${t.pictures || 0}</b> pictures, ${t.names || 0} named things, ${t.blends || 0} blends, ${t.contexts || 0} contexts<br>
@@ -1837,7 +1965,7 @@ const HELP = {
     <h3>Running</h3>
     <div class="kbds">
       <span><button class="hot" style="pointer-events:none;padding:2px 10px">▶ Run</button></span><span>builds and runs inside the Console tab. Click in the console to type answers. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> does the same.</span>
-      <span><button style="pointer-events:none;padding:2px 10px">Run in window</button></span><span>runs in a console window of its own, needed for programs that move their window around the screen.</span>
+      <span><button style="pointer-events:none;padding:2px 10px">Run in console</button></span><span>runs in a console of its own, needed for programs that move their console around the screen.</span>
       <span><button style="pointer-events:none;padding:2px 10px">Build</button></span><span>only makes the program file, next to your .txt (game.txt → game), just like <code>brick build game.txt</code>.</span>
       <span><button style="pointer-events:none;padding:2px 10px">■ Stop</button></span><span>stops a program that's still running (handy after <code>repeat forever</code>).</span>
     </div>
@@ -1942,7 +2070,141 @@ const HELP = {
   try { tray = localStorage.getItem("brick-tray") || "off"; } catch (e) {}
   setTray(tray === "on");
   showLine();
+  setTimeout(() => drawWords(true), 0);         // the Words badge: words brick doesn't know in this program
 })();
+
+// ---------------- words: teach brick new words, and try lines ----------------
+
+const wordsWhere = () => ($("input[name=wWhere]:checked") || {}).value || "every";
+let wordsTimer = null;
+src.addEventListener("input", () => {
+  clearTimeout(wordsTimer);
+  wordsTimer = setTimeout(() => { if (state.tab === "wordsView") drawWords(); else drawWords(true); }, 1500);
+});
+
+async function drawWords(badgeOnly) {
+  const known = $("#wKnown");
+  if (!known.children.length && state.starters.size) {
+    known.innerHTML = [...new Set([...state.starters, ...Object.keys(state.colours)])].sort()
+      .map(w => `<option value="${esc(w)}">`).join("");
+  }
+  let d;
+  try { d = await api("/api/words/list", {path: state.path, text: src.value}); } catch (e) { return; }
+  if (!d || !d.every) return;
+  $("#wordsBadge").textContent = d.unknown.length || "";
+  if (badgeOnly) return;
+  const box = $("#wUnknown");
+  if (!box.querySelector("input:focus")) {
+    if (!src.value.trim()) box.innerHTML = `<span class="empty">Write a program on the left. Any word brick doesn't know shows up here.</span>`;
+    else if (!d.unknown.length) box.innerHTML = `<span class="empty">brick knows every word in this program.</span>`;
+    else box.innerHTML = d.unknown.map(u => {
+      const shown = esc(u.line).replace(new RegExp(`\\b(${u.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})\\b`, "i"), "<b>$1</b>");
+      return `<div class="unk" data-word="${esc(u.word)}" data-n="${u.number}">
+        <div class="ln">line ${u.number}: ${shown}</div>
+        <div class="row">
+          <span class="means">'${esc(u.word)}' means</span>
+          <input type="text" class="m" list="wKnown" value="${esc(u.guess || "")}" placeholder="a word brick knows, like write" spellcheck="false">
+          <button class="hot" data-act="teach">Teach</button>
+          ${u.guess ? `<button data-act="spell" data-guess="${esc(u.guess)}" title="It's a typo: change it in the program">Change it to '${esc(u.guess)}'</button>` : ""}
+          <button class="quiet" data-act="line">Show the line</button>
+        </div><div class="msg"></div></div>`;
+    }).join("");
+  }
+  const item = (label, attrs) => `<div class="item"><span>${label}</span><button class="quiet" ${attrs}>Forget</button></div>`;
+  $("#wMine").innerHTML =
+    `<div class="sub">All my programs</div>` +
+    (d.every.length ? d.every.map(w => item(`${esc(w.word)} <span class="means">means</span> ${esc(w.meaning)}`,
+        `data-forget="every" data-word="${esc(w.word)}"`)).join("") : `<div class="empty">None yet.</div>`) +
+    `<div class="sub">Only this folder (${esc(d.folder)}/mywords.txt)</div>` +
+    (d.here.length ? d.here.map(w => item(esc(w.line), `data-forget="here" data-key="${esc(w.key)}"`)).join("")
+                   : `<div class="empty">None yet.</div>`);
+}
+
+function setMsg(el, ok, text) { el.className = "msg " + (ok ? "good" : "bad"); el.textContent = text; }
+
+async function teachWord(word, meaning, where, msgEl) {
+  word = word.trim(); meaning = meaning.trim();
+  if (!word || !meaning) return setMsg(msgEl, false, "Type the new word and what it means.");
+  setMsg(msgEl, true, "Checking it works…");
+  const d = await api("/api/words/teach", {path: state.path, word, meaning, where});
+  setMsg(msgEl, d.ok, d.message);
+  if (msgEl !== $("#wMsg")) setMsg($("#wMsg"), d.ok, d.message);     // the row goes away once it's known
+  if (d.ok) {
+    if (d.example) { $("#wTry").value = d.example; tryWords(); }
+    if (typeof scheduleWatch === "function") scheduleWatch();
+    drawWords();
+  }
+  return d.ok;
+}
+
+$("#wTeach").addEventListener("click", async () => {
+  if (await teachWord($("#wWord").value, $("#wMeaning").value, wordsWhere(), $("#wMsg"))) {
+    $("#wWord").value = ""; $("#wMeaning").value = "";
+  }
+});
+["#wWord", "#wMeaning"].forEach(id => $(id).addEventListener("keydown", e => { if (e.key === "Enter") $("#wTeach").click(); }));
+$$("#words .ideas button").forEach(b => b.addEventListener("click", () => {
+  $("#wWord").value = b.dataset.w; $("#wMeaning").value = b.dataset.m; $("#wMeaning").focus();
+}));
+
+function setProgram(text) {
+  src.value = text;
+  src.dispatchEvent(new Event("input"));
+}
+
+$("#wUnknown").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-act]");
+  if (!b) return;
+  const row = b.closest(".unk"), word = row.dataset.word, n = +row.dataset.n;
+  if (b.dataset.act === "teach") teachWord(word, $("input", row).value, wordsWhere(), $(".msg", row));
+  if (b.dataset.act === "line") selectLine(n, {moveCaret: true});
+  if (b.dataset.act === "spell") {
+    const lines = src.value.split("\n");
+    const re = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+    lines[n - 1] = lines[n - 1].replace(re, b.dataset.guess);
+    setProgram(lines.join("\n"));
+    drawWords();
+  }
+});
+$("#wUnknown").addEventListener("keydown", e => {
+  if (e.key === "Enter" && e.target.matches("input")) $("button[data-act=teach]", e.target.closest(".unk")).click();
+});
+
+$("#wMine").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-forget]");
+  if (!b) return;
+  const d = await api("/api/words/forget", {path: state.path, where: b.dataset.forget, word: b.dataset.word, key: b.dataset.key});
+  setMsg($("#wMsg"), d.ok, d.message);
+  if (typeof scheduleWatch === "function") scheduleWatch();
+  drawWords();
+});
+
+async function tryWords() {
+  const text = $("#wTry").value;
+  const out = $("#wResult");
+  if (!text.trim()) { out.innerHTML = `<div class="reads">Type a line first.</div>`; return; }
+  out.innerHTML = `<div class="reads">Building and running it…</div>`;
+  const d = await api("/api/words/try", {path: state.path, text});
+  let html = "";
+  if (d.reads && d.reads.length) html += `<div class="reads">${d.reads.map(r => "brick read " + esc(r)).join("<br>")}</div>`;
+  if (!d.ok) html += `<div class="out" style="color:var(--bad)">${esc(d.problem || "It didn't build.")}</div>`;
+  else {
+    if (d.ran) {
+      const shown = d.output.map(p => `<span style="${p.colour ? `color:${p.colour};` : ""}${p.bold ? "font-weight:700;" : ""}">${esc(p.text)}</span>`).join("");
+      html += `<div class="sub">It shows</div><div class="out">${shown || '<span class="empty">(nothing on the screen)</span>'}</div>`;
+    }
+    if (d.why) html += `<div class="reads">${esc(d.why)}</div>`;
+  }
+  out.innerHTML = html;
+}
+$("#wTryBtn").addEventListener("click", tryWords);
+$("#wTry").addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); tryWords(); } });
+$("#wAddBtn").addEventListener("click", () => {
+  const add = $("#wTry").value.trim();
+  if (!add) return;
+  setProgram(src.value.replace(/\s*$/, "") + (src.value.trim() ? "\n" : "") + add + "\n");
+  setMsg($("#wMsg"), true, "Added to the end of your program.");
+});
 </script>
 </body>
 </html>

@@ -47,7 +47,9 @@ from elf import FILE_ADDRESS, HEADERS_SIZE, SPACE_ADDRESS, wrap  # noqa: E402
 from expressions import Problem  # noqa: E402
 from reader import group_parts, split_line  # noqa: E402
 
-PORT = 8766
+PORT = int(os.environ.get("BRICK_GUI_PORT") or 8766)   # BRICK_GUI_PORT: for tests, beside a real one
+import factory  # noqa: E402
+STAMP = factory.code_stamp()                # brick's code as this server started with it
 NOWHERE = "class:^brick-gui-no-window$"     # a run inside the page has no window of its own to move
 
 
@@ -394,7 +396,7 @@ def export(text, path=None, console=None):
 
     section("BUILD")
     out.append(f"built: {'yes' if r['ok'] else 'no'}  ({r['took']} ms)")
-    out.append(f"opens a console window of its own (window words): {'yes' if r['uses_window'] else 'no'}")
+    out.append(f"opens a console of its own (console words): {'yes' if r['uses_window'] else 'no'}")
     out.extend(f"problem: {p}" for p in r["problems"])
     out.extend(f"note: {n}" for n in r["notes"])
     out.append("counts: " + ", ".join(f"{v:,} {k}" for k, v in r["counts"].items()))
@@ -737,6 +739,69 @@ def close_when_idle(server):
             return
 
 
+def restart_when_changed(server, args):
+    """When brick's code on disk changes, start again with it (same port, so an open page carries on).
+    Waits while a program runs in the page. The page sees the new stamp and reloads itself."""
+    while True:
+        time.sleep(4)
+        if factory.code_stamp() == STAMP or any(s.done is None for s in sessions.values()):
+            continue
+        time.sleep(1)                                 # let a save that's still writing finish
+        print("brick's code changed, so brick gui restarts with it.", flush=True)
+        server.socket.close()
+        os.execv(sys.executable, [sys.executable, os.path.join(HERE, "brick.py"), "gui"] + args)
+
+
+def server_on_port():
+    """The process listening on PORT -> its pid, or None. (Looks in /proc: no extra tools needed.)"""
+    inodes = set()
+    for table in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            with open(table) as f:
+                for row in list(f)[1:]:
+                    part = row.split()
+                    if part[1].endswith(f":{PORT:04X}") and part[3] == "0A":
+                        inodes.add(part[9])
+        except OSError:
+            pass
+    for pid in filter(str.isdigit, os.listdir("/proc")):
+        try:
+            for fd in os.listdir(f"/proc/{pid}/fd"):
+                link = os.readlink(f"/proc/{pid}/fd/{fd}")
+                if link.startswith("socket:[") and link[8:-1] in inodes:
+                    return int(pid)
+        except OSError:
+            continue
+    return None
+
+
+def replace_old_server():
+    """Port taken. A brick gui from before servers updated themselves can't be told to: stop it, so a
+    new one with the current code takes over -> True. A current one keeps itself up to date -> False."""
+    from urllib.request import urlopen
+    try:
+        with urlopen(f"http://127.0.0.1:{PORT}/api/alive", timeout=3) as r:
+            if "stamp" in json.loads(r.read() or b"{}"):
+                return False
+    except Exception:
+        pass
+    pid = server_on_port()
+    if not pid or pid == os.getpid():
+        return False
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            if b"brick.py" not in f.read():           # someone else's program: leave it alone
+                return False
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        return False
+    for _ in range(50):
+        if server_on_port() is None:
+            return True
+        time.sleep(0.1)
+    return False
+
+
 class Handler(BaseHTTPRequestHandler):
     start_folder = os.getcwd()
     reviewing = False
@@ -767,8 +832,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         url = urlparse(self.path)
         query = {k: v[0] for k, v in parse_qs(url.query).items()}
-        if url.path == "/api/alive":                 # the window is still open
-            return self.send({"ok": True})
+        if url.path == "/api/alive":                 # the window is still open (and which code is serving it)
+            return self.send({"ok": True, "stamp": STAMP})
         if url.path in ("/", "/index.html"):
             with open(os.path.join(HERE, "gui.html"), "rb") as f:
                 return self.send(f.read(), "text/html; charset=utf-8")
@@ -793,6 +858,7 @@ class Handler(BaseHTTPRequestHandler):
                 with open(log, encoding="utf-8", errors="replace") as f:
                     activity = [line.rstrip() for line in f][-40:][::-1]
             return self.send({"running": factory.running(), "activity": activity, "items": outliers.entries(),
+                              "groups": outliers.groups(),
                               "director": len(outliers.entries(outliers.FOR_DIRECTOR))})
         if url.path == "/api/imagination":           # what brick imagined: newest first, with where it came from
             import factory
@@ -863,6 +929,27 @@ class Handler(BaseHTTPRequestHandler):
             line = text.split("\n")[number - 1].strip()
             threading.Thread(target=keep_general, args=(line, meant, words), daemon=True).start()
             return self.send({"ok": True, "message": f"Kept: brick reads '{line}' as '{meant}' from now on."})
+        if url.path.startswith("/api/words/"):       # the Words tab: teach brick words, try lines
+            import words
+            folder = os.path.dirname(asked["path"]) if asked.get("path") else self.start_folder
+            mine = os.path.join(folder, "mywords.txt")
+            what = url.path.rsplit("/", 1)[1]
+            if what == "list":
+                return self.send({**words.listing(mine), "unknown": words.unknown(asked.get("text", ""), mine),
+                                  "folder": folder})
+            if what == "teach":
+                if asked.get("where") == "here":
+                    ok, message, example = words.teach_here(asked.get("word", ""), asked.get("meaning", ""), mine)
+                else:
+                    ok, message, example = words.teach(asked.get("word", ""), asked.get("meaning", ""))
+                return self.send({"ok": ok, "message": message, "example": example})
+            if what == "forget":
+                ok, message = words.forget_here(asked.get("key", ""), mine) if asked.get("where") == "here" \
+                    else words.forget(asked.get("word", ""))
+                return self.send({"ok": ok, "message": message})
+            if what == "try":
+                return self.send(words.try_text(asked.get("text", ""), mine))
+            return self.send({"error": "not here"}, status=404)
         if url.path == "/api/read_line":
             import bricks
             return self.send({"directions": bricks.read_line(asked.get("line", ""))})
@@ -877,6 +964,11 @@ class Handler(BaseHTTPRequestHandler):
                               "indent": len(raw.expandtabs(4)) - len(raw.expandtabs(4).lstrip()),
                               "directions": bricks.read_line(raw) if kind == "line" else []})
             return self.send({"lines": lines})
+        if url.path == "/api/decide-group":           # one decision for every line that grew from one root
+            import outliers
+            ok, message = outliers.decide_group(asked.get("key", ""), asked.get("action", ""),
+                                                asked.get("meaning", "").strip())
+            return self.send({"ok": ok, "message": message})
         if url.path == "/api/decide":
             import outliers
             ok, message = outliers.decide(asked.get("id", ""), asked.get("action", ""), asked.get("meaning", "").strip())
@@ -945,6 +1037,7 @@ def main(args=None):
     show = "--no-browser" not in args
     app = "--app" in args                           # a window of its own, from the launcher
     Handler.reviewing = "--review" in args          # opened just for a review: it closes once that's done
+    restart_args = [a for a in args if a != "--review"] + (["--no-browser"] if "--no-browser" not in args else [])
     args = [a for a in args if a not in ("--no-browser", "--review", "--app")]
     if args:
         source = brick.find_source(args[0])
@@ -952,11 +1045,19 @@ def main(args=None):
             print(f"I can't find {args[0]} in {os.getcwd()}. Check the name, or cd to its folder first.")
             sys.exit(1)
         Handler.start_file = os.path.abspath(source)
-    try:
-        server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    except OSError:
+    server = None
+    for attempt in range(2):
+        try:
+            server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+            break
+        except OSError:
+            if attempt or not replace_old_server():
+                break
+            print("An older brick gui was open; it has stopped, so this one (with the current code) takes over.")
+    if server is None:
         print(f"Something is already using port {PORT}; brick gui may be open already: http://127.0.0.1:{PORT}")
-        (open_app if app else webbrowser.open)(f"http://127.0.0.1:{PORT}")
+        if show:
+            (open_app if app else webbrowser.open)(f"http://127.0.0.1:{PORT}")
         return
     server.daemon_threads = True
     address = f"http://127.0.0.1:{PORT}" + (f"/?file={quote(Handler.start_file)}&review=1" if Handler.reviewing else "")
@@ -965,6 +1066,8 @@ def main(args=None):
         threading.Timer(0.3, lambda: (open_app if app else webbrowser.open)(address)).start()
     if app:
         threading.Thread(target=close_when_idle, args=(server,), daemon=True).start()
+    if not Handler.reviewing:
+        threading.Thread(target=restart_when_changed, args=(server, restart_args), daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

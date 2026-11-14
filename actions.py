@@ -34,7 +34,7 @@ STYLES = {"bold": "1", "italic": "3", "italics": "3", "underlined": "4", "underl
 BIG = ("big", "large", "huge", "giant")      # "in big red letters": a console can only make it bold
 TEXT_WORDS = {"text", "writing", "words", "message", "note", "letters", "label"}     # "red text saying hi"
 SAYING = ("that says", "that reads", "which says", "which reads", "saying", "reading", "says", "reads")
-ON_IT = {"on", "in", "inside", "into", "onto", "it", "the", "window", "screen", "console", "terminal", "there"}
+ON_IT = {"on", "in", "inside", "into", "onto", "it", "the", "screen", "console", "terminal", "there"}
 CASES = {"in capitals": "upper", "in capital letters": "upper", "in uppercase": "upper", "in upper case": "upper",
          "in lowercase": "lower", "in lower case": "lower", "in small letters": "lower"}
 
@@ -98,12 +98,12 @@ EXAMPLES = {
     "load": ['load best.txt as best', 'load names.txt as names', 'load names.txt as a list called names'],
     "delete": ['delete best.txt'],
     "move": ['move left', 'move down 3', 'move to the middle of the screen', 'move to row 3 column 10'],
-    "window": ['put the window on the left side of the screen', 'make the window full screen',
-               'make the window bigger', 'move the window right 200', 'make the window 800 by 600',
-               'centre the window', 'set the title to My Game'],
+    "console": ['put the console on the left side of the screen', 'make the console full screen',
+                'make the console bigger', 'move the console right 200', 'make the console 800 by 600',
+                'centre the console', 'set the title of the console to My Game'],
     "placing text": ['write GO in the middle of the screen', 'write score at the top right',
                      'write hi at row 2 column 10', 'the width of the console',
-                     'add "hi" in red to the right of the window and make it disappear after 5 seconds'],
+                     'add "hi" in red to the right of the console and make it disappear after 5 seconds'],
     "clear": ['clear the screen', 'clear the list names'],
     "stop": ['stop', 'stop the game', 'leave the loop'],
     "if": ['if score is more than 10, write wow, otherwise write ok', 'if names contains "Bob" write hi Bob',
@@ -124,6 +124,33 @@ EXAMPLES = {
                  'if thing is like apple, write yum', 'if thing is not like apple, write hmm',
                  'set the likeness needed to 60', 'write the closest match to thing', 'write what thing is like',
                  'write the links of apple'],
+    "window": ['open a window called My Game, 800 by 600, in navy', 'open a resizable window 50% by 50%',
+               'make the window 800 by 600', 'set the title of the window to My Game', 'write hi in the window',
+               'close the window'],
+    "button": ['make a button called start saying Start at 20 20, 120 by 40, in orange with round corners',
+               'add a button saying Quit at the bottom right', 'make start turn yellow when the mouse is over it',
+               'put a text called score at the top saying Score: 0, in gold, size 24',
+               'make an input box called name below start', 'make a box called panel at 10% 10%, 80% by 80%'],
+    "draw": ['make a canvas called board at 20 80, 400 by 300 with a gradient from black to navy going down',
+             'draw a red circle on board at 50 50, 30 by 30', 'draw a line on board from 0 0 to 100 100 in white, 3 px thick',
+             'draw a triangle on board at 0 0, 50 0 and 25 40', 'draw a red dot on board at the mouse x and the mouse y',
+             'write hello on board at 10 10 in gold', 'clear board'],
+    "menu": ['make a menu called file with New, Open and Quit', 'when New is chosen from file, clear board',
+             'make tabs called pages with Home, Settings and About', 'put start on the Home tab',
+             'when the Settings tab is picked, write settings'],
+    "place and size": ['put start at 20 20', 'start is 20 from the right and 20 from the bottom',
+                       'put start below board with a gap of 10', 'make start 2 cm wide and 1 cm tall',
+                       'make start half the window wide', 'move start right 20', 'resize start to 200 by 50'],
+    "depth": ['put start in front of board', 'put start behind board', 'bring start to the front',
+              'send panel to the back', 'set the depth of start to 5'],
+    "look": ['make start red', 'give start a gradient from red to orange', 'make board checked in grey',
+             'give start a 2 px gold border', 'give panel a shadow', 'make panel half see-through',
+             'round the corners of start by 12', 'make the text of start white and size 20'],
+    "hide": ['hide start', 'show start', 'disable start', 'enable start'],
+    "when": ['when start is clicked, write hi', 'when start is clicked:  (then the lines below it, indented)',
+             'when a key is pressed, write the key', 'when the mouse moves, write the mouse x',
+             'every 100 milliseconds, move ball right 5', 'when the window is closed, write bye',
+             'wait until start is clicked', 'put a red cube in view, then: spin the cube'],
     "teach": ['to greet someone means write hi someone in green', 'a turn means move left then beep',
               'when I say hi, write hello', 'to greet someone means:  (then the lines below it, indented)'],
 }
@@ -131,8 +158,10 @@ for verb, same in {"link": "associate connect relate", "forget": "unlink disconn
                    "write": "say show print display tell output", "set": "let change", "take": "subtract",
                    "make": "create remember", "wait": "pause sleep press", "save": "store keep",
                    "load": "open read get", "delete": "erase", "move": "go", "stop": "end quit exit",
-                   "window": "place resize maximise maximize centre center shrink grow name call",
-                   "add": "push increase decrease append", "clear": "empty"}.items():
+                   "console": "place resize maximise maximize centre center shrink grow name call",
+                   "add": "push increase decrease append", "clear": "empty", "window": "open close",
+                   "draw": "canvas paint", "hide": "disable enable unhide", "depth": "bring send",
+                   "look": "give round", "menu": "tabs"}.items():
     for word in same.split():
         EXAMPLES.setdefault(word, EXAMPLES[verb])
 
@@ -286,6 +315,10 @@ class Actions:
             body = body[audience:]
             if audience and len(body) > 1 and body[0].word == "that":
                 body = body[1:]                                 # "tell the user that the game is over"
+        to_console = ends_with(body, "to the console", "in the console", "on the console", "into the console",
+                               "to the terminal", "in the terminal", "on the terminal", "into the terminal")
+        if to_console and len(body) > to_console:               # "write hi to the console": the console is where
+            body = body[:-to_console]                           # writing goes anyway
         if self.text_saying(body):                              # "write text on it that says hi"
             return self.do_write([words[0]] + self.text_saying(body))
         before, after = split_at(body, "to", "into", last=True)
@@ -568,13 +601,20 @@ class Actions:
         """The longest run of words from start that makes a value worth filling in
         ("how many in names", "score", "first letter of word") -> (end, value); else (start, None).
         Plain numbers, quoted text and 'it' stay as typed."""
-        if body[start].quoted or body[start].word in ("it", "a", "i", "that"):
+        if body[start].quoted or body[start].word in ("it", "that"):
+            return start, None
+        yours = self.named_here(body, start)    # a name you gave that's also an everyday word: a, i, one, round
+        if body[start].word in ("a", "i") and not yours:
             return start, None
         for end in range(len(body), start, -1):
+            if yours and end > start + 1 and any(w.quoted for w in body[start + 1:end]):
+                continue                        # 'write "Round" round "of 3"': round is yours, "of 3" is text
             try:
                 node = read_value(body[start:end], self.kind_of)
             except Problem:
                 continue
+            if yours and end == start + 1 and node != ("name", body[start].word):
+                return end, ("name", body[start].word)          # 'one' is yours here, not the number 1
             if self.stays_words(body, start, end):
                 return end, None
             before = body[start - 1] if start else None
@@ -588,6 +628,19 @@ class Actions:
                 return start, None
             return end, node
         return start, None
+
+    VALUE_WORDS = {"plus", "minus", "times", "divided", "by", "x", "×", "+", "-", "*", "/", "=", "and", "rounded",
+                   "to", "places", "place", "of", "the", "is", "equals", "are"}
+
+    def named_here(self, body, start):
+        """Is the word at start one of your names (set a to 3), in a line made only of values: quoted text, your
+        names, numbers and maths words ('write a "plus" b', 'write "i is" i')? Then it's yours, even if it's
+        an everyday word too. In 'write I have a dog' the a stays a word."""
+        word = body[start].word
+        if not word or not re.fullmatch(r"[a-z][a-z']*", word) or not self.find(word):
+            return False
+        return all(w.quoted or w.word is None or self.find(w.word) or w.word in self.VALUE_WORDS or
+                   re.fullmatch(r"[\d.]+|[^\w\s]+", w.word) for w in body)
 
     def stays_words(self, body, start, end):
         """'the total' in 'write the total is total' is just words: a name straight after 'the'
@@ -626,7 +679,7 @@ class Actions:
     def do_clear(self, words):
         rest = words[1:]
         if [w.word for w in rest] in ([], ["the", "screen"], ["screen"], ["everything"], ["the", "console"],
-                                      ["the", "terminal"], ["the", "window"]):
+                                      ["the", "terminal"], ["console"], ["terminal"]):
             return self.show("\x1b[2J\x1b[H")
         rest = rest[starts_with(rest, "the list", "the"):]
         self.empty_list(plain_name(rest))
@@ -666,7 +719,7 @@ class Actions:
 
     def do_resize(self, words):
         if not about_window(words):
-            raise Problem("Resize what? Try: resize the window to 800 by 600")
+            raise Problem("Resize what? Try: resize the console to 800 by 600")
         self.window_action(words)
 
     do_maximise = do_maximize = do_centre = do_center = do_shrink = do_grow = do_resize
@@ -676,9 +729,9 @@ class Actions:
         rest = words[1:]
         if len(rest) > 1 and rest[0].word in ("it", "that", "this"):    # "ask a number and call it guess"
             return self.assign(plain_name(rest[1:]), rest[:1])
-        n = starts_with(words[1:], "the window", "the console", "the terminal", "this window", "the game")
+        n = starts_with(words[1:], "the console", "the terminal", "this console", "the game")
         if not n:
-            raise Problem("Name what? Try: name the window My Game")
+            raise Problem("Name what? Try: name the console My Game")
         self.set_title(words[1 + n:])
 
     do_call = do_name
@@ -829,7 +882,7 @@ class Actions:
             self.a.to_xmm(XMM1, RAX)
             self.a.decimal_maths("mul", XMM0, XMM1)
             self.a.decimal_to_whole(RAX, XMM0)
-        self.a.call("sleep")
+        self.a.call("bww_sleep" if self.uses_gui else "sleep")      # a window stays alive while it waits
 
     do_pause = do_sleep = do_wait
 
@@ -864,8 +917,9 @@ class Actions:
 
     def do_set(self, words):
         body = words[1:]
-        title = starts_with(body, "the title to", "the title of the window to", "the window title to",
-                            "the title as", "title to", "the console title to")
+        title = starts_with(body, "the title to", "the title of the console to", "the console's title to",
+                            "the title as", "title to", "the console title to", "the title of the terminal to",
+                            "the terminal title to")
         if title:
             return self.set_title(body[title:])
         colour = starts_with(body, "the text colour to", "the text color to", "text colour to", "text color to",
@@ -1593,6 +1647,10 @@ def help_text():
               "Blocks: a line ending in ':' (repeat, if, for each, otherwise) takes the lines indented under it",
               "Colours: " + ", ".join(sorted(set(COLOURS))) + "  (in green, in light blue, on a blue background, in bold red)",
               f"    and {len(dictionary.of_kind('colour'))} more from the dictionary, like crimson, navy, teal and sea green",
+              "Windows of brick's own (once a line says window, button, canvas, menu ...): window values are",
+              "    the mouse x, the mouse y, the key, the chosen item, the x of start, the width of board,",
+              "    the text of name, the depth of start, the width of the window. Sizes and places in px, %, pt,",
+              "    mm, cm, inches or em; 'the window' is brick's own window, 'the console' is where write goes.",
               "Tips: put text in quotes to keep it exactly as typed: write \"high score\" score",
               "",
               f"The dictionary: {len(dictionary.entries())} more everyday words, each taken to its nearest meaning here:",

@@ -40,8 +40,8 @@ brick can do only these things, written exactly like this:
   write WORDS N times                  after N seconds write WORDS        wait N seconds
   clear the screen                     beep                               stop
   set the background colour to COLOUR  set the colour to COLOUR           make it say WORDS
-  make it disappear after N seconds    put the window on the left side of the screen (or right, top, bottom)
-  make the window bigger | smaller | full screen                          set the title to WORDS
+  make it disappear after N seconds    put the console on the left side of the screen (or right, top, bottom)
+  make the console bigger | smaller | full screen                         set the title to WORDS
   ask "QUESTION" as NAME               set NAME to VALUE                  add N to NAME
   repeat N times: DIRECTION            if NAME is VALUE, DIRECTION        for each X in LIST, DIRECTION
 Rules:
@@ -57,7 +57,7 @@ EXAMPLES = [
     ("bg red", "set the background colour to red"),
     ("hi x3", "write hi 3 times"),
     ("2 secs wait", "wait 2 seconds"),
-    ("window left", "put the window on the left side of the screen"),
+    ("console left", "put the console on the left side of the screen"),
     ("can you put at the top of the screen a blue text that says hi there", "write hi there in blue at the top"),
     ("write hello in blue at the x 20 and y 20", "write hello in blue at row 20 column 20"),
     ("make text navy", "set the colour to navy"),
@@ -265,7 +265,7 @@ def only_known_words(reading, line):
     theirs = set(re.findall(r"[a-z0-9']+", line.lower()))
     brick = set(universe.universe().words) | set(STARTERS) | set(re.findall(r"[a-z]+", GUIDE.lower()) if False else ())
     brick |= {"write", "the", "a", "in", "at", "on", "to", "of", "row", "column", "colour", "background", "set",
-              "wait", "seconds", "second", "times", "after", "then", "put", "window", "side", "screen", "clear",
+              "wait", "seconds", "second", "times", "after", "then", "put", "window", "console", "side", "screen", "clear",
               "make", "bold", "capitals", "top", "bottom", "left", "right", "middle", "it", "say", "beep", "stop",
               "bigger", "smaller", "full", "title", "disappear", "ask", "as", "add", "repeat", "if", "is", "for", "each"}
     for word in re.findall(r"[a-z0-9']+", reading.lower()):

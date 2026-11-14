@@ -28,7 +28,7 @@ COLOURS = ["red", "green", "blue", "yellow", "orange", "pink", "purple", "cyan",
            "gold", "navy", "lime", "magenta"]
 SIDES = ["left", "right", "top", "bottom"]
 SHORT = {"seconds": "secs", "second": "sec", "background": "bg", "colour": "color", "please": "pls",
-         "you": "u", "and": "&", "screen": "screen", "window": "window"}
+         "you": "u", "and": "&", "screen": "screen", "console": "console"}
 CHATTER_BEFORE = ["ok so", "um", "can you", "pls", "just", "right", "so yeah", "hey", "now", "and", "also"]
 CHATTER_AFTER = ["lol", "pls", "thx", "ok", "real quick", "rn", "yeah", "thanks", "!!", "..."]
 JOINS = [" ; ", "; ", ";", " then ", ", then ", " and then ", ". ", " ", "... ", " - ", ", ", " then ", "  ", " & then "]
@@ -70,11 +70,11 @@ def background():
                 f"background colour {c}", f"make background {c}"]})
 
 
-def window():
+def console():
     side = random.choice(["left", "right"])
-    return Part(f"put the window on the {side} side of the screen", {"all": [f"window {side}", f"put window {side}",
-                f"window to the {side}", f"move the window to the {side} side", f"put the window at {side} side of screen",
-                f"{side} side window", f"window on the {side}"]})
+    return Part(f"put the console on the {side} side of the screen", {"all": [f"console {side}", f"put console {side}",
+                f"console to the {side}", f"move the console to the {side} side", f"put the console at {side} side of screen",
+                f"{side} side console", f"console on the {side}"]})
 
 
 def clear():
@@ -95,7 +95,7 @@ def text_colour():
                                                     f"text colour {c}", f"make the writing {c}"]})
 
 
-MAKERS = [show, show, show, show, background, window, clear, wait, text_colour]
+MAKERS = [show, show, show, show, background, console, clear, wait, text_colour]
 
 
 # ---------------- scrambling ----------------

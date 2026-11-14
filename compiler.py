@@ -25,6 +25,7 @@ import teach
 import universe
 from actions import BRAIN_WORDS, EXAMPLES, RESET, STARTERS, Actions, case_at_end, colour_words, file_name, plain_name, split_at
 from window import WINDOW_HELP, Window
+from bitwords import BitWords
 from asm import Asm, EQUAL, GREATER, LESS, NOT_GREATER, NOT_LESS, R8, RAX, RCX, RDX
 from elf import wrap
 from expressions import Emitter, Parser, Problem, item_kind, read_condition, read_value
@@ -153,7 +154,7 @@ def otherwise_line(line):
     return found.group(1) if found else None
 
 
-class Compiler(Actions, Window):
+class Compiler(Actions, Window, BitWords):
     def __init__(self, words_file="mywords.txt", ask_user=input):
         self.a = Asm()
         self.emitter = Emitter(self)
@@ -167,6 +168,7 @@ class Compiler(Actions, Window):
         self.uses_brain = False        # does it link symbols? Then it carries the brain's routines too
         self.worked_out = set()        # lines where write fills in a value it works out ("how many in pets")
         self.actions_on = {}           # line number -> how many actions brick read on it
+        self.texts_on = {}             # line number -> the texts its own directions used (not the toolbox's)
         self.last_shown = None         # what "make it disappear" means: "placed" text, a "line", or nothing yet
         self.known_names = set()       # for "did you mean ...?"
         self.words_file = words_file
@@ -178,6 +180,7 @@ class Compiler(Actions, Window):
         self.notes = []                # "Note: line 3: 'scroe' looks like 'score'." for likely typos
         self.line_number = 0
         self.dictionary_starts = dictionary.first_words("action", "loop")    # scribble, inquire, turn ...
+        self.gui_setup()               # brick's own windows (bitwords.py): off until the text talks about them
 
     # ---- the whole program ----
 
@@ -243,8 +246,8 @@ class Compiler(Actions, Window):
         try:
             for number, raw in enumerate(lines, 1):
                 line = raw.strip()
-                if not line or line.startswith("#") or line.endswith(":"):
-                    continue
+                if not line or line.startswith("#") or line.endswith(":") or number in self.gui_lines:
+                    continue                  # window words are brick's own reading
                 if self.shows_describing(line, shown) or self.drops_words(line, shown, lines, number):
                     found[number] = None
                     continue
@@ -275,10 +278,18 @@ class Compiler(Actions, Window):
                 set(words) & CONTROL or teach.read_definition(line) or number in self.worked_out:
             return None                       # one plain direction (as you wrote it); paragraphs are re-cut; ifs, loops,
                                               # your own words, and lines where brick worked a value out are brick's own
-        seen = set(re.findall(r"[a-z0-9']+", shown.lower()))
-        echoed = sum(w in seen for w in words[1:]) >= 0.8 * len(words[1:])     # it printed the line itself
+        here = " ".join(self.texts_on.get(number, ()))       # what this line itself printed, not the whole program
+        seen = set(re.findall(r"[a-z0-9']+", here.lower()))
+        printed = sum(w in seen for w in words[1:])
+        if printed < 0.5 * len(words[1:]):
+            return None                       # brick read most of the line as directions, not words to show
+                                              # ('write a blank line', 'link cat with the words in fact'): its own reading
+        echoed = printed >= 0.8 * len(words[1:])     # it printed the line itself
         before = "\n".join(lines[max(0, number - 3):number - 1])
+        others = {other.strip().lower() for k, other in enumerate(lines, 1) if k != number}
         for way in neural.readings(line, before):
+            if way.strip().lower() in others or "\\" in way:
+                continue                      # a copy of another line of the program, or an escape like '\n' as text
             said = re.findall(r"[a-z0-9']+", way.lower())
             if said[1:] == words[1:] or way.lower() == line.lower():
                 return None                   # it agrees: just words to show
@@ -361,16 +372,19 @@ class Compiler(Actions, Window):
     def compile_text(self, text):
         runtime.start(self.a)
         self.erases = bool(VANISHING.search(text))
+        self.gui_setup(text)
         problems = []
         self.compile_items(read_blocks(text), problems)
         if problems:
             raise Problem("\n".join(problems))
+        self.gui_finish()                      # a window it opened stays open until it's closed
         if self.coloured:
             self.show(RESET)
         runtime.finish(self.a)
         runtime.add_all(self.a)
         if self.uses_brain:
             runtime.add_brain(self.a)
+        self.gui_routines()
         return wrap(self.a)
 
     def compile_items(self, items, problems):
@@ -413,7 +427,9 @@ class Compiler(Actions, Window):
             if line.count('"') % 2:
                 raise Problem('A quote mark " is missing its partner. Quotes go in pairs: write "hello"')
             if line:
+                start = len(self.a.text_log)
                 self.compile_line(line, block if children else None, otherwise)
+                self.texts_on.setdefault(number, set()).update(self.a.text_log[start:])
             if otherwise and "otherwise" not in used:
                 raise LonelyOtherwise("'otherwise' needs an 'if' just before it.")
         except LonelyOtherwise as problem:
@@ -447,9 +463,14 @@ class Compiler(Actions, Window):
 
     def compile_line(self, line, block=None, otherwise=None):
         """block: compiles the lines indented under this one; otherwise: compiles the 'otherwise' line after it."""
+        if self.gui_event(line, block):          # "when start is clicked, ...", "every 2 seconds, ..."
+            return None
         definition = teach.read_definition(line)
         if definition:
             return self.learn(definition)
+        whole = self.gui_whole_line(line)        # "make a menu called file with New, Open and Quit": one phrase
+        if whole:
+            return self.compile_action(whole)
         first = line.split()[0].lower()
         if teach.unfinished(line) and (first == "to" or first not in STARTERS):    # not "write it means"
             head = teach.unfinished(line)
@@ -553,6 +574,8 @@ class Compiler(Actions, Window):
             return True
         if self.delay_at_start(words[i:]):
             return True
+        if self.gui_starts(w):
+            return True
         for n in range(1, 4):                   # "score = 5", "high score is now 10"
             joiner = [x.word for x in words[i + n:i + n + 2]]
             if joiner[:1] in (["="], ["becomes"]) or joiner == ["is", "now"]:
@@ -560,7 +583,7 @@ class Compiler(Actions, Window):
         return False
 
     def names_something(self, words):
-        """After 'name' or 'call': 'it guess' or 'the window My Game'."""
+        """After 'name' or 'call': 'it guess', 'the console My Game' or 'the window My Game'."""
         return len(words) > 1 and (words[0].word in ("it", "that", "this") or
                                    [w.word for w in words[:2]] in (["the", "window"], ["the", "console"],
                                                                    ["the", "terminal"], ["this", "window"],
@@ -621,6 +644,8 @@ class Compiler(Actions, Window):
         i = 0
         while i < len(words) - 1 and not self.starts_here(words, i) and words[i].word in FILLER:
             i += 1
+        if self.gui_keeps(words[i:]):           # "close the window" isn't the dictionary's "stop"
+            return words[i:]
         if i + 2 < len(words) and words[i].word in ("make", "have", "let", "get", "tell") \
                 and words[i + 1].word in ("it", "me", "us", "the", "them"):
             j = i + 2
@@ -1191,10 +1216,14 @@ class Compiler(Actions, Window):
         words = self.drop_filler(words)
         if self.vanishes(words):
             return self.make_disappear()
+        words = self.same_as(words)
         for definition in reversed(self.definitions):
             filled = teach.match(definition, words)
             if filled is not None:
                 return self.use_word(definition, filled)
+        plan = self.gui_read(words)              # brick's own window: buttons, canvases, menus ...
+        if plan:
+            return plan()
         verb = words[0].word
         handler = self.handler_for(words)
         if handler is None:
@@ -1237,13 +1266,28 @@ class Compiler(Actions, Window):
     def more_help(self, words, verb):
         """Extra lines for a problem: how to talk about the window, or examples for this verb."""
         said = {w.word for w in words}
-        if said & {"console", "window", "terminal"}:
+        if said & {"console", "terminal"}:
             return "\n    " + WINDOW_HELP
+        if self.gui_on and said & {"window", "button", "canvas", "menu", "tabs", "tab"}:
+            return self.gui_help(words)
         if verb in EXAMPLES:
             return "\n    You can say: " + "  |  ".join(EXAMPLES[verb][:3])
         return ""
 
     # ---- your own words ----
+
+    def same_as(self, words):
+        """'zap means write' makes zap another word for write: 'zap hello in red' -> 'write hello in red'.
+        Only for a word (or words) with no holes that mean one word brick already knows as a direction."""
+        for definition in reversed(self.definitions):
+            head = [part for kind, part in definition.pattern]
+            body = definition.body.strip().lower()
+            if any(kind != "word" for kind, _ in definition.pattern) or " " in body or \
+                    body not in STARTERS and body not in self.dictionary_starts:
+                continue
+            if len(words) > len(head) and [w.word for w in words[:len(head)]] == head:
+                return [Word(body)] + words[len(head):]
+        return words
 
     def learn(self, definition):
         first = definition.first_word()

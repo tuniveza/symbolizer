@@ -28,6 +28,7 @@ class Asm:
         self.jumps = []        # (position of a 4-byte distance, label)
         self.addresses = []    # (position of an 8-byte address, label)
         self.texts = {}        # text -> its data label, so each text is stored once
+        self.text_log = []     # every text asked for, in order (so the compiler knows which line used which)
         self.count = 0
 
     # ---- labels, texts and space ----
@@ -41,6 +42,7 @@ class Asm:
 
     def text(self, s):
         """A fixed text, stored as: 8-byte length, the bytes, a zero byte."""
+        self.text_log.append(s)
         if s not in self.texts:
             raw = s.encode()
             self.texts[s] = self.new_label("text")
@@ -229,6 +231,111 @@ class Asm:
 
     def syscall(self):
         self.emit(0x0F, 0x05)
+
+    # ---- more instructions, for drawing and windows (bitwin, the Wayland client, the drawing routines) ----
+
+    def call_reg(self, reg):
+        """CALL reg: call the routine whose address is in reg (FF /2)."""
+        self.reg_reg(0xFF, 2, reg, wide=False)
+
+    def jump_reg(self, reg):
+        """JMP reg (FF /4)."""
+        self.reg_reg(0xFF, 4, reg, wide=False)
+
+    def load32(self, reg, base, offset=0):
+        """reg = the 4 bytes at [base + offset], zero-extended."""
+        self.reg_mem(0x8B, reg, base, offset, wide=False)
+
+    def load32_signed(self, reg, base, offset=0):
+        """reg = the 4 bytes at [base + offset], sign-extended (MOVSXD)."""
+        self.reg_mem(0x63, reg, base, offset)
+
+    def store32(self, base, offset, reg):
+        """The low 4 bytes of reg go to [base + offset]."""
+        self.reg_mem(0x89, reg, base, offset, wide=False)
+
+    def load16(self, reg, base, offset=0):
+        """reg = the 2 bytes at [base + offset], zero-extended (MOVZX)."""
+        self.reg_mem(b"\x0f\xb7", reg, base, offset)
+
+    def store16(self, base, offset, reg):
+        """The low 2 bytes of reg go to [base + offset]."""
+        self.emit(0x66)
+        self.reg_mem(0x89, reg, base, offset, wide=False)
+
+    def shift_left_cl(self, reg):
+        """reg <<= cl."""
+        self.reg_reg(0xD3, 4, reg)
+
+    def shift_right_signed(self, reg, n):
+        """reg >>= n, keeping the sign (SAR)."""
+        self.reg_reg(0xC1, 7, reg)
+        self.emit(n)
+
+    def shift_right_signed_cl(self, reg):
+        """reg >>= cl, keeping the sign (SAR)."""
+        self.reg_reg(0xD3, 7, reg)
+
+    def multiply_n(self, dst, src, n):
+        """dst = src x a fixed number (IMUL r64, r/m64, imm32)."""
+        self.reg_reg(0x69, dst, src)
+        self.emit(struct.pack("<i", n))
+
+    def move_if(self, condition, dst, src):
+        """dst = src only if the condition holds (CMOVcc)."""
+        self.reg_reg(bytes([0x0F, 0x40 + condition]), dst, src)
+
+    def load_decimal(self, xmm, base, offset=0):
+        """xmm = the 8-byte decimal at [base + offset] (MOVSD)."""
+        self.emit(0xF2)
+        self.reg_mem(b"\x0f\x10", xmm, base, offset, wide=False)
+
+    def store_decimal(self, base, offset, xmm):
+        """The decimal in xmm goes to [base + offset] (MOVSD)."""
+        self.emit(0xF2)
+        self.reg_mem(b"\x0f\x11", xmm, base, offset, wide=False)
+
+    def copy_decimal(self, dst, src):
+        """xmm dst = xmm src (MOVAPD)."""
+        self.reg_reg(b"\x0f\x28", dst, src, wide=False, prefix=b"\x66")
+
+    def square_root(self, dst, src):
+        """xmm dst = the square root of xmm src (SQRTSD)."""
+        self.reg_reg(b"\x0f\x51", dst, src, wide=False, prefix=b"\xf2")
+
+    def decimal_to_whole_rounded(self, reg, xmm):
+        """reg = xmm rounded to the nearest whole number (CVTSD2SI)."""
+        self.reg_reg(b"\x0f\x2d", reg, xmm, prefix=b"\xf2")
+
+    # glspace.py
+    def decimal_max(self, dst, src):
+        """xmm dst = the larger of dst and src (MAXSD F2 0F 5F)."""
+        self.reg_reg(b"\x0f\x5f", dst, src, wide=False, prefix=b"\xf2")
+
+    def decimal_min(self, dst, src):
+        """xmm dst = the smaller of dst and src (MINSD F2 0F 5D)."""
+        self.reg_reg(b"\x0f\x5d", dst, src, wide=False, prefix=b"\xf2")
+
+    def load16_signed(self, reg, base, offset=0):
+        """reg = the 2 bytes at [base + offset], sign-extended (MOVSX r64, m16: REX.W 0F BF)."""
+        self.reg_mem(b"\x0f\xbf", reg, base, offset)
+
+    def fill_dwords(self):
+        """Store eax into rcx 4-byte places from [rdi] on (REP STOSD F3 AB)."""
+        self.emit(0xF3, 0xAB)
+
+    # paint.py
+    def fill_bytes(self):
+        """Store al into rcx bytes from [rdi] on (REP STOSB F3 AA)."""
+        self.emit(0xF3, 0xAA)
+
+    def decimal_and(self, dst, src):
+        """xmm dst = the bits of dst and src (ANDPD 66 0F 54), e.g. with 0x7FFF... for the size of a decimal."""
+        self.reg_reg(b"\x0f\x54", dst, src, wide=False, prefix=b"\x66")
+
+    def decimal_clear(self, xmm):
+        """xmm = 0, also ending its tie to earlier sums so the CPU need not wait for them (XORPD 66 0F 57)."""
+        self.reg_reg(b"\x0f\x57", xmm, xmm, wide=False, prefix=b"\x66")
 
     # ---- putting it together ----
 

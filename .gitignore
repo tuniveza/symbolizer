@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+
+# your own brick programs (kept out of the public repo)
+wa/

@@ -17,10 +17,20 @@ COUNT = ["3 times", "x3", "forever", "until", "twice"]
 SAYING = ["saying", "that says", "the words", "make it say", "text"]
 JOINING = ["then", "and", ",", ";", "if", "otherwise", "is", "is more than", "is less than"]
 READY = ["write ___ in ___ at the ___", "write ___ in ___", "put text at the ___ that says ___",
-         "put the window on the ___ side of the screen", "make the window ___", "set the background colour to ___",
+         "put the console on the ___ side of the screen", "make the console ___", "set the background colour to ___",
          "set the colour to ___", "clear the screen", "wait ___ seconds", "after ___ seconds write ___",
          "ask ___ as ___", "repeat ___ times: write ___", "if ___ is ___, write ___", "make it say ___",
          "make it disappear after ___ seconds", "set ___ to ___", "add ___ to ___", "beep"]
+WINDOWS = ["open a window called ___, 800 by 600", "make a button called ___ saying ___ at ___ ___",
+           "put a text called ___ at the top saying ___", "make a canvas called ___ 400 by 300",
+           "make a menu called ___ with ___, ___ and ___", "make tabs called ___ with ___ and ___",
+           "make an input box called ___", "make a box called ___ at ___% ___%, ___% by ___%",
+           "when ___ is clicked, ___", "when ___ is chosen from ___, ___", "when a key is pressed, ___",
+           "every ___ milliseconds, ___", "draw a ___ circle on ___ at ___ ___, ___ by ___",
+           "draw a line on ___ from ___ ___ to ___ ___", "write ___ on ___ at ___ ___", "move ___ right ___",
+           "put ___ in front of ___", "send ___ to the back", "give ___ a gradient from ___ to ___",
+           "make ___ turn ___ when the mouse is over it", "set the text of ___ to ___", "hide ___", "show ___",
+           "wait until ___ is clicked", "close the window"]
 
 
 def hex_of(code):
@@ -43,7 +53,8 @@ def palette():
     meanings = {e.key: e.meaning for e in dictionary.entries()}
     groups = [
         ("Do", "do", [{"text": w} for w in CORE_ACTIONS] + [{"text": w, "more": True} for w in showing + more]),
-        ("Things", "thing", [{"text": w} for w in ["text", "the window", "the background", "the screen", "it"]]),
+        ("Things", "thing", [{"text": w} for w in ["text", "the console", "the window", "the background", "the screen",
+                                                    "it", "button", "canvas", "menu", "tabs", "input box", "box"]]),
         ("Colours", "colour", colours),
         ("Places", "place", [{"text": w} for w in PLACES]),
         ("Time", "time", [{"text": w} for w in TIME]),
@@ -51,6 +62,7 @@ def palette():
         ("Saying", "saying", [{"text": w} for w in SAYING]),
         ("Joining", "glue", [{"text": w} for w in JOINING]),
         ("Ready-made", "ready", [{"text": w} for w in READY]),
+        ("Windows", "ready", [{"text": w} for w in WINDOWS]),
         ("Dictionary", "dictionary", [{"text": w, "hint": f"means: {meanings[w]}", "more": True} for w in words]),
     ]
     return [{"name": name, "kind": kind, "bricks": bricks} for name, kind, bricks in groups]

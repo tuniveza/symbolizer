@@ -199,22 +199,45 @@ wait for a key
 write you took t seconds
 ```
 
-### The screen and the window
+### The screen and the console
 
 ```text
 clear the screen
 write GO in the middle of the screen
 write score at row 2 column 10
 set the title to My Game
-put the window on the left side of the screen
-make the window full screen
-make the window 800 by 600
-centre the window
+put the console on the left side of the screen
+make the console full screen
+make the console 800 by 600
+centre the console
 ```
 
 Placing text works in any Linux terminal.
-Moving the window itself works on the [Hyprland](https://hyprland.org) desktop.
-Elsewhere, window directions are skipped safely and the rest of the program still runs.
+Moving the console itself works on the [Hyprland](https://hyprland.org) desktop.
+Elsewhere, console directions are skipped safely and the rest of the program still runs.
+
+### 🪟 Windows of brick's own
+
+`write` goes to the console. A **window** is brick's own: the program speaks Wayland itself and paints every pixel itself.
+No toolkit, no libraries, no helper app.
+
+```text
+open a window called Painter, 500 by 360, in navy
+make a button called go saying Go at 20 20, 120 by 40, in orange with round corners
+put a text called score at the top saying Score: 0, in gold, size 24
+make a canvas called board below go, 400 by 240 with a gradient from black to blue going down
+make go turn yellow when the mouse is over it
+when go is clicked, set the text of score to "Score: 1"
+when board is clicked, draw a red dot on board at the mouse x and the mouse y
+```
+
+- **Things:** window, button, text, canvas, menu, tabs, input box, box, 3D view (`gl context`).
+- **Places and sizes:** `at 20 40`, `at 10% 20%`, `in the middle`, `20 from the right`, `below board`, `800 by 600`, `2 cm wide`, `half the window wide`. Units: px, %, pt, mm, cm, inches, em.
+- **Depth:** `put go in front of board`, `send panel to the back`, `set the depth of go to 5`.
+- **Looks:** any brick colour, gradients, textures (stripes, dots, checks, grain, bricks, grid), see-through, round corners, borders, shadows, hover colours.
+- **Events:** `when go is clicked`, `when New is chosen from file`, `when a key is pressed`, `every 100 milliseconds`, `when the window is closed`. One line, or a block indented under `...:`.
+
+The window stays open until it is closed. A finished example: [`texts/examples/windows.txt`](texts/examples/windows.txt).
 
 ### Teaching brick your own words
 
@@ -228,6 +251,22 @@ double 21                               → 42
 The words `someone`, `somebody`, `something`, `a number` and `a word` become gaps that are filled in each time.
 Your words are saved in `mywords.txt`, so they are still there next time.
 
+**A new word for a word brick knows** is one line:
+
+```text
+zap means write
+zap hello in red                        → hello (in red), just like write hello in red
+```
+
+**For every program**, teach it from the terminal. brick checks the word works before it keeps it:
+
+```console
+$ brick teach zap means write
+$ brick teach sunny means gold          # then: write hi in sunny
+$ brick teach                           # the words you taught
+$ brick unteach zap                     # forget one
+```
+
 ### Complete examples
 
 The folder [`texts/examples`](texts/examples) has finished programs to read and run:
@@ -240,7 +279,8 @@ The folder [`texts/examples`](texts/examples) has finished programs to read and 
 | [`highscore.txt`](texts/examples/highscore.txt) | A high score kept in a file |
 | [`hangman.txt`](texts/examples/hangman.txt) | Letter checks, loops over words, joining text |
 | [`teach.txt`](texts/examples/teach.txt) | Making your own words |
-| [`window.txt`](texts/examples/window.txt) | A console window that moves around the screen |
+| [`console.txt`](texts/examples/console.txt) | A console that moves around the screen |
+| [`windows.txt`](texts/examples/windows.txt) | A window of brick's own: a menu, buttons, a canvas to paint on |
 
 ---
 
@@ -285,9 +325,10 @@ It is a small web page served only to your own computer (`http://127.0.0.1:8766`
 
 What else is in the window:
 
-- **Run** builds and runs the program in the built-in console. **Run in window** opens a console window of its own.
+- **Run** builds and runs the program in the built-in console. **Run in console** opens a console window of its own.
 - **Bricks** opens a tray of every word brick knows, as tiles to click or drag into your program.
 - **Decisions** lists the lines and words brick couldn't settle by itself, for you to decide when you like.
+- **Words** teaches brick new words: type a word and what it means, for all your programs or just this folder. It lists the words in your program brick doesn't know, with a Teach button (or a spelling fix) for each, has a Try box that builds and runs a line on the spot, and lists your words with a Forget button.
 - **Help** explains how brick works, step by step.
 - **Save .brick** writes your program plus everything the window shows about it, as plain text, to hand to someone else to read.
 - **Save bits** writes the program as brick materials (see below).
@@ -330,7 +371,8 @@ Nothing else is needed on the computer that runs it.
 | [`actions.py`](actions.py) | Every built-in action (`write`, `ask`, `set` ...) and what code it makes |
 | [`expressions.py`](expressions.py) | Values: numbers, decimals, text, yes/no, timers, lists, and the maths between them |
 | [`runtime.py`](runtime.py) | The toolbox: machine-code routines the program calls |
-| [`screen.py`](screen.py), [`window.py`](window.py) | The console, placing text, and moving the window (Hyprland) |
+| [`screen.py`](screen.py), [`window.py`](window.py) | The console, placing text, and moving the console (Hyprland) |
+| [`bitwords.py`](bitwords.py) | The window words: buttons, canvases, menus, places, depth, looks and events, in English |
 | [`asm.py`](asm.py) | A tiny x86-64 assembler: only the instructions brick needs |
 | [`elf.py`](elf.py) | Wraps the machine code in an ELF file Linux can run |
 | [`teach.py`](teach.py) | Your own words: `to greet someone means ...` |
@@ -551,8 +593,8 @@ Use `brick sand game.txt` (or `clay`, `shale`, `cement`) to write just one of th
 
 | Command | What it does |
 |---|---|
-| `brick game.txt` | Makes `./game` and runs it. `brick game` works too. A program that uses window words gets a console window of its own. |
-| `brick window game.txt` | Makes it and runs it in a new console window |
+| `brick game.txt` | Makes `./game` and runs it. `brick game` works too. A program that uses console words gets a console window of its own. |
+| `brick console game.txt` | Makes it and runs it in a new console window. `brick window game.txt` works too. |
 | `brick here game.txt` | Makes it and runs it right here, in this terminal |
 | `brick build game.txt` | Only makes `./game` |
 | `brick gui` | Opens brick kiln. `brick gui game.txt` opens it with that file. `brick gui --app` opens it in a window of its own. |
@@ -586,6 +628,7 @@ $ python3 tests/test_director.py
 | [`test_forgiving.py`](tests/test_forgiving.py) | 17 |
 | [`test_steps.py`](tests/test_steps.py) | 10 |
 | [`test_console.py`](tests/test_console.py) | 8 |
+| [`test_bitwords.py`](tests/test_bitwords.py) | 21 |
 | [`test_brain_words.py`](tests/test_brain_words.py) | 16 |
 | [`test_universe.py`](tests/test_universe.py) | 8 |
 | [`test_brain_universe.py`](tests/test_brain_universe.py) | 7 |
@@ -623,7 +666,7 @@ brick/
 ## ⚠️ Good to know
 
 - brick makes programs for **64-bit Linux on Intel or AMD (x86-64)** only. The programs won't run on macOS, Windows or ARM.
-- **Moving the window** (`put the window on the left ...`) needs the Hyprland desktop. On other desktops these directions are skipped and everything else still works.
+- **Moving the console** (`put the console on the left ...`) needs the Hyprland desktop. On other desktops these directions are skipped and everything else still works.
 - **The neural reader** needs Ollama and a graphics card. brick works fully without it.
 - `make.sh` and `reload.sh` use the author's own local tools. To run brick, use `python3 brick.py` as shown above.
 - brick is a personal project and is still growing. If it misreads a line, it says how it read it, and `brick review` lets you correct it.

@@ -4,7 +4,7 @@
 # Reading this? Start with SOURCE (what the person wrote) and LINES (how brick understood each line).
 # The later sections are the program itself: its memory, its machine code line by line, and every byte.
 
-file: /home/tuniveza/an/ca/la/eg/tit.txt
+file: /home/tuniveza/an/br/tit.txt
 made: 2026-10-17 10:18
 
 

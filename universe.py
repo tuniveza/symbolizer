@@ -385,7 +385,7 @@ def fits(verb, tokens, after=()):
     after: what follows the verb ('make' fits a window only as 'make the window bigger')."""
     told = tell(relate([t for t in tokens if not t.ideas & {"chatter", "filler", "glue"}]))
     said = told[0] if told else ""
-    if said.startswith("put the window") or said.startswith("make the window"):
+    if said.startswith("put the console") or said.startswith("make the console"):
         return bool(verb.ideas & {"placing"}) or bool(verb.ideas & {"make"}) and \
             any("size" in t.ideas for t in after[:3])
     if said.startswith(("set the background", "set the colour")):
@@ -825,9 +825,9 @@ def tell(d):
         if d.where:
             words, places = d.where
             sides = [p for p in places if p not in ("side", "corner", "edge", "half")]
-            return [before + "put the window " + w for w in
+            return [before + "put the console " + w for w in
                     (f"on the {' '.join(sides)} side of the screen", at(words), f"at the {' '.join(sides)}")]
-        return [f"{before}make the window {d.size}"] if d.size else []
+        return [f"{before}make the console {d.size}"] if d.size else []
     if "background" in things and d.look and not d.content:
         return [f"{before}set the background colour to {d.look}", f"{before}make the background {d.look}"]
     if "text" in things and d.look and not d.content and not d.where and d.action in (None, "make"):

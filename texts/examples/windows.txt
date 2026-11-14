@@ -1,0 +1,22 @@
+# A window of brick's own: brick speaks Wayland itself and draws every pixel
+open a window called Painter, 520 by 420, in navy
+make a menu called File with Clear and Quit
+put a text called title at the top saying Click the board to paint, in gold, size 20
+make a canvas called board at 20 80, 320 by 240 with a gradient from black to blue going down
+make a box called panel at 360 80, 140 by 240 with a striped texture in grey, 50% transparent, with round corners
+make a button called red saying Red below panel, 140 by 36, in crimson with round corners
+make a button called green saying Green below red, 140 by 36, in green with round corners
+make red turn orange when the mouse is over it
+make green turn lime when the mouse is over it
+set colour to "red"
+set dots to 0
+when red is clicked, set colour to "red"
+when green is clicked, set colour to "green"
+when board is clicked:
+    add 1 to dots
+    if colour is "red", draw a red dot on board at the mouse x and the mouse y
+    otherwise draw a green dot on board at the mouse x and the mouse y
+    set the text of title to "Dots: " joined with dots
+when Clear is chosen from File, clear board
+when Quit is chosen from File, close the window
+when the window is closed, write You painted dots dots.

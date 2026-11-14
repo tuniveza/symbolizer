@@ -645,13 +645,13 @@ def test_dictionary_places_and_moving():
     assert output("move upwards 2\nstep left\nslide down") == "\x1b[2A\x1b[1D\x1b[1B"
 
 
-def test_dictionary_window_words():
+def test_dictionary_console_words():
     env = dict(os.environ, BRICK_WINDOW="pid:1")      # names a process that has no window: nothing moves
     for line, screen in [("go full screen, write ok", "\x1b[9;1tok\n"),
-                         ("fullscreen the window, write ok", "\x1b[9;1tok\n"),
-                         ("title the window My Game", "\x1b]2;My Game\a"),
-                         ("enlarge the window, write ok", "ok\n"),
-                         ("snap the window to the left, write ok", "ok\n")]:
+                         ("fullscreen the console, write ok", "\x1b[9;1tok\n"),
+                         ("title the console My Game", "\x1b]2;My Game\a"),
+                         ("enlarge the console, write ok", "ok\n"),
+                         ("snap the console to the left, write ok", "ok\n")]:
         shown, code, _ = run(build(line, folder()), env=env)
         assert (shown, code) == (screen, 0), (line, shown, code)
 

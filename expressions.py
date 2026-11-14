@@ -319,6 +319,11 @@ class Parser:
         if number is not None:
             self.at = after
             return ("decimal", number) if isinstance(number, float) else ("number", number)
+        owner = getattr(self.names, "__self__", None)          # brick's own window: the mouse x, the x of start
+        if getattr(owner, "gui_on", False):
+            found = owner.gui_value(self)
+            if found:
+                return found
         if self.peek() == "all":                       # "all the names" is just the list
             skip = 1 + (self.peek(1) == "of")
             skip += self.peek(skip) in ("the", "my", "your", "our")
@@ -681,6 +686,10 @@ class Emitter:
     def emit(self, node):
         """Code that leaves the value in rax. Returns its kind."""
         return getattr(self, "emit_" + node[0].replace(" ", "_"))(*node[1:])
+
+    def emit_bw(self, *what):
+        """A value from brick's own window (bitwords.py): the mouse x, the key, the text of score ..."""
+        return self.c.emit_gui_value(*what)
 
     def emit_number(self, n):
         self.a.set(RAX, n)

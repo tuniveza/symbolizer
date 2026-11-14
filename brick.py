@@ -1,9 +1,9 @@
 """Turn a plain-English file into a runnable Linux program.
 
   brick game.txt              makes ./game and runs it (brick game works too); a program
-                              that uses window words (put the window on the left...) gets
+                              that uses console words (put the console on the left...) gets
                               a console window of its own
-  brick window game.txt       makes it and runs it in a new console window
+  brick console game.txt      makes it and runs it in a new console window (brick window works too)
   brick here game.txt         makes it and runs it right here, in this terminal
   brick build game.txt        only makes ./game
   brick gui                   a window to write, run and watch it being made (brick gui game.txt)
@@ -24,6 +24,9 @@
                               like 'hi in red'). brick brain: is it on, how much it knows; brick brain
                               like red: the words used most like red; brick brain links red: its links;
                               brick brain learn: learn from everything now; brick brain off / on
+  brick teach zap means write a new word for every program: zap hello in red works like write.
+                              brick teach: the words you taught; brick unteach zap: forget one.
+                              In one program only: write the line zap means write at its top
   brick learn notes.txt       learn from anything: a file, a folder, pictures, or "some words" in quotes.
                               brick learn watch ~/Pictures: learn from new files there by itself while
                               brick runs; brick learn unwatch / watching
@@ -255,6 +258,12 @@ def main():
     if args[:1] == ["brain"]:
         import brain
         return brain.command(args[1:])
+    if args[:1] == ["teach"]:
+        import words                                  # brick teach zap means write
+        return words.command(args[1:])
+    if args[:1] == ["unteach"]:
+        import words
+        return words.unteach(args[1:])
     if args[:1] == ["learn"]:
         import senses                                 # brick learn notes.txt / ~/Pictures / "some words"
         return senses.command(args[1:])
@@ -324,7 +333,7 @@ def main():
         return
     if len(args) == 1:
         args.insert(0, "run")
-    if len(args) < 2 or args[0] not in ("build", "run", "window", "here"):
+    if len(args) < 2 or args[0] not in ("build", "run", "console", "window", "here"):
         print(__doc__)
         sys.exit(1)
     source = find_source(args[1])
@@ -338,7 +347,7 @@ def main():
     if compiler is None:
         sys.exit(1)
     program = os.path.abspath(output)
-    if args[0] == "window" or args[0] == "run" and compiler.uses_window:
+    if args[0] in ("console", "window") or args[0] == "run" and compiler.uses_window:
         if open_window(program, os.path.basename(output), source):
             return
         print("(No graphical desktop here, so it runs in this terminal instead.)")

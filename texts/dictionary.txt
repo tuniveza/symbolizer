@@ -502,8 +502,8 @@ expand = grow
 widen = grow
 fullscreen = maximise
 full-screen = maximise
-go full screen = make the window full screen
-go fullscreen = make the window full screen
+go full screen = make the console full screen
+go fullscreen = make the console full screen
 reduce the window = shrink the window
 title the window something = name the window something
 rename the window something = name the window something
@@ -514,6 +514,19 @@ snap the window something = place the window something
 dock the window something = place the window something
 push the window something = move the window something
 drag the window something = move the window something
+
+# The console (the terminal a program writes in)
+go full screen in the console = make the console full screen
+reduce the console = shrink the console
+title the console something = name the console something
+rename the console something = name the console something
+retitle the console something = name the console something
+label the console something = name the console something
+position the console something = place the console something
+snap the console something = place the console something
+dock the console something = place the console something
+push the console something = move the console something
+drag the console something = move the console something
 
 # Stopping
 halt = stop
@@ -823,3 +836,8 @@ commence = start
 maize = lemon
 state = say
 gamboge = lemon
+can you write you put a colour text on the screen = write a colour
+can you write a colour on the screen = say a colour
+
+# Your words
+# Taught with brick teach. Each one was checked to build exactly like its meaning.

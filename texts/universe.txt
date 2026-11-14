@@ -18,9 +18,9 @@ wait: wait, pause, sleep, hold on, hang on, hold
 
 # Things
 text: text, words, word, message, msg, note, label, writing, letters, txt, sign, caption
-window: window
+window: console, terminal
 background: background, bg, backdrop, backround, bkg
-screen: screen, console, terminal, scr
+screen: screen, scr
 
 # Where things go
 place: left, right, top, bottom, middle, centre, center, top-left, top-right, bottom-left, bottom-right, upper, lower, corner, side, edge, half

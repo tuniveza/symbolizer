@@ -67,7 +67,7 @@ def test_short_and_shuffled():
     same_as("bg red", "set the background colour to red")
     same_as("red background", "set the background colour to red")
     same_as("text green", "set the colour to green")
-    same_as("window left", "put the window on the left side of the screen")
+    same_as("console left", "put the console on the left side of the screen")
 
 
 def test_it_says_how_it_read_a_line():
@@ -80,7 +80,7 @@ def test_mistakes_are_still_mistakes():
         ("wirte hello", "Did you mean 'write'?"),
         ("put x", "Put it where?"),
         ("make it disappear", "Make what disappear?"),
-        ("put the window somewhere nice", "What should the window do?"),
+        ("put the console somewhere nice", "What should the console do?"),
         ('write "hello', "missing its partner"),
         ("set word to hi\nwrite the biggest in word", "Line 2"),
     ]:
