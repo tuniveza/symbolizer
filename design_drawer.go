@@ -10,7 +10,7 @@ package main
 // that drawer out: its tray slides down out of the front, each thing in it
 // small (a miniature: its outline, icon and one label), side by side, row
 // after row. A click on one takes it out (it follows the mouse). The front
-// again pushes it in. Space or Tab, with it chosen, pulls out the next
+// again pushes it in. Space, with it chosen, pulls out the next
 // drawer (and pushes the open one in). Drop anything on a drawer to put it
 // in that drawer.
 //

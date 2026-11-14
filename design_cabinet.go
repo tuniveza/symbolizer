@@ -4,7 +4,7 @@ package main
 //
 // A cabinet is a cupboard with two doors. It is the same size shut or
 // open. Shut, it shows its name, how many things it holds, and the two
-// doors with their knobs; a click on the doors (or Tab, with it chosen)
+// doors with their knobs; a click on the doors (or Space, with it chosen)
 // opens them: they swing open inside its frame, one each side, and between
 // them is a shelf for each
 // kind of sheet (pages, books, slides, notes, drawings): the things on it

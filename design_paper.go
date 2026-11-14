@@ -227,13 +227,13 @@ func selHint(o *dOct) string {
 	case kOct:
 		return "Tab: write  ·  Alt+arrows: move  ·  AltGr+L: layout  ·  X X: delete"
 	case kCabinet:
-		return "Space or Tab: open / shut  ·  drop sheets in  ·  X X: delete"
+		return "Space: open / shut  ·  Tab: each part  ·  drop sheets in  ·  X X: delete"
 	case kDrawer:
-		return "Space or Tab: next drawer  ·  [ ]: fewer / more  ·  C / Shift+C: colour / texture  ·  X X: delete"
+		return "Space: next drawer  ·  Tab: each part  ·  [ ]: fewer / more  ·  C / Shift+C: colour / texture  ·  X X: delete"
 	case kRack:
-		return "Click a row to open it  ·  drag a row out  ·  drop anything in"
+		return "Tab: each row  ·  click a row to open it  ·  drag a row out  ·  drop anything in"
 	case kBox:
-		return "Space: lid  ·  D: design  ·  Tab: its things  ·  PgUp / PgDn: layers  ·  drop anything in"
+		return "Space: lid  ·  D: design  ·  Tab: each part  ·  PgUp / PgDn: layers  ·  drop anything in"
 	}
 	return "Tab: write  ·  Alt+arrows: move  ·  X X: delete"
 }
