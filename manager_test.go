@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 // a small pretend ~/an: categories from names.tsv, projects, copies, leftovers
@@ -17,7 +19,7 @@ func TestManagerScan(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	put("ca/sy/manager/names.tsv", "co\tCode\tby language\npj\tProjects\tbigger ones\nno\tNotes\nca\tApps\nco/c/game\tMy Game\ta game in C\n", 0o644)
+	put("ca/sy/manager/names.tsv", "co\tCode\tby language\npj\tProjects\tbigger ones\nno\tNotes\nca\tApps\nbr\tbrick\nco/c/game\tMy Game\ta game in C\n", 0o644)
 	put("ca/sy/manager/manager.conf", "IGNORE=(\n  \"*backup*\" pj/keepout ca/sy/manager\n)\n", 0o644)
 	put("ca/sy/make.sh", "#!/bin/sh\n", 0o755)
 	put("ca/sy/manager/templates/c/make.sh", "#!/bin/sh\n", 0o755) // a template, not a project
@@ -33,6 +35,10 @@ func TestManagerScan(t *testing.T) {
 	put("no/paper.pdf", "%PDF", 0o644)
 	os.MkdirAll(filepath.Join(root, "s1/run/pulse"), 0o755)
 	put("odd/thing.sh", "echo", 0o644)
+	put("ca/tool/go.mod", "module tool\n", 0o644)   // a project without make.sh (as sy was)
+	put("br/make.sh", "#!/bin/sh\n", 0o755)         // a project outside pj, ca, co
+	put("br/inner/make.sh", "#!/bin/sh\n", 0o755)   // inside it: not listed again
+	put("no/side/Cargo.toml", "[package]\n", 0o644) // deeper down in another folder
 
 	d := mgScan(root, nil, filepath.Join(root, "ca/sy/manager/names.tsv"))
 	cats := map[string]mgCat{}
@@ -41,7 +47,7 @@ func TestManagerScan(t *testing.T) {
 		cats[c.Key] = c
 		order = append(order, c.Key)
 	}
-	if got := strings.Join(order, " "); got != "pj ca co no ? !" {
+	if got := strings.Join(order, " "); got != "pj ca co + no br ? !" {
 		t.Fatalf("category order = %q", got)
 	}
 	find := func(key, rel string) *mgItem {
@@ -72,6 +78,19 @@ func TestManagerScan(t *testing.T) {
 		if strings.HasPrefix(it.Rel, "ca/sy/manager") {
 			t.Fatalf("the manager's own folder is listed: %+v", it)
 		}
+	}
+	if tl := find("ca", "ca/tool"); tl == nil || !tl.Project || tl.Kind != "Go" {
+		t.Fatalf("a go.mod folder is a project: %+v", tl)
+	}
+	var other []string
+	for _, it := range cats["+"].Items {
+		other = append(other, it.Rel)
+		if !it.Project {
+			t.Fatalf("other project not marked: %+v", it)
+		}
+	}
+	if got := strings.Join(other, " "); got != "br no/side" || cats["+"].Projects != 2 {
+		t.Fatalf("other projects = %q", got)
 	}
 	if find("pj", "pj/web-backup/inner") != nil {
 		t.Fatal("a project inside copies is listed")
@@ -134,5 +153,74 @@ func TestManagerDraws(t *testing.T) {
 	for _, size := range [][2]int{{140, 40}, {80, 24}, {40, 12}} {
 		m.width, m.height = size[0], size[1]
 		_ = m.View()
+	}
+}
+
+// Up / Down choose a category; Right goes into it, and then Up / Down
+// choose a row; Left (or Esc) comes back out to the categories.
+func TestManagerArrows(t *testing.T) {
+	m := newTest(t, "")
+	m.mode = managerMode
+	m.width, m.height = 140, 40
+	m.mgr = &mgState{data: &mgData{Cats: []mgCat{
+		{Key: "pj", Name: "Projects", Items: []mgItem{{Rel: "pj/a", Name: "A"}, {Rel: "pj/b", Name: "B"}}},
+		{Key: "ca", Name: "Apps", Items: []mgItem{{Rel: "ca/sy", Name: "Symbolizer"}, {Rel: "ca/x", Name: "X"}, {Rel: "ca/y", Name: "Y"}}},
+		{Key: "co", Name: "Code"},
+	}}}
+	s := m.mgr
+	key := func(k string) {
+		t.Helper()
+		press(m, k)
+		_ = m.View()
+	}
+	key("down")
+	key("down")
+	key("down") // stops on the last
+	if s.cat != 2 || s.inList {
+		t.Fatalf("down x3: category %d (in rows %v), want 2", s.cat, s.inList)
+	}
+	key("right") // an empty category: stays out
+	if s.inList {
+		t.Fatal("went into an empty category")
+	}
+	key("up")
+	key("right")
+	if s.cat != 1 || !s.inList || s.sel != 0 {
+		t.Fatalf("up, right: category %d, in rows %v, row %d", s.cat, s.inList, s.sel)
+	}
+	key("down")
+	key("down")
+	if s.cat != 1 || s.sel != 2 {
+		t.Fatalf("in the rows, down x2: category %d row %d, want 1 and 2", s.cat, s.sel)
+	}
+	if r := s.picked(); r == nil || r.it.Rel != "ca/y" {
+		t.Fatalf("picked = %+v", r)
+	}
+	key("left")
+	if s.inList || s.cat != 1 || s.picked() != nil {
+		t.Fatalf("left: in rows %v, category %d", s.inList, s.cat)
+	}
+	key("enter") // Enter on a category goes in too
+	if !s.inList {
+		t.Fatal("Enter on a category did not go in")
+	}
+	key("esc")
+	if s.inList {
+		t.Fatal("Esc did not come back out")
+	}
+	for _, r := range "sy" { // a search: the arrows are on what it found
+		m.Update(tea.KeyPressMsg(tea.Key{Code: r, Text: string(r)}))
+	}
+	if s.query != "sy" || s.picked() == nil || s.picked().it.Rel != "ca/sy" {
+		t.Fatalf("search %q picked %+v", s.query, s.picked())
+	}
+	key("left")
+	if s.query != "" || s.inList || s.cat != 1 {
+		t.Fatalf("left after a search: query %q, in rows %v, category %d", s.query, s.inList, s.cat)
+	}
+	for _, size := range [][2]int{{140, 40}, {60, 20}} { // both layouts draw both ways
+		m.width, m.height = size[0], size[1]
+		key("right")
+		key("left")
 	}
 }

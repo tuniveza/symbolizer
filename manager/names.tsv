@@ -28,6 +28,7 @@ ca/ai/nu	Neural Playground	a spiking neural network that learns hand-drawn digit
 ca/ap/heat-map	Application Organizer	a visual page of every project, with pictures and videos
 ca/ap/pv	Password Vault	a one-file offline password manager, encrypted in the browser
 ca/to/bitstreams_output	Image Bitstreams	turns pictures into raw pixel bitstreams (1-bit up to RGB888)
+ca/sy	Symbolizer	this editor: Text, Design (with its 3D room), Diary and Manager modes in one terminal app
 
 # ---- co: code, by language -----------------------------------------------------------------
 co/ar	Retro consoles	SNES, PS1, N64 homebrew

@@ -61,7 +61,7 @@ func mgChoose(t *testing.T, m *Model, rel string) {
 	t.Helper()
 	for i, r := range m.mgr.rows() {
 		if r.it.Rel == rel {
-			m.mgr.sel = i
+			m.mgr.sel, m.mgr.inList = i, true
 			return
 		}
 	}

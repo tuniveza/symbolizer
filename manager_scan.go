@@ -487,6 +487,25 @@ func mgScan(root string, extra []string, namesPath string) *mgData {
 		}
 		data.Cats = append(data.Cats, cat)
 	}
+	// projects outside the project roots (brick in br …): one more category
+	var others []mgItem
+	for _, ti := range tops {
+		if projectRoots[rel(dirs[ti].path)] || strings.HasPrefix(filepath.Base(dirs[ti].path), ".") {
+			continue
+		}
+		others = append(others, mgOthers(dirs, ti, rel, item, ignores)...)
+	}
+	if len(others) > 0 {
+		c := mgCat{Key: "+", Name: "Other projects", About: "projects outside pj, ca and co: each is also in its own category"}
+		for _, it := range others {
+			c.Size += it.Size
+			c.Files += it.Files
+			c.Changed = max(c.Changed, it.Changed)
+			c.Projects++
+		}
+		c.Items = others
+		data.Cats = append(data.Cats, c)
+	}
 	// loose files straight inside ~/an
 	if ri, ok := index[root]; ok {
 		for _, f := range topFiles[dirs[ri].path] {
@@ -514,7 +533,7 @@ func mgScan(root string, extra []string, namesPath string) *mgData {
 		return ri < rj
 	})
 	// projects first: pj, ca, co, then the rest in names.tsv's order
-	first := map[string]int{"pj": 0, "ca": 1, "co": 2, "~/Projects": 3}
+	first := map[string]int{"pj": 0, "ca": 1, "co": 2, "~/Projects": 3, "+": 4}
 	sort.SliceStable(data.Cats, func(i, j int) bool {
 		fi, iok := first[data.Cats[i].Key]
 		fj, jok := first[data.Cats[j].Key]
@@ -595,6 +614,9 @@ func mgProjects(dirs []mgDir, top int, rel func(string) string, exact map[string
 		listed[i] = depth
 		it := item(d)
 		it.Group, it.Depth = group, depth
+		if strong {
+			it.Project = true // a project of its own without make.sh (go.mod, Cargo.toml …): sy is one
+		}
 		if copies {
 			it.Project, it.Kind = false, "copies"
 			if it.About == "" {
@@ -602,6 +624,37 @@ func mgProjects(dirs []mgDir, top int, rel func(string) string, exact map[string
 			}
 		}
 		out = append(out, it)
+	}
+	return out
+}
+
+// mgOthers finds the projects under a top folder that is not a project
+// root: the top folder itself or the first folders down that have make.sh or
+// a strong build file. Nothing inside a project found is looked at again.
+func mgOthers(dirs []mgDir, top int, rel func(string) string, item func(*mgDir) mgItem, ignores []string) []mgItem {
+	var out []mgItem
+	topPath := dirs[top].path
+	stop := map[int]bool{} // found projects and ignored folders: their insides are not looked at
+	for i := top; i < len(dirs); i++ {
+		d := &dirs[i]
+		if i > top && !inFolder(topPath, d.path) {
+			break // walk order: a folder's insides come straight after it
+		}
+		if i > top && (stop[d.parent] || d.skip || strings.HasPrefix(filepath.Base(d.path), ".")) {
+			stop[i] = true
+			continue
+		}
+		if mgIgnored(rel(d.path), ignores) {
+			stop[i] = true
+			continue
+		}
+		if d.own&(mkMake|mkStrong) == 0 {
+			continue
+		}
+		it := item(d)
+		it.Project = true
+		out = append(out, it)
+		stop[i] = true
 	}
 	return out
 }

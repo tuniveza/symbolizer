@@ -111,7 +111,7 @@ func (m *Model) mgActions() (items []mgAction, title, about string) {
 	s := m.mgr
 	root := mgRoot()
 	title, about = "Actions", "for all of "+shortPath(root)
-	if r := s.chosen(); r != nil {
+	if r := s.picked(); r != nil {
 		p := mgPath(root, r.it)
 		title, about = r.it.Name, shortPath(p)
 		items = append(items, mgAction{label: "For " + r.it.Name, head: true})
@@ -328,8 +328,9 @@ func (m *Model) mgMenuChoose() tea.Cmd {
 
 // mgRowAction is F6 / F7: run or build the chosen row's project at once.
 func (m *Model) mgRowAction(sub string) tea.Cmd {
-	r := m.mgr.chosen()
+	r := m.mgr.picked()
 	if r == nil {
+		m.say("Right goes into the category first; then choose a project.")
 		return nil
 	}
 	pd := mgProjectDir(mgPath(mgRoot(), r.it))

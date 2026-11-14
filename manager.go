@@ -20,8 +20,9 @@ import (
 // the left, what is in the chosen one in the middle, and everything known
 // about the chosen row on the right.
 //
-//	Up / Down        choose a row (PgUp, PgDn, Home, End)
-//	Left / Right     the category before / after
+//	Up / Down        choose a category; once in one, a row (PgUp, PgDn, Home, End)
+//	Right / Enter    go into the chosen category (its rows)
+//	Left / Esc       back out to the categories
 //	type             search everything; Backspace, Esc clear it
 //	Tab              sort: by folder, biggest first, newest first
 //	Enter            open it in Text mode (a folder: the file manager on it)
@@ -39,8 +40,9 @@ const managerMode = 6 // its place in modes
 type mgState struct {
 	data      *mgData
 	scanning  bool
-	cat       int // the chosen category
-	sel, top  int // the chosen row and the first row shown
+	cat       int  // the chosen category
+	inList    bool // the arrows choose rows (Right went in), not categories
+	sel, top  int  // the chosen row and the first row shown
 	query     string
 	sort      int     // 0 by folder, 1 biggest first, 2 newest first
 	menu      *mgMenu // the actions list, when it is open (manager_actions.go)
@@ -189,6 +191,16 @@ func mgMatch(hay, q string) bool {
 	return true
 }
 
+// picked is the chosen row once the arrows are on the rows (Right went
+// in, or a search): what Enter, Alt+C, F6, F7 and the row actions act on.
+// On the categories it is nil.
+func (s *mgState) picked() *mgRow {
+	if !s.inList && s.query == "" {
+		return nil
+	}
+	return s.chosen()
+}
+
 func (s *mgState) chosen() *mgRow {
 	rows := s.rows()
 	if s.sel >= 0 && s.sel < len(rows) {
@@ -222,9 +234,14 @@ func (m *Model) managerKey(k tea.Key) tea.Cmd {
 		return m.mgMenuKey(k)
 	}
 	name := keyName(k)
+	m.msg = ""
+	if !s.inList && s.query == "" {
+		if done, cmd := m.mgCatKey(name); done {
+			return cmd
+		}
+	}
 	n := len(s.rows())
 	page := max(s.listH-1, 1)
-	m.msg = ""
 	switch name {
 	case "up":
 		s.sel = max(s.sel-1, 0)
@@ -238,10 +255,12 @@ func (m *Model) managerKey(k tea.Key) tea.Cmd {
 		s.sel = 0
 	case "end":
 		s.sel = max(n-1, 0)
-	case "left", "shift+tab":
-		m.mgCategory(-1)
+	case "left":
+		m.mgBack()
 	case "right":
-		m.mgCategory(1)
+		m.say("Enter opens it · Shift+Enter in its own app · Alt+A actions · Left goes back")
+	case "shift+tab":
+		m.mgCategory(-1)
 	case "tab":
 		s.sort = (s.sort + 1) % len(mgSorts)
 		s.sel, s.top = 0, 0
@@ -251,7 +270,7 @@ func (m *Model) managerKey(k tea.Key) tea.Cmd {
 	case "shift+enter":
 		return m.mgOpen(true)
 	case "alt+c":
-		if r := s.chosen(); r != nil {
+		if r := s.picked(); r != nil {
 			p := mgPath(mgRoot(), r.it)
 			m.say("Copied " + shortPath(p))
 			return writeClipboard(p)
@@ -268,8 +287,8 @@ func (m *Model) managerKey(k tea.Key) tea.Cmd {
 	case "f1":
 		m.help = !m.help
 	case "esc":
-		if s.query != "" {
-			s.query, s.sel, s.top = "", 0, 0
+		if s.query != "" || s.inList {
+			m.mgBack()
 		} else {
 			m.say("Alt+M switches modes · Alt+Q quits")
 		}
@@ -289,6 +308,58 @@ func (m *Model) managerKey(k tea.Key) tea.Cmd {
 	return nil
 }
 
+// mgCatKey: the keys while the arrows are on the categories. done is false
+// for a key that does the same as in the list (typing, Tab, F5 …).
+func (m *Model) mgCatKey(name string) (bool, tea.Cmd) {
+	s := m.mgr
+	if s.data == nil || len(s.data.Cats) == 0 {
+		return false, nil
+	}
+	last := len(s.data.Cats) - 1
+	to := func(i int) {
+		s.cat, s.sel, s.top = max(0, min(i, last)), 0, 0
+	}
+	switch name {
+	case "up":
+		to(s.cat - 1)
+	case "down":
+		to(s.cat + 1)
+	case "pgup", "home":
+		to(0)
+	case "pgdown", "end":
+		to(last)
+	case "right", "enter":
+		m.mgIn()
+	case "left":
+		m.say("Up / Down choose a category · Right goes into it")
+	default:
+		return false, nil
+	}
+	return true, nil
+}
+
+// mgIn puts the arrows on the chosen category's rows.
+func (m *Model) mgIn() {
+	s := m.mgr
+	if len(s.rows()) == 0 {
+		m.say("Nothing in here.")
+		return
+	}
+	s.inList = true
+}
+
+// mgBack takes the arrows back to the categories (and ends a search).
+func (m *Model) mgBack() {
+	s := m.mgr
+	if s.query != "" {
+		if r := s.chosen(); r != nil {
+			s.cat = r.cat // back on the category of what the search had chosen
+		}
+		s.query = ""
+	}
+	s.inList, s.sel, s.top = false, 0, 0
+}
+
 func (m *Model) mgCategory(step int) {
 	s := m.mgr
 	if s.data == nil || len(s.data.Cats) == 0 {
@@ -306,8 +377,9 @@ func (m *Model) mgCategory(step int) {
 // it (and its README), a text file as a tab; or, with desktop, in the
 // desktop's own app.
 func (m *Model) mgOpen(desktop bool) tea.Cmd {
-	r := m.mgr.chosen()
+	r := m.mgr.picked()
 	if r == nil {
+		m.say("Right goes into the category first; then Up / Down choose a row.")
 		return nil
 	}
 	p := mgPath(mgRoot(), r.it)
@@ -357,16 +429,20 @@ func (m *Model) managerClick(x, y int) tea.Cmd {
 	}
 	if !s.narrow && x < s.catX1 && y >= s.catY0 && s.data != nil {
 		if i := y - s.catY0; i >= 0 && i < len(s.data.Cats) {
-			s.query = ""
-			s.cat, s.sel, s.top = i, 0, 0
+			again := i == s.cat && !s.inList && s.query == "" && time.Since(s.lastClick) < 400*time.Millisecond
+			s.query, s.inList = "", false
+			s.cat, s.sel, s.top, s.lastClick = i, 0, 0, time.Now()
+			if again {
+				m.mgIn() // a double click goes into it
+			}
 		}
 		return nil
 	}
 	if x >= s.listX0 && x < s.listX1 && y >= s.listY0 && y < s.listY0+s.listH {
 		i := s.top + y - s.listY0
 		if i < len(s.rows()) {
-			again := i == s.sel && time.Since(s.lastClick) < 400*time.Millisecond
-			s.sel, s.lastClick = i, time.Now()
+			again := i == s.sel && (s.inList || s.query != "") && time.Since(s.lastClick) < 400*time.Millisecond
+			s.sel, s.lastClick, s.inList = i, time.Now(), true
 			if again {
 				return m.mgOpen(false)
 			}
@@ -378,6 +454,8 @@ func (m *Model) managerClick(x, y int) tea.Cmd {
 func (m *Model) managerWheel(n int) {
 	if s := m.mgr; s != nil && s.menu != nil {
 		s.menu.move(n)
+	} else if s != nil && !s.inList && s.query == "" && s.data != nil && len(s.data.Cats) > 0 {
+		s.cat, s.sel, s.top = max(0, min(s.cat+n, len(s.data.Cats)-1)), 0, 0
 	} else if s != nil {
 		s.sel = max(0, min(s.sel+n, len(s.rows())-1))
 	}
@@ -547,9 +625,14 @@ func mgFit2(line string, w int) string {
 func (m *Model) mgHint() string {
 	s := m.mgr
 	sortWord := mgSorts[s.sort]
-	full := "↑↓ choose · ←→ category · type to search · Tab sort: " + sortWord + " · Enter open · Shift+Enter its own app · Alt+C copy path · Alt+A actions · F6 run · F7 build · F5 look again"
-	mid := "↑↓ · ←→ category · type: search · Tab: " + sortWord + " · Enter open · Alt+A actions · F5 again"
-	short := "↑↓ ←→ · type · Tab · Enter · Alt+A"
+	full := "↑↓ choose a category · → go in · type to search · Tab sort: " + sortWord + " · Alt+A actions · F5 look again"
+	mid := "↑↓ category · → go in · type: search · Tab: " + sortWord + " · Alt+A actions"
+	short := "↑↓ category · → in · type · Alt+A"
+	if s.inList || s.query != "" {
+		full = "↑↓ choose · ← back · type to search · Tab sort: " + sortWord + " · Enter open · Shift+Enter its own app · Alt+C copy path · Alt+A actions · F6 run · F7 build · F5 look again"
+		mid = "↑↓ · ← back · type: search · Tab: " + sortWord + " · Enter open · Alt+A actions · F5 again"
+		short = "↑↓ · ← back · type · Tab · Enter · Alt+A"
+	}
 	t := full
 	for _, c := range []string{full, mid, short} {
 		t = c
@@ -594,7 +677,10 @@ func (m *Model) mgNarrow(h int) []string {
 	}
 	listH := max(h-3-detH, 2)
 	c := s.data.Cats[max(0, min(s.cat, len(s.data.Cats)-1))]
-	label := fmt.Sprintf("◀  %s  %d/%d  ▶", c.Name, s.cat+1, len(s.data.Cats))
+	label := fmt.Sprintf("▲  %s  %d/%d  ▼   → go in", c.Name, s.cat+1, len(s.data.Cats))
+	if s.inList {
+		label = fmt.Sprintf("◀ back   %s  %d/%d", c.Name, s.cat+1, len(s.data.Cats))
+	}
 	if s.query != "" {
 		label = "⌕  search: " + s.query + "▏"
 	}
@@ -622,6 +708,9 @@ func (m *Model) mgCats(w, h int) []string {
 		bg, fg, mark := cBG, cText, "  "
 		if i == s.cat && s.query == "" {
 			bg, fg, mark = cSelection, cSelectedText, "▸ "
+			if s.inList { // the arrows are in its rows: it stays marked, quieter
+				bg, fg = cBarBG, cText
+			}
 		}
 		size := mgSize(c.Size)
 		out = append(out, mgRender(
@@ -643,9 +732,9 @@ func (m *Model) mgCats(w, h int) []string {
 		for _, l := range wrapWords(c.About, w) {
 			out = append(out, mgRender(seg{text: l, fg: cStatusText, bg: cBG, w: w, italic: true}))
 		}
-		info := fmt.Sprintf("%d rows", len(c.Items))
+		info := mgMany(len(c.Items), "row")
 		if c.Projects > 0 {
-			info = fmt.Sprintf("%d projects · %d rows", c.Projects, len(c.Items))
+			info = mgMany(c.Projects, "project") + " · " + info
 		}
 		out = append(out, mgRender(seg{text: info, fg: cDim, bg: cBG, w: w}))
 		if c.Changed > 0 {
@@ -653,6 +742,14 @@ func (m *Model) mgCats(w, h int) []string {
 		}
 	}
 	return mgColumn(out, w, h, cBG)
+}
+
+// mgMany: "1 row", "3 rows".
+func mgMany(n int, word string) string {
+	if n == 1 {
+		return "1 " + word
+	}
+	return fmt.Sprintf("%d %ss", n, word)
 }
 
 // mgColumn makes lines exactly w wide and h tall.
@@ -716,8 +813,12 @@ func (m *Model) mgList(w, h, y0 int) []string {
 		r := rows[i]
 		it := r.it
 		bg := cBG
+		focus := s.inList || s.query != ""
 		if i == s.sel {
 			bg = cSelection
+			if !focus { // the arrows are on the categories: the row is only shown
+				bg = cBarBG
+			}
 		}
 		mark, mfg := "· ", cDim
 		fg := cText
@@ -729,7 +830,7 @@ func (m *Model) mgList(w, h, y0 int) []string {
 		case it.Dir:
 			mark, mfg = "▹ ", cAccent
 		}
-		if i == s.sel {
+		if i == s.sel && focus {
 			fg = cSelectedText
 		}
 		indent := ""
