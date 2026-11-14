@@ -667,7 +667,7 @@ func (m *Model) designAltTap() bool {
 		return false
 	}
 	d.altTapAt = time.Time{}
-	if d.room.on() && !m.design3DModeEsc() {
+	if d.room.on() && !m.design3DModeEsc() && d.editing == partNone {
 		m.design3DEsc() // in 3D with nothing to leave: as Esc there, back to the flat board
 		return true
 	}

@@ -384,15 +384,24 @@ func (d *designState) boardLayers(o *dOct) []*lipgloss.Layer {
 	if n := len(drawerThings(o)); n > 0 && !clean3D {
 		name += " · " + plural(n, "pin")
 	}
-	title := []rune(" " + kindIcons[kBoard] + " " + name + " ")
-	if selected && d.editing == partHeader {
-		title = []rune(" " + kindIcons[kBoard] + " " + o.Header + "▏")
+	title := fieldCells([]rune(" "+kindIcons[kBoard]+" "+name+" "), nil, -1, 0, 0)
+	if selected && d.editing == partHeader { // with the cursor and the highlight (design_field.go)
+		title = append([]fcell{{g: " "}}, d.fieldLine(o, partHeader, kindIcons[kBoard]+" ", max(0, w-5))...)
 	}
-	for i, r := range title {
+	for i, c := range title {
 		if 2+i >= w-2 {
 			break
 		}
-		put(2+i, 0, string(r), mixHex(o.Color, cText, 0.5), cork, true)
+		fg, bg := mixHex(o.Color, cText, 0.5), cork
+		switch c.mark {
+		case markHL:
+			fg, bg = cSelectedText, cSelection
+		case markCur:
+			fg, bg = cork, cAccent
+		case markCaret:
+			fg = cAccent
+		}
+		put(2+i, 0, c.g, fg, bg, true)
 	}
 	// The pins, first to last (the last on top), inside the frame.
 	in := func(cx, cy int, r, fg, bg string, bold bool) {

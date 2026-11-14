@@ -126,8 +126,7 @@ func (d *designState) containerLayers(o *dOct) []*lipgloss.Layer {
 	title := centreLine(head.Render(ansi.Truncate(icon+" "+name, iw-1, "…")), iw, fill)
 	switch {
 	case selected && d.editing == partHeader:
-		title = centreLine(head.Render(ansi.TruncateLeft(icon+" "+name, max(0, lipgloss.Width(icon+" "+name)-(iw-2)), "…"))+
-			st(cAccent, fill).Render("▏"), iw, fill)
+		title = centreLine(d.fieldHeader(o, icon+" ", iw-1, head, fill), iw, fill) // with the cursor (design_field.go)
 	case name == "":
 		title = centreLine(st(mixHex(cDim, fill, 0.25), fill).Italic(true).Render(icon+" "+kindNames[o.Kind]), iw, fill)
 	}

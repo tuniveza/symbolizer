@@ -483,13 +483,11 @@ func (d *designState) paperLayers(o *dOct) []*lipgloss.Layer {
 	}
 	e := st(edge, fill)
 	dim := mixHex(cDim, fill, 0.25)
-	caret := st(cAccent, fill).Render("▏")
-
 	title := o.Header
 	var head string
 	switch {
-	case editing == partHeader:
-		head = centreLine(st(cText, fill).Bold(true).Render(ansi.TruncateLeft(kindIcons[o.Kind]+" "+title, max(0, lipgloss.Width(title)+2-(cw-1)), "…"))+caret, cw, fill)
+	case editing == partHeader: // with the cursor and the highlight (design_field.go)
+		head = centreLine(cellsStyled(d.fieldLine(o, partHeader, kindIcons[o.Kind]+" ", cw), st(cText, fill).Bold(true), fill), cw, fill)
 	case title == "":
 		head = centreLine(st(dim, fill).Italic(true).Render(kindIcons[o.Kind]+" "+kindNames[o.Kind]), cw, fill)
 	default:
@@ -509,24 +507,30 @@ func (d *designState) paperLayers(o *dOct) []*lipgloss.Layer {
 		total = 0
 	}
 	top := 0
+	text := st(cText, fill)
+	var marked [][]fcell // being written: the rows round the cursor, with it and the highlight (design_field.go)
 	if editing == partBody {
-		if last := lines[len(lines)-1]; lipgloss.Width(last) >= cw {
-			lines = append(lines, "")
+		ww := cw
+		if o.Kind == kDrawing {
+			ww = 1 << 20 // a drawing's lines are not wrapped
 		}
-		top = max(0, len(lines)-rows)
+		var n int
+		marked, n, top = d.fieldBody(o, ww, rows)
+		lines = make([]string, n) // (for the scroll bar)
 	} else {
 		o.Scroll = max(0, min(o.Scroll, len(lines)-rows))
 		top = o.Scroll
 	}
-	text := st(cText, fill)
 	body := make([]string, rows)
 	for i := range rows {
 		l := ""
-		if top+i < len(lines) {
+		switch {
+		case marked != nil:
+			if i < len(marked) {
+				l = cellsStyled(cutCells(marked[i], cw), text, fill)
+			}
+		case top+i < len(lines):
 			l = text.Render(strings.TrimRight(ansi.Truncate(lines[top+i], cw, ""), " "))
-		}
-		if editing == partBody && top+i == len(lines)-1 {
-			l += caret
 		}
 		if o.Body == "" && editing != partBody && i == 0 {
 			l = st(dim, fill).Italic(true).Render(ansi.Truncate("double-click to write", cw, "…"))
@@ -570,7 +574,7 @@ func (d *designState) paperLayers(o *dOct) []*lipgloss.Layer {
 	var foot string
 	switch {
 	case editing == partFooter:
-		foot = centreLine(st(cText, fill).Italic(true).Render(ansi.TruncateLeft(o.Footer, max(0, lipgloss.Width(o.Footer)-(cw-1)), "…"))+caret, cw, fill)
+		foot = centreLine(cellsStyled(d.fieldLine(o, partFooter, "", cw), st(cText, fill).Italic(true), fill), cw, fill)
 	case o.Footer == "":
 		foot = centreLine(st(dim, fill).Italic(true).Render("footer"), cw, fill)
 	default:
@@ -1122,23 +1126,7 @@ func (m *Model) designPaste(text string) tea.Cmd {
 		return m.dropFiles(paths, o, cx, cy)
 	}
 	if d.editing != partNone && o != nil {
-		field := map[int]*string{partHeader: &o.Header, partBody: &o.Body, partFooter: &o.Footer}[d.editing]
-		add := textLike(text)
-		if d.editing != partBody {
-			add = strings.ReplaceAll(add, "\n", " ")
-		}
-		before := *field
-		*field += add
-		if o.Kind == kNote && d.editing == partBody && !noteFits(o.Body) {
-			*field = before
-			m.say(fmt.Sprintf("That does not fit: a note holds one page (%d lines). Use a page (P) for more.", noteRows))
-			return nil
-		}
-		d.dirty = true
-		if m.growToFit(o) {
-			m.keepInView(o, d.editing == partBody)
-		}
-		return nil
+		return m.fieldWrite(text) // at the cursor, as in Text mode (design_field.go)
 	}
 	if path := droppedPath(text); path != "" {
 		return m.designUseFile(path)

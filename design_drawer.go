@@ -533,8 +533,7 @@ func (d *designState) drawerLayers(o *dOct) []*lipgloss.Layer {
 	title := head.Render(ansi.Truncate(kindIcons[o.Kind]+" "+name, iw-1, "…"))
 	switch {
 	case selected && d.editing == partHeader:
-		title = head.Render(ansi.TruncateLeft(kindIcons[o.Kind]+" "+o.Header, max(0, lipgloss.Width(o.Header)+2-(iw-2)), "…")) +
-			st(cAccent, headBG).Render("▏")
+		title = d.fieldHeader(o, kindIcons[o.Kind]+" ", iw-1, head, headBG) // with the cursor (design_field.go)
 	case o.Header == "":
 		title = st(mixHex(cDim, headBG, 0.25), headBG).Italic(true).Render(ansi.Truncate(kindIcons[o.Kind]+" drawer", iw, ""))
 	}

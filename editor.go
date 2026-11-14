@@ -443,6 +443,10 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.finishSave(msg)
 		return nil
 	case pasteMsg:
+		if m.inDesign() && m.design != nil && m.ds().editing != partNone {
+			defer m.ds().save()
+			return m.fieldWrite(string(msg)) // Ctrl + V while writing in a structure (design_field.go)
+		}
 		return m.pasteText(string(msg))
 	case clipErrMsg:
 		m.sayErr(string(msg))

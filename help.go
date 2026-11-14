@@ -113,7 +113,8 @@ var helpGroups = []helpGroup{
 	{"Design mode", false, []helpLine{
 		{"(the board)", "kept in ~/.local/share/symbolizer/design/ (board.json, a file per structure in parts/, the ink in marks.json)"},
 		{"Double-click the board", "a new octagon structure (or what the toolbar's new chooses): type the header"},
-		{"  Tab · Enter · an arrow", "  header → text → footer · next part (a new line in the text) · done (no Esc needed)"},
+		{"  Tab · Enter · Esc", "  header → text → footer · next part (a new line in the text) · done (or Alt tapped twice)"},
+		{"  While writing", "  Text mode's keys, with a cursor: arrows (Ctrl: a letter, Alt: line start / end, a block), Shift highlights, Home · End · Ctrl + A, Ctrl + C · X · V, Backspace · Delete (Ctrl: a word), Ctrl + Z · Y undo the typing, Alt + Shift + arrows, Ctrl + D, Ctrl + K"},
 		{"Drag · its ◢ corner", "move a structure · resize it (double-click one to write in it)"},
 		{"Middle-drag · wheel", "move the board (left-drag on empty board too) · zoom in and out, toward the pointer"},
 		{"⛓ link on the toolbar", "link mode: click a structure, then each one to attach (click again to detach)"},

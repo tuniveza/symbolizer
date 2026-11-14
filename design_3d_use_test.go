@@ -363,13 +363,19 @@ func TestDesign3DKeysPass(t *testing.T) {
 		t.Fatalf("arrows and Shift + arrows in 3D: the camera looks round (%v°, want %v), the board stays still (moved %v, %v)",
 			d.room.look[0], yaw+turnStep, d.camX-camX, d.camY-camY)
 	}
-	// While writing, an arrow stops writing and looks round.
+	// While writing, an arrow moves the cursor in the words, as in Text
+	// mode: writing goes on and the camera stays. Esc stops writing, in 3D.
 	d.sel = d.octs[0].ID
 	press(m, "tab")
-	pitch := d.room.look[1]
+	look := d.room.look
 	press(m, "up")
-	if d.editing != partNone || d.room.look[1] != pitch-turnStep {
-		t.Fatalf("an arrow while writing in 3D: writing stops and the camera looks up: editing %v, look %v from %v", d.editing, d.room.look[1], pitch)
+	press(m, "left")
+	if d.editing == partNone || d.room.look != look {
+		t.Fatalf("arrows while writing in 3D: writing goes on and the camera stays: editing %v, look %v from %v", d.editing, d.room.look, look)
+	}
+	press(m, "esc")
+	if d.editing != partNone || !d.room.on() {
+		t.Fatalf("Esc while writing in 3D: writing stops, still 3D: editing %v, 3D %v", d.editing, d.room.on())
 	}
 	pos := d.room.pos
 	typeKeys(m, "+")

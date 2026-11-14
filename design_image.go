@@ -137,28 +137,28 @@ func (d *designState) octColumns(o *dOct, editing, cw, rows int, fill, dim strin
 	if o.Body == "" && editing != partBody {
 		return fitBlock(centreLine(st(dim, fill).Italic(true).Render(ansi.Truncate("double-click to write", cw, "…")), cw, fill), cw, rows, fill)
 	}
-	lines := strings.Split(ansi.Wrap(o.Body, colW, ""), "\n")
-	if editing == partBody {
-		if lipgloss.Width(lines[len(lines)-1]) >= colW {
-			lines = append(lines, "")
-		}
-		if len(lines) > 2*rows {
-			lines = lines[len(lines)-2*rows:]
-		}
-	} else if len(lines) > 2*rows {
-		lines = lines[:2*rows]
-		lines[2*rows-1] = ansi.Truncate(lines[2*rows-1], colW-1, "") + "…"
-	}
 	text := st(cText, fill)
+	var lines []string
+	if editing == partBody { // the rows round the cursor, with it and the highlight (design_field.go)
+		cells, _, _ := d.fieldBody(o, colW, 2*rows)
+		for _, cs := range cells {
+			lines = append(lines, cellsStyled(cs, text, fill))
+		}
+	} else {
+		lines = strings.Split(ansi.Wrap(o.Body, colW, ""), "\n")
+		if len(lines) > 2*rows {
+			lines = lines[:2*rows]
+			lines[2*rows-1] = ansi.Truncate(lines[2*rows-1], colW-1, "") + "…"
+		}
+		for i, l := range lines {
+			lines[i] = text.Render(strings.TrimRight(l, " "))
+		}
+	}
 	cell := func(i int) string {
 		if i >= len(lines) {
 			return fitBlockLine("", colW, fill)
 		}
-		s := text.Render(strings.TrimRight(lines[i], " "))
-		if editing == partBody && i == len(lines)-1 {
-			s += st(cAccent, fill).Render("▏")
-		}
-		return fitBlockLine(centreLine(s, colW, fill), colW, fill)
+		return fitBlockLine(centreLine(lines[i], colW, fill), colW, fill)
 	}
 	sep := st(mixHex(cDim, fill, 0.3), fill).Render(" │ ")
 	out := make([]string, rows)

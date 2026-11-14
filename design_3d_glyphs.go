@@ -437,29 +437,53 @@ func (r *room3D) cleanCards(rm *r3room) {
 		if d.sel == o.ID {
 			editing = d.editing
 		}
-		// typed is part s while it is being written: its end, with the caret.
-		typed := func(s string, part int) string {
-			if editing != part {
-				return ansi.Truncate(s, room, "…")
+		// marked writes the cells of words being written in the middle of
+		// row cy, with the cursor and the highlight as on the flat board
+		// (design_field.go).
+		hl, hlText, accent := hex32(cSelection), hex32(cSelectedText), hex32(cAccent)
+		marked := func(cs []fcell, cy int, fg uint32, bold bool) {
+			cx := x + (w-cellsWidth(cs))/2
+			for _, c := range cs {
+				gw := ansi.StringWidth(c.g)
+				if t := at(cx, cy); t != nil && gw > 0 {
+					t.fg, t.bold, t.blank = fg, bold, c.g == " "
+					if !t.blank {
+						t.glyph, t.wide = c.g, gw == 2
+					}
+					switch c.mark {
+					case markHL:
+						t.fg, t.bg, t.q = hlText, hl, [4]uint32{hl, hl, hl, hl}
+					case markCur:
+						t.fg, t.bg, t.q = fill, accent, [4]uint32{accent, accent, accent, accent}
+					case markCaret:
+						t.fg = accent
+					}
+				}
+				cx += max(gw, 1)
 			}
-			return ansi.TruncateLeft(s, max(0, ansi.StringWidth(s)-(room-1)), "…") + "▏"
+		}
+		// part writes the title or footer: being written, round its cursor.
+		part := func(s string, p, cy int, fg uint32, bold bool) {
+			if editing != p {
+				line(ansi.Truncate(s, room, "…"), cy, fg, bold)
+				return
+			}
+			marked(d.fieldLine(o, p, "", room), cy, fg, bold)
 		}
 		if o.Header != "" || editing == partHeader {
-			line(typed(o.Header, partHeader), top, head, true)
+			part(o.Header, partHeader, top, head, true)
 			top += 2
 		}
 		if (o.Footer != "" || editing == partFooter) && bottom-top >= 2 {
 			bottom--
-			line(typed(o.Footer, partFooter), bottom, dim, false)
+			part(o.Footer, partFooter, bottom, dim, false)
 			bottom-- // a blank row above it
 		}
 		if editing == partBody && bottom > top {
-			// Being written: the end of the text, where the typing is, and the caret.
-			lines := strings.Split(ansi.Wrap(o.Body, room-1, ""), "\n")
-			lines = lines[max(0, len(lines)-(bottom-top)):]
-			lines[len(lines)-1] += "▏"
-			for i, l := range lines {
-				line(l, top+i, text, false)
+			// Being written: the rows round the cursor, with it and the highlight.
+			rows, _, _ := d.fieldBody(o, room-1, bottom-top)
+			for i, cs := range rows {
+				marked(cs, top+i, text, false)
 			}
 		} else if o.Kind == kDrawing && o.Body != "" && bottom > top {
 			// A drawing keeps its lines as they are, one under another,

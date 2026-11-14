@@ -571,14 +571,28 @@ func (d *designState) boxEdges(g *boxGrid, o *dOct, s boxShape, lk boxLook, shut
 	}
 	name := o.Header
 	if d.sel == o.ID && d.editing == partHeader {
-		name += "▏"
+		if hi-lo >= 3 { // with the cursor and the highlight (design_field.go)
+			x := lo + 1
+			for _, c := range d.fieldLine(o, partHeader, kindIcons[kBox]+" ", hi-lo-1) {
+				fg, bg := head, ""
+				switch c.mark {
+				case markHL:
+					fg, bg = cSelectedText, cSelection
+				case markCur:
+					fg, bg = boardBG(), cAccent
+				case markCaret:
+					fg = cAccent
+				}
+				x = g.text(x, y, hi, c.g, fg, bg, true, "")
+			}
+		}
 	} else if strings.TrimSpace(name) == "" {
 		name = boxDesignNames[s.design]
 	}
 	if n := len(drawerThings(o)); n > 0 && !(d.sel == o.ID && d.editing == partHeader) && !clean3D {
 		name += " · " + itoa(n)
 	}
-	if hi-lo >= 3 {
+	if hi-lo >= 3 && !(d.sel == o.ID && d.editing == partHeader) {
 		g.text(lo, y, hi, ansi.Truncate(" "+kindIcons[kBox]+" "+name+" ", hi-lo+1, "…"), head, "", true, "")
 	}
 	if shut || h < 6 {

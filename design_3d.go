@@ -194,8 +194,8 @@ func (r *room3D) hint() string { return roomHint }
 // design3DKey handles the keys of the 3D view: Ctrl + F at any time (into
 // 3D and out), and while it shows the arrows (look round), W A S D Q E
 // (move), T and F (the walls' and the floor's finish, design_3d_finish.go)
-// and Esc (the flat board). While writing in a structure letters type as
-// usual (Esc stops writing). Every other key does what it does on the flat
+// and Esc (the flat board). While writing in a structure the keys are Text
+// mode's, the arrows too (Esc, or Alt tapped twice, stops writing). Every other key does what it does on the flat
 // board, to the chosen structure (the one in the middle of the view). It
 // says whether it took the key.
 func (m *Model) design3DKey(k tea.Key, name string) (bool, tea.Cmd) {
@@ -213,12 +213,13 @@ func (m *Model) design3DKey(k tea.Key, name string) (bool, tea.Cmd) {
 	if !r.on() {
 		return false, nil
 	}
+	if d.editing != partNone && name != "tab" && name != "shift+tab" {
+		return false, nil // writing: Text mode's keys, the arrows too, as on the flat board (design_field.go)
+	}
 	switch name {
 	case "left", "right", "up", "down", "shift+left", "shift+right", "shift+up", "shift+down":
-		// The arrows look round, as the mouse does, and stop writing as
-		// any arrow does. In 3D the board under the room never scrolls,
-		// so the blocks stay where they are on the wall.
-		d.editing = partNone
+		// The arrows look round, as the mouse does. In 3D the board under
+		// the room never scrolls, so the blocks stay where they are on the wall.
 		return true, m.design3DTurnKey(k, arrowDir(name))
 	case "tab", "shift+tab":
 		m.design3DFront() // the camera square in front of the chosen structure, to write on it (design_3d_layers.go)
