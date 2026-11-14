@@ -74,6 +74,10 @@ func (d *designState) cabinetShelves(o *dOct, sw int) [][]cabSeg {
 		used, shown := 1, 0
 		for n, j := range idx[start:] {
 			tok := kindIcons[k] + " " + ansi.Truncate(itemTitle(o.Items[j]), 10, "…")
+			if o.Items[j] == d.sectionThing() { // its title being written (design_sections.go): its end, and the caret
+				t := itemTitle(o.Items[j])
+				tok = kindIcons[k] + " " + ansi.TruncateLeft(t, max(0, lipgloss.Width(t)-10), "…") + "▏"
+			}
 			gap := 0
 			if shown > 0 {
 				gap = 2

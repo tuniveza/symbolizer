@@ -54,6 +54,8 @@ func fieldPtr(o *dOct, p int) *string {
 		return &o.Body
 	case partFooter:
 		return &o.Footer
+	case partThing: // a thing inside a container, reached by Tab: its title (design_sections.go)
+		return &o.Header
 	}
 	return nil
 }
@@ -165,9 +167,19 @@ func (mk bufMark) back(b *Buffer) {
 // line in the text (in a header or footer: the next part), and the rest
 // are Text mode's keys, on the part's words.
 func (m *Model) designWrite(d *designState, o *dOct, k tea.Key, name string) tea.Cmd {
-	if fieldPtr(o, d.editing) == nil || !hasPart(o, d.editing) {
+	if fieldPtr(o, d.editing) == nil || d.editing != partThing && !hasPart(o, d.editing) {
 		d.editing = partNone
 		return nil
+	}
+	if d.editing == partThing { // a thing in a container: Tab, Shift + Tab and Enter go on to the next section
+		switch name {
+		case "tab", "enter", "ctrl+j":
+			m.designSectionTab(false)
+			return nil
+		case "shift+tab":
+			m.designSectionTab(true)
+			return nil
+		}
 	}
 	switch name {
 	case "esc":
@@ -258,6 +270,9 @@ func fieldIndent(b *Buffer) string {
 func (m *Model) fieldWrite(text string) tea.Cmd {
 	d := m.ds()
 	o := d.byID(d.sel)
+	if d.editing == partThing {
+		o = d.sectionThing() // a thing in a container (design_sections.go)
+	}
 	if o == nil || d.editing == partNone || fieldPtr(o, d.editing) == nil {
 		return nil
 	}
@@ -289,7 +304,7 @@ func (m *Model) fieldDo(d *designState, o *dOct, fn func(fe *Model) tea.Cmd) tea
 	}
 	if d.editing != partBody && len(b.Lines) > 1 {
 		mk.back(b)
-		m.say("A " + map[int]string{partHeader: "title", partFooter: "footer"}[d.editing] + " is one line.")
+		m.say("A " + map[int]string{partHeader: "title", partFooter: "footer", partThing: "title"}[d.editing] + " is one line.")
 		return nil
 	}
 	if o.Kind == kNote && d.editing == partBody && !noteFits(text) {
@@ -299,6 +314,9 @@ func (m *Model) fieldDo(d *designState, o *dOct, fn func(fe *Model) tea.Cmd) tea
 	}
 	*field, d.field.text = text, text
 	d.dirty = true
+	if d.editing == partThing {
+		return cmd // a thing in a container: the container draws it
+	}
 	if m.growToFit(o) { // all of it shows, without resizing by hand
 		m.keepInView(o, d.editing == partBody)
 	}

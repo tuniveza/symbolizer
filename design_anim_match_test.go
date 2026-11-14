@@ -601,9 +601,12 @@ func TestAnimDrawerCounts(t *testing.T) {
 			step := animClock(t)
 			m, _, _, unit := animScene(t, n)
 			d := m.ds()
+			d.sel = unit.ID
+			press(m, "tab") // its name
 			for i := range n {
-				d.sel = unit.ID // (3D chooses what is in the middle of the view)
-				press(m, "tab")
+				for k := 0; k < 50 && (d.sect.cur.kind != secDrawer || d.sect.cur.slot != i); k++ {
+					press(m, "tab") // (past the things in the drawer before)
+				}
 				if !slotOpen(unit, i) {
 					t.Fatalf("Tab %d: drawer %d should be out", i+1, i)
 				}
@@ -747,7 +750,8 @@ func TestAnimOneMomentPerFrame(t *testing.T) {
 	boardRows(m)
 	m.designBoxLid(box)
 	d.sel = unit.ID
-	press(m, "tab")
+	press(m, "tab") // its name
+	press(m, "tab") // its first drawer, pulled out
 	for i := range 12 {
 		drawRoom(m, 20, 10)
 		r := &d.room

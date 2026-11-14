@@ -1639,14 +1639,26 @@ func TestDesignTab(t *testing.T) {
 	press(m, "esc")
 
 	cab := d.newKind(kCabinet, 0, 0)
+	pg := d.newKind(kPage, 0, 0)
+	pg.Header = "Plan"
+	m.designFileInto(pg, cab)
+	cab.DrawerOpen = false
 	d.sel, d.editing = cab.ID, partNone
 	press(m, "tab")
-	if !cab.DrawerOpen {
-		t.Fatal("Tab on a cabinet did not open its doors")
+	if cab.DrawerOpen || d.editing != partHeader {
+		t.Fatal("Tab on a cabinet should write its name, its doors shut")
 	}
 	press(m, "tab")
-	if cab.DrawerOpen {
-		t.Fatal("Tab again did not shut them")
+	if !cab.DrawerOpen {
+		t.Fatal("Tab to its pages shelf did not open its doors")
+	}
+	press(m, "tab")
+	if d.editing != partThing || d.sectionThing() == nil || d.sectionThing().Header != "Plan" {
+		t.Fatal("Tab should write the title of the page on the shelf")
+	}
+	press(m, "tab")
+	if cab.DrawerOpen || d.editing != partHeader {
+		t.Fatal("Tab from the last section should go round to its name, the doors shut")
 	}
 }
 
@@ -2880,23 +2892,26 @@ func TestDesignRackTab(t *testing.T) {
 	want(0, "opened")
 	press(m, "tab")
 	want(1, "Tab")
+	if d.editing != partHeader {
+		t.Fatal("Tab should write the title of the row it opens")
+	}
 	press(m, "tab")
 	want(2, "Tab again")
 	press(m, "tab")
-	want(0, "Tab from the last")
+	if d.opened.active || d.sel != r.ID || d.editing != partHeader {
+		t.Fatalf("Tab from the last: the rack's name, all put back: %+v", d.opened)
+	}
+	press(m, "tab")
+	want(0, "Tab from its name")
 	press(m, "shift+tab")
-	want(2, "Shift+Tab from the first")
+	press(m, "shift+tab")
+	want(2, "Shift+Tab from the first, past its name")
 	press(m, "shift+tab")
 	want(1, "Shift+Tab")
 	if !strings.Contains(screenOf(m), "▾ ≡ Two") {
 		t.Fatal("the open one's row is not shown")
 	}
-	// Writing in it, Tab goes to its next part, not the next thing.
-	d.editing = partHeader
-	press(m, "tab")
-	if !d.opened.active || d.opened.id != ps[1].ID || d.editing == partHeader {
-		t.Fatalf("Tab while writing: open %+v, writing %d", d.opened, d.editing)
-	}
+	press(m, "esc")
 	d.editing = partNone
 	m.designRackClose()
 	for i, it := range r.Items {
@@ -3182,11 +3197,20 @@ func TestDesignDrawerHandle(t *testing.T) {
 	if len(dr.Items) != 2 || d.byID(302) == nil {
 		t.Fatalf("the miniature did not take Plan out: drawer holds %d", len(dr.Items))
 	}
-	// Tab with it chosen pushes it in.
+	// Pushed in, Tab goes to its name, then pulls it out; an arrow pushes it back in.
+	m.designPullSlot(dr, 0)
 	d.sel = dr.ID
 	press(m, "tab")
+	if dr.DrawerOpen || d.editing != partHeader {
+		t.Fatal("Tab should write its name, the drawer still in")
+	}
+	press(m, "tab")
+	if !dr.DrawerOpen {
+		t.Fatal("Tab did not pull the drawer out")
+	}
+	press(m, "right")
 	if dr.DrawerOpen {
-		t.Fatal("Tab did not push the drawer in")
+		t.Fatal("leaving it, the drawer should go back in")
 	}
 }
 
@@ -3260,20 +3284,25 @@ func TestDesignDrawerSeveral(t *testing.T) {
 	if pg.Slot != 2 || !slotOpen(dr, 2) || len(slotThings(dr, 2)) != 1 {
 		t.Fatalf("Plan should be in drawer 3, pulled out: slot %d, %v", pg.Slot, dr.Pulled)
 	}
-	// Tab: the next drawer after the last one out is none: all go in.
+	// Tab: its name (the drawers as they are), then the first drawer only,
+	// its things, then the second drawer only.
 	d.sel = dr.ID
 	press(m, "tab")
-	if dr.DrawerOpen {
-		t.Fatalf("Tab after the last drawer should push them all in: %v", dr.Pulled)
+	if !slotOpen(dr, 0) || !slotOpen(dr, 1) || !slotOpen(dr, 2) {
+		t.Fatalf("Tab on its name should leave the drawers as they were: %v", dr.Pulled)
 	}
 	press(m, "tab")
-	if !slotOpen(dr, 0) || slotOpen(dr, 1) {
+	if !slotOpen(dr, 0) || slotOpen(dr, 1) || slotOpen(dr, 2) {
 		t.Fatalf("Tab should pull out the first drawer only: %v", dr.Pulled)
+	}
+	for range len(slotThings(dr, 0)) {
+		press(m, "tab")
 	}
 	press(m, "tab")
 	if slotOpen(dr, 0) || !slotOpen(dr, 1) {
 		t.Fatalf("Tab again: the second drawer only: %v", dr.Pulled)
 	}
+	press(m, "esc")
 	// The [−] on its bottom edge: one fewer; Plan moves into drawer 2.
 	bx, by, bw, bh := d.rect(dr)
 	_, at := drawerCtl(dr, bw-2)
@@ -3434,12 +3463,18 @@ func TestDesignBoardPins(t *testing.T) {
 		t.Fatalf("Esc did not pin it back at %d,%d: %d,%d", pinX, pinY, pg.X, pg.Y)
 	}
 
-	// Tab with the board chosen chooses the pin; R turns it, S scales it,
-	// K skews it, F flips it.
+	// Tab with the board chosen goes to its name, then its pin, writing
+	// its title; Esc stops writing, the pin still chosen; then R turns it,
+	// S scales it, K skews it, F flips it.
 	d.sel = b.ID
 	press(m, "tab")
-	if !d.pin.active || d.pin.at != 0 {
+	press(m, "tab")
+	if !d.pin.active || d.pin.at != 0 || d.editing != partThing {
 		t.Fatal("Tab did not choose the pin")
+	}
+	press(m, "esc")
+	if !d.pin.active || d.editing != partNone {
+		t.Fatal("Esc should stop writing and keep the pin chosen")
 	}
 	flat := screenOf(m)
 	press(m, "r")

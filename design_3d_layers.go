@@ -428,8 +428,21 @@ const frontFill = 0.85
 // they are once the camera has moved), so the front is where it stays.
 func (m *Model) design3DFront() {
 	d := m.ds()
-	r := &d.room
 	o := d.byID(d.sel)
+	if o == nil {
+		return
+	}
+	m.design3DFaceRect(o, 0, 0, 0, 0, 0)
+}
+
+// design3DFaceRect puts the camera square in front of the screen cells
+// x0 ≤ x < x1, y0 ≤ y < y1 on o's block (a section of a container, see
+// design_sections.go), close enough that they fill the view; keep: it
+// stays at least that share of the way it stands from the whole block.
+// An empty rectangle (x1 ≤ x0) is the whole block.
+func (m *Model) design3DFaceRect(o *dOct, rx0, ry0, rx1, ry1 int, keep float64) {
+	d := m.ds()
+	r := &d.room
 	if o == nil || r.rm.w == 0 {
 		return
 	}
@@ -448,10 +461,19 @@ func (m *Model) design3DFront() {
 	rm := &r.rm
 	r.freeK = 1
 	front := blockDepth(b, 1, rm.big) + float64(o.Layer)*(layerStep+0.02)
+	f := r.ff * r.lensK()
+	away := func(x0, x1, yt, yb float64) float64 { // how far from it the camera stands for it to fill the view
+		return math.Max((x1-x0)/2*f/(frontFill*float64(rm.w)/2), (yt-yb)/2*f/(frontFill*float64(rm.h)))
+	}
 	x0, x1 := float64(b.x0)-rm.hw, float64(b.x1)-rm.hw
 	yt, yb := rm.hh-float64(2*b.y0), rm.hh-float64(2*b.y1)
-	f := r.ff * r.lensK()
-	dist := math.Max((x1-x0)/2*f/(frontFill*float64(rm.w)/2), (yt-yb)/2*f/(frontFill*float64(rm.h)))
+	dist := away(x0, x1, yt, yb)
+	if rx1 > rx0 && ry1 > ry0 { // a part of it
+		whole := dist
+		x0, x1 = float64(rx0)-rm.hw, float64(rx1)-rm.hw
+		yt, yb = rm.hh-float64(2*ry0), rm.hh-float64(2*ry1)
+		dist = math.Max(away(x0, x1, yt, yb), keep*whole)
+	}
 	r.pos = r.inRoom(r3vec{(x0 + x1) / 2, (yt + yb) / 2, front + math.Max(dist, 2)})
 	r.look = [2]float64{0, 0}
 }

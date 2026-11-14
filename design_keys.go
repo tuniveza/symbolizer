@@ -163,21 +163,14 @@ func arrowDir(name string) string {
 // ---- Tab: from part to part ---------------------------------------------------------
 
 // designTab, with a structure chosen and nothing being written, starts
-// writing in its first part (Shift+Tab: its last); on a cabinet it opens
-// its doors, or shuts them. While writing, Tab goes on to the next part (designWrite).
+// writing in its first part (Shift+Tab: its last). While writing, Tab goes
+// on to the next part (designWrite). A container steps through its
+// sections instead (design_sections.go).
 func (m *Model) designTab(back bool) {
 	d := m.ds()
 	o := d.byID(d.sel)
 	if o == nil {
 		m.say("Nothing chosen. Use the arrows, or click one.")
-		return
-	}
-	if o.Kind == kCabinet { // Tab opens its doors, or shuts them (design_cabinet.go)
-		m.designDoors(o)
-		return
-	}
-	if o.Kind == kDrawer { // Tab pulls out its next drawer (Shift+Tab: the one before) (design_drawer.go)
-		m.designPull(o, back)
 		return
 	}
 	ps := partsOf(o)
@@ -682,6 +675,9 @@ func (m *Model) designAltTap() bool {
 func (m *Model) designEscape() {
 	d := m.ds()
 	switch {
+	case d.sect.on: // Tab stepping through a container: it ends, what it reached stays (design_sections.go)
+		m.sectionEnd(false)
+		d.editing = partNone
 	case d.editing != partNone:
 		d.editing = partNone
 	case d.placing:

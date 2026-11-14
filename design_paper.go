@@ -1128,6 +1128,9 @@ func (m *Model) designPaste(text string) tea.Cmd {
 		cx, cy := d.world(m.screenMiddle())
 		return m.dropFiles(paths, o, cx, cy)
 	}
+	if d.editing == partThing && d.sectionThing() != nil { // a thing in a container: its title, at the cursor (design_sections.go)
+		return m.fieldWrite(text)
+	}
 	if d.editing != partNone && o != nil {
 		return m.fieldWrite(text) // at the cursor, as in Text mode (design_field.go)
 	}
