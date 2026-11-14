@@ -1,6 +1,6 @@
 """Messy directions: no grammar, any order, slips, chatter, run-ons. Each must build exactly the same program
 as its tidy meaning. The universe reads them with ConceptNet on and an empty memory, so it's the same every
-time. (Lines the scrambler found; see scrambler.py.)
+time. (Lines the scrambler found; see trainer/scrambler.py.)
 
 Usage: python3 tests/test_messy.py
 """
@@ -8,7 +8,7 @@ import os
 import sys
 
 from terminal import folder
-import conceptnet  # noqa: E402 (terminal finds brick)
+from trainer import conceptnet  # noqa: E402 (terminal finds brick)
 
 MESSY = [
     # single directions, any order
@@ -138,7 +138,7 @@ def built(text, where, by_itself=False):
 
 def test_messy_directions():
     if not os.path.isfile(conceptnet.PATH):
-        return                  # ConceptNet isn't here (python3 conceptnet.py fetch)
+        return                  # ConceptNet isn't here (python3 trainer/conceptnet.py fetch)
     where = folder()
     os.environ["BRICK_MEMORY"] = os.path.join(where, "empty-memory.txt")
     os.environ["BRICK_NEURAL"] = "off"          # the universe's own rules (the model has tests/test_neural.py)

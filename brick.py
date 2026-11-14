@@ -16,54 +16,66 @@
                                           game.shale the same rows in hex
                                           game.cement the actual program file, byte for byte (it runs)
                               brick sand game.txt (or clay, shale, cement) writes just that one
-  brick neural setup          the neural reader: a language model on this computer (Ollama, started and
-                              stopped with brick) that suggests readings brick isn't sure of. brick neural:
-                              is it ready; brick neural off / on; brick neural model qwen2.5:7b
-  brick brain                 brick's brain: it links each word to how it's used, by itself, so a word
-                              brick doesn't know can be read as one used the same way ('hi in vermilion'
-                              like 'hi in red'). brick brain: is it on, how much it knows; brick brain
-                              like red: the words used most like red; brick brain links red: its links;
-                              brick brain learn: learn from everything now; brick brain off / on
   brick teach zap means write a new word for every program: zap hello in red works like write.
                               brick teach: the words you taught; brick unteach zap: forget one.
                               In one program only: write the line zap means write at its top
-  brick learn notes.txt       learn from anything: a file, a folder, pictures, or "some words" in quotes.
-                              brick learn watch ~/Pictures: learn from new files there by itself while
-                              brick runs; brick learn unwatch / watching
-  brick imagine               brick's imagination: it draws 5 random pictures (shapes, colours, textures,
-                              scenes) here in the terminal, its eye reads each back, and it says what each
-                              could be (apple, ball ...) from its neurons, ConceptNet and WordNet.
-                              brick imagine apple: draw apple from what it knows and check the eye reads it
-                              back; brick imagine apple + ball: a blend; --open opens the picture.
-                              It also dreams by itself while brick runs (texts/imagination)
-  brick dream 20              20 dream rounds now, and how well the eye read them back, per channel
-                              (texts/factory/imagination.txt); it tunes the eye where that's safe
-  brick imaginations          what it imagined lately, drawn here: own (by itself), mine (you asked),
-                              learned (after brick learn / show), today, or a number (brick imaginations 20)
-  brick show apple.png as apple
-                              teach brick a symbol by showing it: brick measures the picture (shape, size,
-                              colours, symmetry), asks the vision model what it sees, and adds what it
-                              knows (WordNet, ConceptNet) to apple's universe, texts/universes/apple.txt
-  brick universe apple        apple's universe: one file per symbol, a neuron that keeps learning by
-                              itself while brick runs. brick universe apple forget: delete it;
-                              brick universes: list them; brick sight setup: download the vision model
-  brick scramble 10           10 broken, errored paragraphs of directions, and how brick did with each
-                              (the factory practises on these by itself while brick runs)
-  brick review game.txt       the lines brick had to guess in game.txt: say if they're right, or fix them.
-                              brick also asks after each run ("Did it do what you meant?")
   brick help                  every phrase it understands
   brick help dictionary       every everyday word it knows, and what each means here
                               (brick help dictionary colours: just one group)
-  brick factory               the factory: it makes and watches directions, and teaches the dictionary
-                              and the textual universe. It runs by itself while brick gui is open or a
-                              program runs here; brick factory runs it in this terminal, to watch it
-  brick factory always / off  keep it running all the time, or stop that (brick factory status)
-  brick factory learn x.brick learn from these files now
   brick director              the English Director: scrambles a batch of directions and reports what brick
                               gets wrong (texts/director-report.txt). With Claude Code installed, Claude
                               then fixes brick's code for them (instructions: texts/director.txt)
-  brick feeder                the dictionary feeder: a batch of learning now, checked by the tests. With
+
+The trainer: everything brick learns, in one place (the code in trainer/, what it learned in trainer/data)
+  brick trainer               run the trainer here, to watch it: it makes and watches directions, and
+                              teaches the dictionary, the brain and the universes. It runs by itself while
+                              brick gui is open or a program runs here
+  brick trainer always / off  keep it running all the time, or stop that (brick trainer status)
+  brick trainer brain         brick's brain: it links each word to how it's used, by itself, so a word
+                              brick doesn't know can be read as one used the same way ('hi in vermilion'
+                              like 'hi in red'). brick trainer brain: is it on, how much it knows;
+                              brick trainer brain like red: the words used most like red;
+                              brick trainer brain links red: its links; brick trainer brain learn: learn
+                              from everything now; brick trainer brain off / on
+  brick trainer learn notes.txt
+                              learn from anything: a file, a folder, pictures, or "some words" in quotes.
+                              brick trainer learn watch ~/Pictures: learn from new files there by itself
+                              while brick runs; brick trainer learn unwatch / watching
+  brick trainer digest x.brick
+                              the trainer learns from these .brick (or .txt) files now
+  brick trainer show apple.png as apple
+                              teach brick a symbol by showing it: brick measures the picture (shape, size,
+                              colours, symmetry), asks the vision model what it sees, and adds what it
+                              knows (WordNet, ConceptNet) to apple's universe, trainer/data/universes/apple.txt
+  brick trainer universe apple
+                              apple's universe: one file per symbol, a neuron that keeps learning by
+                              itself while brick runs. brick trainer universe apple forget: delete it;
+                              brick trainer universes: list them; brick trainer sight setup: download
+                              the vision model
+  brick trainer imagine       brick's imagination: it draws 5 random pictures (shapes, colours, textures,
+                              scenes) here in the terminal, its eye reads each back, and it says what each
+                              could be (apple, ball ...) from its neurons, ConceptNet and WordNet.
+                              brick trainer imagine apple: draw apple from what it knows and check the eye
+                              reads it back; brick trainer imagine apple + ball: a blend; --open opens the
+                              picture. It also dreams by itself while brick runs (trainer/data/imagination)
+  brick trainer dream 20      20 dream rounds now, and how well the eye read them back, per channel
+                              (trainer/data/imagination.txt); it tunes the eye where that's safe
+  brick trainer imaginations  what it imagined lately, drawn here: own (by itself), mine (you asked),
+                              learned (after brick trainer learn / show), today, or a number
+                              (brick trainer imaginations 20)
+  brick trainer neural setup  the neural reader: a language model on this computer (Ollama, started and
+                              stopped with brick) that suggests readings brick isn't sure of.
+                              brick trainer neural: is it ready; brick trainer neural off / on;
+                              brick trainer neural model qwen2.5:7b
+  brick trainer scramble 10   10 broken, errored paragraphs of directions, and how brick did with each
+                              (the trainer practises on these by itself while brick runs)
+  brick trainer review game.txt
+                              the lines brick had to guess in game.txt: say if they're right, or fix them.
+                              brick also asks after each run ("Did it do what you meant?")
+  brick trainer feeder        the dictionary feeder: a batch of learning now, checked by the tests. With
                               Claude Code installed, Claude also settles words that need judgement
+                              (instructions: trainer/feeder.txt)
+  The older short forms still work (brick brain, brick learn, brick imagine, brick factory ...).
 """
 import os
 import shutil
@@ -86,7 +98,7 @@ TERMINALS = [
     ("xterm", lambda name, title, command: ["xterm", "-class", name, "-T", title, "-e"] + command),
 ]
 # Runs the program, then keeps the window open until Enter, so its last words can be read.
-# Then asks about any lines brick had to guess (brick review --ask), if it knows the program's .txt.
+# Then asks about any lines brick had to guess (brick trainer review --ask), if it knows the program's .txt.
 STAY_OPEN = '"$0"; [ -n "$3" ] && "$1" "$2" review --ask "$3"; ' \
             'printf "\\n(Finished. Press Enter to close this window.)"; read _'
 
@@ -104,15 +116,15 @@ def build(source, output):
     with open(source, encoding="utf-8", errors="replace") as f:
         text = f.read()
     compiler = Compiler()
-    import factory
+    from trainer import core as trainer
     try:
         program = compiler.compile(text)
     except Problem as problem:
         print(f"Not built. Fix these first:\n{problem}")
         print("\n".join(compiler.notes), end="\n" if compiler.notes else "")
-        factory.after_build(text, compiler, str(problem), os.path.basename(source))   # brick keeps working on it
+        trainer.after_build(text, compiler, str(problem), os.path.basename(source))   # brick keeps working on it
         return None
-    factory.after_build(text, compiler, where=os.path.basename(source))      # what it fixed, it learns to keep
+    trainer.after_build(text, compiler, where=os.path.basename(source))      # what it fixed, it learns to keep
     print("\n".join(compiler.notes), end="\n" if compiler.notes else "")     # likely typos: it still builds
     if os.path.isdir(output):
         print(f"Not built: there's already a folder called {output}. Rename the .txt file or the folder.")
@@ -150,13 +162,13 @@ def run_here(program):
         return 130
 
 
-SERVICE = "brick-factory.service"
+SERVICE = "brick-trainer.service"
 UNIT = """[Unit]
-Description=brick's factory: the dictionary and textual universe, learning all the time
+Description=brick's trainer: the dictionary and textual universe, learning all the time
 
 [Service]
 WorkingDirectory={here}
-ExecStart={python} {here}/factory.py --quiet
+ExecStart={python} {here}/trainer/core.py --quiet
 Restart=on-failure
 
 [Install]
@@ -164,14 +176,18 @@ WantedBy=default.target
 """
 
 
-def factory_command(args):
-    """brick factory: run it here; always / off: keep it running all the time, or stop that; status."""
-    import factory
+TRAINER_COMMANDS = ("brain", "neural", "learn", "imagine", "dream", "imaginations", "show", "look", "universe",
+                    "universes", "sight", "scramble", "feeder", "review")
+
+
+def trainer_command(args):
+    """brick trainer: run it here; always / off: keep it running all the time, or stop that; status."""
+    from trainer import core as trainer
     here = os.path.dirname(os.path.abspath(__file__))
     if not args:
-        return factory.main([])
-    if args[0] == "learn":
-        return factory.main(args)
+        return trainer.main([])
+    if args[0] == "digest":
+        return trainer.main(["learn"] + args[1:])
     if args[0] in ("always", "off"):
         unit = os.path.expanduser(f"~/.config/systemd/user/{SERVICE}")
         if args[0] == "always":
@@ -188,19 +204,19 @@ def factory_command(args):
         print(__doc__)
         sys.exit(1)
     always = subprocess.run(["systemctl", "--user", "is-enabled", "--quiet", SERVICE]).returncode == 0
-    print("The factory is " + ("ON all the time (brick factory off to stop that)." if always else
+    print("The trainer is " + ("ON all the time (brick trainer off to stop that)." if always else
                                "on while brick runs (brick gui, or a program running here)."))
-    print("Right now it's " + ("running." if factory.running() else "not running."))
-    log = os.path.join(factory.FOLDER, "log.txt")
+    print("Right now it's " + ("running." if trainer.running() else "not running."))
+    log = os.path.join(trainer.FOLDER, "log.txt")
     if os.path.isfile(log):
         with open(log, encoding="utf-8") as f:
             learned = [line.split("learned: ", 1)[1] for line in f if "learned: " in line]
         print(f"It has learned {len(learned)} words" + (": " + "; ".join(learned[-5:]) if learned else "."))
-    if os.path.isfile(factory.POOL):
-        with open(factory.POOL, encoding="utf-8", errors="replace") as f:
-            print(f"sentence pool: {sum(1 for _ in f):,} lines in {factory.POOL}")
-    import outliers
-    print(f"waiting for you to decide: {len(outliers.entries())} (the Decisions tab in brick gui)")
+    if os.path.isfile(trainer.POOL):
+        with open(trainer.POOL, encoding="utf-8", errors="replace") as f:
+            print(f"sentence pool: {sum(1 for _ in f):,} lines in {trainer.POOL}")
+    from trainer import outliers
+    print(f"waiting for you to decide: {len(outliers.entries())} (Trainer → Decisions in brick gui)")
 
 
 TOOLS = ["Read", "Edit", "Write", "Grep", "Glob"] + [f"Bash({c}:*)" for c in (
@@ -208,28 +224,28 @@ TOOLS = ["Read", "Edit", "Write", "Grep", "Glob"] + [f"Bash({c}:*)" for c in (
 
 
 def helper(name, focus):
-    """brick director / brick feeder. brick does its own half first: the feeder learns a batch of words
-    (the factory); the director scrambles a batch of directions and reports what brick gets wrong. Then, if
+    """brick director / brick trainer feeder. brick does its own half first: the feeder learns a batch of words
+    (the trainer); the director scrambles a batch of directions and reports what brick gets wrong. Then, if
     Claude Code is installed, Claude does what takes judgement, following texts/<name>.txt: fixing brick's
     code (director), or words brick couldn't settle (feeder). Without it, brick's own half still runs."""
     here = os.path.dirname(os.path.abspath(__file__))
     title = {"director": "The English Director", "feeder": "The dictionary feeder"}[name]
     print(f"{title} is working...", flush=True)
     if name == "feeder":
-        import factory
-        if not factory.only_one():
-            print("The factory is running alongside brick right now, and already does this all the time "
-                  "(brick factory status).")
-            own = "The factory was busy, so brick's own half ran in the background instead."
+        from trainer import core as trainer
+        if not trainer.only_one():
+            print("The trainer is running alongside brick right now, and already does this all the time "
+                  "(brick trainer status).")
+            own = "The trainer was busy, so brick's own half ran in the background instead."
         else:
-            own = factory.Factory(quiet=True).feed(int(focus[0]) if focus and focus[0].isdigit() else 20)
+            own = trainer.Trainer(quiet=True).feed(int(focus[0]) if focus and focus[0].isdigit() else 20)
     else:
-        import scrambler
+        from trainer import scrambler
         own = scrambler.findings(int(focus[0]) if focus and focus[0].isdigit() else 40)
     print(own, flush=True)
     report = own
     if shutil.which("claude"):
-        with open(os.path.join(here, "texts", f"{name}.txt"), encoding="utf-8") as f:
+        with open(os.path.join(here, "trainer" if name == "feeder" else "texts", f"{name}.txt"), encoding="utf-8") as f:
             instructions = f.read()
         asked = instructions + (f"\n\nFocus this batch on: {' '.join(focus)}" if focus else "") + \
             f"\n\nbrick's own half just ran and found this:\n\n{own}\n\nRun one batch now, starting from those findings."
@@ -244,19 +260,27 @@ def helper(name, focus):
     else:
         print("\n(With Claude Code installed, Claude would also " +
               ("fix brick's code for these." if name == "director" else "settle the words that need judgement.") + ")")
-    with open(os.path.join(here, "texts", f"{name}-report.txt"), "w", encoding="utf-8") as f:
+    with open(os.path.join(here, *(("trainer", "data") if name == "feeder" else ("texts",)), f"{name}-report.txt"),
+              "w", encoding="utf-8") as f:
         f.write(report + "\n")
 
 
 def main():
     args = sys.argv[1:]
-    if args[:1] == ["factory"]:
-        return factory_command(args[1:])
+    if args[:1] == ["factory"]:                       # the trainer's old name
+        args = ["trainer"] + (["digest"] + args[2:] if args[1:2] == ["learn"] else args[1:])
+    if args[:1] == ["trainer"]:                       # brick trainer ...: everything brick learns
+        if args[1:2] in ([], ["always"], ["off"], ["status"], ["digest"]):
+            return trainer_command(args[1:])
+        if args[1:2] == ["help"] or args[1] not in TRAINER_COMMANDS:
+            print(__doc__[__doc__.index("The trainer:"):])
+            sys.exit(0 if args[1:2] == ["help"] else 1)
+        args = args[1:]
     if args[:1] == ["neural"]:
-        import neural
+        from trainer import neural
         return neural.command(args[1:])
     if args[:1] == ["brain"]:
-        import brain
+        from trainer import brain
         return brain.command(args[1:])
     if args[:1] == ["teach"]:
         import words                                  # brick teach zap means write
@@ -265,25 +289,25 @@ def main():
         import words
         return words.unteach(args[1:])
     if args[:1] == ["learn"]:
-        import senses                                 # brick learn notes.txt / ~/Pictures / "some words"
+        from trainer import senses                                 # brick trainer learn notes.txt / ~/Pictures / "some words"
         return senses.command(args[1:])
     if args[:1] in (["imagine"], ["dream"], ["imaginations"]):
-        import imagine                                # brick imagine / brick imagine apple / brick dream 20
+        from trainer import imagine                                # brick trainer imagine / brick trainer imagine apple / brick trainer dream 20
         return imagine.main(args)
     if args[:1] in (["universe"], ["universes"], ["sight"], ["show"], ["look"]) or \
             (args and not find_source(args[0]) and len(args) > 1):
-        import symbols                                # brick show apple.png as apple, brick universe apple
+        from trainer import symbols                                # brick trainer show apple.png as apple, brick trainer universe apple
         if symbols.handles(args):
             done = symbols.main(args)
             if done == 0 and args[0] not in ("universe", "universes", "sight"):
-                import imagine                        # the imagination reacts to the picture it was shown
+                from trainer import imagine                        # the imagination reacts to the picture it was shown
                 imagine.react_to_show(args)
             return done
     if args[:1] == ["scramble"]:
-        import scrambler
+        from trainer import scrambler
         return scrambler.main(args[1:])
     if args[:1] == ["review"] and len(args) in (2, 3):
-        import review
+        from trainer import review
         source = find_source(args[-1])
         if source is None:
             print(f"I can't find {args[-1]} in {os.getcwd()}.")
@@ -295,9 +319,9 @@ def main():
         print(dictionary.listing(args[2:] if args[0] == "help" else args[1:]))
         return
     if args[:1] == ["gui"]:
-        import factory
+        from trainer import core as trainer
         import gui
-        factory.start_alongside(os.getcwd())          # it learns while the window is open, and stops with it
+        trainer.start_alongside(os.getcwd())          # it learns while the window is open, and stops with it
         return gui.main(args[1:])
     if args[:1] == ["export"] and len(args) == 2:
         import gui
@@ -352,10 +376,10 @@ def main():
             return
         print("(No graphical desktop here, so it runs in this terminal instead.)")
     if args[0] != "build":
-        import factory
-        factory.start_alongside(os.path.dirname(program))
+        from trainer import core as trainer
+        trainer.start_alongside(os.path.dirname(program))
         code = run_here(program)
-        import review
+        from trainer import review
         review.ask(source)                       # did brick's guesses mean what you meant?
         sys.exit(code)
 

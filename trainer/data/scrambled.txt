@@ -8679,3 +8679,12 @@
 ✓ and on the right in the color orange ready PRINT turn bg orange??
 ✓ to the top put with orange COLOR lets go rn & then bg cyan...
 ✓ ok so say at the top of the screen in magenta colour saying level up;also hold on 1 second, then set background to magenta then in cyan display lets go on BOTTOM
+✗ say say in COLOR cyan game over  so yeah the words level up to top in navy color type ; console on right
+    meant: write game over in cyan then write level up in navy at the top then put the console on the right side of the screen
+✓ ok so happy days in navy color righht print  print saying level up in red color bottom after 4 secs right right text that says hello x4 x4 in yellow color say
+✓ top TOP with pink color print text that says game over & then good morning with blue color ok??
+✓ text gold;saying good morning after 7 secs in PINK colour WRITE on the top yeah, then text colour white
+✓ after 5 sec display saying hi there, "nice one" green put and then TEXT colour RED
+✓ ok so 2 secs wait wait thx  ok so in white colour at the bottom of screen text that says ready put put after 6 secs, right clear.
+✓ bg MAGENTA  "level up" WITH gold color write top; clear screen??
+✓ 5 times in lme colour "try again" say make the wriitng teal teal text color white??

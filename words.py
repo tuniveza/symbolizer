@@ -13,7 +13,7 @@ import re
 import tempfile
 
 import dictionary
-import factory
+from trainer import core as trainer
 
 HEADING = "# Your words\n# Taught with brick teach. Each one was checked to build exactly like its meaning.\n"
 
@@ -55,15 +55,15 @@ def teach(word, meaning):
     line = f"{word} = {meaning}"
     if any(e.key == word and e.meaning.lower() == meaning.lower() for e in dictionary.entries()):
         return True, f"brick already knows that: {word} means {meaning}.", probe
-    old = factory.same_key(dictionary.PATH, line)
-    with factory.Writing():
+    old = trainer.same_key(dictionary.PATH, line)
+    with trainer.Writing():
         for o in old:
-            factory.remove_line_now(dictionary.PATH, o)
+            trainer.remove_line_now(dictionary.PATH, o)
         add(line)
     dictionary.clear()
     if not works_like(word, meaning):
-        with factory.Writing():
-            factory.remove_line_now(dictionary.PATH, line)
+        with trainer.Writing():
+            trainer.remove_line_now(dictionary.PATH, line)
             for o in old:
                 add(o)
         dictionary.clear()
@@ -82,15 +82,15 @@ def add(line):
     while k < len(lines) and lines[k].strip():
         k += 1
     lines.insert(k, line)
-    factory.write_whole(dictionary.PATH, "\n".join(lines) + "\n")
+    trainer.write_whole(dictionary.PATH, "\n".join(lines) + "\n")
 
 
 def works_like(word, meaning, before=False):
     """A small program using the meaning that builds; with before=False, the word must build the same.
     Returns that program with the word in it, or None."""
     probes = ["{} hello", "write hello in {}", "set the background colour to {}", "{}", "write 2 {} 3"]
-    saved = {k: os.environ.get(k) for k in ("BRICK_MEMORY", "BRICK_NEURAL", "BRICK_FACTORY")}
-    os.environ.update(BRICK_MEMORY="off", BRICK_NEURAL="off", BRICK_FACTORY="off")
+    saved = {k: os.environ.get(k) for k in ("BRICK_MEMORY", "BRICK_NEURAL", "BRICK_TRAINER")}
+    os.environ.update(BRICK_MEMORY="off", BRICK_NEURAL="off", BRICK_TRAINER="off")
     try:
         with tempfile.TemporaryDirectory() as where:
             words = os.path.join(where, "mywords.txt")
@@ -155,13 +155,13 @@ def forget(word):
     lines = [line for line in taught() if line.split("=", 1)[0].strip().lower() == word]
     if not word or not lines:
         return False, f"'{word}' isn't one of the words you taught. brick teach lists them."
-    with factory.Writing():
+    with trainer.Writing():
         for line in lines:
-            factory.remove_line_now(dictionary.PATH, line)
+            trainer.remove_line_now(dictionary.PATH, line)
         if not taught():                  # the last one: take the empty heading away too
             with open(dictionary.PATH, encoding="utf-8") as f:
                 text = f.read()
-            factory.write_whole(dictionary.PATH, text.replace("\n\n" + HEADING, "\n").rstrip("\n") + "\n")
+            trainer.write_whole(dictionary.PATH, text.replace("\n\n" + HEADING, "\n").rstrip("\n") + "\n")
     dictionary.clear()
     return True, f"Forgot: {word}."
 

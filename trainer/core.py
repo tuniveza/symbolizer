@@ -1,32 +1,32 @@
-"""The factory: brick's dictionary and textual universe, learning by themselves while brick runs.
+"""The trainer: brick's dictionary and textual universe, learning by themselves while brick runs.
 
 Each round (every 5 seconds) it:
   makes      one made-up direction for a console program, often as loosely as people really type them
              ('bg red', 'type at left of the screen the words hi in teal'), into the sentence pool
-             (texts/sentences.txt, which the dictionary feeder also reads)
+             (trainer/data/sentences.txt, which the dictionary feeder also reads)
   watches    for new or changed .brick files (from Save .brick in brick gui, or brick export) and takes
              every line of their programs as more directions to learn from
   proves     each direction by building it, and teaches the universe's memory the reading that built
-             (see synchronicity.py): which idea each word was, and which ideas came together
+             (see trainer/synchronicity.py): which idea each word was, and which ideas came together
   learns     words brick doesn't know: a WordNet synonym brick does know becomes a dictionary line
              (restate = repeat) or a universe link (backdrop is about the background). Each one must build
              the same program as its synonym, then every test must pass, or it's taken out again.
-  practises  on broken, errored paragraphs from the scrambler (scrambler.py), whose right answer it
+  practises  on broken, errored paragraphs from the scrambler (trainer/scrambler.py), whose right answer it
              knows: what brick reads right strengthens the memory; what it misreads steers the memory
              toward the reading that's right; what it refuses, it tries to learn the missing words for,
              kept only if the mess then builds exactly the right program
-  links      words to how they're used, in brick's brain (brain.py, texts/factory/brain.txt): every
+  links      words to how they're used, in brick's brain (trainer/brain.py, trainer/data/brain.txt): every
              direction it proves, your .brick files, the sentence pool, the universe, the dictionary and
              ConceptNet, so a word brick doesn't know can be read as one used the same way
-  leaves     what it couldn't settle for a person to decide: the Decisions tab in brick gui (outliers.py,
-             texts/factory/unsure.txt)
+  leaves     what it couldn't settle for a person to decide: Trainer → Decisions in brick gui (trainer/outliers.py,
+             trainer/data/unsure.txt)
 
 It runs while brick runs (brick gui, or a program running in the terminal) and stops with it.
-brick factory always keeps it running all the time instead; brick factory off stops that.
+brick trainer always keeps it running all the time instead; brick trainer off stops that.
 
-    python3 factory.py                        run here and show what it does (Ctrl+C to stop)
-    python3 factory.py make 200               add 200 directions to the sentence pool, then stop
-    python3 factory.py learn game.brick       learn from these files now, then stop
+    python3 trainer/core.py                        run here and show what it does (Ctrl+C to stop)
+    python3 trainer/core.py make 200               add 200 directions to the sentence pool, then stop
+    python3 trainer/core.py learn game.brick       learn from these files now, then stop
 """
 import fcntl
 import glob
@@ -41,33 +41,33 @@ import sys
 import tempfile
 import time
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
 
-import brain  # noqa: E402
-import senses as brick_senses  # noqa: E402 (wordnet.senses is another thing)
-import imagine  # noqa: E402
-import symbols  # noqa: E402
-import conceptnet  # noqa: E402
+from trainer import brain  # noqa: E402
+from trainer import senses as brick_senses  # noqa: E402 (wordnet.senses is another thing)
+from trainer import imagine  # noqa: E402
+from trainer import symbols  # noqa: E402
+from trainer import conceptnet  # noqa: E402
 import dictionary  # noqa: E402
-import outliers  # noqa: E402
-import scrambler  # noqa: E402
-import synchronicity  # noqa: E402
-import universe  # noqa: E402
+from trainer import outliers  # noqa: E402
+from trainer import scrambler  # noqa: E402
+from trainer import synchronicity  # noqa: E402
+from trainer import universe  # noqa: E402
 from actions import STARTERS  # noqa: E402
 from compiler import Compiler  # noqa: E402
 from expressions import Problem  # noqa: E402
 
-POOL = os.path.join(HERE, "texts", "sentences.txt")
+POOL = os.path.join(HERE, "trainer", "data", "sentences.txt")
 EXAMPLES = os.path.join(HERE, "texts", "examples")
-FOLDER = os.path.join(HERE, "texts", "factory")
-from wordnet import WORDNET  # noqa: E402
-LEARNED = "# Learned\n# Added by the factory and the dictionary feeder: each one was checked to build exactly " \
+FOLDER = os.path.join(HERE, "trainer", "data")
+from trainer.wordnet import WORDNET  # noqa: E402
+LEARNED = "# Learned\n# Added by the trainer and the dictionary feeder: each one was checked to build exactly " \
           "the same program as its meaning.\n"
 LINKS = ("show", "placing", "make", "clear", "wait", "text", "window", "background", "screen", "place", "size", "style")
 
 
-from wordnet import FILES, senses, synonyms, synset  # noqa: E402
+from trainer.wordnet import FILES, senses, synonyms, synset  # noqa: E402
 
 
 # ---------------- making directions ----------------
@@ -371,13 +371,13 @@ def directions_in(entry):
     return [p for p in parts if p.strip()]
 
 
-# ---------------- building, as the factory sees it ----------------
+# ---------------- building, as the trainer sees it ----------------
 
 class Builder:
     """Builds text with scratch copies of your words, so trying things never changes them."""
 
     def __init__(self):
-        self.folder = tempfile.mkdtemp(prefix="brick-factory-")
+        self.folder = tempfile.mkdtemp(prefix="brick-trainer-")
 
     def build(self, text, by_itself=False, words=None):
         """The program's bytes, or the Problem's message (a str). by_itself: without the universe's help.
@@ -421,22 +421,22 @@ class Trial:
 
 
 def fire_together(roles, source):
-    """The words of a proved direction turned up together: their neurons (texts/universes) link up,
+    """The words of a proved direction turned up together: their neurons (trainer/data/universes) link up,
     each filed under the idea it was read as (red under colour, top under place)."""
     words = [(word, idea) for word, idea, _ in roles if idea != "words" and re.fullmatch(r"[a-z]+", word or "")]
     if len(words) > 1:
         symbols.experience(words, source)
 
 
-# ---------------- the factory ----------------
+# ---------------- the trainer ----------------
 
-class Factory:
+class Trainer:
     def __init__(self, quiet=False):
         os.makedirs(FOLDER, exist_ok=True)
         self.quiet = quiet
         self.builder = Builder()
         self.memory = synchronicity.Memory()
-        self.brain = None if brain.off() else brain.Brain(brain.path())    # brick brain off: it doesn't learn
+        self.brain = None if brain.off() else brain.Brain(brain.path())    # brick trainer brain off: it doesn't learn
         self.state = self.load_state()
         self.maker = None
         self.added = []                  # (file, line) learned since the last check
@@ -683,7 +683,7 @@ class Factory:
         self.save()
 
     def feed(self, rounds=20):
-        """brick feeder: a batch of learning now -> a plain-English report."""
+        """brick trainer feeder: a batch of learning now -> a plain-English report."""
         before = sum(1 for _ in open(os.path.join(FOLDER, "log.txt"), encoding="utf-8")) \
             if os.path.isfile(os.path.join(FOLDER, "log.txt")) else 0
         for _ in range(rounds):
@@ -722,7 +722,7 @@ class Factory:
             sensed = brick_senses.watch_round(self.brain)   # new files in the folders you asked it to watch
             if sensed:
                 self.say(f"senses: {sensed}")
-            imagined = imagine.dream_round()          # imagined pictures, read back by the eye (imagine.py)
+            imagined = imagine.dream_round()          # imagined pictures, read back by the eye (trainer/imagine.py)
             if imagined:
                 self.say(f"imagination: {imagined}")
         self.practise()
@@ -733,7 +733,7 @@ class Factory:
 
 def broken(builder):
     """The test files that fail and the examples that don't build."""
-    env = dict(os.environ, BRICK_FACTORY="off", BRICK_MEMORY="off")
+    env = dict(os.environ, BRICK_TRAINER="off", BRICK_MEMORY="off")
     found = {t for t in glob.glob(os.path.join(HERE, "tests", "test_*.py"))
              if subprocess.run([sys.executable, t], env=env, capture_output=True).returncode != 0}
     for example in glob.glob(os.path.join(EXAMPLES, "*.txt")):
@@ -781,7 +781,7 @@ HEARD = os.path.join(FOLDER, "heard.txt")
 
 
 def hear(lines):
-    """Lines from a real build that brick had to fix, or couldn't: the factory learns from them next round."""
+    """Lines from a real build that brick had to fix, or couldn't: the trainer learns from them next round."""
     os.makedirs(FOLDER, exist_ok=True)
     with open(HEARD, "a", encoding="utf-8") as f:
         f.write("".join(line.strip() + "\n" for line in lines if line.strip()))
@@ -799,7 +799,7 @@ def heard():
 
 
 def after_build(text, compiler, problem=None, where="your program"):
-    """After a real build: what brick fixed goes to the factory to keep; what it couldn't fix goes on the
+    """After a real build: what brick fixed goes to the trainer to keep; what it couldn't fix goes on the
     Decisions desk too (it still works on those by itself)."""
     lines = text.split("\n")
     fixed = [lines[int(n) - 1] for n in re.findall(r"^Note: line (\d+) read as: ", "\n".join(compiler.notes),
@@ -846,7 +846,7 @@ def link_for(word, synonym):
 
 
 class Writing:
-    """One writer at a time for dictionary.txt and universe.txt (the factory, and a person deciding)."""
+    """One writer at a time for dictionary.txt and universe.txt (the trainer, and a person deciding)."""
 
     def __enter__(self):
         os.makedirs(FOLDER, exist_ok=True)
@@ -866,7 +866,7 @@ def add_line(path, line):
 def add_line_now(path, line):
     with open(path, encoding="utf-8") as f:
         text = f.read()
-    heading = LEARNED if path == dictionary.PATH else "# Learned\n# Added by the factory: each one built the same program as the word it stands for.\n"
+    heading = LEARNED if path == dictionary.PATH else "# Learned\n# Added by the trainer: each one built the same program as the word it stands for.\n"
     if "\n# Learned\n" not in text:
         text = text.rstrip("\n") + "\n\n" + heading
     write_whole(path, text.rstrip("\n") + "\n" + line + "\n")
@@ -898,7 +898,7 @@ def write_whole(path, text):
 # ---------------- running alongside brick ----------------
 
 def only_one():
-    """Hold the factory's lock, so two factories never learn at once. False if one is running already."""
+    """Hold the trainer's lock, so two trainers never learn at once. False if one is running already."""
     os.makedirs(FOLDER, exist_ok=True)
     global _lock
     _lock = open(os.path.join(FOLDER, "lock"), "w")
@@ -910,21 +910,22 @@ def only_one():
 
 
 def code_stamp():
-    """When brick's own code last changed: the newest .py file (or gui.html) in brick's folder.
-    brick gui and the factory compare it with the one they started with, and restart when it moves,
+    """When brick's own code last changed: the newest .py file (or gui.html) in brick's folder or trainer/.
+    brick gui and the trainer compare it with the one they started with, and restart when it moves,
     so an open brick kiln never runs older code than the files on disk."""
     newest = 0.0
-    for name in os.listdir(HERE):
-        if name.endswith(".py") or name == "gui.html":
-            try:
-                newest = max(newest, os.path.getmtime(os.path.join(HERE, name)))
-            except OSError:
-                pass
+    for folder in (HERE, os.path.join(HERE, "trainer")):
+        for name in os.listdir(folder):
+            if name.endswith(".py") or name == "gui.html":
+                try:
+                    newest = max(newest, os.path.getmtime(os.path.join(folder, name)))
+                except OSError:
+                    pass
     return newest
 
 
 def running():
-    """Is a factory running right now?"""
+    """Is a trainer running right now?"""
     if not os.path.isfile(os.path.join(FOLDER, "lock")):
         return False
     with open(os.path.join(FOLDER, "lock")) as f:
@@ -937,9 +938,9 @@ def running():
 
 
 def start_alongside(folder):
-    """Start the factory in the background for as long as this brick runs (brick gui, a program running
-    here). Nothing happens with BRICK_FACTORY=off, or when one is running already."""
-    if os.environ.get("BRICK_FACTORY") == "off" or running():
+    """Start the trainer in the background for as long as this brick runs (brick gui, a program running
+    here). Nothing happens with BRICK_TRAINER=off, or when one is running already."""
+    if "off" in (os.environ.get("BRICK_TRAINER"), os.environ.get("BRICK_FACTORY")) or running():   # its old name too
         return None
     import atexit
     os.makedirs(FOLDER, exist_ok=True)
@@ -965,40 +966,40 @@ def main(args=None):
     if args[:1] == ["make"]:
         maker = Maker()
         count = int(args[1]) if len(args) > 1 else 100
-        Factory(quiet=True).add_to_pool(maker.entry() for _ in range(count))
+        Trainer(quiet=True).add_to_pool(maker.entry() for _ in range(count))
         print(f"Added up to {count} directions to {POOL}")
         return
     if not only_one():
-        print("The factory is already running.")
+        print("The trainer is already running.")
         return
     if args[:1] == ["learn"]:
-        factory = Factory()
+        trainer = Trainer()
         for path in args[1:]:
             text = source_of(path) if path.endswith(".brick") else open(path, encoding="utf-8").read()
-            factory.digest(text, os.path.basename(path))
-        factory.check()
-        factory.save(final=True)
+            trainer.digest(text, os.path.basename(path))
+        trainer.check()
+        trainer.save(final=True)
         return
     parent = int(args[args.index("--while") + 1]) if "--while" in args else None
     folders = [HERE, EXAMPLES]
     if "--watch" in args:
         folders.append(os.path.abspath(args[args.index("--watch") + 1]))
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt))   # brick closed
-    factory = Factory(quiet="--quiet" in args)
-    factory.say("factory started" + (f" alongside brick (process {parent})" if parent else ""))
+    trainer = Trainer(quiet="--quiet" in args)
+    trainer.say("trainer started" + (f" alongside brick (process {parent})" if parent else ""))
     stamp = code_stamp()
     try:
         while parent is None or alive(parent):
-            factory.round(list(dict.fromkeys(folders)))
+            trainer.round(list(dict.fromkeys(folders)))
             if code_stamp() != stamp:                 # brick's code changed: carry on with the new code
-                factory.save(final=True)
-                factory.say("brick's code changed, so the factory restarts with it")
+                trainer.save(final=True)
+                trainer.say("brick's code changed, so the trainer restarts with it")
                 os.execv(sys.executable, [sys.executable, os.path.abspath(__file__)] + args)
             time.sleep(5)
     except KeyboardInterrupt:
         pass
-    factory.save(final=True)
-    factory.say("factory stopped")
+    trainer.save(final=True)
+    trainer.say("trainer stopped")
 
 
 if __name__ == "__main__":

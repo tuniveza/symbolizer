@@ -8,7 +8,7 @@ import os
 import sys
 
 from terminal import folder
-import neural  # noqa: E402 (terminal finds brick)
+from trainer import neural  # noqa: E402 (terminal finds brick)
 
 NEW_IDEAS = [
     ("make the computer go ding", "beep"),
@@ -39,7 +39,7 @@ def test_new_ideas():
     os.environ.pop("BRICK_NEURAL", None)
     try:
         if neural.off() or not neural.ready():
-            return              # no Ollama or no model here (brick neural setup)
+            return              # no Ollama or no model here (brick trainer neural setup)
         wrong = [line for line, meant in NEW_IDEAS if built(line, where) != built(meant, where, by_itself=True)]
         assert len(wrong) <= 2, f"{len(wrong)} of {len(NEW_IDEAS)} read wrong: {wrong}"
     finally:

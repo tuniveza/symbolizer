@@ -6,7 +6,7 @@ background colour to red). After the program runs, brick asks whether those gues
   no       a review panel (brick gui, in the browser) lists each guess with the other ways it could be
            read, and a box to say what you meant in brick's own words. In a terminal with no desktop,
            the same questions are asked right there.
-Whatever you settle is kept in texts/corrections.txt (your line = what you meant), read first next time,
+Whatever you settle is kept in trainer/data/corrections.txt (your line = what you meant), read first next time,
 so that line is never guessed again, and lines like it get better too.
 """
 import os
@@ -18,8 +18,8 @@ import sys
 import webbrowser
 from urllib.parse import quote
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-PATH = os.path.join(HERE, "texts", "corrections.txt")
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PATH = os.path.join(HERE, "trainer", "data", "corrections.txt")
 HEADING = """# Your corrections: lines brick had to guess, and what you said they mean (from the review after a run).
 # your line = what you meant, in brick's own words. brick reads these first, so they're never guessed again.
 # You can change or remove any line here.
@@ -54,7 +54,7 @@ def keep(line, meant):
 
 def as_you_said(text):
     """The text with every line you've said the meaning of read your way -> (text, notes)."""
-    import synchronicity
+    from trainer import synchronicity
     if synchronicity.off() or not settled():
         return text, []
     lines, notes = text.split("\n"), []
@@ -71,7 +71,7 @@ def as_you_said(text):
 def guessed(text, words_file="mywords.txt"):
     """The lines brick had to guess when building this text, and not yet settled ->
     [{"number", "line", "told", "others"}]: others are other readings that also build."""
-    import universe
+    from trainer import universe
     from compiler import Compiler
     from expressions import Problem
     words = universe.trial_words(words_file)
@@ -121,7 +121,7 @@ def confirm(line, told):
 
 def correct(text, number, meant, words_file="mywords.txt"):
     """No: it meant this. Returns None if that builds, or brick's message if it doesn't."""
-    import universe
+    from trainer import universe
     from compiler import failing_lines
     lines = text.split("\n")
     line = lines[number - 1].strip()
@@ -139,8 +139,8 @@ def correct(text, number, meant, words_file="mywords.txt"):
 
 def learn(line, meant):
     """Teach the universe's memory the reading of the line that says what was meant (synchronicity)."""
-    import synchronicity
-    import universe
+    from trainer import synchronicity
+    from trainer import universe
     directions = universe.analyse(line)
     if synchronicity.off() or len(directions) != 1:
         return
@@ -257,7 +257,7 @@ def generalise(line, meant, words_file="mywords.txt"):
     become gaps. Kept only if it reads the line exactly as meant, and a variation too (another colour, number
     or words) -> the dictionary line, or None."""
     import dictionary
-    import universe
+    from trainer import universe
     from actions import STARTERS
     said, means = line.strip(), meant.strip()
     swaps, pattern, meaning = [], said, means
@@ -287,8 +287,8 @@ def generalise(line, meant, words_file="mywords.txt"):
     for _, value, other in swaps:
         variant_line = re.sub(rf"\b{re.escape(value)}\b", other, variant_line, flags=re.IGNORECASE)
         variant_meant = re.sub(rf"\b{re.escape(value)}\b", other, variant_meant, flags=re.IGNORECASE)
-    import factory
-    builder = factory.Builder()
+    from trainer import core as trainer
+    builder = trainer.Builder()
     with builder.trying(dictionary.PATH, entry) as trial:
         if trial.build(said, by_itself=True, words=words_file) != builder.build(means, by_itself=True, words=words_file):
             return None
@@ -300,7 +300,7 @@ def generalise(line, meant, words_file="mywords.txt"):
 def shared_words(said, means):
     """The longest run of plain words the line and its meaning share ('hello there' in 'hi there in blue
     hello there' / 'write hello there in blue'): the words to show, which a pattern leaves as a gap."""
-    import universe
+    from trainer import universe
     world = universe.universe()
     a, b = said.lower().split(), means.lower().split()
     best = []

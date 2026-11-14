@@ -1,9 +1,9 @@
 The dictionary feeder
 =====================
-Part of brick: `brick feeder` (or `brick feeder 60` for a bigger batch). brick does its own half first:
-a batch of the factory's learning, checked by the tests. If Claude Code is installed, Claude then follows
+Part of brick: `brick trainer feeder` (or `brick trainer feeder 60` for a bigger batch). brick does its own half first:
+a batch of the trainer's learning, checked by the tests. If Claude Code is installed, Claude then follows
 this file for the words that need judgement (also in Claude Code itself: /dictionary-feeder).
-Reports: texts/feeder-report.txt.
+Reports: trainer/data/feeder-report.txt.
 
 The dictionary is texts/dictionary.txt (format and rules at its top).
 
@@ -14,13 +14,13 @@ The dictionary is texts/dictionary.txt (format and rules at its top).
    Default 40 sentences; use the number given after the command if there is one, and lean towards
    any topic given. Save them, one per file, in /tmp/dictionary-feeder/ (case01.txt, case02.txt ...).
 
-   About half the batch comes from texts/sentences.txt, which the factory keeps filling with
+   About half the batch comes from trainer/data/sentences.txt, which the trainer keeps filling with
    made-up directions (many as loosely as people type them) and every line of the owner's .brick
-   files; include lines from texts/factory/unsure.txt too. Pick entries at random from the whole
+   files; include lines from trainer/data/unsure.txt too. Pick entries at random from the whole
    file (e.g. `shuf -n 20`), not just the top, and favour ones that match any topic given. A
    one-sentence entry is one case as written. A paragraph ("First, ... Then, ... Finally, ...")
    becomes one case with one direction per line, with the joining words left off. If the file is
-   missing or nearly empty, fill it first: `python3 factory.py make 200`.
+   missing or nearly empty, fill it first: `python3 trainer/core.py make 200`.
    Only read from those files; never edit or empty them.
 2. Try each one: `cd /tmp/dictionary-feeder && python3 <brick folder>/brick.py build caseNN.txt`.
    Note which are refused, and which build but would clearly show something other than what the
@@ -37,7 +37,7 @@ The dictionary is texts/dictionary.txt (format and rules at its top).
 5. Make sure nothing broke. Run every test file (`for t in tests/test_*.py; do python3 $t | tail -1;
    done`) and rebuild every example in texts/examples/. If anything fails because of a new line,
    remove that line and say so.
-6. Report in plain English (if you're in Claude Code, also save it as texts/feeder-report.txt): how many sentences were tried, how many failed, which words were added
+6. Report in plain English (if you're in Claude Code, also save it as trainer/data/feeder-report.txt): how many sentences were tried, how many failed, which words were added
    (with their meanings), which were skipped and why, and the test results.
 
 Keep everything safe: never move real windows (only build programs with window words, don't run

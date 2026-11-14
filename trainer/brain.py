@@ -11,11 +11,11 @@ Everything is a symbol, with a pattern of its own, compared like any other:
                shape ('starts:wr', 'ends:te'). Worked out from the words the brain has seen, not kept
 
 The brain links symbols by itself, with nobody telling it, from:
-  every direction the factory proves by building it (the words, how they're used, the idea each was read as)
-  your saved .brick files and the sentence pool (texts/sentences.txt): how each word is used
-  texts/universe.txt (word -> idea, idea -> wider idea) and the dictionary (word -> what it means)
-  ConceptNet (texts/sources/conceptnet.tsv): words that belong together
-  texts/universes/*.txt, if there are any: one file per symbol, lines like 'shape: round, sphere'
+  every direction the trainer proves by building it (the words, how they're used, the idea each was read as)
+  your saved .brick files and the sentence pool (trainer/data/sentences.txt): how each word is used
+  trainer/data/universe.txt (word -> idea, idea -> wider idea) and the dictionary (word -> what it means)
+  ConceptNet (trainer/data/sources/conceptnet.tsv): words that belong together
+  trainer/data/universes/*.txt, if there are any: one file per symbol, lines like 'shape: round, sphere'
 
 How alike two symbols are (0.0 to 1.0) is the weighted overlap of their patterns:
   breadth(f) = how many different symbols have f (a broad link is weak evidence, a rare one strong)
@@ -30,16 +30,16 @@ or ConceptNet): which word brick knows is used most like it? If that reaches the
 word borrows that word's ideas ('vermilion' used like 'red' is a colour), and that reading is built and
 checked like every other.
 
-What it learns is kept in texts/factory/brain.txt, plain text: one link per line, which you can read,
+What it learns is kept in trainer/data/brain.txt, plain text: one link per line, which you can read,
 change or delete (delete the file to start again). Old links fade: when the weights add up to FADE_AT,
 every weight halves and the weakest go. Settings (on or off, the threshold) are in
-texts/factory/brain-settings.txt. The factory teaches it, only while brick runs.
+trainer/data/brain-settings.txt. The trainer teaches it, only while brick runs.
 
-    python3 brain.py                 status
-    python3 brain.py like WORD       the words used most like WORD (or letter:q, or a slot: in _ at)
-    python3 brain.py links WORD      WORD's strongest links (or letter:e, before:in ...)
-    python3 brain.py measure         how well the threshold tells words apart
-    python3 brain.py learn           learn from everything now
+    python3 trainer/brain.py                 status
+    python3 trainer/brain.py like WORD       the words used most like WORD (or letter:q, or a slot: in _ at)
+    python3 trainer/brain.py links WORD      WORD's strongest links (or letter:e, before:in ...)
+    python3 trainer/brain.py measure         how well the threshold tells words apart
+    python3 trainer/brain.py learn           learn from everything now
 """
 import glob
 import math
@@ -48,12 +48,12 @@ import re
 import sys
 import time
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-PATH = os.path.join(HERE, "texts", "factory", "brain.txt")
-SETTINGS = os.path.join(HERE, "texts", "factory", "brain-settings.txt")
-UNIVERSES = os.path.join(HERE, "texts", "universes")
-POOL = os.path.join(HERE, "texts", "sentences.txt")
-THRESHOLD = 0.6              # how alike a word must be used to stand for another: measured with measure() (brick brain measure)
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PATH = os.path.join(HERE, "trainer", "data", "brain.txt")
+SETTINGS = os.path.join(HERE, "trainer", "data", "brain-settings.txt")
+UNIVERSES = os.path.join(HERE, "trainer", "data", "universes")
+POOL = os.path.join(HERE, "trainer", "data", "sentences.txt")
+THRESHOLD = 0.6              # how alike a word must be used to stand for another: measured with measure() (brick trainer brain measure)
 FORM_THRESHOLD = 0.25        # how alike two words must be built (letters, shape) for that to choose between
                              # words used about as alike. Checked by hand: bluish~blue 0.36, greenish~green
                              # 0.40, reddish~red 0.34, against about 0.05 for teal; the best must still stand out
@@ -202,7 +202,7 @@ class Brain:
     def learn_line(self, line, world=None):
         """How each word in a line is used: the words on either side of it, and the ideas around it."""
         if world is None:
-            import universe
+            from trainer import universe
             world = universe.universe()
         words = words_of(line)
         for k, word in enumerate(words):
@@ -219,17 +219,17 @@ class Brain:
                 self.associate(word, f"after:[{idea}]")
 
     def learn_proved(self, line, roles, world=None):
-        """A direction the factory proved by building it: how its words are used, and the idea each was read as."""
+        """A direction the trainer proved by building it: how its words are used, and the idea each was read as."""
         self.learn_line(line, world)
         for word, idea, _ in roles:
             if idea != "words" and re.fullmatch(r"[a-z]+", word or ""):
                 self.associate(word, f"[{idea}]")
 
     def learn_ideas(self, world=None):
-        """texts/universe.txt (with brick's colours and the dictionary's places and times): word -> idea,
+        """trainer/data/universe.txt (with brick's colours and the dictionary's places and times): word -> idea,
         idea -> wider idea."""
         if world is None:
-            import universe
+            from trainer import universe
             world = universe.universe()
         for word, ideas in world.words.items():
             if re.fullmatch(r"[a-z]+", word):
@@ -254,10 +254,10 @@ class Brain:
 
     def learn_conceptnet(self, path=None, world=None):
         """ConceptNet links between single words where one of them is a word brick knows."""
-        import conceptnet
+        from trainer import conceptnet
         import dictionary
         if world is None:
-            import universe
+            from trainer import universe
             world = universe.universe()
         path = conceptnet.PATH if path is None else path
         if not os.path.isfile(path):
@@ -296,7 +296,7 @@ class Brain:
                 self.associate(name, f"{facet}:{symbol}", float(weight))
 
     def learn_universe_file(self, path):
-        """texts/universes/<symbol>.txt: lines like 'shape: round, sphere'; '#' lines are notes."""
+        """trainer/data/universes/<symbol>.txt: lines like 'shape: round, sphere'; '#' lines are notes."""
         links = []
         with open(path, encoding="utf-8", errors="replace") as f:
             for line in f:
@@ -310,11 +310,11 @@ class Brain:
 
     def catch_up(self, folders=()):
         """Learn from whatever is new or changed since last time: universe.txt, the dictionary, ConceptNet,
-        texts/universes, new lines in the sentence pool, and new or changed .brick files in these folders.
+        trainer/data/universes, new lines in the sentence pool, and new or changed .brick files in these folders.
         -> {what: how many things learned from it}."""
-        import conceptnet
+        from trainer import conceptnet
         import dictionary
-        import universe
+        from trainer import universe
         world = universe.universe()
         done = {}
 
@@ -353,8 +353,8 @@ class Brain:
         for folder in dict.fromkeys(folders):
             for path in sorted(glob.glob(os.path.join(folder, "*.brick"))):
                 if changed("brick:" + os.path.abspath(path), path):
-                    import factory
-                    lines = [line.strip() for line in factory.source_of(path).splitlines()]
+                    from trainer import core as trainer
+                    lines = [line.strip() for line in trainer.source_of(path).splitlines()]
                     for line in lines:
                         if line and not line.startswith("#"):
                             self.learn_line(line, world)
@@ -533,7 +533,7 @@ class Brain:
         a word is, and never overrule how it's used. how: 'use', or 'use and letters'.
         before, after: the words on either side of it in the line being read."""
         if world is None:
-            import universe
+            from trainer import universe
             world = universe.universe()
         threshold = settings()["threshold"] if threshold is None else threshold
         sides = []
@@ -578,7 +578,7 @@ class Brain:
             return
         os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
         lines = ["# brick's brain: which symbols are linked, and how strongly. Learned by itself from what the",
-                 "# factory proves, your .brick files, the sentence pool, universe.txt, the dictionary and ConceptNet.",
+                 "# trainer proves, your .brick files, the sentence pool, universe.txt, the dictionary and ConceptNet.",
                  "# One link per line: link, a symbol, what it's linked to, how strongly. [colour] is an idea;",
                  "# before:in means 'comes after the word in'. Change or delete lines freely; delete the file to",
                  "# start again. Old links fade."]
@@ -619,7 +619,7 @@ def same_thing(a, b, world):
 # ---------------- on or off, and the brain brick uses ----------------
 
 def settings():
-    """{'on': bool, 'threshold': float} from texts/factory/brain-settings.txt (plain text)."""
+    """{'on': bool, 'threshold': float} from trainer/data/brain-settings.txt (plain text)."""
     found = {"on": True, "threshold": THRESHOLD}
     try:
         with open(SETTINGS, encoding="utf-8") as f:
@@ -656,7 +656,7 @@ def path():
 
 def off():
     """Not used: in the tests (BRICK_MEMORY=off, unless BRICK_BRAIN names a brain file), with
-    BRICK_BRAIN=off, or when switched off (brick brain off)."""
+    BRICK_BRAIN=off, or when switched off (brick trainer brain off)."""
     chosen = os.environ.get("BRICK_BRAIN")
     if chosen == "off":
         return True
@@ -693,7 +693,7 @@ def measure(mind=None):
     1. Each word brick knows (a colour, a place ...) is taken as unknown: the word the brain finds used most
        like it (how it's used only, not its ideas) should carry the same ideas.
     2. Ordinary words (no ideas, seen in use 5+ times): how many would pass for a word brick knows?"""
-    import universe
+    from trainer import universe
     mind = brain() if mind is None else mind
     world = universe.universe()
     known = [w for w, ideas in world.words.items() if ideas & LEND and re.fullmatch(r"[a-z]+", w) and w in mind.links]
@@ -717,12 +717,12 @@ def measure(mind=None):
     return lines
 
 
-# ---------------- brick brain ----------------
+# ---------------- brick trainer brain ----------------
 
 def command(args):
     if args[:1] in (["off"], ["on"]):
         save_settings(on=args[0] == "on")
-        print(f"The brain is {args[0]}." + (" brick won't use it to read words it doesn't know, and the factory "
+        print(f"The brain is {args[0]}." + (" brick won't use it to read words it doesn't know, and the trainer "
                                             "won't teach it." if args[0] == "off" else ""))
         return
     if args[:1] == ["threshold"] and len(args) == 2:
@@ -737,13 +737,13 @@ def command(args):
         print("\n".join(measure()))
         return
     if args[:1] == ["learn"]:
-        import factory
-        if factory.running():
-            print("(The factory is running alongside brick, and teaches the brain too.)")
+        from trainer import core as trainer
+        if trainer.running():
+            print("(The trainer is running alongside brick, and teaches the brain too.)")
         mind = Brain(path())
         print("Learning from everything...", flush=True)
         started = time.time()
-        done = mind.catch_up([HERE, factory.EXAMPLES, os.getcwd()])
+        done = mind.catch_up([HERE, trainer.EXAMPLES, os.getcwd()])
         mind.save()
         if done:
             for what, count in done.items():
@@ -763,7 +763,7 @@ def command(args):
             for other, weight in mind.strongest(word):
                 print(f"  {other:<28} {weight:g}  (breadth {mind.breadth(other):,})")
             return
-        import universe
+        from trainer import universe
         world = universe.universe()
         sort = kind(word)
         if sort == "word":
@@ -781,21 +781,21 @@ def command(args):
                 print(f"  {other:<28} {score:.2f}")
         return
     if args:
-        print("brick brain           is it on, and how much it knows\n"
-              "brick brain like red  the words used most like red (and built most like it)\n"
-              "brick brain like letter:q  the letters most like q; brick brain like in _ at: slots like it\n"
-              "brick brain links red red's strongest links (links letter:e, links before:in work too)\n"
-              "brick brain learn     learn from everything now\n"
-              "brick brain off / on  stop using it, or start again\n"
-              "brick brain measure   how well the threshold tells words apart, on what it has learned\n"
-              "brick brain threshold 0.6   how alike a word must be used to stand for another")
+        print("brick trainer brain           is it on, and how much it knows\n"
+              "brick trainer brain like red  the words used most like red (and built most like it)\n"
+              "brick trainer brain like letter:q  the letters most like q; brick trainer brain like in _ at: slots like it\n"
+              "brick trainer brain links red red's strongest links (links letter:e, links before:in work too)\n"
+              "brick trainer brain learn     learn from everything now\n"
+              "brick trainer brain off / on  stop using it, or start again\n"
+              "brick trainer brain measure   how well the threshold tells words apart, on what it has learned\n"
+              "brick trainer brain threshold 0.6   how alike a word must be used to stand for another")
         return
     found = settings()
     mind = brain()
     print(f"The brain is {'on' if found['on'] else 'off'}" +
           (" (but not used now: BRICK_MEMORY=off or BRICK_BRAIN=off)." if found["on"] and off() else "."))
     print(f"It knows {len(mind.links):,} symbols and {sum(len(v) for v in mind.links.values()):,} links, "
-          f"in {mind.path}" + ("" if os.path.isfile(mind.path) else " (not made yet: brick brain learn)"))
+          f"in {mind.path}" + ("" if os.path.isfile(mind.path) else " (not made yet: brick trainer brain learn)"))
     print(f"Threshold: {found['threshold']:g}. A word brick doesn't know is read as a word it does when it's "
           "used at least that much alike.")
 

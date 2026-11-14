@@ -1,4 +1,4 @@
-"""Tests for brick's imagination (imagine.py): imagined pictures and their recipes, the eye's read-back tally,
+"""Tests for brick's imagination (trainer/imagine.py): imagined pictures and their recipes, the eye's read-back tally,
 what a thing could be, learning it safely, imagining a named thing, dream rounds, reacting to what was learned,
 the terminal pictures, and the history. Everything happens in temporary folders: never the real neurons.
 
@@ -13,11 +13,11 @@ import time
 from collections import Counter
 
 from terminal import folder
-import eye  # noqa: E402 (terminal finds brick)
-import imagine  # noqa: E402
-import senses  # noqa: E402
-import sight  # noqa: E402
-import symbols  # noqa: E402
+from trainer import eye  # noqa: E402 (terminal finds brick)
+from trainer import imagine  # noqa: E402
+from trainer import senses  # noqa: E402
+from trainer import sight  # noqa: E402
+from trainer import symbols  # noqa: E402
 
 KNOWLEDGE = """# a small, made-up ConceptNet
 apple\tRelatedTo\tred\t9.3
@@ -162,7 +162,7 @@ def test_it_learns_into_the_neuron_but_never_over_what_you_wrote():
 
 def test_imagine_a_name_and_read_it_back():
     with Apart():
-        w, h, pixels = imagine.draw(red_circle())                 # brick show apple.png as apple, first
+        w, h, pixels = imagine.draw(red_circle())                 # brick trainer show apple.png as apple, first
         shown = os.path.join(imagine.PICTURES + "-apple.png")
         sight.write_png(shown, w, h, pixels)
         assert sight.look(shown, "apple", learn=True, model=False)["name"] == "apple"
@@ -198,9 +198,9 @@ def test_it_reacts_to_what_was_learned():
         neuron("apple", "shape: round (5)\ncolour: red (5)\n")
         lines = imagine.react([{"what": "notes.txt", "words": ["red", "apples", "are", "sweet"]}])
         assert lines and lines[0].startswith("imagined apple"), lines
-        import brain
+        from trainer import brain
         learner = senses.Senses(brain.Brain(os.path.join(symbols.FOLDER, "brain.txt")))
-        learner.learn("red apples are sweet")                  # brick learn keeps what the imagination reacts to
+        learner.learn("red apples are sweet")                  # brick trainer learn keeps what the imagination reacts to
         assert learner.recent and "apples" in learner.recent[-1]["words"], learner.recent
         imagine.later([{"what": "x.txt", "words": ["apple"]}])
         assert imagine._queue
@@ -220,7 +220,7 @@ def test_the_history_its_filters_and_the_cap():
     with Apart():
         imagine.MAX_PICTURES = 5
         tally = imagine.Tally()
-        for origin, label in [("own", "on its own")] * 4 + [("you", "from you: brick imagine")] * 2 + \
+        for origin, label in [("own", "on its own")] * 4 + [("you", "from you: brick trainer imagine")] * 2 + \
                 [("learned", "after learning a.png")] * 2:
             imagine.imagine_picture(red_circle(), origin, label, tally, think=False)
         pictures = sorted(os.listdir(imagine.PICTURES))

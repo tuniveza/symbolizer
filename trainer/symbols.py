@@ -1,7 +1,7 @@
 """A universe for each symbol: brick's neurons.
 
 Every symbol brick knows something about (apple, round, fruit ...) has a plain-text file of its own,
-texts/universes/<symbol>.txt, in the style of texts/universe.txt ("idea: word, word"). It holds the symbol's
+trainer/data/universes/<symbol>.txt, in the style of trainer/data/universe.txt ("idea: word, word"). It holds the symbol's
 links to other symbols, grouped by facet (what it is, its shape, colour, mathematics, biology, what it goes
 with ...), each with a strength and where it came from:
 
@@ -16,14 +16,14 @@ with ...), each with a strength and where it came from:
 
   a link with no brackets   was written by hand: it's "yours" (strength 5), and brick never fades or deletes it
   not: word, word           words brick must never add back
-  apple is a fruit          a line like that counts as "is: fruit" (yours), like texts/universe.txt
+  apple is a fruit          a line like that counts as "is: fruit" (yours), like trainer/data/universe.txt
 Every symbol inside a universe can have a universe of its own (abstract on abstract): made on demand
-(brick universe round), or born by itself when a link to it gets strong enough.
+(brick trainer universe round), or born by itself when a link to it gets strong enough.
 
 Each file is a neuron that learns by itself, only while brick runs:
   experience(symbols, source)   symbols that turned up together fire together, and their links grow
-                                (a symbol with no file yet waits in texts/universes/_waiting.txt)
-  practise(budget)              one small round with no input (the factory calls it every few seconds):
+                                (a symbol with no file yet waits in trainer/data/universes/_waiting.txt)
+  practise(budget)              one small round with no input (the trainer calls it every few seconds):
                                 a few neurons, least recently practised first,
                                   spread activation along their strongest links and gain weak links to what
                                   answers strongly (apple is a fruit, a fruit has seeds: apple gets
@@ -37,34 +37,34 @@ Each file is a neuron that learns by itself, only while brick runs:
 
 Little words are symbols too ('the', 'in'): broad ones. Each file's header says its breadth (how many
 symbols it links to: "# breadth: 340 (a broad symbol)"), and in spreading and in recognising pictures a link
-counts 1 / (1 + floor(log2(breadth))), breadth counted leaving out the symbols being compared (as brain.py).
+counts 1 / (1 + floor(log2(breadth))), breadth counted leaving out the symbols being compared (as trainer/brain.py).
 Letters have neurons of their own, letter:a in letter-a.txt (never the word 'a'): the letters before and
 after them, where they sit in words, the words they're in, vowel or consonant (spell()); a word's neuron gets
 "letters:" and "spelled:" lines. A context is a symbol of itself: context:in _ at (context-in-_-at.txt) is
 what fills 'in _ at' in directions, and a scene the eye sees ('sky above ground') is what is seen in it
 (experience() and contextualise() make them; they're born like any neuron, from _waiting.txt).
 
-When each link was last used is brick's own bookkeeping, in texts/universes/_times.json (delete it any time).
+When each link was last used is brick's own bookkeeping, in trainer/data/universes/_times.json (delete it any time).
 
 Commands (main(args); handles(args) says whether a brick command line is one of these):
-    brick show apple.png as apple        look at a picture and learn what it shows (also: this is an apple:
+    brick trainer show apple.png as apple        look at a picture and learn what it shows (also: this is an apple:
                                          apple.png / apple.png is an apple)
-    brick look photo.jpg                 the eye names it itself: memory first, then the vision model (also:
+    brick trainer look photo.jpg                 the eye names it itself: memory first, then the vision model (also:
                                          what is photo.jpg / look at photo.jpg)
-    brick universe apple                 print apple's universe, filled from WordNet and ConceptNet if new
-    brick universe apple forget          delete it
-    brick universes                      list them
-    brick sight                          is the vision model there?   brick sight setup: download it (once)
+    brick trainer universe apple                 print apple's universe, filled from WordNet and ConceptNet if new
+    brick trainer universe apple forget          delete it
+    brick trainer universes                      list them
+    brick trainer sight                          is the vision model there?   brick trainer sight setup: download it (once)
 """
 import json
 import os
 import re
 import time
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-FOLDER = os.path.join(HERE, "texts", "universes")
-WORDNET = os.path.join(HERE, "texts", "sources", "wordnet")
-CONCEPTNET = os.path.join(HERE, "texts", "sources", "conceptnet.tsv")
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FOLDER = os.path.join(HERE, "trainer", "data", "universes")
+WORDNET = os.path.join(HERE, "trainer", "data", "sources", "wordnet")
+CONCEPTNET = os.path.join(HERE, "trainer", "data", "sources", "conceptnet.tsv")
 
 YOURS = 5.0                 # a hand-written link's strength
 BIRTH = 4.0                 # a link this strong gives the symbol it points to a neuron of its own
@@ -162,7 +162,7 @@ def breadth(name, leave_out=()):
 
 def weight(name, leave_out=()):
     """How much a link to this symbol counts, in spreading and in recognising: 1 / (1 + floor(log2(breadth))),
-    with breadth counted leaving out the symbols being compared (the same form as brain.py and the compiled
+    with breadth counted leaving out the symbols being compared (the same form as trainer/brain.py and the compiled
     programs). A symbol linked to nothing else counts 1; to 3 others, 1/2; to 1,000, 1/10."""
     return 1.0 / breadth(name, leave_out).bit_length()
 
@@ -475,7 +475,7 @@ def waiting_path():
 
 
 def read_waiting():
-    """{symbol: {facet: {value: Link}}} from texts/universes/_waiting.txt."""
+    """{symbol: {facet: {value: Link}}} from trainer/data/universes/_waiting.txt."""
     found = {}
     try:
         with open(waiting_path(), encoding="utf-8", errors="replace") as f:
@@ -1064,17 +1064,17 @@ def forget(name):
     return True
 
 
-# ---------------- brick show / brick universe ----------------
+# ---------------- brick trainer show / brick trainer universe ----------------
 
 def handles(args):
     """Is this brick command line one of these commands?"""
-    import sight
+    from trainer import sight
     return bool(args) and (args[0] in ("universe", "universes", "sight") or
                            sight.show_request(" ".join(args)) is not None)
 
 
 def main(args):
-    import sight
+    from trainer import sight
     if not args:
         print(__doc__)
         return 1
@@ -1091,7 +1091,7 @@ def main(args):
         drop = words and words[-1].lower() in ("forget", "delete", "remove")
         name = clean(" ".join(words[:-1] if drop else words))
         if not slug(name):
-            print("Which symbol? For example: brick universe apple")
+            print("Which symbol? For example: brick trainer universe apple")
             return 1
         if drop:
             if forget(name):
@@ -1116,8 +1116,8 @@ def main(args):
 
 
 def show(path, name=""):
-    """brick show apple.png as apple (teach it), or brick look photo.jpg (the eye names it): look, learn, say."""
-    import sight
+    """brick trainer show apple.png as apple (teach it), or brick trainer look photo.jpg (the eye names it): look, learn, say."""
+    from trainer import sight
     name = clean(name) if name else ""
     if not os.path.isfile(path):
         print(f"I can't find {path} in {os.getcwd()}.")
@@ -1129,7 +1129,7 @@ def show(path, name=""):
     for problem in seen["errors"]:
         print(f"  problem: {problem}")
     if seen["name"]:
-        print(f"brick universe {seen['name']} shows what brick knows about it ({path_of(seen['name'])}).")
+        print(f"brick trainer universe {seen['name']} shows what brick knows about it ({path_of(seen['name'])}).")
     elif not seen["errors"]:
-        print(f"Teach me what it is: brick show {path} as NAME")
+        print(f"Teach me what it is: brick trainer show {path} as NAME")
     return 1 if seen["errors"] and not seen["symbols"] else 0

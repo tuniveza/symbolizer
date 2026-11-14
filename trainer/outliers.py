@@ -1,16 +1,16 @@
-"""Outliers: what brick couldn't settle by itself, waiting for a person to decide (the Decisions tab in
+"""Outliers: what brick couldn't settle by itself, waiting for a person to decide (Trainer → Decisions in
 brick gui). brick keeps learning on its own meanwhile; these are only the lines and words it gave up on.
 
-texts/factory/unsure.txt holds them, one block each, separated by a blank line:
+trainer/data/unsure.txt holds them, one block each, separated by a blank line:
     line: wait 2 secs then wirte hi
     said: I don't know how to 'wirte'. Did you mean 'write'?
     meant: wait 2 seconds then write hi            (when brick knows what it should mean: the scrambler)
     could be: restate = repeat | restate = say      (when a word could mean more than one thing)
     from: the scrambler
 
-What a person decides goes in texts/decisions.txt, in plain words.
+What a person decides goes in trainer/data/decisions.txt, in plain words.
 
-Grouped by root (groups()): the factory makes thousands of lines, but they fail for a few reasons, mostly
+Grouped by root (groups()): the trainer makes thousands of lines, but they fail for a few reasons, mostly
 one word brick doesn't know ('carefully', 'pick', 'every') or one kind of missing detail ('Set it to what?').
 One decision about the root settles every line that grew from it (decide_group()), so the desk shows a few
 questions instead of a thousand lines, and stops keeping more made-up lines for a root once it has a few.
@@ -20,10 +20,10 @@ import os
 import re
 import time
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-PATH = os.path.join(HERE, "texts", "factory", "unsure.txt")
-FOR_DIRECTOR = os.path.join(HERE, "texts", "factory", "for-director.txt")
-DECISIONS = os.path.join(HERE, "texts", "decisions.txt")
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PATH = os.path.join(HERE, "trainer", "data", "unsure.txt")
+FOR_DIRECTOR = os.path.join(HERE, "trainer", "data", "for-director.txt")
+DECISIONS = os.path.join(HERE, "trainer", "data", "decisions.txt")
 FIELDS = ("line", "said", "meant", "could be", "from")
 MADE_UP = ("the sentence maker", "the scrambler")   # lines brick made itself (not from your programs)
 KEEP_PER_ROOT = 6                                   # made-up lines kept per root: enough examples to decide
@@ -126,7 +126,7 @@ def decide(id, action, meaning=""):
         return False, "That one has been settled already."
     line = entry["line"]
     if action == "means":
-        import review
+        from trainer import review
         problem = review.correct(line, 1, meaning)
         if problem:
             return False, problem
@@ -134,8 +134,8 @@ def decide(id, action, meaning=""):
         note(f"'{line}' means: {meaning}")
         return True, f"Kept: brick reads '{line}' as '{meaning}' from now on."
     if action == "word":
-        import factory
-        ok, message = factory.teach(meaning)
+        from trainer import core as trainer
+        ok, message = trainer.teach(meaning)
         if ok:
             remove(id)
             note(f"taught: {meaning}  (for '{line}')")
@@ -144,7 +144,7 @@ def decide(id, action, meaning=""):
         remove(id)
         add(line, entry.get("said", ""), entry.get("meant"), entry["could be"], entry.get("from", ""), path=FOR_DIRECTOR)
         note(f"left for the English Director: '{line}'")
-        return True, "Left for the English Director (texts/factory/for-director.txt)."
+        return True, "Left for the English Director (trainer/data/for-director.txt)."
     if action == "dismiss":
         remove(id)
         note(f"dismissed: '{line}'")
@@ -232,8 +232,8 @@ def decide_group(key, action, meaning=""):
             entry = f"{word} = {meaning.strip()}"
         else:
             return False, f"Say what '{word}' means first, in brick's words (like: write)."
-        import factory
-        ok, message = factory.teach(entry)
+        from trainer import core as trainer
+        ok, message = trainer.teach(entry)
         if not ok:
             return False, message
         every = [e for e in entries() if root(e) == key]

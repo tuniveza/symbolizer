@@ -12,7 +12,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ["BRICK_MEMORY"] = "off"       # the universe reads lines the same way every time
-os.environ["BRICK_FACTORY"] = "off"      # and nothing learns while the tests run
+os.environ["BRICK_TRAINER"] = "off"      # and nothing learns while the tests run
 from compiler import Compiler  # noqa: E402
 
 

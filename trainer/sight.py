@@ -1,7 +1,7 @@
 """brick's sight: look at a picture of a thing, and say what it is like as symbols, for its universe.
 
     look(path, name=None, learn=True) -> dict    the stable way in, for anything that brings brick a picture:
-      the eye (eye.py) looks with all its filters; name given ("told"), or named from memory, or by the vision
+      the eye (trainer/eye.py) looks with all its filters; name given ("told"), or named from memory, or by the vision
       model when memory isn't sure; learn=True feeds the neurons (the thing's universe, its contexts, the
       words read in it with their letters). Never raises: problems go in "errors". Keys: name, sure (0-1),
       how (told / memory / model / unknown), symbols [(symbol, facet, weight)], channels {channel: (symbols,
@@ -16,14 +16,14 @@ The older, simpler measuring below (measure, symbols) is kept for the tests that
           and how much of its box it fills), whether it's the same left and right, its main colours by brick's
           colour names, its size in pixels -> "round", "symmetric", "red", "ratio 1.04" ...
       what the vision model on this computer sees (optional): a local model served by Ollama, started and
-          stopped with brick like the neural reader (neural.py); skipped, and said so, when there isn't one
+          stopped with brick like the neural reader (trainer/neural.py); skipped, and said so, when there isn't one
       what brick already knows about the name: WordNet and ConceptNet (symbols.lookup)
 PNG (8 or 16 bits, any colour type, not interlaced) and PPM/PGM are read directly; anything else (JPEG,
 WebP, GIF ...) is turned into a PNG first with ImageMagick (magick), when it's installed.
 Nothing is sent off this computer.
 
-    brick sight          is the vision model there?
-    brick sight setup    download it (once; about 3 GB): qwen2.5vl:3b
+    brick trainer sight          is the vision model there?
+    brick trainer sight setup    download it (once; about 3 GB): qwen2.5vl:3b
 """
 import base64
 import colorsys
@@ -402,7 +402,7 @@ def vision_model(installed):
 
 
 def installed_models():
-    import neural
+    from trainer import neural
     try:
         return [m.get("name", "") for m in neural.call("/api/tags", seconds=3).get("models", [])]
     except Exception:
@@ -421,12 +421,12 @@ def model_sees(image, name):
         return None, "the vision model is switched off here"
     if not shutil.which("ollama"):
         return None, "skipped: Ollama isn't installed, so no vision model looked (sudo pacman -S ollama-cuda)"
-    import neural
+    from trainer import neural
     if not neural.start():
         return None, "skipped: Ollama is installed but wouldn't start (try: ollama serve)"
     model = vision_model(installed_models())
     if model is None:
-        return None, f"skipped: no vision model in Ollama yet (brick sight setup downloads {VISION}, about 3 GB)"
+        return None, f"skipped: no vision model in Ollama yet (brick trainer sight setup downloads {VISION}, about 3 GB)"
     try:
         answer = neural.call("/api/chat", {
             "model": model, "stream": False, "format": "json",
@@ -437,7 +437,7 @@ def model_sees(image, name):
         said = json.loads(answer.get("message", {}).get("content", "{}"))
     except Exception as problem:
         return None, f"skipped: {model} didn't answer ({type(problem).__name__})"
-    import symbols as brain_symbols
+    from trainer import symbols as brain_symbols
     found = {}
     for key, values in (said.items() if isinstance(said, dict) else ()):
         facet = brain_symbols.ALIASES.get(str(key).lower().strip(), str(key).lower().strip())
@@ -461,13 +461,13 @@ def article(name):
 # ---------------- looking ----------------
 
 def look(path, name=None, learn=True, model=True):
-    """Look at a picture with the eye (eye.py), name it, and (learn=True) feed the neurons what was seen.
+    """Look at a picture with the eye (trainer/eye.py), name it, and (learn=True) feed the neurons what was seen.
     Never raises: anything that goes wrong is listed in "errors".
     -> {"name", "sure" (0-1), "how" ("told" / "memory" / "model" / "unknown"), "symbols" [(symbol, facet,
         weight)], "channels" {channel: ([(symbol, facet)], ms)}, "objects" [{...}], "text" (words read, or ""),
         "errors" [], "contexts" [], "summary" (in words), "learned" [], "ms" (all), "decode ms"}"""
-    import eye
-    import symbols as brain
+    from trainer import eye
+    from trainer import symbols as brain
     result = {"name": None, "sure": 0.0, "how": "unknown", "symbols": [], "channels": {}, "objects": [], "text": "",
               "errors": [], "contexts": [], "summary": "", "learned": [], "ms": 0, "decode ms": 0, "path": path}
     told = brain.clean(name) if name else None
@@ -515,7 +515,7 @@ def look(path, name=None, learn=True, model=True):
 
 def teach(found, name, how, model_facets, where):
     """Feed the neurons what the eye saw -> [lines saying what was learned]."""
-    import symbols as brain
+    from trainer import symbols as brain
     said = []
     facets = found["facets"]
     source = f"seen in {where}" if how == "told" else f"looked at {where}"
@@ -574,13 +574,13 @@ def show_request(text):
     return path, " ".join(words)
 
 
-# ---------------- brick sight ----------------
+# ---------------- brick trainer sight ----------------
 
 def command(args):
-    import neural
+    from trainer import neural
     if not shutil.which("ollama"):
         print("brick's sight measures pictures by itself. To also have a vision model look, it needs Ollama:\n"
-              "    sudo pacman -S ollama-cuda\nthen: brick sight setup   (brick starts and stops Ollama itself)")
+              "    sudo pacman -S ollama-cuda\nthen: brick trainer sight setup   (brick starts and stops Ollama itself)")
         return 0
     if not neural.start():
         print("Ollama is installed, but wouldn't start. Try running 'ollama serve' to see why.")
@@ -602,7 +602,7 @@ def command(args):
                     shown = note
         model = vision_model(installed_models())
     if model is None:
-        print(f"No vision model yet. brick sight setup downloads {VISION} (about 3 GB, once).")
+        print(f"No vision model yet. brick trainer sight setup downloads {VISION} (about 3 GB, once).")
     else:
         print(f"brick's sight uses {model}, on this computer, when you show it a picture.")
     return 0

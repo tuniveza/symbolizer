@@ -18,11 +18,11 @@ import re
 import shutil
 
 import dictionary
-import neural
-import review
+from trainer import neural
+from trainer import review
 import runtime
 import teach
-import universe
+from trainer import universe
 from actions import BRAIN_WORDS, EXAMPLES, RESET, STARTERS, Actions, case_at_end, colour_words, file_name, plain_name, split_at
 from window import WINDOW_HELP, Window
 from bitwords import BitWords

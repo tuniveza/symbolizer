@@ -5,27 +5,27 @@ Imagining (everything it imagines keeps its true recipe, so brick knows what it 
              in random colours, sizes and places, plain or striped, dotted or checked, alone or together
              (left of, above, one inside another, a few at once, a horizon scene), drawn to PNG with the
              standard library (sight.write_png)
-  names      brick imagine apple: apple drawn from what brick knows about it (its universe, WordNet's
+  names      brick trainer imagine apple: apple drawn from what brick knows about it (its universe, WordNet's
              definition, ConceptNet): its shape, colour, parts (stem, leaf, wheels), how wide for how tall
   blends     two symbols mixed: apple + ball -> a round red thing, and what that could be (tomato ...)
   contexts   new ways to fill a context it knows: 'a _ is' filled with apple and pear -> 'a cherry is'
 
-Dreaming (self-supervised seeing): the eye (eye.py) looks at each imagined picture without being told, and
+Dreaming (self-supervised seeing): the eye (trainer/eye.py) looks at each imagined picture without being told, and
 what it reads is compared with the recipe, channel by channel (shape, colour, texture, count, position, size,
-corners, points, layout). The tallies are plain text in texts/factory/imagination.txt ("star read as star 12 of
-30, as blob 18 of 30"). The shape channel's measures go to texts/factory/imagination-samples.txt, and every
+corners, points, layout). The tallies are plain text in trainer/data/imagination.txt ("star read as star 12 of
+30, as blob 18 of 30"). The shape channel's measures go to trainer/data/imagination-samples.txt, and every
 TUNE_EVERY pictures the eye's shape thresholds are tried within their safe ranges (eye.TUNABLE); a value that
-reads the drawn shapes clearly better, and no one shape much worse, is written to texts/factory/
+reads the drawn shapes clearly better, and no one shape much worse, is written to trainer/data/
 eye-settings.txt, which the eye reads. Delete that file to go back to the eye's defaults.
 
 Associating ("what could it be?"): the imagined thing's symbols (round, red, striped ...) are matched against
-  the neurons      (texts/universes: a neuron that links round and red),
-  ConceptNet       (texts/sources/conceptnet.tsv: RelatedTo, HasA, IsA, PartOf, MadeOf, UsedFor, SimilarTo,
+  the neurons      (trainer/data/universes: a neuron that links round and red),
+  ConceptNet       (trainer/data/sources/conceptnet.tsv: RelatedTo, HasA, IsA, PartOf, MadeOf, UsedFor, SimilarTo,
                    both ways, by their weights),
   WordNet          (the definitions: apple is "fruit with red or yellow or green skin ..."),
   the dictionary   (colours named after things: tomato, salmon, lemon).
 Each symbol counts by how specific it is (1 / (1 + floor(log2 b)), b = 1 + how many things ConceptNet links
-to it, as in brain.py), each source by how much it knows (a link's strength or weight), and a thing whose
+to it, as in trainer/brain.py), each source by how much it knows (a link's strength or weight), and a thing whose
 known colour or shape is something else counts less. -> "apple 0.71: round (shape) + red (colour); ConceptNet
 RelatedTo red 9.3, round 4.1; WordNet 'fruit with red or yellow or green skin'".
 Strong, well-supported answers (two sources, or one about a well-known thing; two symbols matched exactly)
@@ -34,12 +34,12 @@ the strength of being told, with the reason as a second source. A link you wrote
 and a facet you wrote by hand (colour: green) gets nothing new. Imagined links fade like every other.
 
 When it happens:
-  while brick runs   dream_round(budget): the factory calls it every round (a few pictures, well under a second,
+  while brick runs   dream_round(budget): the trainer calls it every round (a few pictures, well under a second,
                      no vision model)
-  brick learn ...    react(recent, source): a few variations or blends of what was just learned
-  you ask            brick imagine [N] | brick imagine NAME | brick imagine apple + ball | brick dream [N] |
-                     brick imaginations [own | mine | learned | today] [N]   (--open opens the picture)
-Everything it imagined is in texts/imagination/: the pictures (at most MAX_PICTURES; when there are more, the
+  brick trainer learn ...    react(recent, source): a few variations or blends of what was just learned
+  you ask            brick trainer imagine [N] | brick trainer imagine NAME | brick trainer imagine apple + ball | brick trainer dream [N] |
+                     brick trainer imaginations [own | mine | learned | today] [N]   (--open opens the picture)
+Everything it imagined is in trainer/data/imagination/: the pictures (at most MAX_PICTURES; when there are more, the
 oldest ones it imagined on its own go first) and log.txt, one line each: when, where it came from (on its own,
 from you, after learning ...), the picture, the recipe, what the eye saw, and what it could be.
 Nothing is sent off this computer.
@@ -55,17 +55,17 @@ import textwrap
 import time
 from collections import Counter
 
-import symbols
+from trainer import symbols
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-FACTORY = os.path.join(HERE, "texts", "factory")
-TALLY = os.path.join(FACTORY, "imagination.txt")
-SAMPLES = os.path.join(FACTORY, "imagination-samples.txt")
-PICTURES = os.path.join(HERE, "texts", "imagination")
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TRAINER = os.path.join(HERE, "trainer", "data")
+TALLY = os.path.join(TRAINER, "imagination.txt")
+SAMPLES = os.path.join(TRAINER, "imagination-samples.txt")
+PICTURES = os.path.join(HERE, "trainer", "data", "imagination")
 
 SIZE = 128                  # pixels across an imagined picture (the eye looks at up to 160)
-MAX_PICTURES = 60           # pictures kept in texts/imagination
-MAX_LOG = 2000              # lines kept in texts/imagination/log.txt
+MAX_PICTURES = 60           # pictures kept in trainer/data/imagination
+MAX_LOG = 2000              # lines kept in trainer/data/imagination/log.txt
 MAX_SAMPLES = 400           # shape measures kept for tuning
 PER_ROUND = 3               # pictures per dream round
 ROUND_BUDGET = 0.5          # seconds per dream round
@@ -150,7 +150,7 @@ def log_path():
 # ---------------- colours ----------------
 
 def colour_name(rgb):
-    import sight
+    from trainer import sight
     return sight.colour_name(*rgb[:3])
 
 
@@ -172,7 +172,7 @@ def rgb_for(word):
     if word == "gray":
         return BASE["grey"]
     try:
-        import sight
+        from trainer import sight
         found = sight.palette().get(word)
     except Exception:
         found = None
@@ -712,11 +712,11 @@ class Tally:
 
     def save(self):
         self.fade()
-        lines = ["# brick's imagination: how well brick's eye reads back the pictures brick imagines (imagine.py).",
+        lines = ["# brick's imagination: how well brick's eye reads back the pictures brick imagines (trainer/imagine.py).",
                  "# Each picture is drawn from a recipe brick knows; the eye looks without being told and is right",
                  "# or wrong per channel. A channel's counts halve when they pass "
                  f"{FADE_AT}, so recent dreams count most.",
-                 "# 'tuned:' is what changed in the eye's shape thresholds (texts/factory/eye-settings.txt);",
+                 "# 'tuned:' is what changed in the eye's shape thresholds (trainer/data/eye-settings.txt);",
                  "# 'learned:' is what imagination taught the neurons, and why. Delete this file to start again."]
         lines += [f"{k}: {self.totals[k]}" for k in ("pictures", "names", "blends", "contexts", "dreams") if self.totals[k]]
         for channel in CHANNELS:
@@ -806,7 +806,7 @@ def tune(write=True):
     """Try the eye's shape thresholds within their safe ranges on the drawn shapes; keep a value only if the
     shapes are read clearly better, no one shape much worse, and no real picture you showed it read differently.
     -> lines saying what changed (and 'kept ...' when only a real picture stood in the way)."""
-    import eye
+    from trainer import eye
     rows, real = read_samples(), read_samples(seen=True)
     if len(rows) < TUNE_FROM:
         return []
@@ -1020,7 +1020,7 @@ def feature(key, colour_rgb=None):
         facet, words = FEATURES[key]
         say = next(iter(words))
     else:                                               # a colour
-        import sight
+        from trainer import sight
         facet, words, say = "colour", {key: 1.0}, key
         if key == "grey":
             words["gray"] = 1.0
@@ -1325,7 +1325,7 @@ def tidy_field(text):
 
 
 def save_picture(origin, words, w, h, pixels):
-    import sight
+    from trainer import sight
     os.makedirs(PICTURES, exist_ok=True)
     _made[0] += 1
     slug = re.sub(r"[^a-z0-9]+", "-", words.lower()).strip("-")[:40] or "thing"
@@ -1357,7 +1357,7 @@ def trim_pictures(keep=None):
 
 
 def record(label, picture, recipe_text, eye_text, could_text):
-    """One line in texts/imagination/log.txt: when | where it came from | picture | recipe | eye saw | could be."""
+    """One line in trainer/data/imagination/log.txt: when | where it came from | picture | recipe | eye saw | could be."""
     os.makedirs(PICTURES, exist_ok=True)
     line = " | ".join([time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now())), tidy_field(label),
                        os.path.basename(picture) if picture else "-", tidy_field(recipe_text), tidy_field(eye_text),
@@ -1411,7 +1411,7 @@ def entries(origin=None, today=False, most=10):
 # ---------------- imagining ----------------
 
 def look_back(path, memory_too=False):
-    import eye
+    from trainer import eye
     return eye.see(path, model=False, memory=memory_too, read=False)
 
 
@@ -1592,10 +1592,10 @@ def dream(budget=ROUND_BUDGET, most=PER_ROUND, origin="own", rng=None, label=Non
 
 
 def dream_round(budget=ROUND_BUDGET, most=PER_ROUND):
-    """The factory's round: a few imagined pictures, read back and tallied. Never raises. -> a line, or ''."""
+    """The trainer's round: a few imagined pictures, read back and tallied. Never raises. -> a line, or ''."""
     try:
         return dream(budget, most)[0]
-    except Exception as problem:                      # imagining must never stop the factory
+    except Exception as problem:                      # imagining must never stop the trainer
         return f"problem: {type(problem).__name__}: {problem}"
 
 
@@ -1606,7 +1606,7 @@ def later(recent, source="watched folders"):
         del _queue[:-5]
 
 
-def react(recent, source="brick learn", budget=4.0, most=3, rng=None, tally=None):
+def react(recent, source="brick trainer learn", budget=4.0, most=3, rng=None, tally=None):
     """After learning: imagine a few variations or blends of what was just learned. recent: [{"what", and
     "symbols" [(value, facet)] and "name" for a picture, or "words" for a text}]. -> lines saying what."""
     rng = rng or random.Random()
@@ -1676,10 +1676,10 @@ def react(recent, source="brick learn", budget=4.0, most=3, rng=None, tally=None
 
 
 def react_to_show(args):
-    """After brick show apple.png as apple (or brick look ...): the imagination reacts to that picture."""
+    """After brick trainer show apple.png as apple (or brick trainer look ...): the imagination reacts to that picture."""
     try:
-        import brain
-        import sight
+        from trainer import brain
+        from trainer import sight
         if brain.off():
             return
         request = sight.show_request(" ".join(args))
@@ -1690,9 +1690,9 @@ def react_to_show(args):
         if not seen["symbols"]:
             return
         lines = react([{"what": os.path.basename(path), "name": seen["name"], "path": path,
-                        "symbols": [(v, f) for v, f, _ in seen["symbols"]]}], "brick show")
+                        "symbols": [(v, f) for v, f, _ in seen["symbols"]]}], "brick trainer show")
         if lines:
-            print("Imagined after seeing it (brick imaginations learned draws them):")
+            print("Imagined after seeing it (brick trainer imaginations learned draws them):")
             for line in lines:
                 print("  " + line)
     except Exception as problem:                      # imagining must never spoil a show
@@ -1726,7 +1726,7 @@ def halfblock(width, height, pixels, columns=40):
 
 
 def read_picture(path):
-    import sight
+    from trainer import sight
     with open(path, "rb") as f:
         return sight.read_png(f.read())
 
@@ -1758,7 +1758,7 @@ def show(path, text, columns=40, open_it=False, pixels=None):
 
 
 def sheet(items, columns=32):
-    """Several pictures in a row, with a caption under each (brick dream)."""
+    """Several pictures in a row, with a caption under each (brick trainer dream)."""
     if not sys.stdout.isatty():
         for item in items:
             print(f"  {item['words']} -> eye: {item['eye']}  ({item['path']})")
@@ -1774,10 +1774,10 @@ def sheet(items, columns=32):
             print("  ".join((("eye: " if caption == "eye" else "") + i[caption])[:columns].ljust(columns) for i in row))
 
 
-# ---------------- brick imagine / brick dream / brick imaginations ----------------
+# ---------------- brick trainer imagine / brick trainer dream / brick trainer imaginations ----------------
 
 def learning_on():
-    import brain
+    from trainer import brain
     return not brain.off()
 
 
@@ -1798,7 +1798,7 @@ def main(args):
         count = min(50, int(rest[0])) if rest else 5
         tally = Tally()
         for _ in range(count):
-            item = imagine_picture(random_recipe(rng), "you", f"{ORIGINS['you']}: brick imagine", tally, rng,
+            item = imagine_picture(random_recipe(rng), "you", f"{ORIGINS['you']}: brick trainer imagine", tally, rng,
                                    teach=teach)
             text = [f"imagined: {item['words']}", f"eye saw:  {item['eye']}  ({item['right']} of {item['scored']} right)",
                     "could be: " + (item["could text"] or "nothing brick knows")]
@@ -1813,7 +1813,7 @@ def main(args):
     if "+" in words:
         a, b = (part.strip() for part in words.split("+", 1))
         if not symbols.slug(a) or not symbols.slug(b):
-            print("Blend which two? For example: brick imagine apple + ball")
+            print("Blend which two? For example: brick trainer imagine apple + ball")
             return 1
         item = imagine_blend(a, b, "you", teach=teach, rng=rng)
         text = [f"blended:  {a} + {b} -> a {item['looks']}", f"drew:     {item['words']}",
@@ -1823,7 +1823,7 @@ def main(args):
         return 0
     name = symbols.clean(words)
     if not symbols.slug(name):
-        print("Imagine what? For example: brick imagine apple")
+        print("Imagine what? For example: brick trainer imagine apple")
         return 1
     item = imagine_named(name, "you", rng=rng)
     why = item["traits"]["why"]
@@ -1846,7 +1846,7 @@ def dream_command(rest, open_it=False):
     pictures = 0
     for k in range(count):
         line, items = dream(ROUND_BUDGET, PER_ROUND, origin="you", rng=rng,
-                            label=f"{ORIGINS['you']}: brick dream")
+                            label=f"{ORIGINS['you']}: brick trainer dream")
         pictures += len(items)
         print(f"round {k + 1}: {line}")
         sheet(items)
@@ -1874,7 +1874,7 @@ def history_command(rest, open_it=False):
     found = entries(origin, today, most)
     if not found:
         print("Nothing imagined yet" + (" like that" if origin or today else "") +
-              ". brick imagine makes some; brick dreams by itself while it runs.")
+              ". brick trainer imagine makes some; brick dreams by itself while it runs.")
         return 0
     for e in reversed(found):
         text = [f"{e['time']}  {e['label']}", f"imagined: {e['recipe']}", f"eye saw:  {e['eye']}",

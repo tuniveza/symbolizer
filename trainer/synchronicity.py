@@ -1,12 +1,12 @@
 """Synchronicity bias: symbols that turn up together belong together.
 
-The factory watches what you write (your .brick files, the sentence pool) and, for every direction it
+The trainer watches what you write (your .brick files, the sentence pool) and, for every direction it
 has proved by building it, counts which idea each word was read as (pink as a colour, orange as words
 to show) and which ideas turned up together (a colour with a place, words with a colour ...).
 When the universe can read a line more than one way, it tries first the reading whose symbols fit best
 with each other and with what was said before. brick still builds each reading to check it.
 
-The counts are kept in texts/factory/memory.txt, plain text: delete it to start again. Old counts fade,
+The counts are kept in trainer/data/memory.txt, plain text: delete it to start again. Old counts fade,
 so what's said now counts for more than what was said long ago. With no counts at all, the readings
 keep the order the universe's own links give them.
 """
@@ -14,7 +14,7 @@ import itertools
 import math
 import os
 
-PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "texts", "factory", "memory.txt")
+PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "trainer", "data", "memory.txt")
 FADE_AT = 200_000            # when the counts add up to this, every count halves
 
 
@@ -42,7 +42,7 @@ class Memory:
             self.word_seen[word] = self.word_seen.get(word, 0) + n
             self.idea_seen[idea] = self.idea_seen.get(idea, 0) + n
 
-    # ---- the factory teaches it ----
+    # ---- the trainer teaches it ----
 
     def observe(self, roles):
         """One direction that built: roles = [(word, idea, linked), ...]."""
@@ -60,7 +60,7 @@ class Memory:
     def save(self):
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
         lines = ["# brick's universe memory: which idea each word was read as, and which ideas turned up",
-                 "# together, in directions the factory proved by building them. Delete it to start again.",
+                 "# together, in directions the trainer proved by building them. Delete it to start again.",
                  f"directions\t{self.directions:g}"]
         lines += [f"read\t{w}\t{i}\t{n:g}" for (w, i), n in sorted(self.read_as.items())]
         lines += [f"together\t{a}\t{b}\t{n:g}" for (a, b), n in sorted(self.together.items())]
@@ -77,10 +77,10 @@ class Memory:
             score += math.log((self.read_as.get((word, idea), 0) + (2 if linked else 1)) /
                               (self.word_seen.get(word, 0) + 3))
         if not off():                        # ConceptNet's bias: words that belong together, kept together
-            import conceptnet
+            from trainer import conceptnet
             web = conceptnet.web()
             shown = [word for word, idea, _ in roles if idea == "words"]
-            import universe
+            from trainer import universe
             colours = {w for w, ideas in universe.universe().words.items() if "colour" in ideas}
             score += sum(math.log1p(4 * web.together(a, b)) + (1.0 if f"{a} {b}" in web.links else 0)
                          for a, b in zip(shown, shown[1:])      # 'orange juice' is a thing of its own; but a colour
@@ -107,7 +107,7 @@ def off():
 
 
 def memory():
-    """What the factory has seen so far. BRICK_MEMORY=off: an empty memory (the tests); a path: that file."""
+    """What the trainer has seen so far. BRICK_MEMORY=off: an empty memory (the tests); a path: that file."""
     global _memory, _read_when
     path = os.environ.get("BRICK_MEMORY") or PATH
     if path == "off":

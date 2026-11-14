@@ -31,10 +31,10 @@ routines to a program (like `runtime.py` and `screen.py` do), plus tests.
   the same (only `bitwin` decides to call these).
 - Brick texts: 8-byte length, the bytes, a zero byte. A pointer to a text points at the length.
 - Whole numbers are signed 64-bit. Colours are `0xRRGGBB` in a 64-bit field.
-- Never `git stash`, `git checkout`, `git reset` or commit: the factory process is writing files in `texts/`
+- Never `git stash`, `git checkout`, `git reset` or commit: the trainer process is writing files in `texts/`
   all the time. Never edit anything in `texts/`. Temporary files go in your scratch folder.
 - Tests: plain Python scripts in `tests/` like the others (`python3 tests/test_x.py`, exit code 0 = pass,
-  they print `passed: name` lines and `N of M tests passed.`). Run with `BRICK_FACTORY=off BRICK_MEMORY=off`.
+  they print `passed: name` lines and `N of M tests passed.`). Run with `BRICK_TRAINER=off BRICK_MEMORY=off`.
 
 ## Shared memory labels
 

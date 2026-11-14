@@ -1708,3 +1708,16 @@
 2026-11-14 20:25:20  practised on 20 scrambled paragraphs: 18 read right, 2 misread, 0 refused
 2026-11-14 20:25:25  imagination: dreamt 3: cyan checked pentagon (eye: hexagon); red square (eye: square); blue ring (eye: ring); eye right 18 of 22; could be display 0.27 (0.14s)
 2026-11-14 20:25:26  factory stopped
+2026-11-14 20:57:36  trainer started alongside brick (process 298553)
+2026-11-14 20:57:37  reading /home/tuniveza/an/br/tit.brick
+2026-11-14 20:57:38  neurons: letter:z: 60 unused links faded
+2026-11-14 20:57:39  imagination: dreamt 1: cyan hexagon (eye: hexagon); eye right 8 of 8; could be make 0.49 (0.51s)
+2026-11-14 20:57:44  imagination: dreamt 3: yellow triangle (eye: triangle); grey circle (eye: round); grey line (eye: rectangle); eye right 22 of 22; could be delta 0.47 (0.31s)
+2026-11-14 20:57:50  imagination: dreamt 1: yellow rectangle (eye: rectangle); eye right 8 of 8; could be box 0.50 (0.37s)
+2026-11-14 20:57:56  imagination: dreamt 1: brown blob (eye: pentagon); eye right 6 of 6; could be spot 0.38 (0.34s)
+2026-11-14 20:58:02  imagination: dreamt 1: orange oval (eye: oval); eye right 7 of 7; could be mango 0.54 (0.32s)
+2026-11-14 20:58:08  neurons: letter:a: 26 unused links faded
+2026-11-14 20:58:08  imagination: dreamt 3: cyan square (eye: square); a scene; pink dotted circle (eye: round); eye right 15 of 16; could be display 0.75 (0.21s)
+2026-11-14 20:58:14  imagination: dreamt 1: blue spiral (eye: blob); eye right 5 of 6; could be barrel roll 0.56 (0.36s)
+2026-11-14 20:58:20  imagination: dreamt 3: magenta hexagon (eye: round); brown striped spiral (eye: blob); cyan dotted oval (eye: oval); eye right 17 of 21; could be display 0.43 (0.18s)
+2026-11-14 20:58:25  trainer stopped

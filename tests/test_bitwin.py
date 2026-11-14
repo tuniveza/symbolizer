@@ -19,7 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 os.environ.setdefault("BRICK_MEMORY", "off")
-os.environ.setdefault("BRICK_FACTORY", "off")
+os.environ.setdefault("BRICK_TRAINER", "off")
 
 import bitwin  # noqa: E402
 import elf  # noqa: E402

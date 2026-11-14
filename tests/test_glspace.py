@@ -13,7 +13,7 @@ import zlib
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("BRICK_MEMORY", "off")
-os.environ.setdefault("BRICK_FACTORY", "off")
+os.environ.setdefault("BRICK_TRAINER", "off")
 
 import elf  # noqa: E402
 import glspace  # noqa: E402

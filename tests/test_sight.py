@@ -17,9 +17,9 @@ import zlib
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ["BRICK_SIGHT"] = "off"         # the vision model is only ever pretended here
 os.environ["BRICK_EYE_TEXT"] = "off"      # and tesseract too, so the tests are the same everywhere
-import eye  # noqa: E402
-import sight  # noqa: E402
-import symbols  # noqa: E402
+from trainer import eye  # noqa: E402
+from trainer import sight  # noqa: E402
+from trainer import symbols  # noqa: E402
 
 PICTURES = tempfile.mkdtemp(prefix="brick-sight-")
 WHITE, RED, GREEN = (255, 255, 255), (220, 20, 30), (0, 160, 0)
@@ -142,7 +142,7 @@ def test_loose_show_wordings():
         assert sight.show_request(said) == ("apple.png", "apple"), (said, sight.show_request(said))
     assert sight.show_request("show photos/red-apple.JPG as a green apple") == ("photos/red-apple.JPG", "green apple")
     assert sight.show_request('show "my pics/apple.png" as apple') == ("my pics/apple.png", "apple")
-    for said in ("what is this.png", "look at this.png", "look this.png", "brick look this.png",
+    for said in ("what is this.png", "look at this.png", "look this.png", "brick trainer look this.png",
                  "what do you see in this.png"):
         assert sight.show_request(said) == ("this.png", ""), (said, sight.show_request(said))
     assert sight.show_request("show game.txt") is None
@@ -152,7 +152,7 @@ def test_loose_show_wordings():
 # ---------------- the vision model, pretended ----------------
 
 def test_no_ollama_or_no_vision_model_is_said_plainly():
-    import neural
+    from trainer import neural
     saved = (os.environ.pop("BRICK_SIGHT"), sight.shutil.which, neural.start, neural.call)
     try:
         sight.shutil.which = lambda tool: None
@@ -165,7 +165,7 @@ def test_no_ollama_or_no_vision_model_is_said_plainly():
         neural.start = lambda: True
         neural.call = lambda path, body=None, seconds=60: {"models": [{"name": "qwen2.5:3b"}]}
         facets, note = sight.model_sees(b"png", "apple")
-        assert facets is None and "no vision model" in note and "brick sight setup" in note, note
+        assert facets is None and "no vision model" in note and "brick trainer sight setup" in note, note
         neural.call = lambda path, body=None, seconds=60: (
             {"models": [{"name": "qwen2.5vl:3b"}]} if path == "/api/tags" else
             {"message": {"content": '{"shape": ["round"], "color": ["red", "Green"], "parts": ["stem"], "is": []}'}})

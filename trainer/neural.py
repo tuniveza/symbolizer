@@ -2,18 +2,18 @@
 in brick's own words, for lines brick and its universe can't settle by themselves.
 
 It's a local model (Qwen 2.5 by default) served by Ollama on the graphics card. brick starts Ollama when
-it needs it and stops it with brick, like the factory. Nothing is sent anywhere.
+it needs it and stops it with brick, like the trainer. Nothing is sent anywhere.
 
   when brick is stuck on a line, or the universe isn't sure of it, the model suggests readings
   when brick would print a direction word for word ('write hello in blue at the x 20 and y 20' showing all
   of that), the model is asked whether it's really words to show or a direction
 Every suggestion is built before it's used, like any other reading; the note says what brick did, and
-the review asks afterwards. Answers are remembered per line (texts/factory/neural.json), so it's fast.
+the review asks afterwards. Answers are remembered per line (trainer/data/neural.json), so it's fast.
 
-    brick neural                   is it ready? which model?
-    brick neural setup             start Ollama and download the model (once)
-    brick neural model NAME        use another model (qwen2.5:7b is smarter, and slower)
-    brick neural off / on          stop or start using it
+    brick trainer neural                   is it ready? which model?
+    brick trainer neural setup             start Ollama and download the model (once)
+    brick trainer neural model NAME        use another model (qwen2.5:7b is smarter, and slower)
+    brick trainer neural off / on          stop or start using it
 """
 import atexit
 import json
@@ -25,9 +25,9 @@ import threading
 import time
 import urllib.request
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-SETTINGS = os.path.join(HERE, "texts", "factory", "neural-settings.json")
-CACHE = os.path.join(HERE, "texts", "factory", "neural.json")
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SETTINGS = os.path.join(HERE, "trainer", "data", "neural-settings.json")
+CACHE = os.path.join(HERE, "trainer", "data", "neural.json")
 SERVER = "http://127.0.0.1:11434"
 MODEL = "qwen2.5:3b"
 patient = True                   # False while brick gui previews as you type: never wait for the model then
@@ -260,7 +260,7 @@ def choose(line, ways, before=""):
 def only_known_words(reading, line):
     """A reading may use brick's own words and the person's words (or near slips of them), nothing else:
     a model can copy words from its examples ('I live in a red house'), and that must never get through."""
-    import universe
+    from trainer import universe
     from actions import STARTERS
     theirs = set(re.findall(r"[a-z0-9']+", line.lower()))
     brick = set(universe.universe().words) | set(STARTERS) | set(re.findall(r"[a-z]+", GUIDE.lower()) if False else ())
@@ -277,7 +277,7 @@ def only_known_words(reading, line):
     return True
 
 
-# ---------------- brick neural ... ----------------
+# ---------------- brick trainer neural ... ----------------
 
 def command(args):
     if args[:1] == ["off"] or args[:1] == ["on"]:
@@ -286,12 +286,12 @@ def command(args):
         return
     if args[:1] == ["model"] and len(args) == 2:
         save_settings(model=args[1])
-        print(f"The neural reader will use {args[1]}. Run brick neural setup to download it if it's new.")
+        print(f"The neural reader will use {args[1]}. Run brick trainer neural setup to download it if it's new.")
         return
     if not shutil.which("ollama"):
         print("The neural reader needs Ollama, which isn't installed. Install it once with:\n"
               "    sudo pacman -S ollama-cuda\n"
-              "then run: brick neural setup   (brick starts and stops Ollama by itself; no service needed)")
+              "then run: brick trainer neural setup   (brick starts and stops Ollama by itself; no service needed)")
         return
     if not start():
         print("Ollama is installed, but wouldn't start. Try running 'ollama serve' to see why.")
@@ -312,7 +312,7 @@ def command(args):
                     print("  " + note, flush=True)
                     shown = note
     if not have_model():
-        print(f"Ollama is ready, but the model {model} isn't downloaded yet: brick neural setup")
+        print(f"Ollama is ready, but the model {model} isn't downloaded yet: brick trainer neural setup")
         return
     started = time.time()
     tried = ask("write hello in blue at the x 20 and y 20", "", "check")

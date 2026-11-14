@@ -547,10 +547,13 @@ write hi name</div>
     <div class="tabs">
       <button class="tab on" data-tab="consoleView">Console</button>
       <button class="tab" data-tab="vizView">How it's made</button>
-      <button class="tab" data-tab="decideView" title="What brick couldn't settle by itself: decide, if you like">Decisions<span class="badge" id="decideBadge"></span></button>
       <button class="tab" data-tab="wordsView" title="Teach brick new words, and try lines to see what brick does with them">Words<span class="badge" id="wordsBadge"></span></button>
-      <button class="tab" data-tab="imagineView" title="What brick imagines, on its own or when you ask, and what its eye made of it">Imagination</button>
+      <button class="tab" data-tab="trainerView" title="Everything brick learns: what it couldn't settle by itself (decide, if you like) and what it imagines">Trainer<span class="badge" id="decideBadge"></span></button>
       <button class="tab" data-tab="helpView">Help</button>
+    </div>
+    <div class="subtabs" id="trainerTabs" style="display:none">
+      <button class="subtab on" data-sub="decideView" title="What brick couldn't settle by itself: decide, if you like">Decisions</button>
+      <button class="subtab" data-sub="imagineView" title="What brick imagines, on its own or when you ask, and what its eye made of it">Imagination</button>
     </div>
 
     <div class="view on" id="consoleView">
@@ -817,9 +820,16 @@ $("#under").addEventListener("click", e => { const b = e.target.closest("[data-n
 // ---------------- tabs ----------------
 
 $$(".tab").forEach(t => t.addEventListener("click", () => showTab(t.dataset.tab)));
+$$("#trainerTabs .subtab").forEach(t => t.addEventListener("click", () => showTab(t.dataset.sub)));
+const TRAINER = ["decideView", "imagineView"];        // the Trainer tab: everything brick learns
 function showTab(id) {
+  if (id === "trainerView") id = state.trainerSub || "decideView";
+  const trainer = TRAINER.includes(id);
+  if (trainer) state.trainerSub = id;
   state.tab = id;
-  $$(".tab").forEach(t => t.classList.toggle("on", t.dataset.tab === id));
+  $$(".tab").forEach(t => t.classList.toggle("on", t.dataset.tab === id || (trainer && t.dataset.tab === "trainerView")));
+  $("#trainerTabs").style.display = trainer ? "" : "none";
+  $$("#trainerTabs .subtab").forEach(t => t.classList.toggle("on", t.dataset.sub === id));
   $$(".view").forEach(v => v.classList.toggle("on", v.id === id));
   if (id === "vizView") drawViz();
   if (id === "helpView") drawHelp();
@@ -1403,7 +1413,7 @@ function openReview(g) {
       <label><input type="radio" name="g${i}" value=""> <input type="text" placeholder="or say what you meant, in brick's words"></label>
       <div class="msg"></div></div>`).join("");
   dialog(`<h3>Did each line do what you meant?</h3>
-    <p style="color:var(--dim);margin-top:0">Pick what you meant. brick keeps it in texts/corrections.txt and reads the line that way from now on.</p>
+    <p style="color:var(--dim);margin-top:0">Pick what you meant. brick keeps it in trainer/data/corrections.txt and reads the line that way from now on.</p>
     ${items}<div class="minitray" id="reviewTray"></div>
     <div class="row-btns"><button id="cancel">Later</button><button class="hot" id="ok">Keep these</button></div>`, d => {
     d.querySelectorAll(".lineb").forEach(async b => { b.innerHTML = await lineBricks(b.dataset.line); });
@@ -1524,7 +1534,7 @@ async function drawDecisions() {
   box.innerHTML = `<p class="intro">brick learns by itself either way. Its practice lines fail for a few reasons,
       mostly one word it doesn't know. So each card is one question: decide it once and every line that grew from it is settled.
       Ones brick settles by itself leave this list.</p>
-    <div class="status">The factory is <b>${d.running ? "learning right now" : "not running"}</b>${d.running ? "" : " (it runs while brick gui is open)"} ·
+    <div class="status">The trainer is <b>${d.running ? "learning right now" : "not running"}</b>${d.running ? "" : " (it runs while brick gui is open)"} ·
       questions: <b>${groups.length}</b> (covering ${d.items.length} lines) · left for the Director: <b>${d.director}</b></div>
     ${groups.length ? `<div class="minitray" id="deskTray"></div>` + shown.map(group).join("") +
       (groups.length > shown.length ? `<p class="intro">${groups.length - shown.length} smaller questions after these.</p>` : "")
@@ -1597,7 +1607,7 @@ async function drawImagination() {
     return;
   }
   const t = d.totals || {};
-  $("#imagineStatus").innerHTML = `brick ${d.running ? "<b>is dreaming right now</b> (a few pictures every few seconds)" : "dreams while the factory runs (it runs while brick gui is open)"} ·
+  $("#imagineStatus").innerHTML = `brick ${d.running ? "<b>is dreaming right now</b> (a few pictures every few seconds)" : "dreams while the trainer runs (it runs while brick gui is open)"} ·
     imagined so far: <b>${t.pictures || 0}</b> pictures, ${t.names || 0} named things, ${t.blends || 0} blends, ${t.contexts || 0} contexts<br>
     How well its eye reads them back: ${d.eye.length ? d.eye.map(esc).join(" · ") : "nothing yet"}
     ${d.hardest.length ? `<br>Hardest for the eye: ${d.hardest.map(esc).join(" · ")}` : ""}
@@ -1610,7 +1620,7 @@ async function drawImagination() {
       <div class="what">${esc(x.recipe)}</div>
       ${x.eye !== "-" ? `<div>eye saw: ${esc(x.eye)}</div>` : ""}
       ${x["could be"] !== "-" ? `<div>could be: ${esc(x["could be"])}</div>` : ""}
-    </div>`).join("") : `<p class="intro">Nothing ${state.origin ? "like that " : ""}imagined yet. It dreams while brick runs; brick imagine in a terminal makes some now.</p>`;
+    </div>`).join("") : `<p class="intro">Nothing ${state.origin ? "like that " : ""}imagined yet. It dreams while brick runs; brick trainer imagine in a terminal makes some now.</p>`;
 }
 setInterval(() => { if (state.tab === "imagineView" && !document.hidden) drawImagination(); }, 5000);
 

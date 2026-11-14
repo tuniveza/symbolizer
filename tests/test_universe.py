@@ -93,11 +93,11 @@ def test_mistakes_are_still_mistakes():
 
 
 def test_synchronicity_picks_the_reading_that_fits():
-    import synchronicity
+    from trainer import synchronicity
     assert read_as("orange juice at the top") == ["write juice in orange at the top"]     # orange: a colour
     path = os.path.join(folder(), "memory.txt")
     memory = synchronicity.Memory(path)
-    for _ in range(30):         # the factory kept seeing orange as words to show, next to a place
+    for _ in range(30):         # the trainer kept seeing orange as words to show, next to a place
         memory.observe([("orange", "words", False), ("juice", "words", False), ("top", "place", True)])
     memory.save()
     os.environ["BRICK_MEMORY"] = path
@@ -109,9 +109,9 @@ def test_synchronicity_picks_the_reading_that_fits():
 
 
 def test_conceptnet_keeps_known_phrases_together():
-    import conceptnet
+    from trainer import conceptnet
     if not os.path.isfile(conceptnet.PATH):
-        return                  # not fetched here (python3 conceptnet.py fetch)
+        return                  # not fetched here (python3 trainer/conceptnet.py fetch)
     os.environ["BRICK_MEMORY"] = os.path.join(folder(), "empty.txt")      # ConceptNet's bias, nothing learned
     try:
         assert read_as("orange juice at the top") == ["write orange juice at the top"]

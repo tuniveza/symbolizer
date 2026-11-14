@@ -307,7 +307,7 @@ When brick had to guess, it tells you how it read the line, and after the progra
 
 - **Yes** keeps the guesses, and brick's memory learns from them.
 - **No, let me fix it** opens a panel with each guess, the other ways it could be read, and a box to say what you meant.
-  Your answers are kept in [`texts/corrections.txt`](texts/corrections.txt).
+  Your answers are kept in [`trainer/data/corrections.txt`](trainer/data/corrections.txt).
 
 ---
 
@@ -378,17 +378,17 @@ Nothing else is needed on the computer that runs it.
 | [`teach.py`](teach.py) | Your own words: `to greet someone means ...` |
 | [`dictionary.py`](dictionary.py) | Everyday words mapped to what brick understands |
 | [`spelling.py`](spelling.py) | Finger-slip detection |
-| [`universe.py`](universe.py) | The textual universe: reading a line by what it's about |
-| [`wordnet.py`](wordnet.py), [`conceptnet.py`](conceptnet.py) | Ready-made knowledge of English |
-| [`synchronicity.py`](synchronicity.py) | Which ideas tend to turn up together |
-| [`brain.py`](brain.py) | The digital brain: symbols, links, and how alike two symbols are |
-| [`symbols.py`](symbols.py) | A universe for each symbol: neurons in `texts/universes/` that keep learning |
-| [`eye.py`](eye.py), [`sight.py`](sight.py) | The eye: quick filters that turn a picture into symbols, and naming it |
-| [`senses.py`](senses.py) | `brick learn`: learning from any file, folder, picture or words |
-| [`imagine.py`](imagine.py) | The imagination: made-up pictures and blends, read back by the eye, and what each could be |
-| [`neural.py`](neural.py) | The optional local language model |
-| [`factory.py`](factory.py), [`scrambler.py`](scrambler.py) | Self-learning: made-up and scrambled directions |
-| [`review.py`](review.py), [`outliers.py`](outliers.py) | "Did it do what you meant?" and the Decisions list |
+| [`trainer/universe.py`](trainer/universe.py) | The textual universe: reading a line by what it's about |
+| [`trainer/wordnet.py`](trainer/wordnet.py), [`trainer/conceptnet.py`](trainer/conceptnet.py) | Ready-made knowledge of English |
+| [`trainer/synchronicity.py`](trainer/synchronicity.py) | Which ideas tend to turn up together |
+| [`trainer/brain.py`](trainer/brain.py) | The digital brain: symbols, links, and how alike two symbols are |
+| [`trainer/symbols.py`](trainer/symbols.py) | A universe for each symbol: neurons in `trainer/data/universes/` that keep learning |
+| [`trainer/eye.py`](trainer/eye.py), [`trainer/sight.py`](trainer/sight.py) | The eye: quick filters that turn a picture into symbols, and naming it |
+| [`trainer/senses.py`](trainer/senses.py) | `brick trainer learn`: learning from any file, folder, picture or words |
+| [`trainer/imagine.py`](trainer/imagine.py) | The imagination: made-up pictures and blends, read back by the eye, and what each could be |
+| [`trainer/neural.py`](trainer/neural.py) | The optional local language model |
+| [`trainer/core.py`](trainer/core.py), [`trainer/scrambler.py`](trainer/scrambler.py) | Self-learning: made-up and scrambled directions |
+| [`trainer/review.py`](trainer/review.py), [`trainer/outliers.py`](trainer/outliers.py) | "Did it do what you meant?" and the Decisions list |
 | [`gui.py`](gui.py), [`gui.html`](gui.html), [`bricks.py`](bricks.py) | brick kiln, the window, and its brick tray |
 
 ---
@@ -398,7 +398,7 @@ Nothing else is needed on the computer that runs it.
 brick keeps learning while you use it.
 Everything it learns is kept as plain text that you can read, change or delete.
 
-**The factory** runs by itself while brick kiln is open or a program is running. Every 5 seconds it:
+**The trainer** runs by itself while brick kiln is open or a program is running. Every 5 seconds it:
 
 - **makes** a new direction for a console program, often as loosely as people really type them (`bg red`, `type at left of the screen the words hi in teal`);
 - **watches** your saved `.brick` files and learns from every line in them;
@@ -416,11 +416,11 @@ must make the same program as:
 write hello there in red at the top then set the background colour to blue then wait 2 seconds
 ```
 
-`brick scramble 10` shows you 10 of these and how brick did with each.
+`brick trainer scramble 10` shows you 10 of these and how brick did with each.
 
 **Synchronicity** counts which ideas turn up together (a colour with a place, words with a colour).
 When a line can be read more than one way, brick tries first the reading whose parts fit best together.
-The counts are in `texts/factory/memory.txt`. Delete the file to start again. Old counts fade, so recent writing counts more.
+The counts are in `trainer/data/memory.txt`. Delete the file to start again. Old counts fade, so recent writing counts more.
 
 **The neural reader** is optional. It uses a small language model (Qwen 2.5 by default) running on your own graphics card through [Ollama](https://ollama.com).
 brick starts Ollama when it needs it and stops it afterwards.
@@ -429,18 +429,18 @@ brick starts Ollama when it needs it and stops it afterwards.
 First install Ollama (on Arch-based Linux: `sudo pacman -S ollama-cuda`). Then:
 
 ```console
-$ brick neural setup         # downloads the model once (a few GB) and checks it works
-$ brick neural               # is it ready?
-$ brick neural off           # turn it off (brick neural on to turn it back on)
+$ brick trainer neural setup         # downloads the model once (a few GB) and checks it works
+$ brick trainer neural               # is it ready?
+$ brick trainer neural off           # turn it off (brick trainer neural on to turn it back on)
 ```
 
 **Decisions** are the few lines and words brick gave up on.
-They wait in the Decisions tab for a person. What you decide is kept in [`texts/decisions.txt`](texts/decisions.txt), in plain words.
+They wait in the Trainer tab (Decisions) for a person. What you decide is kept in [`trainer/data/decisions.txt`](trainer/data/decisions.txt), in plain words.
 
 **With Claude Code installed**, two extra helpers can improve brick itself:
 
 - `brick director` (the English Director) scrambles a batch of directions, reports what brick gets wrong in `texts/director-report.txt`, and has Claude fix brick's code for them.
-- `brick feeder` (the dictionary feeder) runs a batch of learning, checked by the tests, and has Claude settle the words that need judgement.
+- `brick trainer feeder` (the dictionary feeder) runs a batch of learning, checked by the tests, and has Claude settle the words that need judgement.
 
 ---
 
@@ -459,11 +459,11 @@ than a link to a specific one, and the score is the overlap of the two patterns,
 
 - **From what you write.** Every word is known by how it's used: the words around it, its context, and its letters.
   Little words are symbols too: they're broad, so they reach many things.
-- **From what the factory proves.** The words of every direction that builds fire together and link up.
-- **From pictures.** `brick show apple.png as apple` teaches a symbol by showing it (see the eye, below).
-- **From anything.** `brick learn notes.txt`, `brick learn ~/Pictures` or `brick learn "red apples are sweet"`.
-  `brick learn watch FOLDER` keeps learning from new files there while brick runs.
-- **On its own.** Each symbol has its own universe, a file in `texts/universes/`, that acts like a neuron.
+- **From what the trainer proves.** The words of every direction that builds fire together and link up.
+- **From pictures.** `brick trainer show apple.png as apple` teaches a symbol by showing it (see the eye, below).
+- **From anything.** `brick trainer learn notes.txt`, `brick trainer learn ~/Pictures` or `brick trainer learn "red apples are sweet"`.
+  `brick trainer learn watch FOLDER` keeps learning from new files there while brick runs.
+- **On its own.** Each symbol has its own universe, a file in `trainer/data/universes/`, that acts like a neuron.
   While brick runs, a few neurons fire every round, follow their strongest links, pick up new links through them
   (apple → fruit → seed gives apple a weak link to seed), look themselves up in WordNet and ConceptNet once, and
   let unused links fade. Anything you write in a universe file by hand is never faded or deleted.
@@ -478,12 +478,12 @@ like every other, only after every other reading has failed, and the note says w
 Note: line 1 read as: write hi in red ('zorp' is used like 'red')
 ```
 
-`brick brain` says how much it knows; `brick brain like red` shows the words used most like red;
-`brick brain links red` shows its links; `brick brain off` turns it off.
+`brick trainer brain` says how much it knows; `brick trainer brain like red` shows the words used most like red;
+`brick trainer brain links red` shows its links; `brick trainer brain off` turns it off.
 
 ### The eye
 
-`brick look photo.jpg` names what's in a picture, and `brick show photo.jpg as apple` teaches it.
+`brick trainer look photo.jpg` names what's in a picture, and `brick trainer show photo.jpg as apple` teaches it.
 The eye runs several quick filters, each turning pixels into symbols:
 
 | Filter | What it finds |
@@ -500,7 +500,7 @@ The eye runs several quick filters, each turning pixels into symbols:
 
 Then it adds what is known about the thing (WordNet, ConceptNet) to its universe, so a picture of an apple also
 brings in fruit, seeds, trees and pie. Without the model, looking takes about a tenth of a second.
-The vision model is optional: `brick sight setup` downloads it once (qwen2.5vl:3b, about 3 GB), and it runs on
+The vision model is optional: `brick trainer sight setup` downloads it once (qwen2.5vl:3b, about 3 GB), and it runs on
 your own graphics card. **Nothing is sent anywhere.**
 
 ### The imagination
@@ -510,9 +510,9 @@ brick also makes things up, and looks at what it made.
 - **Pictures.** Random shapes (polygons, stars, rings, ovals, blobs, spirals, lines, crosses) in random colours,
   sizes, places and textures (striped, dotted, checked), alone, side by side, one inside another, or a horizon scene.
   brick knows the true recipe of each one.
-- **Named things.** `brick imagine apple` draws apple from what brick knows about it (its universe, WordNet,
+- **Named things.** `brick trainer imagine apple` draws apple from what brick knows about it (its universe, WordNet,
   ConceptNet): its shape, colour, parts and how wide it is for how tall. Then the eye checks it can read it back as apple.
-- **Blends and contexts.** `brick imagine apple + ball` draws a round red thing and says what it could be.
+- **Blends and contexts.** `brick trainer imagine apple + ball` draws a round red thing and says what it could be.
   While dreaming, it also finds new words for contexts it knows (`a _ is` filled with apple and pear: `a cherry is`).
 
 **What could it be?** Each imagined thing's symbols are matched against the neurons, ConceptNet (both ways, by
@@ -527,22 +527,22 @@ another colour counts less. Strong answers are learned into the neurons with sou
 of the strength of seeing. A link or a facet you wrote by hand is never changed.
 
 **Dreaming teaches the eye.** The eye reads each imagined picture without being told, and brick counts where it is
-right or wrong, per channel, in `texts/factory/imagination.txt` (`hexagon read as round 4 of 4`). Every 25 pictures
+right or wrong, per channel, in `trainer/data/imagination.txt` (`hexagon read as round 4 of 4`). Every 25 pictures
 it tries the eye's shape thresholds within safe ranges. A value is kept only if the drawn shapes read clearly better
-and no real picture you showed it would read differently. Kept values are in `texts/factory/eye-settings.txt`:
+and no real picture you showed it would read differently. Kept values are in `trainer/data/eye-settings.txt`:
 delete that file to go back to the defaults.
 
-**When it happens.** A few pictures every factory round while brick runs (well under a second, no vision model);
-after `brick learn` or `brick show` (variations and blends of what was just learned); and when you ask:
+**When it happens.** A few pictures every trainer round while brick runs (well under a second, no vision model);
+after `brick trainer learn` or `brick trainer show` (variations and blends of what was just learned); and when you ask:
 
 ```console
-$ brick imagine 5            # 5 random pictures, drawn in the terminal, with what each could be
-$ brick imagine apple        # draw apple and check the eye reads it back (--open opens the PNG)
-$ brick dream 20             # 20 dream rounds now, and how well the eye did per channel
-$ brick imaginations own     # what it imagined by itself (also: mine, learned, today, or a number)
+$ brick trainer imagine 5            # 5 random pictures, drawn in the terminal, with what each could be
+$ brick trainer imagine apple        # draw apple and check the eye reads it back (--open opens the PNG)
+$ brick trainer dream 20             # 20 dream rounds now, and how well the eye did per channel
+$ brick trainer imaginations own     # what it imagined by itself (also: mine, learned, today, or a number)
 ```
 
-Everything it imagined is in `texts/imagination/`: the pictures (60 at most; its own oldest go first) and
+Everything it imagined is in `trainer/data/imagination/`: the pictures (60 at most; its own oldest go first) and
 `log.txt`, one line each, saying where it came from. brick kiln shows them live in its **Imagination** tab.
 
 ### In your programs
@@ -600,15 +600,15 @@ Use `brick sand game.txt` (or `clay`, `shale`, `cement`) to write just one of th
 | `brick gui` | Opens brick kiln. `brick gui game.txt` opens it with that file. `brick gui --app` opens it in a window of its own. |
 | `brick export game.txt` | Writes `game.brick`: the program and everything brick made from it, as plain text |
 | `brick bits game.txt` | Writes the brick materials (sand, clay, shale, cement) |
-| `brick review game.txt` | The lines brick had to guess: say if they're right, or fix them |
+| `brick trainer review game.txt` | The lines brick had to guess: say if they're right, or fix them |
 | `brick help` | Every phrase brick understands |
 | `brick help dictionary` | Every everyday word it knows. `brick help dictionary colours` shows one group. |
-| `brick scramble 10` | 10 messy paragraphs, and how brick did with each |
-| `brick factory` | Runs the factory in this terminal, to watch it. `brick factory always` / `off` / `status` |
-| `brick factory learn x.brick` | Learns from these files now |
-| `brick neural setup` | Sets up the optional local language model |
+| `brick trainer scramble 10` | 10 messy paragraphs, and how brick did with each |
+| `brick trainer` | Runs the trainer in this terminal, to watch it. `brick trainer always` / `off` / `status` |
+| `brick trainer learn x.brick` | Learns from these files now |
+| `brick trainer neural setup` | Sets up the optional local language model |
 | `brick director` | The English Director (see above) |
-| `brick feeder` | The dictionary feeder (see above) |
+| `brick trainer feeder` | The dictionary feeder (see above) |
 
 ---
 
@@ -651,10 +651,10 @@ brick/
 │   ├── examples/              finished example programs
 │   ├── dictionary.txt         765 everyday words and what they mean here
 │   ├── universe.txt           the ideas the textual universe reads with
-│   ├── sentences.txt          the factory's pool of directions
+│   ├── sentences.txt          the trainer's pool of directions
 │   ├── corrections.txt        what people said they meant
 │   ├── decisions.txt          what people decided about the outliers
-│   ├── factory/               the factory's memory and log
+│   ├── trainer/               the trainer's memory and log
 │   └── sources/               WordNet and a ConceptNet subset
 ├── old/                       an earlier version of brick, kept for reference
 ├── docs/                      the banner and screenshots on this page
@@ -669,24 +669,24 @@ brick/
 - **Moving the console** (`put the console on the left ...`) needs the Hyprland desktop. On other desktops these directions are skipped and everything else still works.
 - **The neural reader** needs Ollama and a graphics card. brick works fully without it.
 - `make.sh` and `reload.sh` use the author's own local tools. To run brick, use `python3 brick.py` as shown above.
-- brick is a personal project and is still growing. If it misreads a line, it says how it read it, and `brick review` lets you correct it.
+- brick is a personal project and is still growing. If it misreads a line, it says how it read it, and `brick trainer review` lets you correct it.
 
 ---
 
 ## 🙏 Credits
 
-brick reads English with help from two open sources of knowledge. Both are included in `texts/sources`:
+brick reads English with help from two open sources of knowledge. Both are included in `trainer/data/sources`:
 
 - **WordNet 3.0**, by Princeton University.
   WordNet 3.0 Copyright 2006 by Princeton University. All rights reserved.
-  Used under the WordNet licence, which is included in full at the top of every WordNet file in [`texts/sources/wordnet`](texts/sources/wordnet).
+  Used under the WordNet licence, which is included in full at the top of every WordNet file in [`trainer/data/sources/wordnet`](trainer/data/sources/wordnet).
   https://wordnet.princeton.edu
 - **ConceptNet 5.7**, by the Commonsense Computing Initiative, https://conceptnet.io.
   Used under [Creative Commons Attribution-ShareAlike 4.0 (CC BY-SA 4.0)](https://creativecommons.org/licenses/by-sa/4.0/).
-  [`texts/sources/conceptnet.tsv`](texts/sources/conceptnet.tsv) is a filtered part of ConceptNet: only the links that touch words brick knows.
-  It was made by [`conceptnet.py`](conceptnet.py) and is shared under the same CC BY-SA 4.0 licence.
+  [`trainer/data/sources/conceptnet.tsv`](trainer/data/sources/conceptnet.tsv) is a filtered part of ConceptNet: only the links that touch words brick knows.
+  It was made by [`trainer/conceptnet.py`](trainer/conceptnet.py) and is shared under the same CC BY-SA 4.0 licence.
 
-The optional neural reader uses [Ollama](https://ollama.com) and the [Qwen 2.5](https://github.com/QwenLM/Qwen2.5) model. Neither is included here: you install Ollama yourself, and `brick neural setup` downloads the model.
+The optional neural reader uses [Ollama](https://ollama.com) and the [Qwen 2.5](https://github.com/QwenLM/Qwen2.5) model. Neither is included here: you install Ollama yourself, and `brick trainer neural setup` downloads the model.
 
 ---
 

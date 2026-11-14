@@ -37,7 +37,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import brick  # noqa: E402
-import review  # noqa: E402
+from trainer import review  # noqa: E402
 import dictionary  # noqa: E402
 import runtime  # noqa: E402
 import screen  # noqa: E402
@@ -48,8 +48,8 @@ from expressions import Problem  # noqa: E402
 from reader import group_parts, split_line  # noqa: E402
 
 PORT = int(os.environ.get("BRICK_GUI_PORT") or 8766)   # BRICK_GUI_PORT: for tests, beside a real one
-import factory  # noqa: E402
-STAMP = factory.code_stamp()                # brick's code as this server started with it
+from trainer import core as trainer  # noqa: E402
+STAMP = trainer.code_stamp()                # brick's code as this server started with it
 NOWHERE = "class:^brick-gui-no-window$"     # a run inside the page has no window of its own to move
 
 
@@ -201,7 +201,7 @@ def watch(text, folder):
             shutil.copy(words_file, mine)
         compiler = Watching(mine, ask_user=lambda question: "yes")
         problems, program = [], None
-        import neural
+        from trainer import neural
         neural.patient = False          # while you type: never wait for the model (it answers in the background)
         started = time.perf_counter()
         try:
@@ -638,14 +638,14 @@ def build_for_running(text, path):
     if path and output == path:
         output += ".program"
     compiler = Compiler(os.path.join(folder, "mywords.txt"), ask_user=lambda question: "yes")
-    import factory
+    from trainer import core as trainer
     where = os.path.basename(path) if path else "a program in brick gui"
     try:
         program = compiler.compile(text)
     except Problem as problem:
-        factory.after_build(text, compiler, str(problem), where)          # brick keeps working on it
+        trainer.after_build(text, compiler, str(problem), where)          # brick keeps working on it
         return None, folder, str(problem).split("\n"), compiler.notes
-    factory.after_build(text, compiler, where=where)                       # what it fixed, it learns to keep
+    trainer.after_build(text, compiler, where=where)                       # what it fixed, it learns to keep
     if os.path.isdir(output):
         return None, folder, [f"There's already a folder called {output}. Rename the .txt file or the folder."], []
     with open(output, "wb") as f:
@@ -658,7 +658,7 @@ def build_for_running(text, path):
 
 def fix_options(text, number, words_file):
     """For one line: what brick does with it now, and other readings that make a different program."""
-    import universe
+    from trainer import universe
     lines = text.split("\n")
     line = lines[number - 1].strip() if 0 < number <= len(lines) else ""
     compiler = Compiler(universe.trial_words(words_file), ask_user=lambda question: "no")
@@ -683,11 +683,11 @@ def keep_general(line, meant, words_file):
     """After a correction: if it can be made a general pattern (and the tests agree), lines like it are
     fixed too. Runs in the background: the tests take a little while."""
     try:
-        import factory
+        from trainer import core as trainer
         entry = review.generalise(line, meant, words_file)
         if entry:
-            ok, message = factory.teach(entry)
-            import outliers
+            ok, message = trainer.teach(entry)
+            from trainer import outliers
             outliers.note(("learned from your correction: " if ok else "couldn't keep: ") + entry)
     except Exception:
         pass
@@ -730,7 +730,7 @@ def open_app(address):
 
 def close_when_idle(server):
     """--app: the window pings every 20 seconds (once a minute at worst while hidden); once it's
-    been quiet for APP_IDLE, the window has gone, so stop (and the factory stops with brick gui)."""
+    been quiet for APP_IDLE, the window has gone, so stop (and the trainer stops with brick gui)."""
     while True:
         time.sleep(15)
         if time.monotonic() - last_seen[0] > APP_IDLE:
@@ -744,7 +744,7 @@ def restart_when_changed(server, args):
     Waits while a program runs in the page. The page sees the new stamp and reloads itself."""
     while True:
         time.sleep(4)
-        if factory.code_stamp() == STAMP or any(s.done is None for s in sessions.values()):
+        if trainer.code_stamp() == STAMP or any(s.done is None for s in sessions.values()):
             continue
         time.sleep(1)                                 # let a save that's still writing finish
         print("brick's code changed, so brick gui restarts with it.", flush=True)
@@ -850,19 +850,19 @@ class Handler(BaseHTTPRequestHandler):
                               "starters": sorted(STARTERS), "colours": colours,
                               "files": files_here(self.start_folder), "examples": examples()})
         if url.path == "/api/decisions":
-            import factory
-            import outliers
-            log = os.path.join(factory.FOLDER, "log.txt")
+            from trainer import core as trainer
+            from trainer import outliers
+            log = os.path.join(trainer.FOLDER, "log.txt")
             activity = []
             if os.path.isfile(log):
                 with open(log, encoding="utf-8", errors="replace") as f:
                     activity = [line.rstrip() for line in f][-40:][::-1]
-            return self.send({"running": factory.running(), "activity": activity, "items": outliers.entries(),
+            return self.send({"running": trainer.running(), "activity": activity, "items": outliers.entries(),
                               "groups": outliers.groups(),
                               "director": len(outliers.entries(outliers.FOR_DIRECTOR))})
         if url.path == "/api/imagination":           # what brick imagined: newest first, with where it came from
-            import factory
-            import imagine
+            from trainer import core as trainer
+            from trainer import imagine
             origin = query.get("origin") if query.get("origin") in imagine.ORIGINS else None
             items = imagine.entries(origin, most=min(200, int(query.get("most") or 40)))
             for item in items:
@@ -871,9 +871,9 @@ class Handler(BaseHTTPRequestHandler):
             tally = imagine.Tally()
             return self.send({"items": items, "eye": tally.summary(), "hardest": tally.worst("shape"),
                               "tuned": tally.notes["tuned"][:3], "learned": tally.notes["learned"][:5],
-                              "totals": dict(tally.totals), "running": factory.running()})
-        if url.path.startswith("/imagination/"):     # an imagined picture, from texts/imagination
-            import imagine
+                              "totals": dict(tally.totals), "running": trainer.running()})
+        if url.path.startswith("/imagination/"):     # an imagined picture, from trainer/data/imagination
+            from trainer import imagine
             name = os.path.basename(url.path)
             where = os.path.join(imagine.PICTURES, name)
             if name.endswith(".png") and os.path.isfile(where):
@@ -965,12 +965,12 @@ class Handler(BaseHTTPRequestHandler):
                               "directions": bricks.read_line(raw) if kind == "line" else []})
             return self.send({"lines": lines})
         if url.path == "/api/decide-group":           # one decision for every line that grew from one root
-            import outliers
+            from trainer import outliers
             ok, message = outliers.decide_group(asked.get("key", ""), asked.get("action", ""),
                                                 asked.get("meaning", "").strip())
             return self.send({"ok": ok, "message": message})
         if url.path == "/api/decide":
-            import outliers
+            from trainer import outliers
             ok, message = outliers.decide(asked.get("id", ""), asked.get("action", ""), asked.get("meaning", "").strip())
             return self.send({"ok": ok, "message": message})
         if url.path == "/api/guessed":

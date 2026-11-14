@@ -9058,3 +9058,7 @@ line: technical nature in teal; typewrite popular arm and then make it vanish; m
 said: I don't know how to 'technical'. Actions start with a word like write, ask, set, add, wait, if or for each.
 from: the sentence maker
 
+line: place window at right side of the screen width 200px and height 200px
+said: brick's own window can't move itself: the desktop (Wayland) decides where windows go. You can say: make the window 800 by 600  |  put the console on the left side of the screen
+from: tit.brick
+

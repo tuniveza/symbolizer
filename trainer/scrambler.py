@@ -9,8 +9,8 @@ tidy directions brick reads perfectly, so the scrambler knows exactly which prog
   should make the same program as:
   'write hello there in red at the top then set the background colour to blue then wait 2 seconds'
 
-The factory runs it every round and learns from what brick gets wrong (see factory.py).
-    python3 scrambler.py 10        show 10 scrambled paragraphs, and how brick did with each
+The trainer runs it every round and learns from what brick gets wrong (see trainer/core.py).
+    python3 trainer/scrambler.py 10        show 10 scrambled paragraphs, and how brick did with each
 """
 import os
 import random
@@ -19,7 +19,7 @@ import shutil
 import sys
 import tempfile
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
 
 WORDS = ["hello", "hi there", "game over", "well done", "you win", "good morning", "nice one", "try again",
@@ -215,11 +215,11 @@ def findings(count=40):
         lines.append(f"{'Misread' if what == 'wrong' else 'Refused'} {len(found)} time{'s' if len(found) > 1 else ''}: "
                      f"directions meaning '{kind}'. For example:")
         lines += [f"    '{messy}'  should mean: {meant}" for messy, meant in found[:3]]
-    import outliers
+    from trainer import outliers
     waiting, handed = len(outliers.entries()), len(outliers.entries(outliers.FOR_DIRECTOR))
     if waiting or handed:
-        lines += ["", f"Waiting for a person (the Decisions tab in brick gui): {waiting}. "
-                      f"Left for the English Director: {handed} (texts/factory/for-director.txt)."]
+        lines += ["", f"Waiting for a person (Trainer → Decisions in brick gui): {waiting}. "
+                      f"Left for the English Director: {handed} (trainer/data/for-director.txt)."]
     return "\n".join(lines)
 
 

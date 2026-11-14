@@ -1,26 +1,26 @@
 """brick's senses: it learns from any symbol, wherever it comes from.
 
-    brick learn notes.txt             learn from a file
-    brick learn ~/Pictures            learn from every file in a folder (and the folders inside it)
-    brick learn "red apples are sweet" learn from these words
-    brick learn watch ~/Pictures      while brick runs, learn by itself from new or changed files there
-    brick learn unwatch ~/Pictures    stop that
-    brick learn watching              which folders are watched
+    brick trainer learn notes.txt             learn from a file
+    brick trainer learn ~/Pictures            learn from every file in a folder (and the folders inside it)
+    brick trainer learn "red apples are sweet" learn from these words
+    brick trainer learn watch ~/Pictures      while brick runs, learn by itself from new or changed files there
+    brick trainer learn unwatch ~/Pictures    stop that
+    brick trainer learn watching              which folders are watched
 
 What happens to each thing:
   text (any file that reads as text: .txt, .md, .brick, code ...)
-      each line teaches the brain how its words are used (brain.py), and the words of each line fire
-      together in their neurons (symbols.py, texts/universes): letters, words and contexts
+      each line teaches the brain how its words are used (trainer/brain.py), and the words of each line fire
+      together in their neurons (trainer/symbols.py, trainer/data/universes): letters, words and contexts
   pictures (.png .jpg .jpeg .webp .gif .bmp .tif .heic ...)
-      the eye looks (sight.py): it filters the picture, names what it sees, and the neurons of what it saw
+      the eye looks (trainer/sight.py): it filters the picture, names what it sees, and the neurons of what it saw
       fire together
   anything else is skipped, and counted
-Afterwards the imagination (imagine.py) reacts to what was learned: it draws a few variations or blends of it.
-(While watching folders, that waits for the factory's next dream round.)
+Afterwards the imagination (trainer/imagine.py) reacts to what was learned: it draws a few variations or blends of it.
+(While watching folders, that waits for the trainer's next dream round.)
 
-Watched folders are in texts/factory/watching.txt, one per line (change it freely). Which files were already
-learned from, and when they last changed, is in texts/factory/senses.json, so nothing is learned twice.
-Watching only happens while brick runs (the factory's round), a few files at a time. Nothing leaves this
+Watched folders are in trainer/data/watching.txt, one per line (change it freely). Which files were already
+learned from, and when they last changed, is in trainer/data/senses.json, so nothing is learned twice.
+Watching only happens while brick runs (the trainer's round), a few files at a time. Nothing leaves this
 computer.
 """
 import json
@@ -29,16 +29,16 @@ import re
 import sys
 import time
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-FOLDER = os.path.join(HERE, "texts", "factory")
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FOLDER = os.path.join(HERE, "trainer", "data")
 WATCHING = os.path.join(FOLDER, "watching.txt")
 SEEN = os.path.join(FOLDER, "senses.json")
 PICTURES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".heic", ".heif", ".ppm", ".avif"}
 SKIP_FOLDERS = {".git", "__pycache__", "node_modules", ".cache", ".venv", "venv", ".local", ".Trash"}
 BIGGEST_TEXT = 2 * 1024 * 1024        # bytes: a bigger text file is read only this far
 BIGGEST_PICTURE = 60 * 1024 * 1024    # bytes: a bigger picture is skipped
-PER_ROUND = 8                         # files learned from per factory round while watching
-ROUND_BUDGET = 2.0                    # seconds per factory round, at most
+PER_ROUND = 8                         # files learned from per trainer round while watching
+ROUND_BUDGET = 2.0                    # seconds per trainer round, at most
 
 
 # ---------------- what a thing is ----------------
@@ -80,17 +80,17 @@ def files_in(target):
 
 class Senses:
     def __init__(self, mind=None):
-        import brain
+        from trainer import brain
         self.brain = mind if mind is not None else brain.Brain(brain.path())
         self.world = None
         self.recent = []         # what was just learned, for the imagination to react to (imagine.react)
 
     def text(self, text, source):
         """Each line: how its words are used (the brain), and its words firing together (the neurons)."""
-        import brain
-        import symbols
+        from trainer import brain
+        from trainer import symbols
         if self.world is None:
-            import universe
+            from trainer import universe
             self.world = universe.universe()
         lines = 0
         for line in re.split(r"[\n.!?;]+", text):
@@ -108,7 +108,7 @@ class Senses:
     def picture(self, path, name=None):
         """The eye looks; it feeds the neurons itself. -> what it said, in a few words."""
         import inspect
-        import sight
+        from trainer import sight
         parameters = inspect.signature(sight.look).parameters
         if "learn" in parameters:
             seen = sight.look(path, name=name, learn=True)
@@ -120,7 +120,7 @@ class Senses:
             return f"{what} ({seen.get('how', '?')}, {seen.get('sure', 0):.2f} sure)", None
         if name is None:
             return None, "this version of the eye needs to be told what the picture shows"
-        import symbols
+        from trainer import symbols
         return ("taught" if symbols.show(path, name) == 0 else None), None
 
     def learn(self, target, source=None):
@@ -173,7 +173,7 @@ def watched():
 def set_watched(folders):
     os.makedirs(FOLDER, exist_ok=True)
     with open(WATCHING, "w", encoding="utf-8") as f:
-        f.write("# Folders brick learns from by itself while it runs, one per line. brick learn watch / unwatch.\n")
+        f.write("# Folders brick learns from by itself while it runs, one per line. brick trainer learn watch / unwatch.\n")
         f.writelines(folder + "\n" for folder in folders)
 
 
@@ -186,7 +186,7 @@ def seen():
 
 
 def watch_round(mind, budget=ROUND_BUDGET, most=PER_ROUND):
-    """One factory round: a few new or changed files from the watched folders. -> a line saying what, or ''."""
+    """One trainer round: a few new or changed files from the watched folders. -> a line saying what, or ''."""
     folders = watched()
     if not folders:
         return ""
@@ -211,7 +211,7 @@ def watch_round(mind, budget=ROUND_BUDGET, most=PER_ROUND):
     with open(SEEN + ".new", "w", encoding="utf-8") as f:
         json.dump(known, f)
     os.replace(SEEN + ".new", SEEN)
-    import imagine
+    from trainer import imagine
     imagine.later(senses.recent, "watched folders")       # the next dream round reacts to it
     return summary(done)
 
@@ -224,7 +224,7 @@ def summary(done):
     return "learned from " + ", ".join(parts)
 
 
-# ---------------- brick learn ----------------
+# ---------------- brick trainer learn ----------------
 
 def command(args):
     if not args:
@@ -232,7 +232,7 @@ def command(args):
         return 1
     if args[0] in ("watch", "unwatch"):
         if len(args) < 2:
-            print(f"Which folder? For example: brick learn {args[0]} ~/Pictures")
+            print(f"Which folder? For example: brick trainer learn {args[0]} ~/Pictures")
             return 1
         folder = os.path.abspath(os.path.expanduser(" ".join(args[1:])))
         folders = [f for f in watched() if f != folder]
@@ -248,11 +248,11 @@ def command(args):
         return 0
     if args == ["watching"]:
         folders = watched()
-        print("Watching:\n  " + "\n  ".join(folders) if folders else "No folders are watched. brick learn watch FOLDER")
+        print("Watching:\n  " + "\n  ".join(folders) if folders else "No folders are watched. brick trainer learn watch FOLDER")
         return 0
-    import brain
+    from trainer import brain
     if brain.off():
-        print("The brain is off (brick brain on), so it isn't learning.")
+        print("The brain is off (brick trainer brain on), so it isn't learning.")
         return 1
     senses = Senses()
     started = time.monotonic()
@@ -269,10 +269,10 @@ def command(args):
     if len(total["said"]) > 20:
         print(f"  ... and {len(total['said']) - 20} more")
     print(summary(total).capitalize() + f", in {time.monotonic() - started:.1f}s.")
-    import imagine                                     # the imagination reacts to what was just learned
-    imagined = imagine.react(senses.recent, "brick learn")
+    from trainer import imagine                                     # the imagination reacts to what was just learned
+    imagined = imagine.react(senses.recent, "brick trainer learn")
     if imagined:
-        print("Imagined after learning it (brick imaginations learned draws them):")
+        print("Imagined after learning it (brick trainer imaginations learned draws them):")
         for line in imagined:
             print("  " + line)
     return 0

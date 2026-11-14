@@ -8,7 +8,7 @@ import sys
 from terminal import build, folder, run
 from compiler import Compiler  # noqa: E402 (terminal finds brick)
 from expressions import Problem  # noqa: E402
-import brain  # noqa: E402
+from trainer import brain  # noqa: E402
 
 RED, RESET = "\x1b[38;2;255;0;0m", "\x1b[0m"
 
@@ -111,14 +111,14 @@ def test_below_the_threshold_is_still_refused():
 
 
 def test_the_brain_learns_from_a_proved_direction():
-    import factory
-    import synchronicity
+    from trainer import core as trainer
+    from trainer import synchronicity
     where = folder()
-    teacher = factory.Factory.__new__(factory.Factory)     # just the parts that prove a direction
-    teacher.builder = factory.Builder()
+    teacher = trainer.Trainer.__new__(trainer.Trainer)     # just the parts that prove a direction
+    teacher.builder = trainer.Builder()
     teacher.memory = synchronicity.Memory(os.path.join(where, "memory.txt"))
     teacher.brain = brain.Brain(os.path.join(where, "brain.txt"))
-    import symbols
+    from trainer import symbols
     real_folder, symbols.FOLDER = symbols.FOLDER, os.path.join(where, "universes")   # never the real neurons
     try:
         teacher.prove("write hi in red at the top")

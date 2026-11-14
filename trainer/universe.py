@@ -9,7 +9,7 @@ in brick's own words.
              itself the word to show
   tell       it again in brick's words: write hello in pink at the right side of the screen
 
-The words for each idea are in texts/universe.txt. brick only asks the universe about a line it can't read
+The words for each idea are in trainer/data/universe.txt. brick only asks the universe about a line it can't read
 itself, so every line that worked before builds exactly as it did.
 """
 import difflib
@@ -19,14 +19,14 @@ import re
 import shutil
 import tempfile
 
-import brain
-import conceptnet
+from trainer import brain
+from trainer import conceptnet
 import dictionary
-import neural
-import review
-import synchronicity
+from trainer import neural
+from trainer import review
+from trainer import synchronicity
 
-PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "texts", "universe.txt")
+PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "trainer", "data", "universe.txt")
 ACTIONS = ("show", "make", "clear", "wait")
 UNITS = {"s": "second", "sec": "second", "secs": "second", "second": "second", "seconds": "second",
          "min": "minute", "mins": "minute", "minute": "minute", "minutes": "minute",
@@ -901,7 +901,7 @@ def likened(word, before, after):
     if brain.off():                           # little words are symbols too: 'zo' is asked about like any word
         return None
     try:
-        import wordnet
+        from trainer import wordnet
         from actions import STARTERS
         world = universe()
         if any(" " not in o and (o in STARTERS or world.words.get(o, set()) - {"filler", "glue", "chatter"})
@@ -915,7 +915,7 @@ def likened(word, before, after):
 def readings(tokens, follows=False):
     """The ways one direction can be read, the best fit first: as the universe's links say, and with each
     word that could be a symbol or plain words ('orange') taken as plain words. Synchronicity orders them:
-    the reading whose symbols fit best with each other, and with what the factory has seen, comes first."""
+    the reading whose symbols fit best with each other, and with what the trainer has seen, comes first."""
     found, demoted = [], set()
     for k in [None] + [k for k, t in enumerate(tokens) if not t.quoted and t.ideas & SYMBOLS]:
         variant = tokens if k is None else tokens[:k] + [Token(tokens[k].text)] + tokens[k + 1:]
@@ -1017,7 +1017,7 @@ def same_meaning(tokens):
     'discontinue the program' -> 'stop the program', 'state hello in red' -> 'say hello in red'."""
     if synchronicity.off():
         return []
-    import wordnet
+    from trainer import wordnet
     from actions import STARTERS
     world, ways = universe(), []
     for k, t in enumerate(tokens):
@@ -1035,7 +1035,7 @@ def same_meaning(tokens):
 def verb_first(tokens):
     """Is the direction's first word unknown, with a WordNet synonym brick knows as an action? Directions
     start with their verb, so 'state hello in red' means say hello in red."""
-    import wordnet
+    from trainer import wordnet
     from actions import STARTERS
     t = tokens[0]
     if t.ideas or t.quoted or not t.word.isalpha():
@@ -1155,7 +1155,7 @@ USED_LIKE = re.compile(r"(?: \('[^']*' is used like '[^']*'[^)]*\))+$")      # t
 def judged(line, ways, lines, number, failing, spare=()):
     """The readings that build, one per different program, put to the neural reader to pick the meant one;
     that one first. Readings that make the same program don't need judging."""
-    import review
+    from trainer import review
     distinct, made = [], set()
     words = trial_words("")
     try:
@@ -1194,7 +1194,7 @@ def may_overrule(line, own, other):
 def prints_instructions(reading, line):
     """Does this reading print words from the line that are instructions, not words to show: words the
     universe knows as part of a direction (times, minute, half), or a verb leading the line ('shout hello')?"""
-    import wordnet
+    from trainer import wordnet
     world = universe()
     first = re.findall(r"[a-z]+", line.lower())[:1]
     for word in printed_words(reading):

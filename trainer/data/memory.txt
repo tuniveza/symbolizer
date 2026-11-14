@@ -1,7 +1,7 @@
 # brick's universe memory: which idea each word was read as, and which ideas turned up
-# together, in directions the factory proved by building them. Delete it to start again.
-directions	21878
-read	"	words	1919
+# together, in directions the trainer proved by building them. Delete it to start again.
+directions	21902
+read	"	words	1922
 read	2	words	6
 read	2.6	words	2
 read	3	words	9
@@ -35,6 +35,7 @@ read	amber	colour	25
 read	ambiguous	words	3
 read	anatomy	words	1
 read	announce	show	44
+read	apple	words	1
 read	appointed	words	2
 read	apricot	colour	18
 read	aqua	colour	15
@@ -67,24 +68,24 @@ read	beige	colour	19
 read	belt	words	3
 read	bench	words	1
 read	benefit	words	1
-read	bg	background	1304
+read	bg	background	1305
 read	big	style	9
 read	big	words	3
 read	bill	place	1
 read	birth	words	1
 read	bitter	words	1
 read	black	words	2
-read	blade	words	1
+read	blade	words	2
 read	blessed	words	1
 read	blind	words	2
 read	block	words	2
-read	blue	colour	809
+read	blue	colour	810
 read	blunt	words	2
 read	body	words	1
 read	bolt	words	1
 read	book	words	2
 read	bosom	words	4
-read	bottom	place	1886
+read	bottom	place	1888
 read	bottom-left	place	15
 read	bottom-right	place	34
 read	bound	words	2
@@ -147,12 +148,12 @@ read	check	words	2
 read	cherry	colour	14
 read	chestnut	colour	7
 read	chill	words	1
-read	chocolate	colour	16
+read	chocolate	colour	17
 read	choice	words	2
 read	choices	words	21
 read	city	words	2
 read	claret	colour	7
-read	clear	clear	1327
+read	clear	clear	1330
 read	clip	words	2
 read	close	words	3
 read	closed	words	2
@@ -201,7 +202,7 @@ read	cyan	colour	818
 read	cycle	words	1
 read	damage	words	1
 read	dark	words	1
-read	days	words	497
+read	days	words	498
 read	deal	words	1
 read	decay	words	1
 read	decision	words	1
@@ -232,7 +233,7 @@ read	dirty	words	1
 read	discharge	words	3
 read	discontinue	words	10
 read	discovery	words	1
-read	display	show	1209
+read	display	show	1211
 read	distinct	words	2
 read	disturbed	words	1
 read	diversion	words	1
@@ -354,7 +355,7 @@ read	future	words	2
 read	gain	words	1
 read	gamboge	colour	9
 read	gamboge	words	1
-read	game	words	501
+read	game	words	502
 read	garden	words	1
 read	gay	words	2
 read	general	words	3
@@ -365,17 +366,17 @@ read	genuine	words	3
 read	give	show	2
 read	glad	words	1
 read	go	words	402
-read	gold	colour	841
+read	gold	colour	843
 read	golden	words	2
 read	gone	words	3
-read	good	words	489
+read	good	words	491
 read	goodbye	words	20
 read	grace	words	1
 read	gray	colour	1
 read	gray	words	1
 read	great	place	1
 read	great	words	1
-read	green	colour	791
+read	green	colour	792
 read	greeting	words	16
 read	grievance	words	1
 read	grim	words	1
@@ -387,8 +388,8 @@ read	guidance	words	1
 read	habit	words	2
 read	hand	words	1
 read	handling	words	1
-read	happy	words	497
-read	hard	words	1
+read	happy	words	498
+read	hard	words	2
 read	harmony	words	1
 read	haste	words	1
 read	hazel	colour	6
@@ -401,11 +402,11 @@ read	heat	words	1
 read	heavy	colour	2
 read	heavy	words	1
 read	height	words	1
-read	hello	words	497
+read	hello	words	498
 read	help	words	1
 read	hesitate	wait	4
 read	hey	words	1
-read	hi	words	462
+read	hi	words	463
 read	hide	words	52
 read	high	words	1
 read	hip	words	1
@@ -479,13 +480,13 @@ read	legal	words	2
 read	lemon	colour	16
 read	length	words	1
 read	lets	words	402
-read	level	words	485
+read	level	words	486
 read	liable	words	2
 read	liberal	words	2
 read	life	words	1
 read	light	words	1
 read	like	words	2
-read	lime	colour	750
+read	lime	colour	751
 read	limit	words	1
 read	limited	words	3
 read	line	words	16
@@ -508,12 +509,12 @@ read	low	words	1
 read	luck	words	1
 read	lump	words	1
 read	lurid	words	2
-read	magenta	colour	837
+read	magenta	colour	838
 read	magnitude	words	1
 read	mahogany	place	3
 read	maize	colour	17
 read	major	colour	1
-read	make	make	1391
+read	make	make	1392
 read	man	words	1
 read	march	words	4
 read	market	words	2
@@ -542,7 +543,7 @@ read	monitor	words	1
 read	monster	colour	1
 read	monster	words	1
 read	monstrous	colour	1
-read	morning	words	489
+read	morning	words	491
 read	motif	words	3
 read	mound	words	1
 read	move	placing	349
@@ -556,7 +557,7 @@ read	names.txt	words	3
 read	narrow	words	1
 read	national	words	1
 read	natural	words	2
-read	navy	colour	852
+read	navy	colour	853
 read	neat	words	2
 read	negative	words	1
 read	neutral	words	1
@@ -596,7 +597,7 @@ read	original	words	5
 read	out	words	1
 read	outfit	words	1
 read	outside	words	1
-read	over	words	501
+read	over	words	502
 read	pace	words	1
 read	pack	words	1
 read	pain	words	1
@@ -621,7 +622,7 @@ read	physical	words	1
 read	picture	words	1
 read	piece	words	1
 read	pinhole	words	2
-read	pink	colour	797
+read	pink	colour	799
 read	pink	words	1
 read	pitcher	words	1
 read	place	placing	73
@@ -657,7 +658,7 @@ read	prime	words	2
 read	primitive	words	2
 read	principal	place	1
 read	principle	words	1
-read	print	show	1157
+read	print	show	1160
 read	producer	words	2
 read	product	words	1
 read	proper	clear	1
@@ -672,7 +673,7 @@ read	pure	words	2
 read	purple	colour	833
 read	purplish-red	words	4
 read	purpose	words	1
-read	put	placing	1836
+read	put	placing	1838
 read	queen	words	1
 read	quick	words	4
 read	quiet	clear	1
@@ -685,7 +686,7 @@ read	ragged	words	3
 read	rank	words	2
 read	rare	words	2
 read	raw	words	2
-read	ready	words	507
+read	ready	words	508
 read	real	words	4
 read	realism	words	3
 read	reality	words	2
@@ -693,7 +694,7 @@ read	reason	words	1
 read	receiver	words	1
 read	reception	words	1
 read	record	words	1
-read	red	colour	847
+read	red	colour	850
 read	reiterate	words	12
 read	release	words	2
 read	reliable	words	4
@@ -710,7 +711,7 @@ read	result	words	1
 read	results.txt	words	2
 read	return	words	2
 read	review	words	1
-read	right	place	2944
+read	right	place	2947
 read	rigid	words	2
 read	roll	words	1
 read	room	words	1
@@ -737,20 +738,20 @@ read	sanguine	words	3
 read	sapphire	colour	12
 read	savage	words	3
 read	save.txt	words	4
-read	say	show	1126
-read	saying	saying	7292
+read	say	show	1128
+read	saying	saying	7302
 read	scale	words	2
 read	scarlet	colour	15
 read	scent	words	1
 read	scented	words	4
 read	school	words	3
 read	scores.txt	words	3
-read	screen	screen	1692
+read	screen	screen	1694
 read	screen	words	1
 read	scribble	show	1
 read	second	time unit	502
 read	second	words	3
-read	seconds	time unit	4152
+read	seconds	time unit	4157
 read	section	words	1
 read	sector	words	1
 read	security	words	1
@@ -780,7 +781,7 @@ read	shopping.txt	words	4
 read	short	words	1
 read	show	show	1081
 read	sick	words	3
-read	side	place	2208
+read	side	place	2209
 read	sight	words	1
 read	silence	words	1
 read	silver	words	1
@@ -877,7 +878,7 @@ read	target	words	1
 read	taste	words	2
 read	taupe	colour	22
 read	teaching	words	1
-read	teal	colour	803
+read	teal	colour	804
 read	temper	words	1
 read	temple	words	1
 read	ten	words	1
@@ -889,12 +890,12 @@ read	terrible	words	2
 read	test	words	3
 read	testimony	words	1
 read	testing	words	1
-read	text	text	3934
+read	text	text	3942
 read	text	words	21
 read	the	words	30
 read	theology	words	2
 read	theory	words	1
-read	there	words	465
+read	there	words	466
 read	thick	place	4
 read	thick	words	1
 read	thin	words	1
@@ -905,13 +906,13 @@ read	throat	words	3
 read	tie	words	1
 read	tight	words	1
 read	time	words	1
-read	times	count	2238
+read	times	count	2240
 read	to	words	1
 read	todo.txt	words	5
 read	tolerance	words	2
 read	tolerant	words	2
 read	tongue	words	1
-read	top	place	1907
+read	top	place	1910
 read	top-left	place	30
 read	top-right	place	27
 read	topaz	colour	7
@@ -945,7 +946,7 @@ read	unknown	words	1
 read	unstable	words	1
 read	unusual	place	1
 read	unusual	words	1
-read	up	words	483
+read	up	words	484
 read	upset	words	1
 read	use	words	2
 read	used	words	2
@@ -967,7 +968,7 @@ read	viridity	colour	8
 read	visit	words	1
 read	voice	words	1
 read	vote	words	1
-read	wait	wait	1392
+read	wait	wait	1393
 read	walk	words	1
 read	ward	words	1
 read	warm	words	2
@@ -985,7 +986,7 @@ read	well	words	542
 read	western	words	1
 read	wheat	colour	9
 read	when	words	58
-read	white	colour	851
+read	white	colour	854
 read	wicked	colour	1
 read	wicked	words	1
 read	wild	words	1
@@ -1006,72 +1007,72 @@ read	work	words	1
 read	worker	words	1
 read	working	words	1
 read	world	words	1
-read	write	show	1159
+read	write	show	1162
 read	write	words	1
-read	writing	text	430
+read	writing	text	431
 read	writing	words	1
 read	wrong	words	1
 read	x	words	4
 read	yay	words	1
 read	year	words	1
-read	yellow	colour	896
+read	yellow	colour	897
 read	you	words	992
 read	your	words	1
 read	youth	words	1
 read	zero	words	1
 read	zork	words	1
-together	background	colour	2420
+together	background	colour	2421
 together	background	make	1290
 together	clear	colour	2
-together	clear	screen	1692
+together	clear	screen	1694
 together	clear	words	19
-together	colour	count	1843
-together	colour	make	2756
-together	colour	place	6604
-together	colour	placing	1116
-together	colour	saying	6284
-together	colour	show	6135
-together	colour	text	4113
-together	colour	time unit	1893
-together	colour	words	8369
-together	count	place	1657
+together	colour	count	1845
+together	colour	make	2757
+together	colour	place	6612
+together	colour	placing	1118
+together	colour	saying	6293
+together	colour	show	6143
+together	colour	text	4122
+together	colour	time unit	1896
+together	colour	words	8380
+together	count	place	1658
 together	count	placing	286
-together	count	saying	1645
-together	count	show	1563
+together	count	saying	1647
+together	count	show	1565
 together	count	style	1
-together	count	text	403
+together	count	text	404
 together	count	time unit	513
-together	count	words	2238
+together	count	words	2240
 together	make	place	50
 together	make	saying	31
-together	make	text	1463
+together	make	text	1464
 together	make	window	19
 together	make	words	31
-together	place	placing	2045
-together	place	saying	5847
-together	place	show	5656
+together	place	placing	2046
+together	place	saying	5854
+together	place	show	5663
 together	place	style	13
-together	place	text	1605
-together	place	time unit	1726
+together	place	text	1608
+together	place	time unit	1729
 together	place	window	2179
-together	place	words	7675
-together	placing	saying	1008
-together	placing	text	330
-together	placing	time unit	292
+together	place	words	7683
+together	placing	saying	1010
+together	placing	text	331
+together	placing	time unit	293
 together	placing	window	941
-together	placing	words	1318
-together	saying	show	5442
-together	saying	text	1902
-together	saying	time unit	1740
-together	saying	words	7292
+together	placing	words	1320
+together	saying	show	5450
+together	saying	text	1905
+together	saying	time unit	1744
+together	saying	words	7302
 together	show	style	13
-together	show	text	1359
-together	show	time unit	1635
-together	show	words	7355
+together	show	text	1361
+together	show	time unit	1638
+together	show	words	7365
 together	style	words	14
-together	text	time unit	453
-together	text	words	1958
-together	time unit	wait	2332
+together	text	time unit	454
+together	text	words	1961
+together	time unit	wait	2333
 together	time unit	window	2
-together	time unit	words	2638
+together	time unit	words	2642
 together	wait	words	318

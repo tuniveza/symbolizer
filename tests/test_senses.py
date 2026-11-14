@@ -1,4 +1,4 @@
-"""Tests for brick learn (senses.py): learning from any file, folder, picture or words, and watched folders.
+"""Tests for brick trainer learn (trainer/senses.py): learning from any file, folder, picture or words, and watched folders.
 Everything happens in temporary folders: never the real brain or the real neurons.
 
 Usage: python3 tests/test_senses.py
@@ -9,10 +9,10 @@ import sys
 import zlib
 
 from terminal import folder
-import brain  # noqa: E402 (terminal finds brick)
-import senses  # noqa: E402
-import sight  # noqa: E402
-import symbols  # noqa: E402
+from trainer import brain  # noqa: E402 (terminal finds brick)
+from trainer import senses  # noqa: E402
+from trainer import sight  # noqa: E402
+from trainer import symbols  # noqa: E402
 
 
 class Apart:

@@ -1,11 +1,11 @@
 """Bricks: brick's words as tiles to click or drag (the tray in brick gui), and a line shown as bricks,
 coloured by what brick reads each word as.
 
-Everything comes from what brick knows: the universe's words (texts/universe.txt), the dictionary, the
-colours and brick's own actions. A word the factory learns turns up as a brick by itself.
+Everything comes from what brick knows: the universe's words (trainer/data/universe.txt), the dictionary, the
+colours and brick's own actions. A word the trainer learns turns up as a brick by itself.
 """
 import dictionary
-import universe
+from trainer import universe
 from actions import COLOURS, STARTERS
 
 CORE_ACTIONS = ["write", "say", "show", "put", "place", "type", "make", "turn", "set", "clear", "wait", "ask"]

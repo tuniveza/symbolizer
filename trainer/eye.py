@@ -18,7 +18,7 @@ Like the channels of the visual cortex, each filter looks at one thing, on a sma
              how full the picture is; the scene itself ("sky above ground") is a context, a symbol of its own
   text       words written in the picture, read by tesseract when it's installed (and there are edges to read)
   memory     the picture's symbols compared with every universe that has been seen or knows how it looks
-             (likeness = sum of min / sum of max of the two patterns as shares, as in brain.py; each symbol
+             (likeness = sum of min / sum of max of the two patterns as shares, as in trainer/brain.py; each symbol
              weighted by 1 / (1 + floor(log2(its breadth))), so broad symbols don't drown out specific ones):
              "looks like apple (0.82), ball (0.41)". Sure and well ahead of the next: that's the answer.
   model      only when memory isn't sure: the vision model on this computer is asked for a name and facets
@@ -27,8 +27,8 @@ Like the channels of the visual cortex, each filter looks at one thing, on a sma
       (memory=False / read=False leave out the memory and text channels: the imagination's quick read-back)
 
 The shape channel's thresholds (how round is round, how hollow a star ...) are DEFAULTS below. brick's
-imagination (imagine.py) draws pictures whose shapes it knows, sees how often the eye reads them right, and,
-where a threshold within its safe range (TUNABLE) reads them better, writes it to texts/factory/
+imagination (trainer/imagine.py) draws pictures whose shapes it knows, sees how often the eye reads them right, and,
+where a threshold within its safe range (TUNABLE) reads them better, writes it to trainer/data/
 eye-settings.txt ("star solidity: 0.84"), which the eye reads here. Delete that file to go back to DEFAULTS.
 """
 import base64
@@ -43,7 +43,7 @@ import tempfile
 import time
 from collections import Counter, deque
 
-import sight
+from trainer import sight
 
 LONGEST = 160
 VISUAL = ("shape", "colour", "tone", "texture", "pattern", "edges", "mathematics", "layout", "position", "objects",
@@ -52,8 +52,8 @@ WEIGHT = {"shape": 1.5, "colour": 1.5, "pattern": 1.2, "text": 1.5, "tone": 1.0,
           "mathematics": 1.0, "edges": 0.7, "size": 0.5, "layout": 0.5, "position": 0.3, "objects": 0.3}
 SURE = 0.3                  # memory's best likeness must reach this,
 AHEAD = 1.25                # and be this many times the next one's, to name a picture without the model
-HERE = os.path.dirname(os.path.abspath(__file__))
-TUNED = os.path.join(HERE, "texts", "factory", "eye-settings.txt")
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TUNED = os.path.join(HERE, "trainer", "data", "eye-settings.txt")
 TUNABLE = {                 # name: (default, lowest, highest) -- the imagination tunes these within the range
     "ring hole": (0.08, 0.04, 0.16), "ring fit": (0.6, 0.45, 0.75), "ring elongation": (1.3, 1.15, 1.5),
     "round fit": (0.8, 0.72, 0.88), "round solidity": (0.9, 0.85, 0.96), "round elongation": (1.15, 1.06, 1.3),
@@ -160,7 +160,7 @@ _tuned = [None, None]
 
 
 def tuned():
-    """The shape thresholds: DEFAULTS, with any tuned value from texts/factory/eye-settings.txt (kept within
+    """The shape thresholds: DEFAULTS, with any tuned value from trainer/data/eye-settings.txt (kept within
     TUNABLE's range; a line that doesn't read is ignored)."""
     try:
         when = os.path.getmtime(TUNED)
@@ -182,10 +182,10 @@ def tuned():
 
 
 def save_tuned(values, notes=()):
-    """Write the tuned thresholds (only the ones that differ from DEFAULTS) to texts/factory/eye-settings.txt."""
-    lines = ["# The eye's shape thresholds, tuned by brick's imagination (imagine.py): it draws shapes it knows",
+    """Write the tuned thresholds (only the ones that differ from DEFAULTS) to trainer/data/eye-settings.txt."""
+    lines = ["# The eye's shape thresholds, tuned by brick's imagination (trainer/imagine.py): it draws shapes it knows",
              "# and keeps a value here only when the eye reads them better with it. Delete this file to go back to",
-             "# the defaults (eye.py, DEFAULTS). You can change a number by hand; it stays within the safe range."]
+             "# the defaults (trainer/eye.py, DEFAULTS). You can change a number by hand; it stays within the safe range."]
     lines += [f"# {note}" for note in notes]
     for name, value in values.items():
         if name in TUNABLE and value != DEFAULTS[name]:
@@ -841,7 +841,7 @@ class Reader:
             return {}, "tesseract didn't finish in 20 seconds", []
         finally:
             self.stop()
-        import symbols
+        from trainer import symbols
         words = []
         for line in out.splitlines()[1:]:
             parts = line.split("\t")
@@ -881,7 +881,7 @@ def pattern(facets):
 
 
 def likeness(a, b, weigh=None):
-    """Weighted overlap of two patterns as shares: sum of min / sum of max (brain.py's formula). weigh:
+    """Weighted overlap of two patterns as shares: sum of min / sum of max (trainer/brain.py's formula). weigh:
     symbol -> how much it counts (symbols.weight: 1 / (1 + floor(log2(breadth)))), so broad symbols don't drown
     out specific ones."""
     if weigh:
@@ -897,7 +897,7 @@ def likeness(a, b, weigh=None):
 
 def remembered(facets, leave_out=()):
     """-> [(name, likeness)] best first, against every universe that has been seen or knows how it looks."""
-    import symbols
+    from trainer import symbols
     mine = pattern(facets)
     if not mine or not os.path.isdir(symbols.FOLDER):
         return []
@@ -959,12 +959,12 @@ def ask_model(pic):
         return None, {}, "the vision model is switched off here"
     if not shutil.which("ollama"):
         return None, {}, "skipped: Ollama isn't installed, so no vision model looked"
-    import neural
+    from trainer import neural
     if not neural.start():
         return None, {}, "skipped: Ollama is installed but wouldn't start (try: ollama serve)"
     model = sight.vision_model(sight.installed_models())
     if model is None:
-        return None, {}, f"skipped: no vision model in Ollama yet (brick sight setup downloads {sight.VISION})"
+        return None, {}, f"skipped: no vision model in Ollama yet (brick trainer sight setup downloads {sight.VISION})"
     try:
         answer = neural.call("/api/chat", {
             "model": model, "stream": False, "format": "json",
@@ -980,7 +980,7 @@ def ask_model(pic):
     except ValueError:                                  # cut short: keep the name at least
         named = re.search(r'"name"\s*:\s*"([^"]+)"', content)
         said = {"name": named.group(1)} if named else None
-    import symbols
+    from trainer import symbols
     if not isinstance(said, dict):
         return None, {}, f"{model} gave no answer brick could read"
     name = symbols.clean(said.pop("name", "") if isinstance(said.get("name", ""), str) else "") or None

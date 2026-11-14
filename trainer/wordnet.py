@@ -1,11 +1,11 @@
-"""WordNet: the dictionary of English in texts/sources/wordnet, for words that mean the same thing.
+"""WordNet: the dictionary of English in trainer/data/sources/wordnet, for words that mean the same thing.
 
 Used by the universe (a word brick doesn't know, read as a synonym it does: 'state hello' -> say hello)
-and the factory (which then keeps that, once the tests agree).
+and the trainer (which then keeps that, once the tests agree).
 """
 import os
 
-WORDNET = os.path.join(os.path.dirname(os.path.abspath(__file__)), "texts", "sources", "wordnet")
+WORDNET = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "trainer", "data", "sources", "wordnet")
 
 FILES = {'n': 'noun', 'v': 'verb', 'a': 'adj', 'r': 'adv'}
 
