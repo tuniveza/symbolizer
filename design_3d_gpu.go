@@ -105,7 +105,7 @@ func gpuSetUp() (bool, string) {
 	if err != nil {
 		return false, err.Error()
 	}
-	p2, err := glProgram(gpuVS2, gpuHead+gpuFinish+gpuFS2)
+	p2, err := glProgram(gpuVS2, gpuHead+gpuFinish+gpuWorld+gpuFS2)
 	if err != nil {
 		return false, err.Error()
 	}
@@ -221,6 +221,7 @@ func (r *room3D) gpuData(rm *r3room) {
 		c := g.cells[4*i:]
 		c[0], c[1], c[2], c[3] = t.fg, t.bg, gi, uint32(uint8(t.arms))
 	}
+	r.worldSlots() // the town's letters (design_3d_world_gpu.go)
 	// The back wall's pictures, one under another.
 	total := 0
 	for k := range r.mips {
@@ -384,6 +385,7 @@ func (r *room3D) gpuFrame(c *r3shade, rm *r3room) bool {
 	u.iv("mipW", mw[:])
 	u.iv("mipH", mh[:])
 	u.iv("mipOff", mo[:])
+	r.worldUniforms(u) // the town and the extra lights (design_3d_world_gpu.go)
 	glDrawTriangles(3)
 
 	// 3: packed for kitty, and read back.

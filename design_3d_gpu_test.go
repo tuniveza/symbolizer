@@ -35,6 +35,7 @@ func gpuPicture(t testing.TB, m *Model, gpu bool) ([]byte, int, int, time.Durati
 // little rounding (the card works the light out at every pixel, the
 // processor over 2×2, and in float32).
 func TestDesign3DGPUMatches(t *testing.T) {
+	atClock(t, 12, 0) // the people outside stand still between the two drawings (design_3d_world.go)
 	m := wordsScene(t, 100, 33)
 	for m.boardH() < 27 {
 		m.Update(tea.WindowSizeMsg{Width: 100, Height: m.height + 1})
@@ -79,6 +80,7 @@ func TestDesign3DGPUMatches(t *testing.T) {
 // same on the graphics card as on the processor, near and far, from the
 // side and from above.
 func TestDesign3DGPUFinishes(t *testing.T) {
+	atClock(t, 12, 0) // the people outside stand still between the two drawings (design_3d_world.go)
 	m := wordsScene(t, 100, 33)
 	for m.boardH() < 27 {
 		m.Update(tea.WindowSizeMsg{Width: 100, Height: m.height + 1})
