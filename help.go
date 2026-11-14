@@ -106,7 +106,8 @@ var helpGroups = []helpGroup{
 		{"", "  moving shows it · Enter keeps it · Esc puts it back"},
 	}},
 	{"Modes", false, []helpLine{
-		{"Alt + M", "switch modes: Text, Design, Slides, Diary, Book, Draw (Slides, Book, Draw are empty for now)"},
+		{"Alt + M", "switch modes: Text, Design, Slides, Diary, Book, Draw, Manager (Slides, Book, Draw are empty for now)"},
+		{"sy manager", "start in Manager mode: all of ~/an at a glance (zsh: ma)"},
 		{"sy design / slide / diary", "start in that mode (zsh: de, sli, syd or di)"},
 		{"sy book / draw", "start in Book or Draw mode (zsh: bo, dr)"},
 	}},
@@ -177,6 +178,16 @@ var helpGroups = []helpGroup{
 		{"Wheel on a page", "scroll it (Shift + wheel)"},
 		{"(height)", "no structure is drawn taller than the screen, at any zoom: its text scrolls, its picture shrinks to fit"},
 		{"(text)", "all text in Design mode is centred: on the board, and the bars above and below it"},
+	}},
+	{"Manager mode", false, []helpLine{
+		{"(what it shows)", "all of ~/an sorted into its top folders, named from ~/an/lb/names.tsv; ◆ is a project with make.sh"},
+		{"Up / Down", "choose a row (PgUp, PgDn, Home, End too)"},
+		{"Left / Right", "the category before / after"},
+		{"type", "search everything at once; Backspace takes a letter off, Esc clears it"},
+		{"Tab", "sort: by folder, biggest first, newest first"},
+		{"Enter", "open it in Text mode: a folder with the file manager on it (and its README), a file as a tab"},
+		{"Shift + Enter", "open it in the desktop's own app (the file manager, a PDF viewer …)"},
+		{"Alt + C / F5", "copy its path / look at the folders again (it also looks each time the mode opens)"},
 	}},
 	{"Diary mode", false, []helpLine{
 		{"(chapters)", "a chapter a day; its pages in ~/.local/share/symbolizer/diary"},

@@ -154,6 +154,7 @@ type Model struct {
 	blurred    bool         // the terminal says another window has the keyboard
 	pxm        pixelMouse   // the mouse reported to the pixel in the 3D view (design_3d_mouse.go)
 	diary      *diaryState  // diary mode: chapters, pages, the page in focus (diary.go)
+	mgr        *mgState     // manager mode: all of ~/an (manager.go)
 	design     *designState // design mode: the board, its structures, links and pen (design.go)
 	startDir   string       // folder sy was started in
 	snip       snippetStops // Tab's stops after an Emmet expansion (web.go)
@@ -246,7 +247,11 @@ func (m *Model) resetHighlighter() {
 }
 
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(m.tellKittyMode(), m.hl.Want(m.buf.Version(), m.top, m.textHeight()), nextMinute(), loadWeather(), weatherEvery(), m.startLamps(), watchDisk())
+	var mgr tea.Cmd
+	if m.inManager() {
+		mgr = m.enterManager() // started as sy manager
+	}
+	return tea.Batch(mgr, m.tellKittyMode(), m.hl.Want(m.buf.Version(), m.top, m.textHeight()), nextMinute(), loadWeather(), weatherEvery(), m.startLamps(), watchDisk())
 }
 
 func (m *Model) say(s string)    { m.msg, m.msgErr = s, false }
@@ -434,6 +439,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return nextMinute() // draw again: the time in words moves on
 	case weatherTick:
 		return tea.Batch(loadWeather(), weatherEvery())
+	case mgScanMsg:
+		m.mgScanned(msg.data, msg.err) // manager.go
+		return nil
 	case weatherMsg:
 		if msg.w != nil {
 			m.weather = msg.w
@@ -549,6 +557,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if m.inDesign() && !m.help && m.prompt == pNone && m.picker == nil && !(m.treeFocus && m.showTree && m.tree != nil) {
 			return m.designKey(msg.Key())
 		}
+		if m.inManager() && !m.help && m.prompt == pNone && m.picker == nil {
+			return m.managerKey(msg.Key()) // manager.go
+		}
 		if m.inDiary() && !(m.help && m.diaryViewer()) {
 			if cmd, done := m.diaryKey(keyName(msg.Key())); done {
 				return cmd
@@ -588,6 +599,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.altTap = false // Alt held for a click is not Alt tapped
 		if m.diaryViewer() && msg.Mouse().Y != 0 && !m.help {
 			return nil // the page viewer has nothing to click but the top panel
+		}
+		if m.inManager() && msg.Mouse().Y != 0 && !m.help && msg.Mouse().Button == tea.MouseLeft {
+			return m.managerClick(msg.Mouse().X, msg.Mouse().Y)
 		}
 		if m.designMouseHere(msg.Mouse().Y) {
 			return m.designPress(msg.Mouse())
@@ -653,6 +667,10 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		if m.diaryViewer() && m.diary != nil {
 			m.diary.turn(n / 3) // the wheel turns pages
+			return nil
+		}
+		if m.inManager() {
+			m.managerWheel(n / 3)
 			return nil
 		}
 		if m.showTree && m.tree != nil {
