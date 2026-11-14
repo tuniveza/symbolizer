@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 // a small pretend ~/an: categories from names.tsv, projects, copies, leftovers
@@ -119,5 +121,42 @@ func TestManagerDraws(t *testing.T) {
 	for _, size := range [][2]int{{140, 40}, {80, 24}, {40, 12}} {
 		m.width, m.height = size[0], size[1]
 		_ = m.View()
+	}
+}
+
+// Up / Down move through the categories; Right (or Enter) goes into the list,
+// where Up / Down choose a row; Left goes back.
+func TestManagerArrows(t *testing.T) {
+	m := newTest(t, "")
+	m.mode = managerMode
+	m.mgr = &mgState{data: &mgData{Cats: []mgCat{
+		{Key: "co", Name: "Code", Items: []mgItem{{Rel: "co/a", Name: "A"}, {Rel: "co/b", Name: "B"}}},
+		{Key: "pj", Name: "Projects", Items: []mgItem{{Rel: "pj/c", Name: "C"}, {Rel: "pj/d", Name: "D"}}},
+		{Key: "lb", Name: "Library", Items: []mgItem{{Rel: "lb/e", Name: "E"}}},
+	}}}
+	s := m.mgr
+	key := func(code rune) { m.managerKey(tea.Key{Code: code}) }
+	key(tea.KeyDown)
+	key(tea.KeyDown)
+	if s.cat != 2 || s.sel != 0 || s.inList {
+		t.Fatalf("down down: cat %d sel %d inList %v", s.cat, s.sel, s.inList)
+	}
+	key(tea.KeyUp)
+	if s.cat != 1 {
+		t.Fatalf("up: cat %d", s.cat)
+	}
+	key(tea.KeyRight)
+	key(tea.KeyDown)
+	if !s.inList || s.cat != 1 || s.sel != 1 {
+		t.Fatalf("right down: cat %d sel %d inList %v", s.cat, s.sel, s.inList)
+	}
+	key(tea.KeyLeft)
+	key(tea.KeyUp)
+	if s.inList || s.cat != 0 || s.sel != 0 {
+		t.Fatalf("left up: cat %d sel %d inList %v", s.cat, s.sel, s.inList)
+	}
+	key(tea.KeyEnter)
+	if !s.inList {
+		t.Fatal("enter on a category goes into the list")
 	}
 }

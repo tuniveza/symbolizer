@@ -181,8 +181,8 @@ var helpGroups = []helpGroup{
 	}},
 	{"Manager mode", false, []helpLine{
 		{"(what it shows)", "all of ~/an sorted into its top folders, named from ~/an/lb/names.tsv; ◆ is a project with make.sh"},
-		{"Up / Down", "choose a row (PgUp, PgDn, Home, End too)"},
-		{"Left / Right", "the category before / after"},
+		{"Up / Down", "on the categories: the category before / after (Home, End too)"},
+		{"Right or Enter / Left", "into the list, where Up / Down choose a row (PgUp, PgDn, Home, End) / back to the categories"},
 		{"type", "search everything at once; Backspace takes a letter off, Esc clears it"},
 		{"Tab", "sort: by folder, biggest first, newest first"},
 		{"Enter", "open it in Text mode: a folder with the file manager on it (and its README), a file as a tab"},

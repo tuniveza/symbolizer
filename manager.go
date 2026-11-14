@@ -20,8 +20,9 @@ import (
 // the left, what is in the chosen one in the middle, and everything known
 // about the chosen row on the right.
 //
-//	Up / Down        choose a row (PgUp, PgDn, Home, End)
-//	Left / Right     the category before / after
+//	Up / Down        on the categories: the category before / after;
+//	                 in the list: choose a row (PgUp, PgDn, Home, End)
+//	Right / Left     into the list / back to the categories
 //	type             search everything; Backspace, Esc clear it
 //	Tab              sort: by folder, biggest first, newest first
 //	Enter            open it in Text mode (a folder: the file manager on it)
@@ -37,8 +38,9 @@ const managerMode = 6 // its place in modes
 type mgState struct {
 	data      *mgData
 	scanning  bool
-	cat       int // the chosen category
-	sel, top  int // the chosen row and the first row shown
+	cat       int  // the chosen category
+	inList    bool // the arrows move in the list, not the categories
+	sel, top  int  // the chosen row and the first row shown
 	query     string
 	sort      int // 0 by folder, 1 biggest first, 2 newest first
 	lastClick time.Time
@@ -218,28 +220,58 @@ func (m *Model) managerKey(k tea.Key) tea.Cmd {
 	n := len(s.rows())
 	page := max(s.listH-1, 1)
 	m.msg = ""
+	onCats := !s.inList && s.query == ""
 	switch name {
 	case "up":
-		s.sel = max(s.sel-1, 0)
+		if onCats {
+			m.mgCategory(-1)
+		} else {
+			s.sel = max(s.sel-1, 0)
+		}
 	case "down":
-		s.sel = min(s.sel+1, max(n-1, 0))
+		if onCats {
+			m.mgCategory(1)
+		} else {
+			s.sel = min(s.sel+1, max(n-1, 0))
+		}
 	case "pgup":
 		s.sel = max(s.sel-page, 0)
 	case "pgdown":
 		s.sel = min(s.sel+page, max(n-1, 0))
 	case "home":
-		s.sel = 0
+		if onCats && s.data != nil {
+			s.cat, s.sel, s.top = 0, 0, 0
+		} else {
+			s.sel = 0
+		}
 	case "end":
-		s.sel = max(n-1, 0)
-	case "left", "shift+tab":
-		m.mgCategory(-1)
+		if onCats && s.data != nil {
+			s.cat, s.sel, s.top = max(len(s.data.Cats)-1, 0), 0, 0
+		} else {
+			s.sel = max(n-1, 0)
+		}
+	case "left":
+		if s.query != "" {
+			s.query, s.sel, s.top = "", 0, 0 // leave the search for the categories
+		}
+		s.inList = false
 	case "right":
-		m.mgCategory(1)
+		if n > 0 {
+			s.inList = true
+		}
+	case "shift+tab":
+		m.mgCategory(-1)
 	case "tab":
 		s.sort = (s.sort + 1) % len(mgSorts)
 		s.sel, s.top = 0, 0
 		m.say("Sorted " + mgSorts[s.sort] + ".")
 	case "enter":
+		if onCats {
+			if n > 0 {
+				s.inList = true
+			}
+			return nil
+		}
 		return m.mgOpen(false)
 	case "shift+enter":
 		return m.mgOpen(true)
@@ -257,6 +289,9 @@ func (m *Model) managerKey(k tea.Key) tea.Cmd {
 	case "esc":
 		if s.query != "" {
 			s.query, s.sel, s.top = "", 0, 0
+			s.inList = false
+		} else if s.inList {
+			s.inList = false
 		} else {
 			m.say("Alt+M switches modes · Alt+Q quits")
 		}
@@ -267,10 +302,12 @@ func (m *Model) managerKey(k tea.Key) tea.Cmd {
 		}
 	case "ctrl+u", "alt+backspace":
 		s.query, s.sel, s.top = "", 0, 0
+		s.inList = false
 	default:
 		if k.Text != "" && !k.Mod.Contains(tea.ModCtrl) && !k.Mod.Contains(tea.ModAlt) && (name == "space" || len([]rune(name)) == 1 || strings.HasPrefix(name, "shift+")) {
 			s.query += k.Text
 			s.sel, s.top = 0, 0
+			s.inList = true
 		}
 	}
 	return nil
@@ -346,6 +383,7 @@ func (m *Model) managerClick(x, y int) tea.Cmd {
 		if i := y - s.catY0; i >= 0 && i < len(s.data.Cats) {
 			s.query = ""
 			s.cat, s.sel, s.top = i, 0, 0
+			s.inList = false
 		}
 		return nil
 	}
@@ -354,6 +392,7 @@ func (m *Model) managerClick(x, y int) tea.Cmd {
 		if i < len(s.rows()) {
 			again := i == s.sel && time.Since(s.lastClick) < 400*time.Millisecond
 			s.sel, s.lastClick = i, time.Now()
+			s.inList = true
 			if again {
 				return m.mgOpen(false)
 			}
@@ -530,9 +569,14 @@ func mgFit2(line string, w int) string {
 func (m *Model) mgHint() string {
 	s := m.mgr
 	sortWord := mgSorts[s.sort]
-	full := "↑↓ choose · ←→ category · type to search · Tab sort: " + sortWord + " · Enter open · Shift+Enter its own app · Alt+C copy path · F5 look again"
-	mid := "↑↓ · ←→ category · type: search · Tab: " + sortWord + " · Enter open · F5 again"
-	short := "↑↓ ←→ · type · Tab · Enter · F5"
+	full := "↑↓ category · → into the list · type to search · Tab sort: " + sortWord + " · Enter into the list · F5 look again"
+	mid := "↑↓ category · → list · type: search · Tab: " + sortWord + " · F5 again"
+	short := "↑↓ category · → list · type · F5"
+	if s.inList || s.query != "" {
+		full = "↑↓ choose · ← categories · type to search · Tab sort: " + sortWord + " · Enter open · Shift+Enter its own app · Alt+C copy path · F5 look again"
+		mid = "↑↓ choose · ← categories · type: search · Tab: " + sortWord + " · Enter open · F5 again"
+		short = "↑↓ · ← · type · Tab · Enter · F5"
+	}
 	t := full
 	for _, c := range []string{full, mid, short} {
 		t = c
@@ -577,7 +621,10 @@ func (m *Model) mgNarrow(h int) []string {
 	}
 	listH := max(h-3-detH, 2)
 	c := s.data.Cats[max(0, min(s.cat, len(s.data.Cats)-1))]
-	label := fmt.Sprintf("◀  %s  %d/%d  ▶", c.Name, s.cat+1, len(s.data.Cats))
+	label := fmt.Sprintf("▲  %s  %d/%d  ▼", c.Name, s.cat+1, len(s.data.Cats))
+	if s.inList {
+		label = fmt.Sprintf("◀  %s  %d/%d", c.Name, s.cat+1, len(s.data.Cats))
+	}
 	if s.query != "" {
 		label = "⌕  search: " + s.query + "▏"
 	}
@@ -605,6 +652,9 @@ func (m *Model) mgCats(w, h int) []string {
 		bg, fg, mark := cBG, cText, "  "
 		if i == s.cat && s.query == "" {
 			bg, fg, mark = cSelection, cSelectedText, "▸ "
+			if s.inList {
+				bg, fg = cCurrentLine, cText // the arrows are in the list
+			}
 		}
 		size := mgSize(c.Size)
 		out = append(out, mgRender(
@@ -699,8 +749,12 @@ func (m *Model) mgList(w, h, y0 int) []string {
 		r := rows[i]
 		it := r.it
 		bg := cBG
+		focused := s.inList || s.query != ""
 		if i == s.sel {
 			bg = cSelection
+			if !focused {
+				bg = cCurrentLine // the arrows are on the categories
+			}
 		}
 		mark, mfg := "· ", cDim
 		fg := cText
@@ -712,7 +766,7 @@ func (m *Model) mgList(w, h, y0 int) []string {
 		case it.Dir:
 			mark, mfg = "▹ ", cAccent
 		}
-		if i == s.sel {
+		if i == s.sel && focused {
 			fg = cSelectedText
 		}
 		indent := ""
