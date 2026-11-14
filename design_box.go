@@ -269,7 +269,9 @@ func (d *designState) boxGridOf(o *dOct, w, h int) *boxGrid {
 		lk.floor = lk.floorC.hex()
 	}
 	p := d.slotOpenness(o, 0, o.DrawerOpen)
-	shut := p < 0.5
+	shut := boxShutAt(p) // the pose, as the 3D box has it (design_anim.go)
+	rows := s.insideRows(w, h)
+	covered := boxLidCover(p, len(rows))
 	pix := boxPaint(s, lk, w, h, shut)
 	for y := range h {
 		for x := range w {
@@ -289,14 +291,12 @@ func (d *designState) boxGridOf(o *dOct, w, h int) *boxGrid {
 			}
 		}
 	}
-	if design == boxGift && shut && s.f0 > 0 { // its bow, on the lid
+	if design == boxGift && covered == len(rows) && s.f0 > 0 { // its bow, on the lid while all of it is on
 		g.text(w/2-1, 0, w-1, "⊰⋈⊱", lk.extra, cBG, true, "")
 	}
 
 	// On its floor the things, bottom layer first; over them the lid, as
 	// far as it is on.
-	rows := s.insideRows(w, h)
-	covered := int(math.Round((1 - p) * float64(len(rows))))
 	if covered < len(rows) {
 		d.boxThings(g, o, s, lk)
 	}

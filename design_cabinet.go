@@ -304,9 +304,10 @@ func (d *designState) cabinetLayers(o *dOct) []*lipgloss.Layer {
 				l, r = knob.Render("●")+dst.Render("▕"), dst.Render("▏")+knob.Render("●")
 			}
 			inner := l + rows[i] + r
-			if dw := cabDoorW + int(math.Round((1-p)*float64(iw/2-cabDoorW))); dw > cabDoorW {
-				// Swinging: each door this wide, darker as it turns away,
-				// its knob on its inner edge; the shelves between them.
+			if dw := cabDoorW + int(math.Round(doorFace(p)*float64(iw/2-cabDoorW))); dw > cabDoorW {
+				// Swinging: each door as wide as it is seen from the front,
+				// turned doorTurn (as the 3D doors are), darker as it turns
+				// away, its knob on its inner edge; the shelves between them.
 				shade := mixHex(door, "#000000", 0.35*p)
 				ds := st(edge, shade)
 				panel := func(left bool) string {

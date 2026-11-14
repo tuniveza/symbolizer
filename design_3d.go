@@ -813,6 +813,7 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 		return
 	}
 	r.frameTick = false
+	d.poseAt = animNow() // doors, lids and drawers as they are this moment, flat and in 3D alike (design_anim.go)
 	// The flat board, which the wall and the fronts show, without what
 	// floats over it (the mini map, the list of name plates).
 	corner, plates := d.mapCorner, d.platesOpen

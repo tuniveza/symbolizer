@@ -9,8 +9,8 @@ package main
 // front, hinged at its left and right edges, each with a knob that stands
 // out. Shut, the doors close it and show the flat drawing's doors. Opened
 // (a click on a door, Tab, Space), they swing out towards the viewer on
-// their hinges, about 105°, over the same moment the flat doors take
-// (design_anim.go), and inside are the shelves: real slabs, each its name
+// their hinges, about 105°, over the same moment the flat doors take and
+// turned as far at every frame (doorTurn, design_anim.go), and inside are the shelves: real slabs, each its name
 // and + on its front edge, and the things on it standing up, each its icon
 // and title on its front. A click on a thing, a shelf's +, or a door does
 // what it does on the flat board: every face of the cabinet stands for its
@@ -34,7 +34,8 @@ const cabSwing = 105
 // r3cab is what the 3D room draws of a cabinet this frame (see cabinets):
 // how open its doors are, and the rows behind them.
 type r3cab struct {
-	p    float64 // 0 shut, 1 open, between while they swing
+	p    float64    // 0 shut, 1 open, between while they swing
+	ang  [2]float64 // how far (radians) the left and right doors are turned, as drawn
 	rows []r3cabRow
 }
 
@@ -53,8 +54,10 @@ type r3thing struct {
 }
 
 // cabinets works out, once a frame and before the flat board is drawn,
-// how open each cabinet on the w×h screen is and what is on its shelves,
-// so the flat drawing (which the faces show) and the 3D doors agree.
+// how open each cabinet in the room is and what is on its shelves, so the
+// flat drawing (which the faces show) and the 3D doors agree. Only a
+// cabinet the room draws as a cupboard (cupboardShows) is in r.cab: any
+// other is a plain block showing its flat drawing, doors and all.
 func (r *room3D) cabinets(d *designState, w, h int) {
 	if r.cab == nil {
 		r.cab = map[int]*r3cab{}
@@ -65,8 +68,8 @@ func (r *room3D) cabinets(d *designState, w, h int) {
 			continue
 		}
 		x, y, ow, oh := d.rect(o)
-		if x >= w || y >= h || x+ow <= 0 || y+oh <= 0 || ow < 10 || oh < 5 {
-			continue // not on the screen, or drawn as a pill: a plain block
+		if !r.cupboardShows(o, x, y, ow, oh, w, h, d.z()) {
+			continue
 		}
 		c := &r3cab{p: d.openness(o)}
 		inside, sw := oh-4, cabShelfW(ow)
@@ -110,19 +113,36 @@ func (r *room3D) cabinets(d *designState, w, h int) {
 	}
 }
 
+// cupboardShows is whether the room draws cabinet o, at (x, y) and ow×oh
+// on a w×h screen at zoom z, as a cupboard with doors (cabinetBlock): whole
+// in the room, big enough, and out of the wall far enough this frame.
+func (r *room3D) cupboardShows(o *dOct, x, y, ow, oh, w, h int, z float64) bool {
+	if ow < 10 || oh < 5 {
+		return false // drawn as a pill: a plain block
+	}
+	if x < -roomReach*w || y < -roomReach*h || x+ow > (roomReach+1)*w || y+oh > (roomReach+1)*h {
+		return false // cut at the room's edge (see area): a plain block
+	}
+	b := r3block{o: o, x0: x, y0: y, x1: x + ow, y1: y + oh}
+	return math.Max(0.02, blockDepth(&b, z, math.Max(float64(w), float64(2*h)))*r.outK()) >= 1
+}
+
 // cabinetDrawnOpen is how open a cabinet's doors are drawn on the flat
-// board, p as they move. While the board shows as the 3D room, the doors
-// swing as slabs there, so the flat drawing behind them (which the shelves
-// and things show) is open all the while they are not quite shut.
+// board, p as they move. While the board shows as the 3D room and the
+// cabinet is a cupboard there, the doors swing as slabs, so the flat
+// drawing behind them (which the shelves and things show) is open all the
+// while they are not quite shut; a cabinet drawn as a plain block shows
+// the flat doors swinging, as the flat board does.
 func (d *designState) cabinetDrawnOpen(o *dOct, p float64) float64 {
 	r := &d.room
 	if !r.on() {
 		return p
 	}
-	if c, ok := r.cab[o.ID]; ok {
-		p = c.p // as the 3D room has it this frame
+	c, ok := r.cab[o.ID]
+	if !ok {
+		return p
 	}
-	if p > 0 {
+	if c.p > 0 { // as the 3D room has it this frame
 		return 1
 	}
 	return 0
@@ -280,7 +300,12 @@ func (r *room3D) cabinetBlock(rm *r3room, b *r3block, dep float64) bool {
 			hinge, wide, wall, flat = Xb, Xb-mid-gap, rm.x1, rw
 			dx0, hit0 = -1, x+w-1-cabDoorW
 		}
-		ang := c.p * doorAngle(rm, hinge, wall, wide, thick, dep)
+		ang := math.Min(doorTurn(c.p), doorAngle(rm, hinge, wall, wide, thick, dep)) // as the flat doors turn (design_anim.go)
+		if left {
+			c.ang[0] = ang
+		} else {
+			c.ang[1] = ang
+		}
 		e := r3vec{dx0 * math.Cos(ang), 0, math.Sin(ang)}  // across the door, from the hinge
 		t := r3vec{dx0 * math.Sin(ang), 0, -math.Cos(ang)} // through it, from its outside in
 		o0 := r3vec{hinge, Yb, dep}

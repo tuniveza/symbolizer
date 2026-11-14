@@ -142,8 +142,7 @@ func drawerLines(o *dOct) int {
 // slotLinesNow is how many rows drawer i's tray adds as it is drawn now:
 // opening or shutting, it slides down out of its front, or back up into it.
 func (d *designState) slotLinesNow(o *dOct, i int) int {
-	p := d.slotOpenness(o, i, slotOpen(o, i))
-	return int(math.Round(p * float64(slotTrayLines(o, i))))
+	return trayRows(d.slotOpenness(o, i, slotOpen(o, i)), slotTrayLines(o, i)) // design_anim.go
 }
 
 // drawerLinesNow is drawerLines as it is drawn now.
@@ -151,6 +150,19 @@ func (d *designState) drawerLinesNow(o *dOct) int {
 	n := drawerHeadLines(o)
 	for i := range drawerCount(o) {
 		n += d.slotLinesNow(o, i)
+	}
+	return n
+}
+
+// drawerLinesMost is how many rows unit o takes, at 100%, with every
+// drawer that is out or moving out (or in): the most it takes while its
+// drawers slide.
+func (d *designState) drawerLinesMost(o *dOct) int {
+	n := drawerHeadLines(o)
+	for i := range drawerCount(o) {
+		if _, moving := d.anims[animKey{o.ID, i}]; moving || slotOpen(o, i) {
+			n += slotTrayLines(o, i)
+		}
 	}
 	return n
 }
