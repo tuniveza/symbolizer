@@ -1,0 +1,2 @@
+body { margin: 0; padding: 16px; background: #111; color: #eee; font-family: system-ui, sans-serif; }
+canvas { background: #000; image-rendering: pixelated; max-width: 100%; }

@@ -9,3 +9,7 @@
 __pycache__/
 *.pyc
 .claude/settings.local.json
+
+# the Manager's logs and recent list
+/manager/.logs/
+/manager/.state/

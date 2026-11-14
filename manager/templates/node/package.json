@@ -1,0 +1,16 @@
+{
+  "name": "__NAME__",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "bin": { "__NAME__": "src/index.ts" },
+  "scripts": {
+    "start": "bun src/index.ts",
+    "check": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "~6.0.2"
+  }
+}

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="manager-token" content="__MANAGER_TOKEN__">
+<title>manager</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <img src="/icon.svg" alt="" width="30" height="30">
+    <div>
+      <h1>manager</h1>
+      <p id="summary">loading…</p>
+    </div>
+  </div>
+  <label class="search">
+    <span class="sr">Search projects</span>
+    <input id="q" type="search" placeholder="search name, folder, language…  ( / )" autocomplete="off" spellcheck="false">
+  </label>
+  <div class="tools">
+    <label class="sort"><span class="sr">Sort</span>
+      <select id="sort">
+        <option value="changed">Recently changed</option>
+        <option value="used">Recently used</option>
+        <option value="name">Name</option>
+        <option value="folder">Folder</option>
+      </select>
+    </label>
+    <button id="refresh" class="icon-btn" title="Look for new pictures and videos now">⟳</button>
+  </div>
+</header>
+
+<nav id="groups" class="groups" aria-label="Groups"></nav>
+
+<div id="progress" class="progress" hidden>
+  <div class="bar"><i id="bar"></i></div>
+  <span id="progress-text"></span>
+</div>
+
+<main id="grid" class="grid" aria-live="polite"></main>
+<p id="empty" class="empty" hidden>Nothing matches.</p>
+
+<footer class="foot" id="foot"></footer>
+
+<dialog id="detail" aria-labelledby="d-name">
+  <div class="d-wrap">
+    <section class="stage">
+      <div id="d-view" class="view"></div>
+      <div id="d-strip" class="strip"></div>
+    </section>
+    <section class="info">
+      <button class="close icon-btn" id="d-close" title="Close (Esc)">✕</button>
+      <p class="kicker" id="d-trail"></p>
+      <h2 id="d-name"></h2>
+      <p class="about" id="d-about"></p>
+      <div class="actions" id="d-actions"></div>
+      <div class="path-row">
+        <code id="d-path"></code>
+        <button class="icon-btn small" id="d-copy" title="Copy the path">⧉</button>
+      </div>
+      <ol class="crumbs" id="d-crumbs"></ol>
+      <dl class="facts" id="d-facts"></dl>
+    </section>
+  </div>
+</dialog>
+
+<div id="toast" class="toast" role="status" hidden></div>
+<script src="/app.js" defer></script>
+</body>
+</html>

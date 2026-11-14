@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# run once by `manager new dragonruby`: copy the engine runtime + default game files next to app/
+set -e
+E="$HOME/an/st/tools/tc/dragonruby"
+for f in dragonruby dragonruby-publish dragonruby-httpd .dragonruby font.ttf tiny.ttf console-logo.png dragonruby.png dragonruby-controller.png; do
+  cp -a "$E/$f" .
+done
+for f in data fonts metadata sounds sprites; do cp -a "$E/mygame/$f" .; done
+n="$(basename "$PWD")"
+sed -i -E "s/^# ?gametitle=.*/gametitle=$n/; s/^# ?gameid=.*/gameid=$n/" metadata/game_metadata.txt

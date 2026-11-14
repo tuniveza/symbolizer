@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+# manager — one program for everything in ~/an
+#
+#   manager                         menu (fzf)
+#
+# in a project
+#   manager run [args]              build what changed, then run      (= ./make.sh)
+#   manager build | clean           build only / remove build output
+#   manager watch                   rebuild + rerun on every save     (= ./reload.sh)
+#   manager open [-n] [dir|file]    open it in its editor: Godot (newest) · Construct 3 · GDevelop ·
+#                              Android Studio · VSCodium for everything else
+#
+# projects
+#   manager new <lang> [name] [dir] start a project from a template   (manager langs)
+#                              no name (or the folder's own name) = fill the current folder
+#   manager projects [dirs]         list every project (folders with make.sh), with its name
+#   manager names [path]            what the two-letter folders stand for / spell out one path
+#                              (names live in ~/an/ca/sy/manager/names.tsv — edit it to rename things)
+#   manager gui                     every project with pictures + videos, in a window of its own
+#   manager index [--force]         refresh the pictures/videos manager gui shows (a timer does it every 3 days)
+#   manager scan [dirs]             folders that look like projects but have no make.sh yet
+#   manager adopt [dirs] [-y]       give those folders make.sh + reload.sh and test-build them
+#   manager check [dirs] [--env]    build every project in a clean environment, report failures
+#
+# housekeeping
+#   manager tidy [-n] [--builds]    delete junk (.DS_Store, __pycache__, a.out), trash stray venvs/__MACOSX
+#                              --builds also runs every project's ./make.sh clean
+#   manager dupes [-n] [--min MB]   find unpacked archives, "(1)" copies, identical .bak, identical big files
+#                              -n = dry run (only list). Removed things go to the trash.
+#
+# toolchains & libraries (everything lives in ~/an/st/tools)
+#   manager setup [what...]         install / repair the build tools (default set; `all` adds retro + rust)
+#   manager setup --list            what's installed       manager setup <what> --force   reinstall
+#   manager status                  toolchains, projects, last check
+#   manager libs | langs            C/C++ libs for USE= / project templates
+#
+# settings: ~/an/ca/sy/manager/manager.conf (project roots, ignored folders)
+export AN_TOOLS="${AN_TOOLS:-$HOME/an/st/tools}"
+export AN_MANAGER="${AN_MANAGER:-$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)}"
+# shellcheck source=/dev/null
+. "$AN_TOOLS/env.sh"
+for m in common names projects setup tidy open menu; do
+  # shellcheck source=/dev/null
+  . "$AN_MANAGER/lib/$m.sh"
+done
+
+mgr_help() { sed -n '2,/^# settings/p' "$AN_MANAGER/bin/manager" | sed 's/^# \{0,1\}//'; }
+
+project_root() { # nearest dir (cwd or a parent) with make.sh
+  local d="$PWD"
+  while [ "$d" != / ]; do [ -x "$d/make.sh" ] && { echo "$d"; return; }; d="$(dirname "$d")"; done
+  die "no make.sh here or in any parent folder (manager adopt . to add one)"
+}
+
+mgr_new_clashes() { # mgr_new_clashes <tpl> <name> <dir> -> dir already has make.sh or a file the template would overwrite?
+  local f
+  [ -e "$3/make.sh" ] && return 0
+  for f in "$1"/* "$1"/.[!.]*; do
+    [ -e "$f" ] || continue
+    f="$(basename "$f")"; f="${f//__NAME__/$2}"
+    case "$f" in .gitignore|.new-init) continue ;; esac
+    [ -e "$3/$f" ] && return 0
+  done
+  return 1
+}
+
+mgr_new_dest() { # mgr_new_dest <tpl> [name] [dir] -> the folder `manager new` will fill
+  local tpl="$1" name="${2:-}" dir
+  dir="$(readlink -m "${3:-$PWD}")"
+  # no name, or the name of the folder we're in: fill this folder instead of making <name>/<name> —
+  # unless it already holds a project, then a subfolder is needed
+  case "$name" in ""|.) echo "$dir"; return ;; esac
+  if [ "$name" = "$(basename "$dir")" ] && ! mgr_new_clashes "$tpl" "$name" "$dir"; then echo "$dir"; else echo "$dir/$name"; fi
+}
+
+mgr_new() { # manager new <lang> [name|.] [dir]
+  local lang="${1:-}" name="${2:-}" tpl dest p q
+  [ -n "$lang" ] || die "usage: manager new <lang> [name] [dir]   (no name = this folder; langs: $(ls "$AN_MANAGER/templates" | tr '\n' ' '))"
+  tpl="$AN_MANAGER/templates/$lang"; [ -d "$tpl" ] || die "no template '$lang' (have: $(ls "$AN_MANAGER/templates" | tr '\n' ' '))"
+  dest="$(mgr_new_dest "$tpl" "$name" "${3:-}")"
+  case "$name" in ""|.) name="$(basename "$dest")" ;; esac
+  [ -d "$dest" ] && mgr_new_clashes "$tpl" "$name" "$dest" && die "$(short "$dest") already has a project (or files the template would overwrite)"
+  [ -e "$dest" ] && [ ! -d "$dest" ] && die "$(short "$dest") is a file"
+  mkdir -p "$dest"
+  cp -rn "$tpl/." "$dest/"
+  # only touch the files that came from the template — the folder may already hold other things
+  (cd "$tpl" && find . -mindepth 1 -depth) | while IFS= read -r p; do
+    q="$(dirname "$p")/$(basename "$p" | sed "s/__NAME__/$name/g")"
+    [ "$p" = "$q" ] || mv "$dest/$p" "$dest/$q"
+    [ -f "$dest/$q" ] && grep -qI '__NAME__' "$dest/$q" 2>/dev/null && sed -i "s/__NAME__/$name/g" "$dest/$q"
+  done
+  chmod +x "$dest"/*.sh 2>/dev/null || true
+  [ -x "$dest/.new-init" ] && (cd "$dest" && ./.new-init && rm -f .new-init)
+  ok "created $(short "$dest")"
+  [ "$dest" = "$PWD" ] || echo "    cd $(short "$dest")"
+  echo "    ./make.sh      # build + run"
+  echo "    ./reload.sh    # rebuild on save"
+}
+
+mgr_list_projects() { # manager projects [--tsv] [dirs]
+  local d tsv=0
+  [ "${1:-}" = --tsv ] && { tsv=1; shift; }
+  mgr_projects "$@" | while IFS= read -r d; do
+    if [ $tsv = 1 ]; then   # for manager gui: path, type, name, about, trail, editor
+      printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$d" "$(mgr_detect "$d")" "$(mgr_name "$d")" "$(mgr_about "$d")" "$(mgr_trail "$d")" "$(mgr_editor_name "$d")"
+    else
+      printf '  %-11s %s%-32s%s %-36s %s%s%s\n' "$(mgr_detect "$d")" "$c_b" "$(mgr_name "$d")" "$c_0" "$(short "$d")" "$c_d" "$(mgr_trail "$d")" "$c_0"
+    fi
+  done
+}
+
+mgr_scan() {
+  local d n=0
+  while IFS= read -r d; do printf '  %-12s %s\n' "$(mgr_detect "$d")" "$(short "$d")"; n=$((n+1)); done < <(mgr_candidates "$@")
+  [ $n -gt 0 ] && dim "  $n folder(s) without make.sh — manager adopt to set them up" || ok "every project already has a make.sh"
+}
+
+mgr_adopt() { # manager adopt [-y] [dirs...]
+  local dirs=() a d t list=()
+  for a in "$@"; do case "$a" in -y|--yes) MGR_YES=1 ;; *) dirs+=("$(readlink -f "$a")") ;; esac; done
+  mapfile -t list < <(mgr_candidates "${dirs[@]}")
+  # a folder named explicitly is adopted as-is (even if it doesn't look like a project root),
+  # unless it's a folder *of* projects
+  for d in "${dirs[@]}"; do
+    [ -d "$d" ] && [ ! -x "$d/make.sh" ] && [ "$(mgr_detect "$d")" != unknown ] || continue
+    for a in "${list[@]}" $(mgr_projects "$d"); do case "$a" in "$d"/*|"$d") continue 2 ;; esac; done
+    list=("$d" "${list[@]}")
+  done
+  [ ${#list[@]} -gt 0 ] || { ok "nothing to adopt — every project has a make.sh"; return 0; }
+
+  info "folders without make.sh:"
+  for d in "${list[@]}"; do printf '  %-12s %s\n' "$(mgr_detect "$d")" "$(short "$d")"; done
+  local go=all
+  if [ "${MGR_YES:-}" != 1 ]; then
+    [ -t 0 ] || { dim "  (run in a terminal, or with -y, to adopt them)"; return 0; }
+    read -r -p "adopt [a]ll, [p]ick, or [n]one? " a
+    case "$a" in a*|A*|y*) go=all ;; p*|P*) go=pick ;; *) return 0 ;; esac
+  fi
+  if [ $go = pick ]; then
+    mapfile -t list < <(for d in "${list[@]}"; do short "$d"; done | pick "adopt" multi | while IFS= read -r d; do abspath "${d/#\~/$HOME}"; done)
+  fi
+  mkdir -p "$AN_MANAGER/.logs"
+  for d in "${list[@]}"; do
+    t="$(mgr_detect "$d")"
+    mgr_adopt_one "$d" "$t" || continue
+    if (cd "$d" && timeout 900 ./make.sh build) >"$AN_MANAGER/.logs/adopt.log" 2>&1; then
+      ok "$(short "$d")  ($t)"
+    else
+      bad "$(short "$d")  ($t) — scripts written, but the build failed:"
+      tail -6 "$AN_MANAGER/.logs/adopt.log" | sed 's/^/        /'
+    fi
+  done
+}
+
+mgr_check() { # manager check [dirs...] [--env]
+  local dirs=() useenv=0 a d ok_n=0 bad_n=0 log
+  for a in "$@"; do case "$a" in --env) useenv=1 ;; *) dirs+=("$(readlink -f "$a")") ;; esac; done
+  mkdir -p "$AN_MANAGER/.logs"; rm -f "$AN_MANAGER"/.logs/check-*.log
+  info "building every project${dirs:+ under ${dirs[*]}}$([ $useenv = 0 ] && echo ' (clean environment)')"
+  while IFS= read -r d; do
+    [ -f "$d/.skip-check" ] && continue
+    log="$AN_MANAGER/.logs/check-$(short "$d" | tr '/~ ' '___').log"
+    local pre=()
+    # default: what a fresh login / IDE / launcher sees — nothing but HOME and the system PATH
+    [ $useenv = 1 ] || pre=(env -i HOME="$HOME" USER="$USER" TERM=dumb PATH=/usr/local/bin:/usr/bin:/bin)
+    if (cd "$d" && "${pre[@]}" timeout 1800 ./make.sh build) >"$log" 2>&1; then ok "$(short "$d")"; ok_n=$((ok_n+1)); rm -f "$log"
+    else bad "$(short "$d")   log: $(short "$log")"; tail -4 "$log" | sed 's/^/        /'; bad_n=$((bad_n+1)); fi
+  done < <(mgr_projects "${dirs[@]}")
+  echo "$ok_n ok, $bad_n failed" | tee "$AN_MANAGER/.logs/last-check.txt"
+  date '+%F %R' >> "$AN_MANAGER/.logs/last-check.txt"
+  [ "$bad_n" -eq 0 ]
+}
+
+mgr_status() {
+  info "toolchains + libraries (manager setup to install missing ones)"
+  mgr_setup --list
+  echo
+  info "projects"
+  echo "  $(mgr_projects | wc -l) with make.sh,  $(mgr_candidates | wc -l) without (manager scan)"
+  [ -f "$AN_MANAGER/.logs/last-check.txt" ] && echo "  last check: $(paste -sd' ' "$AN_MANAGER/.logs/last-check.txt" | sed 's/ \([0-9-]* [0-9:]*\)$/ (\1)/')"
+  echo "  build tools (st/tools): $(du -sh "$AN_TOOLS" 2>/dev/null | cut -f1)"
+}
+
+cmd="${1:-}"; shift || true
+case "$cmd" in
+  "")      mgr_menu ;;
+  menu)    mgr_menu ;;
+  run)     r="$(project_root)"; cd "$r"; exec ./make.sh "$@" ;;
+  build)   r="$(project_root)"; cd "$r"; exec ./make.sh build "$@" ;;
+  clean)   r="$(project_root)"; cd "$r"; exec ./make.sh clean "$@" ;;
+  watch)   r="$(project_root)"; cd "$r"; [ -x ./reload.sh ] || die "no reload.sh in $r"; exec ./reload.sh "$@" ;;
+  new)     mgr_new "$@" ;;
+  open|edit) mgr_open "$@" ;;
+  langs)   for t in $(ls "$AN_MANAGER/templates"); do printf '  %-11s %s\n' "$t" "${LANG_ABOUT[$t]:-}"; done ;;
+  libs)    for pc in "$AN_TOOLS"/c/lib/pkgconfig/*.pc; do printf '  %-16s %s\n' "$(basename "$pc" .pc)" "$(grep -m1 '^Description:' "$pc" | cut -d' ' -f2-)"; done
+           echo; dim "  system libs work too: sdl3 glfw3 gl glm fmt spdlog eigen3 freetype2 openal opencv4 ..." ;;
+  projects) mgr_list_projects "$@" ;;
+  names)   mgr_names "$@" ;;
+  gui)     case " $* " in *" --serve "*) exec "$AN_PY" "$AN_MANAGER/gui/server.py" "$@" ;; esac
+           setsid -f "$AN_PY" "$AN_MANAGER/gui/server.py" "$@" >/dev/null 2>&1; ok "manager gui is opening (http://localhost:8767)" ;;
+  index)   exec nice -n 19 ionice -c 3 "$AN_PY" "$AN_MANAGER/gui/index.py" "$@" ;;
+  scan)    mgr_scan "$@" ;;
+  adopt)   mgr_adopt "$@" ;;
+  check)   mgr_check "$@" ;;
+  tidy)    mgr_tidy "$@" ;;
+  dupes)   mgr_dupes "$@" ;;
+  setup)   mgr_setup "$@" ;;
+  status|doctor) mgr_status ;;
+  -h|--help|help) mgr_help ;;
+  *)       die "unknown command '$cmd' (manager help)" ;;
+esac

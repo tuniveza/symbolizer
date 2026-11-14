@@ -1,0 +1,127 @@
+# What the short folder names in ~/an mean, and what each project actually is.
+# Symbolizer's Manager mode, `manager projects`, `manager names` and `manager gui` all read this file.
+#
+# path (from ~/an, or starting with ~/)   <TAB>   name   <TAB>   one line about it (optional)
+# Edit freely: a folder or project not listed here is named after its folder.
+# Lines ending in "(guess)" were named by looking at the files; fix them if they're wrong.
+
+# ---- top level -----------------------------------------------------------------------------
+ar	Archive
+bi	Binaries	downloaded apps and tools
+br	brick	a plain-English programming language that compiles to Linux programs
+ca	Claude apps	standalone projects made with Claude (not Nova, not games)
+co	Code	learning and sketches, one folder per language
+ed	Editor notes
+em	Emulators	and retro tools
+mu	Music	VST plugins and downloads
+no	Notes
+pj	Projects	bigger projects
+st	Storage	asset packs, SDKs, saved files
+st/tools	Build tools	toolchains and libraries every project builds with (was lb)
+~/Projects	~/Projects
+
+# ---- ca: Claude apps -----------------------------------------------------------------------
+ca/ai	AI	neural networks
+ca/ap	Apps
+ca/to	Tools
+ca/ai/nu	Neural Playground	a spiking neural network that learns hand-drawn digits, with a live visualizer
+ca/ap/heat-map	Application Organizer	a visual page of every project, with pictures and videos
+ca/ap/pv	Password Vault	a one-file offline password manager, encrypted in the browser
+ca/to/bitstreams_output	Image Bitstreams	turns pictures into raw pixel bitstreams (1-bit up to RGB888)
+
+# ---- co: code, by language -----------------------------------------------------------------
+co/ar	Retro consoles	SNES, PS1, N64 homebrew
+co/ar/n64	Nintendo 64
+co/ar/ps1	PlayStation 1
+co/ar/psx	PlayStation 1 (psx)
+co/ar/snes	Super Nintendo
+co/ar/ps1/nugget	nugget	PS1 SDK + PsyQ examples
+co/ar/snes/wla-dx	WLA-DX	the SNES assembler
+co/as	Assembly	NASM
+br/wa	brick warehouse	programs written in brick
+co/c	C
+co/c+	C++
+co/cr	Crystal
+co/cs	C#
+co/gm	Gleam
+co/gu	Guile	Scheme
+co/hx	Haxe
+co/ja	Java
+co/lu	Lua
+co/mo	Mobile	Android
+co/no	Notes	languages to try next
+co/ot	Other
+co/py	Python
+co/rb	Ruby
+co/v	V	the V compiler's source
+co/we	Web	JavaScript / TypeScript
+co/c/2D	2D
+co/c/other	Other
+co/ar/ps1/nugget/psyq-cube	PS1 Spinning Cube	PS1 program with the PsyQ library
+co/ar/ps1/nugget/psyq-hello	PS1 Hello	PS1 hello world with the PsyQ library
+co/ar/snes/wla-dx/pj	SNES ROM	a SNES ROM in 65816 assembly
+co/as/fs	Farm Simulator (NASM)	the farm game in x86 assembly with SDL3
+co/c/2D/fs	Farm Simulator (C)	the farm game in C with OpenGL
+co/c/2D/nfs	SDL3 + OpenGL window (C)	an SDL3 callback-style starter with GLAD (guess)
+co/c/2D/test	2D test (C)
+co/c/3D	glTF Viewer	loads and draws textured glTF 3D models: the base the 3D games grew from
+co/c/3D/pj	3D projects
+co/c/3D/pj/bsg/The-Ruins-of-Bezan	The Ruins of Bezan	a rain-soaked 3D exploration game in C and OpenGL
+co/c/fa	Hello (C)	a hello-world starter
+co/c/other/fs	WGPU FPS Mechanisms	textured cubes drawn with WebGPU from C, flown around first-person
+co/c/test/t0	Graphics test t0 (C)
+co/c/test	Graphics API Tests	first windows and triangles across graphics APIs
+co/c+/3dh	3D Hands (C++)	first-person camera and hands with Dear ImGui (guess)
+co/cr/2d/fs	Farm Simulator (Crystal)
+co/cs/fs	Farm Simulator (C#)	MonoGame
+co/gm/shit	Gleam sketch
+co/hx/fs	Farm Simulator (Haxe)	HaxeFlixel
+co/ja/fs	Farm Simulator (Java)
+co/lu/fs	Farm Simulator (Lua)	LÖVE
+co/od	Odin sketch	raylib
+co/py/farm_simulator/fs	Farm Simulator (Python)
+co/py/lt	Transformer from Scratch	building blocks of a transformer language model in PyTorch
+co/py/old	Old Python
+co/py/old/farm_sim	Farm Simulator, old (Python)
+co/py/old/ge	Vvardenfell Engine	a Morrowind-inspired first-person 3D landscape in Python
+co/rb/2d/fs	Farm Simulator (Ruby)	DragonRuby
+co/we/ts	JS test script
+
+# ---- pj: projects --------------------------------------------------------------------------
+pj/ge	Game engines
+pj/ge/ct	Construct 3	BMG and the Pirate Kit
+pj/ge/gd	GDevelop
+pj/ge/gm	GameMaker
+pj/ge/gt	Godot
+pj/mo	Mods
+pj/ns	Nova Suite	Novacane Studios apps
+pj/ns/legacy	Nova, old copies
+pj/ns/na	Nova Agent	the studio's all-in-one staff app with a Claude-powered assistant
+pj/ns/nb	Nova Bot
+pj/ns/nc	Nova Club	the Android members' app
+pj/wd	Web dev
+pj/ge/gm/fs	Farm Simulator (GameMaker)
+pj/ge/gt/3d-horror	3D Horror	a first-person horror playground in Godot
+pj/ge/gt/farm-sim	Farm Simulator (Godot)
+pj/mo/Maines	Maines	a World of Warcraft add-on that puts your main's name in chat
+pj/ns/legacy/na-release	Nova Agent, old release copy
+pj/ns/legacy/na-sizing	Nova Agent, old sizing copy
+pj/ns/legacy/nb/nw-status	Nova Bot, old status worker
+pj/ns/na/web/lossless	Nova Lossless (in Nova Agent)	the Lossless panel inside Nova Agent
+pj/ns/nb/novabot-public	Nova Bot, public site
+pj/ns/nb/novacane-worker	Nova Bot	the website chat assistant and the online back end behind Nova Agent
+pj/wd/bmg	Tideward	a calm browser game on a Brighton shore: herd fish into rockpools
+pj/wd/fs	Farm Simulator (PixiJS)
+pj/wd/fs/programs/tilemap_editor	Tilemap Editor	paint tiles from a tileset on a grid and export the map
+pj/wd/linatrix	Linatrix	makes blank grid sprite-sheet templates as PNGs (sold on itch.io)
+pj/wd/nv	Studio Site Sketch	a first layout sketch for a Novacane Studios website
+pj/wd/sl	Slides	an early slide editor in the browser
+pj/wd/tme	Tilemap Editor copy
+pj/wd/tme/tilemap_editor	Tilemap Editor (older copy)
+~/Projects/nova-lossless-audio	Nova Lossless Audio	raw, uncompressed mic audio between two devices over WebRTC
+
+# ---- shared folder names ------------------------------------------------------------------
+# */name applies to a folder with that name anywhere, unless it has an entry of its own
+*/fs	Farm Simulator
+*/3d	3D
+*/2d	2D

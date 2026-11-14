@@ -1,0 +1,14 @@
+name: __NAME__
+version: 0.1.0
+
+targets:
+  __NAME__:
+    main: src/__NAME__.cr
+
+crystal: '>= 1.21.0'
+
+dependencies:
+  raylib-cr:
+    github: sol-vin/raylib-cr
+
+license: MIT
