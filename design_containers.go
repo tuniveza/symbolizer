@@ -35,9 +35,10 @@ func isContainer(kind string) bool {
 }
 
 // accepts is whether container c takes o: a cabinet its kinds of sheet, a
-// drawer or rack anything but another container.
+// drawer or rack anything but another container, a box anything (a
+// container lies folded in it: design_box_fold.go).
 func accepts(c, o *dOct) bool {
-	if c == nil || o == nil || c == o || isContainer(o.Kind) {
+	if c == nil || o == nil || c == o || isContainer(o.Kind) && c.Kind != kBox {
 		return false
 	}
 	switch c.Kind {

@@ -957,6 +957,9 @@ func (m *Model) designFileInto(it, to *dOct) {
 	bx, by := it.X-to.X-1, it.Y-to.Y-1 // pinned on a board: where it was let go, from its inside corner
 	if to.Kind == kBox {
 		bx, by = d.boxDropAt(to, it) // in a box: where the mouse let it go (design_box.go)
+		if d.opened.active && d.opened.rack == it.ID {
+			m.designRackClose() // a rack (or board) going into a box: what is open in it goes back first
+		}
 	}
 	chosen := d.sel == it.ID
 	d.remove(it.ID)

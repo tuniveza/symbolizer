@@ -428,6 +428,10 @@ func (r *room3D) boxThings3D(b *r3box, g *boxGrid, s boxShape, floorZ, dep float
 	thick := clampF(0.05*dep, 0.15, 0.5)
 	depthOfLayer := [boxLayers]float64{0.72, 0.46, 0.2}
 	k := 0 // how many slabs so far: each a hair nearer than the one before, as drawn
+	var lifted *dOct
+	if chosen != nil && d.boxLifted(o, chosen) {
+		lifted = chosen // a container open in it: over every layer, as drawn (design_box_fold.go)
+	}
 	for l := boxLayers - 1; l >= 0; l-- {
 		if view >= 0 && l < view {
 			continue // see-through: looking at a layer below
@@ -442,10 +446,17 @@ func (r *room3D) boxThings3D(b *r3box, g *boxGrid, s boxShape, floorZ, dep float
 		}
 		for _, j := range order {
 			it := o.Items[j]
+			if it == lifted {
+				continue
+			}
 			z := floorZ + (dep-floorZ)*depthOfLayer[l] + 1e-4*float64(k)
 			k++
 			r.boxSlab(b, g, s, j, z, thick, dark, it == chosen)
 		}
+	}
+	if lifted != nil { // nearer than the top layer's things, bright
+		z := floorZ + (dep-floorZ)*(depthOfLayer[0]+0.08) + 1e-4*float64(k)
+		r.boxSlab(b, g, s, itemIndex(o, lifted), min(z, dep-1e-3), thick, 0, true)
 	}
 }
 
@@ -458,7 +469,7 @@ func (r *room3D) boxSlab(b *r3box, g *boxGrid, s boxShape, j int, z, thick, dark
 		own = o.ID
 	}
 	act := "boxthing:" + itoa(j)
-	x0, y0, tw, th := boxThingRect(o, it, b.w, b.h)
+	x0, y0, tw, th := r.ds.boxThingRect(o, it, b.w, b.h)
 	// Each cell of its rectangle: 0 beyond the box's walls, 1 it shows
 	// there, 2 something above covers it.
 	kind := func(x, y int) int {

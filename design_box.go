@@ -176,9 +176,10 @@ func boxRoom(o *dOct) (int, int) {
 	return max(0, bw-sb.left-sb.right-miniW), max(0, bh-sb.top-sb.bottom-miniH)
 }
 
-// boxClamp keeps thing it inside box o.
+// boxClamp keeps thing it inside box o, as it lies (a container folded:
+// design_box_fold.go).
 func boxClamp(o, it *dOct) {
-	mx, my := boxRoom(o)
+	mx, my := boxRoomOf(o, it, false)
 	it.X, it.Y = min(max(it.X, 0), mx), min(max(it.Y, 0), my)
 }
 
@@ -187,17 +188,31 @@ var boxDepth = [boxLayers]float64{1, 0.88, 0.76}
 
 // boxThingRect is where thing it of box o is drawn, w × h on the screen,
 // from the box's corner: further down, it is smaller and nearer the
-// middle, as things deeper in a box look.
-func boxThingRect(o, it *dOct, w, h int) (x, y, tw, th int) {
+// middle, as things deeper in a box look. A container open in it
+// (design_box_fold.go) is full size, from where it lies, kept inside.
+func (d *designState) boxThingRect(o, it *dOct, w, h int) (x, y, tw, th int) {
+	return boxThingRectAs(o, it, w, h, d.boxThingOpen(o, it))
+}
+
+// boxThingRectAs is boxThingRect with it open or not.
+func boxThingRectAs(o, it *dOct, w, h int, open bool) (x, y, tw, th int) {
 	ix, iy, iw, ih, kx, ky := boxPlaces(o, w, h)
 	s := boxDepth[boxLayerOf(it)]
-	pw, ph := float64(miniW)*kx, float64(miniH)*ky
+	rw, rh := boxThingSize(o, it, false)
+	pw, ph := float64(rw)*kx, float64(rh)*ky
 	cx := float64(ix) + float64(it.X)*kx + pw/2
 	cy := float64(iy) + float64(it.Y)*ky + ph/2
 	mx, my := float64(ix)+float64(iw)/2, float64(iy)+float64(ih)/2
 	cx, cy = mx+(cx-mx)*s, my+(cy-my)*s
 	tw, th = max(3, int(math.Round(pw*s))), max(1, int(math.Round(ph*s)))
-	return int(math.Round(cx - float64(tw)/2)), int(math.Round(cy - float64(th)/2)), tw, th
+	x, y = int(math.Round(cx-float64(tw)/2)), int(math.Round(cy-float64(th)/2))
+	if !open {
+		return x, y, tw, th
+	}
+	ow, oh := boxThingSize(o, it, true)
+	tw = min(max(3, int(math.Round(float64(ow)*kx))), iw)
+	th = min(max(1, int(math.Round(float64(oh)*ky))), ih)
+	return min(max(x, ix), ix+iw-tw), min(max(y, iy), iy+ih-th), tw, th
 }
 
 // ---- its cells --------------------------------------------------------------------------------
@@ -366,7 +381,10 @@ func (d *designState) boxThings(g *boxGrid, o *dOct, s boxShape, lk boxLook) {
 	w, h := g.w, g.h
 	view := d.boxView(o) - 1 // -1: all
 	_, chosen := d.chosenBoxThing()
-	var sel *dOct
+	var sel, lifted *dOct
+	if chosen != nil && d.boxLifted(o, chosen) {
+		lifted = chosen // a container open in it: drawn over every layer (design_box_fold.go)
+	}
 	for l := boxLayers - 1; l >= 0; l-- {
 		ghost := view >= 0 && l < view
 		dark := []float64{0, 0.28, 0.48}[l]
@@ -379,11 +397,16 @@ func (d *designState) boxThings(g *boxGrid, o *dOct, s boxShape, lk boxLook) {
 		order := boxLayerThings(o, l)
 		if !ghost {
 			for _, j := range order {
-				boxShadow(g, o, s, o.Items[j]) // a shadow on what is under it
+				if o.Items[j] != lifted {
+					d.boxShadow(g, o, s, o.Items[j]) // a shadow on what is under it
+				}
 			}
 		}
 		for _, j := range order {
 			it := o.Items[j]
+			if it == lifted {
+				continue
+			}
 			if it == chosen {
 				sel = it
 				continue // drawn last on its layer, to be seen
@@ -398,11 +421,16 @@ func (d *designState) boxThings(g *boxGrid, o *dOct, s boxShape, lk boxLook) {
 			}
 		}
 	}
+	if lifted != nil {
+		d.boxShadow(g, o, s, lifted)
+		d.boxDrawThing(g, o, s, lk, itemIndex(o, lifted), true, false, 0)
+		return
+	}
 	if sel == nil {
 		return
 	}
 	// The chosen thing's outline, over everything, so it shows even under others.
-	x0, y0, tw, th := boxThingRect(o, sel, w, h)
+	x0, y0, tw, th := d.boxThingRect(o, sel, w, h)
 	for y := y0; y < y0+th; y++ {
 		for x := x0; x < x0+tw; x++ {
 			edge := y == y0 || y == y0+th-1 || x == x0 || x == x0+tw-1
@@ -423,8 +451,8 @@ func (d *designState) boxThings(g *boxGrid, o *dOct, s boxShape, lk boxLook) {
 // boxShadow darkens what lies under thing it of box o, a cell right of
 // it and a cell below: its shadow, so it shows lying over the things on
 // the layers under it.
-func boxShadow(g *boxGrid, o *dOct, s boxShape, it *dOct) {
-	x0, y0, tw, th := boxThingRect(o, it, g.w, g.h)
+func (d *designState) boxShadow(g *boxGrid, o *dOct, s boxShape, it *dOct) {
+	x0, y0, tw, th := d.boxThingRect(o, it, g.w, g.h)
 	for y := y0 + 1; y <= y0+th; y++ {
 		for x := x0 + 1; x <= x0+tw; x++ {
 			if (x == x0+tw || y == y0+th) && x >= 0 && y >= 0 && x < g.w && y < g.h && s.inside(x, y, g.w, g.h) {
@@ -457,12 +485,14 @@ func boxLayerThings(o *dOct, l int) []int {
 	return idx
 }
 
-// boxDrawThing draws thing j of box o: its miniature (darker by dark), or
-// as a ghost only its outline, faint, owning no cell.
+// boxDrawThing draws thing j of box o: its miniature (a container folded
+// or open: design_box_fold.go), darker by dark, or as a ghost only its
+// outline, faint, owning no cell.
 func (d *designState) boxDrawThing(g *boxGrid, o *dOct, s boxShape, lk boxLook, j int, sel, ghost bool, dark float64) {
 	it := o.Items[j]
-	x0, y0, tw, th := boxThingRect(o, it, g.w, g.h)
-	mini := miniOfSize(it, tw, th, sel, true)
+	open := d.boxThingOpen(o, it)
+	x0, y0, tw, th := boxThingRectAs(o, it, g.w, g.h, open)
+	mini := boxThingCells(it, tw, th, sel, open)
 	act := "boxthing:" + itoa(j)
 	if !ghost {
 		defer g.noTails(x0, y0, tw, th, act, g.wordsAt(x0, y0, tw, th))
@@ -749,7 +779,11 @@ func (m *Model) sayBoxThing() {
 	if it == nil {
 		return
 	}
-	m.say(kindIcons[it.Kind] + " " + itemTitle(it) + " in " + octName(b) + ", " + boxLayerNames[boxLayerOf(it)] +
+	what := kindIcons[it.Kind] + " " + itemTitle(it)
+	if isContainer(it.Kind) { // open while chosen (design_box_fold.go)
+		what += " (open: " + plural(len(drawerThings(it)), "thing") + "; Esc folds it)"
+	}
+	m.say(what + " in " + octName(b) + ", " + boxLayerNames[boxLayerOf(it)] +
 		" layer · PgUp / PgDn: layer above / below · Alt+arrows: move it · drag it out")
 }
 
@@ -933,7 +967,7 @@ func (m *Model) designBoxKey(name string) (bool, tea.Cmd) {
 		}
 		dx, dy, step := arrowStep(strings.TrimPrefix(name, "alt+"))
 		it.X, it.Y = it.X+dx*step, it.Y+dy*step
-		boxClamp(b, it)
+		d.boxClampOpen(b, it) // as it is drawn: a container open in it is bigger
 		d.dirty = true
 	case "enter":
 		if it == nil {
@@ -1005,8 +1039,9 @@ func (d *designState) boxDropAt(to, it *dOct) (int, int) {
 	my := d.pressY + int(math.Round(float64(it.Y-d.origY)*z))
 	x, y, w, h := d.rect(to)
 	ix, iy, _, _, kx, ky := boxPlaces(to, w, h)
-	bx := (float64(mx-x-ix)+0.5)/kx - float64(miniW)/2
-	by := (float64(my-y-iy)+0.5)/ky - float64(miniH)/2
+	rw, rh := boxThingSize(to, it, false) // as it will lie (a container folded)
+	bx := (float64(mx-x-ix)+0.5)/kx - float64(rw)/2
+	by := (float64(my-y-iy)+0.5)/ky - float64(rh)/2
 	return int(math.Round(bx)), int(math.Round(by))
 }
 

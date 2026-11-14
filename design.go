@@ -1276,11 +1276,9 @@ func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 				d.dragMulti(o) // the others chosen with it move as much
 				break
 			}
-			if !isContainer(o.Kind) {
-				if t := d.dropTarget(o, sx, sy); t != nil {
-					d.dropOn = t.ID
-					d.dropSlot = d.drawerSlotAt(t, sx, sy) // a drawer unit: the drawer under the mouse
-				}
+			if t := d.dropTarget(o, sx, sy); t != nil && (!isContainer(o.Kind) || t.Kind == kBox) { // a container goes only into a box
+				d.dropOn = t.ID
+				d.dropSlot = d.drawerSlotAt(t, sx, sy) // a drawer unit: the drawer under the mouse
 			}
 		}
 	case dragResize:
