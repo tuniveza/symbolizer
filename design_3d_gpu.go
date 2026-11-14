@@ -105,7 +105,7 @@ func gpuSetUp() (bool, string) {
 	if err != nil {
 		return false, err.Error()
 	}
-	p2, err := glProgram(gpuVS2, gpuHead+gpuFinish+gpuFS2)
+	p2, err := glProgram(gpuVS2, strings.Replace(gpuHead, "out vec4 outCol;\n", "out vec4 outCol;\n"+gpuTextConsts(), 1)+gpuFinish+gpuFS2)
 	if err != nil {
 		return false, err.Error()
 	}
@@ -188,12 +188,21 @@ func (r *room3D) gpuData(rm *r3room) {
 		if fc.edge {
 			flags |= 2
 		}
+		if fc.aff {
+			flags |= 4
+		}
 		v := g.faces[4*faceTexels*fi:]
 		put4(v[0:], n.x, n.y, n.z, num)
 		put4(v[4:], float64(fc.mat), float64(fc.col), fc.gloss, float64(flags))
-		put4(v[8:], fc.o.x, fc.o.y, fc.o.z, fc.lu)
-		put4(v[12:], fc.eu.x, fc.eu.y, fc.eu.z, fc.lv)
-		put4(v[16:], fc.ev.x, fc.ev.y, fc.ev.z, float64(fc.tdy))
+		if fc.aff { // a turned card: where on the picture each point is (design_3d_pins.go)
+			put4(v[8:], fc.au.x, fc.au.y, fc.au.z, fc.a0)
+			put4(v[12:], fc.av.x, fc.av.y, fc.av.z, fc.b0)
+			put4(v[16:], float64(fc.tcx0), float64(fc.tcx1), float64(fc.tpy0), float64(fc.tpy1))
+		} else {
+			put4(v[8:], fc.o.x, fc.o.y, fc.o.z, fc.lu)
+			put4(v[12:], fc.eu.x, fc.eu.y, fc.eu.z, fc.lv)
+			put4(v[16:], fc.ev.x, fc.ev.y, fc.ev.z, float64(fc.tdy))
+		}
 		put4(v[20:], float64(fc.cx0), float64(fc.cx1), float64(fc.py0), float64(fc.py1))
 	}
 	// The faces' outlines on the screen, as triangles: x, y and the face.

@@ -2,6 +2,8 @@
 
 package main
 
+import "fmt"
+
 // ---- the 3D room's shaders (design_3d_gpu.go) --------------------------------------------------
 //
 // Each piece follows the Go it is written from (named beside it): change
@@ -191,19 +193,34 @@ uint smoothAt(float x, float y, float s) {
 	return rgb32(v + 0.5);
 }
 
+// room3D.mipAt and wallAt
+uint mipLin(int k, float x, float y) {
+	float sc = 1.0 / float(1 << k);
+	x = x * sc - 0.5;
+	y = y * sc - 0.5;
+	int x0 = int(floor(x)), y0 = int(floor(y));
+	float fx = x - float(x0), fy = y - float(y0);
+	uint a = mipAt(k, x0, y0), b = mipAt(k, x0 + 1, y0), c = mipAt(k, x0, y0 + 1), d = mipAt(k, x0 + 1, y0 + 1);
+	if (a == b && b == c && c == d) return a;
+	vec3 v = (chans(a) * (1.0 - fx) + chans(b) * fx) * (1.0 - fy) + (chans(c) * (1.0 - fx) + chans(d) * fx) * fy;
+	return rgb32(v + 0.5);
+}
+uint wallAt(float x, float y, float s) {
+	float l = log2(max(s, 1e-9) / wallSharp);
+	if (l <= 0.0) return smoothAt(x, y, s);
+	int k = int(l);
+	float t = l - float(k);
+	if (k >= nMips - 1) return mipLin(nMips - 1, x, y);
+	uint a = k == 0 ? smoothAt(x, y, s) : mipLin(k, x, y);
+	return mix32(a, mipLin(k + 1, x, y), t);
+}
+
 // r3glyph.cover
 float glyphAt(int layer, int k, int lw, int lh, int x, int y) {
 	if (x < 0 || y < 0 || x >= lw || y >= lh) return 0.0;
 	return texelFetch(glyphs, ivec3(x, y, layer), k).r;
 }
-float glyphCover(int layer, float u, float v, float du, float dv) {
-	vec4 info = texelFetch(glyphInfo, ivec2(layer & 1023, layer >> 10), 0);
-	bool wide = info.g > 0.5;
-	int nl = wide ? 7 : 6;
-	float fp = max(du * 48.0, dv * 96.0);
-	int k = 0;
-	for (; k < nl - 1 && fp > 1.5; fp /= 2.0) k++;
-	if (fp > 1.5) return info.r;
+float glyphCoverAt(int layer, int k, bool wide, float u, float v) {
 	int lw = wide ? (96 >> k) : (48 >> k), lh = 96 >> k;
 	float cw = float(lw);
 	if (wide) cw /= 2.0;
@@ -213,6 +230,19 @@ float glyphCover(int layer, float u, float v, float du, float dv) {
 	float a = glyphAt(layer, k, lw, lh, x0, y0) * (1.0 - fx) + glyphAt(layer, k, lw, lh, x0 + 1, y0) * fx;
 	float b = glyphAt(layer, k, lw, lh, x0, y0 + 1) * (1.0 - fx) + glyphAt(layer, k, lw, lh, x0 + 1, y0 + 1) * fx;
 	return a * (1.0 - fy) + b * fy;
+}
+float glyphCover(int layer, float u, float v, float du, float dv) {
+	vec4 info = texelFetch(glyphInfo, ivec2(layer & 1023, layer >> 10), 0);
+	bool wide = info.g > 0.5;
+	int nl = wide ? 7 : 6;
+	float l = log2(max(max(du * 48.0, dv * 96.0), 1e-9) * glyphSharp);
+	if (l <= 0.0) return glyphCoverAt(layer, 0, wide, u, v);
+	int k = int(l);
+	if (k >= nl) return info.r;
+	float t = l - float(k);
+	float c = glyphCoverAt(layer, k, wide, u, v);
+	float next = k + 1 < nl ? glyphCoverAt(layer, k + 1, wide, u, v) : info.r;
+	return c + (next - c) * t;
 }
 
 // lineCoverUV
@@ -252,6 +282,13 @@ float shadowAt(float u, float v) {
 }
 `
 
+// gpuTextConsts are the words' and lines' sharpness and fades, as the
+// processor has them (design_3d_glyphs.go).
+func gpuTextConsts() string {
+	return fmt.Sprintf("const float glyphSharp = %g, wallSharp = %g, glyphFull = %g, glyphGone = %g, lineFull = %g, lineGone = %g;\n",
+		glyphSharp, wallSharp, glyphFull, glyphGone, lineFull, lineGone)
+}
+
 // gpuFS2: step 2's main, shadePixel and lit (after gpuFinish, design_3d_finish_glsl.go).
 const gpuFS2 = `
 void main() {
@@ -285,32 +322,38 @@ void main() {
 		float hp = hh - p.y + float(tdy);
 		int cx = max(cx0, min(cx1 - 1, int(floor(fx))));
 		int hy = max(py0, min(py1 - 1, int(floor(hh - p.y)))) + tdy;
+		float sc = 1.0;
+		if ((flags & 4) != 0) { // a turned card (design_3d_pins.go)
+			vec4 au = faceRow(fi, 2), av = faceRow(fi, 3), tr = faceRow(fi, 4);
+			fx = dot(au.xyz, p) + au.w;
+			hp = dot(av.xyz, p) + av.w;
+			cx = max(int(tr.x), min(int(tr.y) - 1, int(floor(fx))));
+			hy = max(int(tr.z), min(int(tr.w) - 1, int(floor(hp))));
+			sc = max(length(au.xyz), length(av.xyz));
+		}
 		int tx = 2 * (cx - tx0) + int(2.0 * (fx - float(cx)));
 		int ty = hy - 2 * ty0;
 		int k = 0;
-		float s0 = t / f;
+		float s0 = t / f * sc;
 		float s = s0 * kpx;
 		if (s > 1.25 || nd > -0.5) {
 			float q = sqrt(max(-nd / sqrt(dot(dir, dir)), 0.03));
 			s /= q;
 			s0 /= q;
 		}
-		for (float ss = s; k < nMips - 1 && ss > 1.6; ss /= 2.0) k++;
-		col = mipAt(k, tx >> k, ty >> k);
+		col = wallAt(2.0 * (fx - float(tx0)), hp - float(2 * ty0), s);
 		int cy = hy >> 1;
 		uvec4 cell = texelFetch(cells, ivec2(clamp(cx - tx0, 0, tw - 1), clamp(cy - ty0, 0, th - 1)), 0);
-		if (k == 0) {
-			col = smoothAt(2.0 * (fx - float(tx0)), hp - float(2 * ty0), s);
-			uint gi = cell.z & 0xffffu;
-			if (gi != 0u) {
-				float u = fx - float(cx) + float((cell.z >> 16) & 1u);
-				float v = hp / 2.0 - float(cy);
-				col = mix32(cell.y, cell.x, glyphCover(int(gi) - 1, u, v, s0 / kx, s0 / (2.0 * ky)));
-			}
+		uint gi = cell.z & 0xffffu;
+		if (s < glyphGone && gi != 0u) {
+			float u = fx - float(cx) + float((cell.z >> 16) & 1u);
+			float v = hp / 2.0 - float(cy);
+			uint g = mix32(cell.y, cell.x, glyphCover(int(gi) - 1, u, v, s0 / kx, s0 / (2.0 * ky)));
+			col = mix32(col, g, clamp01((glyphGone - s) / (glyphGone - glyphFull)));
 		}
-		if (s < 0.75 && cell.w != 0u) {
+		if (s < lineGone && cell.w != 0u) {
 			float cov = lineCoverUV(int(cell.w), fx - float(cx), hp / 2.0 - float(cy), s0 / kx, s0 / (2.0 * ky), minU, minV);
-			col = mix32(cell.y, cell.x, 0.85 * cov);
+			col = mix32(col, mix32(cell.y, cell.x, 0.85 * cov), clamp01((lineGone - s) / (lineGone - lineFull)));
 		}
 		if (mat == matBoard) {
 			if (col == bgPlain) col = wallFinish(wallCol, textCol, p.x, p.y, foot, plaster(p.x, p.y, foot));

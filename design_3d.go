@@ -104,27 +104,28 @@ type room3D struct {
 	lastX, lastY   int
 	click          r3hit // the empty wall pressed: let go without a drag, a click there
 	clickOn        bool
-	hoverX, hoverY float64    // mouse look with no button: where the mouse was last seen (cells, to a fraction)
-	hoverOn        bool       // hoverX and hoverY are set (false: the next move only sets them)
-	edge           [2]int     // the mouse rests at the window's edge: the way it turns on (-1, 0, 1 across and down)
-	edgeOn         bool       // the edge ticks are going
-	edgeStep       time.Time  // the last edge step
-	lens           float64    // the lens: 1 normal, more zooms in (= and − in 3D, design_3d_layers.go)
-	ff0            float64    // the focal length 3D started with
-	anchor         [2]float64 // the flat board's camX, camY at the last drawing (keepCamera)
-	flatZoom       int        // the flat board's zoom before 3D set it to 100% (design3DAt100)
-	flatCam        [2]float64 // and its camX, camY
-	flatSaved      bool       // flatZoom and flatCam are kept
-	warpOn         bool       // the pointer is being put back in the window's middle (design_3d_pointer.go)
-	warpAt         time.Time  // when it was asked for
-	passing        bool       // a mouse event handed on to the flat board (designPress and the rest)
-	plane          float64    // a drag handed on: the mouse is followed on the plane this far out of the wall
-	mapX, mapY     int        // the flat board cell the mouse was last followed to
-	pw, ph         int        // the pixels: twice the board area's width and height (quarter blocks), or a picture's (kitty)
-	kx, ky         float64    // the pixels a unit across and a unit down (2 and 1 in quarter blocks)
-	want           [2]int     // the picture's size for the next drawing (see room3DDensity), or 0: quarter blocks
-	pix            bool       // the last drawing is a picture (kitty, see design_3d_kitty.go)
-	fdraw          []r3draw   // per face: how it is drawn this frame
+	hoverX, hoverY float64     // mouse look with no button: where the mouse was last seen (cells, to a fraction)
+	hoverOn        bool        // hoverX and hoverY are set (false: the next move only sets them)
+	edge           [2]int      // the mouse rests at the window's edge: the way it turns on (-1, 0, 1 across and down)
+	edgeOn         bool        // the edge ticks are going
+	edgeStep       time.Time   // the last edge step
+	lens           float64     // the lens: 1 normal, more zooms in (= and − in 3D, design_3d_layers.go)
+	ff0            float64     // the focal length 3D started with
+	anchor         [2]float64  // the flat board's camX, camY at the last drawing (keepCamera)
+	flatZoom       int         // the flat board's zoom before 3D set it to 100% (design3DAt100)
+	flatCam        [2]float64  // and its camX, camY
+	flatSaved      bool        // flatZoom and flatCam are kept
+	warpOn         bool        // the pointer is being put back in the window's middle (design_3d_pointer.go)
+	warpAt         time.Time   // when it was asked for
+	passing        bool        // a mouse event handed on to the flat board (designPress and the rest)
+	plane          float64     // a drag handed on: the mouse is followed on the plane this far out of the wall
+	mapX, mapY     int         // the flat board cell the mouse was last followed to
+	pw, ph         int         // the pixels: twice the board area's width and height (quarter blocks), or a picture's (kitty)
+	kx, ky         float64     // the pixels a unit across and a unit down (2 and 1 in quarter blocks)
+	want           [2]int      // the picture's size for the next drawing (see room3DDensity), or 0: quarter blocks
+	pix            bool        // the last drawing is a picture (kitty, see design_3d_kitty.go)
+	fdraw          []r3draw    // per face: how it is drawn this frame
+	pinCards       []r3pinCard // boards' turned pins, cards of their own (design_3d_pins.go)
 	polys          [][2]float64
 	drawnAt        time.Time // when the last drawing started
 	drawnTill      time.Time // and when it ended (see drawNow)

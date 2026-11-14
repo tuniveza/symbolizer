@@ -240,94 +240,103 @@ func labelWords(o *dOct) string {
 func (m *Model) paintLabels(c *boardCanvas) {
 	d := m.ds()
 	cw, ch := c.Width(), c.Height()
-	put := func(x, y int, s string, fg, bg string, bold bool) {
-		if x < 0 || y < 0 || x >= cw || y >= ch {
-			return
+	put := func(x, y int, cell uv.Cell) {
+		if x >= 0 && y >= 0 && x < cw && y < ch {
+			c.Lines[y][x] = cell
 		}
-		st := uv.Style{Fg: rgbaOf(fg), Bg: rgbaOf(bg)}
-		if bold {
-			st.Attrs = uv.AttrBold
-		}
-		c.Lines[y][x] = uv.Cell{Content: s, Width: 1, Style: st}
-	}
-	text := func(x, y int, s, fg, bg string, bold bool) int {
-		for _, r := range s {
-			put(x, y, string(r), fg, bg, bold)
-			x++
-		}
-		return x
 	}
 	for _, o := range d.octs {
 		if o == nil || (o.LabelStyle == labelNone && o.Plate == "") || !d.onScreen(o, cw, ch) {
 			continue
 		}
 		x, y, w, h := d.rect(o)
-		if o.LabelStyle != labelNone {
-			col := o.LabelColor
-			if col == "" {
-				col = labelColors[0]
-			}
-			fg := mixHex(col, "#101010", 0.82)
-			words := ansi.Truncate(labelWords(o), max(4, w-6), "…")
-			pic := strings.HasPrefix(o.LabelIcon, "img:")
-			icon := o.LabelIcon
-			if icon == "" {
-				icon = labelIcons[0]
-			}
-			showIcon := o.LabelStyle != labelTitle
-			showWords := o.LabelStyle != labelIcon
-			lx, ly := x+1, y // on the top edge, at the left
-			if pic && showIcon {
-				ly = y - picIconH + 1 // a picture is taller: it rises above the edge
-			}
-			cx := lx
-			drawIcon := func() {
-				if pic {
-					m.paintPicIcon(c, cx, ly, strings.TrimPrefix(icon, "img:"), col)
-					cx += picIconW
-				} else {
-					cx = text(cx, ly+boolInt(pic)*(picIconH-1), " "+icon, fg, col, true)
-				}
-			}
-			row := ly + boolInt(pic)*(picIconH-1) // the words' row: the edge
-			if o.LabelStyle == labelTitleIcon {
-				if showWords {
-					cx = text(cx, row, " "+words, fg, col, true)
-				}
-				if showIcon {
-					drawIcon()
-				}
-			} else {
-				if showIcon {
-					drawIcon()
-				}
-				if showWords {
-					cx = text(cx, row, " "+words, fg, col, true)
-				}
-			}
-			text(cx, row, " ", fg, col, false)
-		}
-		if o.Plate != "" {
-			// On the bottom edge, at its left (past an octagon's cut corner);
-			// a structure too small for that has it just under it.
-			col := plateColor(o.Plate)
-			px, py := x+2, y+h-1
-			if o.Kind == kOct {
-				px = x + 3
-			}
-			if h < 3 || w < 10 {
-				px, py = x, y+h
-			}
-			name := " ▪ " + ansi.Truncate(o.Plate, max(4, w-(px-x)-7), "…") + " "
-			text(px, py, name, mixHex(col, "#101010", 0.85), col, true)
-		}
+		d.labelCells(o, x, y, w, h, put)
 	}
 }
 
-// paintPicIcon draws the picture file (in design/images) picIconW × picIconH
-// cells big at (x, y), in half cells; bg shows where it is clear.
-func (m *Model) paintPicIcon(c *boardCanvas, x, y int, file, bg string) {
-	d := m.ds()
+// labelCells gives structure o's label and name plate, as cells, to put:
+// o drawn at (x, y), w × h. (The 3D picture puts them on its cards too,
+// design_3d_draw.go.)
+func (d *designState) labelCells(o *dOct, x, y, w, h int, put func(x, y int, cell uv.Cell)) {
+	cell := func(x, y int, s string, fg, bg string, bold bool) {
+		st := uv.Style{Fg: rgbaOf(fg), Bg: rgbaOf(bg)}
+		if bold {
+			st.Attrs = uv.AttrBold
+		}
+		put(x, y, uv.Cell{Content: s, Width: 1, Style: st})
+	}
+	text := func(x, y int, s, fg, bg string, bold bool) int {
+		for _, r := range s {
+			cell(x, y, string(r), fg, bg, bold)
+			x++
+		}
+		return x
+	}
+	if o.LabelStyle != labelNone {
+		col := o.LabelColor
+		if col == "" {
+			col = labelColors[0]
+		}
+		fg := mixHex(col, "#101010", 0.82)
+		words := ansi.Truncate(labelWords(o), max(4, w-6), "…")
+		pic := strings.HasPrefix(o.LabelIcon, "img:")
+		icon := o.LabelIcon
+		if icon == "" {
+			icon = labelIcons[0]
+		}
+		showIcon := o.LabelStyle != labelTitle
+		showWords := o.LabelStyle != labelIcon
+		lx, ly := x+1, y // on the top edge, at the left
+		if pic && showIcon {
+			ly = y - picIconH + 1 // a picture is taller: it rises above the edge
+		}
+		cx := lx
+		drawIcon := func() {
+			if pic {
+				d.picIconCells(cx, ly, strings.TrimPrefix(icon, "img:"), col, put)
+				cx += picIconW
+			} else {
+				cx = text(cx, ly+boolInt(pic)*(picIconH-1), " "+icon, fg, col, true)
+			}
+		}
+		row := ly + boolInt(pic)*(picIconH-1) // the words' row: the edge
+		if o.LabelStyle == labelTitleIcon {
+			if showWords {
+				cx = text(cx, row, " "+words, fg, col, true)
+			}
+			if showIcon {
+				drawIcon()
+			}
+		} else {
+			if showIcon {
+				drawIcon()
+			}
+			if showWords {
+				cx = text(cx, row, " "+words, fg, col, true)
+			}
+		}
+		text(cx, row, " ", fg, col, false)
+	}
+	if o.Plate != "" {
+		// On the bottom edge, at its left (past an octagon's cut corner);
+		// a structure too small for that has it just under it.
+		col := plateColor(o.Plate)
+		px, py := x+2, y+h-1
+		if o.Kind == kOct {
+			px = x + 3
+		}
+		if h < 3 || w < 10 {
+			px, py = x, y+h
+		}
+		name := " ▪ " + ansi.Truncate(o.Plate, max(4, w-(px-x)-7), "…") + " "
+		text(px, py, name, mixHex(col, "#101010", 0.85), col, true)
+	}
+}
+
+// picIconCells gives the picture file (in design/images), picIconW ×
+// picIconH cells big at (x, y) in half cells, to put; bg shows where it
+// is clear.
+func (d *designState) picIconCells(x, y int, file, bg string, put func(x, y int, cell uv.Cell)) {
 	img, ok := loadPicture(filepath.Join(d.imagesDir(), file))
 	if !ok {
 		return
@@ -343,11 +352,8 @@ func (m *Model) paintPicIcon(c *boardCanvas, x, y int, file, bg string) {
 	}
 	for cy := 0; cy < picIconH; cy++ {
 		for cx := 0; cx < picIconW; cx++ {
-			if x+cx < 0 || y+cy < 0 || x+cx >= c.Width() || y+cy >= c.Height() {
-				continue
-			}
 			top, bot := pix(cx, cy*2), pix(cx, cy*2+1)
-			c.Lines[y+cy][x+cx] = uv.Cell{Content: "▀", Width: 1, Style: uv.Style{Fg: rgbaOf(top), Bg: rgbaOf(bot)}}
+			put(x+cx, y+cy, uv.Cell{Content: "▀", Width: 1, Style: uv.Style{Fg: rgbaOf(top), Bg: rgbaOf(bot)}})
 		}
 	}
 }
