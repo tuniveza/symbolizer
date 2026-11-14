@@ -50,8 +50,8 @@ func worldShot(t testing.TB, m *Model, pos r3vec, yaw, pitch float64) ([]byte, i
 	return pic, pw, ph
 }
 
-// savePNG keeps a picture in $SY_3D_PNGS (when set), to look at.
-func savePNG(t testing.TB, name string, rgb []byte, w, h int) {
+// saveWorldPNG keeps a picture in $SY_3D_PNGS (when set), to look at.
+func saveWorldPNG(t testing.TB, name string, rgb []byte, w, h int) {
 	dir := os.Getenv("SY_3D_PNGS")
 	if dir == "" {
 		return
@@ -93,7 +93,7 @@ func TestDesign3DWorldPictures(t *testing.T) {
 	} {
 		atClock(t, s.hh, s.mm)
 		pic, w, h := worldShot(t, m, s.pos, s.yaw, s.pitch)
-		savePNG(t, s.name, pic, w, h)
+		saveWorldPNG(t, s.name, pic, w, h)
 	}
 }
 
@@ -131,8 +131,8 @@ func TestDesign3DWorldLightColours(t *testing.T) {
 	if rr < 3 || rb > rr*0.7 {
 		t.Errorf("right: the warm lamp should add red over blue: %.1f %.1f %.1f", rr, rg, rb)
 	}
-	savePNG(t, "lights-wide", with, w, h)
-	savePNG(t, "lights-off", without, w, h)
+	saveWorldPNG(t, "lights-wide", with, w, h)
+	saveWorldPNG(t, "lights-off", without, w, h)
 }
 
 // In letters mode (no pictures) the town's letters are the terminal's

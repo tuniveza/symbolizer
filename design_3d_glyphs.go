@@ -15,6 +15,8 @@ import (
 	"image/draw"
 	"math"
 	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -56,9 +58,16 @@ var glyphCache = struct {
 	m map[glyphKey]*r3glyph
 }{m: map[glyphKey]*r3glyph{}}
 
-// glyphFaces is the terminal's font as two faces, for one cell and for a
-// letter two cells wide, and where its baseline is (pixels from the top).
-var glyphFaces = sync.OnceValues(func() (font.Face, int) {
+// glyphFont is the terminal's font as a face for one cell, its size, and
+// where its baseline is (pixels from the top).
+type glyphFont struct {
+	face font.Face
+	size float64
+	base int
+}
+
+// glyphFaces is the terminal's font (kitty's font_family, else Go Mono).
+var glyphFaces = sync.OnceValue(func() glyphFont {
 	b := gomono.TTF
 	if p := geoTermMetrics().fromFile; p != "" {
 		if fb, err := os.ReadFile(p); err == nil {
@@ -90,8 +99,85 @@ var glyphFaces = sync.OnceValues(func() (font.Face, int) {
 	face, m, _ := try(size)
 	line := float64(m.Ascent+m.Descent) / 64
 	base := int(math.Round((glyphH-line)/2 + float64(m.Ascent)/64))
-	return face, base
+	return glyphFont{face, size, base}
 })
+
+// glyphFallbacks are the fonts that have the letters the terminal's font
+// lacks (icons such as ⊞ ✎ ≣), found as kitty finds them: fontconfig's
+// monospace font with that letter. Each font is read once; a letter no
+// font has is kept as nil.
+var glyphFallbacks = struct {
+	sync.Mutex
+	files map[string]*opentype.Font
+	runes map[rune]*opentype.Font
+}{files: map[string]*opentype.Font{}, runes: map[rune]*opentype.Font{}}
+
+// glyphFontFiles are fonts tried, in turn, for a letter fontconfig finds
+// none for (or where there is no fc-match): the usual monospace and
+// symbol fonts of Linux systems.
+var glyphFontFiles = []string{
+	"/usr/share/fonts/TTF/DejaVuSansMono.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+	"/usr/share/fonts/noto/NotoSansMono-Regular.ttf", "/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf",
+	"/usr/share/fonts/noto/NotoSansMath-Regular.ttf", "/usr/share/fonts/truetype/noto/NotoSansMath-Regular.ttf",
+	"/usr/share/fonts/noto/NotoSansSymbols-Regular.ttf", "/usr/share/fonts/truetype/noto/NotoSansSymbols-Regular.ttf",
+	"/usr/share/fonts/noto/NotoSansSymbols2-Regular.ttf", "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+	"/usr/share/fonts/TTF/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+}
+
+// fallbackFont is a font that has letter ru, or nil.
+func fallbackFont(ru rune) *opentype.Font {
+	fb := &glyphFallbacks
+	fb.Lock()
+	defer fb.Unlock()
+	if f, ok := fb.runes[ru]; ok {
+		return f
+	}
+	fb.runes[ru] = nil
+	paths := glyphFontFiles
+	if out, err := exec.Command("fc-match", "-f", "%{file}", "monospace:charset="+strconv.FormatInt(int64(ru), 16)).Output(); err == nil && len(out) > 0 {
+		paths = append([]string{string(out)}, paths...)
+	}
+	var f *opentype.Font
+	for _, p := range paths {
+		g, ok := fb.files[p]
+		if !ok {
+			if b, err := os.ReadFile(p); err == nil {
+				g, _ = opentype.Parse(b)
+			}
+			fb.files[p] = g // nil: no such font, or not one we can read
+		}
+		if g == nil {
+			continue
+		}
+		if i, err := g.GlyphIndex(nil, ru); err == nil && i != 0 {
+			f = g
+			break
+		}
+	}
+	if f == nil {
+		return nil
+	}
+	fb.runes[ru] = f
+	return f
+}
+
+// blockPart is the part of its cell an eighth block letter (▁ … ▇, ▉ …
+// ▏, ▔, ▕) fills, as fractions across and down, and whether it is one.
+// The terminal draws these itself as exact shapes, not from the font, and
+// so are they here.
+func blockPart(ru rune) (x0, y0, x1, y1 float64, ok bool) {
+	switch {
+	case ru >= 0x2581 && ru <= 0x2587: // lower one eighth to seven eighths
+		return 0, 1 - float64(ru-0x2580)/8, 1, 1, true
+	case ru >= 0x2589 && ru <= 0x258f && ru != 0x258c: // left seven eighths to one eighth
+		return 0, 0, float64(0x2590-ru) / 8, 1, true
+	case ru == 0x2594: // upper one eighth
+		return 0, 0, 1, 1.0 / 8, true
+	case ru == 0x2595: // right one eighth
+		return 7.0 / 8, 0, 1, 1, true
+	}
+	return 0, 0, 0, 0, false
+}
 
 // glyphOf is letter s drawn (bold: thicker), or nil when the font has no
 // such letter. wide: it is two cells wide.
@@ -108,20 +194,46 @@ func glyphOf(s string, bold, wide bool) *r3glyph {
 }
 
 func drawGlyph(s string, bold, wide bool) *r3glyph {
-	face, base := glyphFaces()
+	gf := glyphFaces()
+	face, base := gf.face, gf.base
 	ru, _ := utf8.DecodeRuneInString(s)
-	if _, ok := face.GlyphAdvance(ru); !ok {
-		return nil
-	}
 	w := glyphW
 	if wide {
 		w *= 2
 	}
 	img := image.NewAlpha(image.Rect(0, 0, w, glyphH))
-	adv := font.MeasureString(face, s)
-	x := fixed.I(w)/2 - adv/2
-	dr := font.Drawer{Dst: img, Src: image.Opaque, Face: face, Dot: fixed.Point26_6{X: x, Y: fixed.I(base)}}
-	dr.DrawString(s)
+	if x0, y0, x1, y1, ok := blockPart(ru); ok {
+		// An eighth block: its exact part of the cell.
+		r := image.Rect(int(math.Round(x0*float64(w))), int(math.Round(y0*glyphH)), int(math.Round(x1*float64(w))), int(math.Round(y1*glyphH)))
+		draw.Draw(img, r, image.Opaque, image.Point{}, draw.Src)
+		bold = false
+	} else {
+		if _, ok := face.GlyphAdvance(ru); !ok {
+			// Not in the terminal's font: from a font that has it, at the
+			// same size, or smaller where it would be wider than its cell.
+			f := fallbackFont(ru)
+			if f == nil {
+				return nil
+			}
+			size := gf.size
+			for range 2 {
+				fc, err := opentype.NewFace(f, &opentype.FaceOptions{Size: size, DPI: 72, Hinting: font.HintingNone})
+				if err != nil {
+					return nil
+				}
+				face = fc
+				adv := float64(font.MeasureString(face, s)) / 64
+				if adv <= float64(w) {
+					break
+				}
+				size *= float64(w) / adv
+			}
+		}
+		adv := font.MeasureString(face, s)
+		x := fixed.I(w)/2 - adv/2
+		dr := font.Drawer{Dst: img, Src: image.Opaque, Face: face, Dot: fixed.Point26_6{X: x, Y: fixed.I(base)}}
+		dr.DrawString(s)
+	}
 	if bold {
 		// Bold: each stroke a little wider (the letter drawn again, moved
 		// by a few pixels).
@@ -158,16 +270,48 @@ func drawGlyph(s string, bold, wide bool) *r3glyph {
 
 // cover is how much of the letter covers the point (u, v) of its cell (0
 // to 1 across and down; u up to 2 for a wide letter), seen from a pixel du
-// of a cell wide and dv of it tall.
+// of a cell wide and dv of it tall. It takes the two copies about as fine
+// as the pixel, blended by how close it is to each (so a letter does not
+// jump from one copy to the next as it moves off or nears), and past the
+// smallest copy it fades into the letter's mean: a letter too small to
+// read is a soft tint of its colour, never a flicker.
 func (g *r3glyph) cover(u, v, du, dv float64) float64 {
-	fp := math.Max(du*glyphW, dv*glyphH) // the finest copy's pixels one of the screen's takes
-	k := 0
-	for ; k < len(g.lv)-1 && fp > 1.5; fp /= 2 {
-		k++
+	k, t := glyphLevel(math.Max(du*glyphW, dv*glyphH), len(g.lv))
+	if k >= len(g.lv) {
+		return g.mean
 	}
-	if fp > 1.5 {
-		return g.mean // smaller than the smallest copy
+	c := g.coverAt(k, u, v)
+	if t > 0 {
+		next := g.mean // past the smallest copy
+		if k+1 < len(g.lv) {
+			next = g.coverAt(k+1, u, v)
+		}
+		c += (next - c) * t
 	}
+	return c
+}
+
+// glyphSharp: a letter takes its copy with a pixel of it this many of the
+// screen's (a little under one keeps it sharp without flicker).
+const glyphSharp = 0.8
+
+// glyphLevel is the copy of n a pixel fp of the finest copy's pixels wide
+// takes, and how far (0 to 1) toward the next, smaller one it is; n: past
+// the smallest and its fade.
+func glyphLevel(fp float64, n int) (int, float64) {
+	l := math.Log2(math.Max(fp, 1e-9) * glyphSharp)
+	if l <= 0 {
+		return 0, 0
+	}
+	k := int(l)
+	if k >= n {
+		return n, 0
+	}
+	return k, l - float64(k)
+}
+
+// coverAt is cover from copy k, between its four nearest pixels.
+func (g *r3glyph) coverAt(k int, u, v float64) float64 {
 	lw, lh := g.w[k], g.h[k]
 	cw := float64(lw) // pixels a cell across
 	if g.w[0] > glyphW {
@@ -194,10 +338,16 @@ func (g *r3glyph) cover(u, v, du, dv float64) float64 {
 func (r *room3D) paintGlyphs(rm *r3room) {
 	for i := range r.tex {
 		t := &r.tex[i]
-		if t.glyph == "" || t.gx != 0 {
+		s := t.glyph
+		if s == "" && t.mark != "" {
+			if ru, _ := utf8.DecodeRuneInString(t.mark); func() bool { _, _, _, _, ok := blockPart(ru); return ok }() {
+				s = t.mark // an eighth block: its exact shape, not a tint
+			}
+		}
+		if s == "" || t.gx != 0 {
 			continue
 		}
-		g := glyphOf(t.glyph, t.bold, t.wide)
+		g := glyphOf(s, t.bold, t.wide)
 		if g == nil {
 			continue // not in the font: its tint, as before
 		}
@@ -380,6 +530,70 @@ func (r *room3D) smooth(x, y, s float64) uint32 {
 	}
 	xa, xb, ya, yb := cl(x0, w), cl(x0+1, w), cl(y0, h), cl(y0+1, h)
 	a, b, c, d := l[ya*w+xa], l[ya*w+xb], l[yb*w+xa], l[yb*w+xb]
+	if a == b && b == c && c == d {
+		return a
+	}
+	ch := func(sh uint) uint32 {
+		v := (float64(a>>sh&255)*(1-fx)+float64(b>>sh&255)*fx)*(1-fy) +
+			(float64(c>>sh&255)*(1-fx)+float64(d>>sh&255)*fx)*fy
+		return uint32(v + 0.5)
+	}
+	return ch(16)<<16 | ch(8)<<8 | ch(0)
+}
+
+// wallSharp: the back wall's finest picture is taken until a screen pixel
+// spans this many of its pixels; past it, the smaller pictures blend in.
+const wallSharp = 1.2
+
+// glyphFull and glyphGone: a painted letter is drawn whole while a screen
+// pixel spans up to glyphFull of the wall's pixels (half a cell), and
+// fades into the smaller pictures' tint of it by glyphGone, so it never
+// pops from letter to tint as the camera moves off or the lens widens.
+const glyphFull, glyphGone = 1.6, 3.2
+
+// lineFull and lineGone: a box line is drawn as a thin line while a screen
+// pixel spans up to lineFull of the wall's pixels, and as its cell's tint
+// from lineGone, blended between.
+const lineFull, lineGone = 0.55, 0.95
+
+// wallAt is the back wall's picture at (x, y) (its finest pixels, two a
+// cell across, two a row down), seen with s of them to a screen pixel:
+// the finest picture (smooth) when seen about as big as it is, else the
+// two smaller pictures about as fine as the screen, each between its four
+// nearest pixels, blended by how close s is to each. So far and slanting
+// faces stay smooth and steady instead of jumping from one picture to the
+// next or shimmering as the camera moves.
+func (r *room3D) wallAt(x, y, s float64) uint32 {
+	l := math.Log2(math.Max(s, 1e-9) / wallSharp)
+	if l <= 0 {
+		return r.smooth(x, y, s)
+	}
+	n := len(r.mips)
+	k := int(l)
+	t := l - float64(k)
+	if k >= n-1 {
+		return r.mipAt(n-1, x, y)
+	}
+	var a uint32
+	if k == 0 {
+		a = r.smooth(x, y, s)
+	} else {
+		a = r.mipAt(k, x, y)
+	}
+	return mix32(a, r.mipAt(k+1, x, y), t)
+}
+
+// mipAt is the wall's picture k at (x, y) of the finest one, between its
+// four nearest pixels.
+func (r *room3D) mipAt(k int, x, y float64) uint32 {
+	m, w, h := r.mips[k], r.mipW[k], r.mipH[k]
+	sc := 1 / float64(int(1)<<k)
+	x, y = x*sc-0.5, y*sc-0.5
+	x0, y0 := int(ffloor(x)), int(ffloor(y))
+	fx, fy := x-float64(x0), y-float64(y0)
+	cl := func(v, n int) int { return max(0, min(n-1, v)) }
+	xa, xb, ya, yb := cl(x0, w), cl(x0+1, w), cl(y0, h), cl(y0+1, h)
+	a, b, c, d := m[ya*w+xa], m[ya*w+xb], m[yb*w+xa], m[yb*w+xb]
 	if a == b && b == c && c == d {
 		return a
 	}

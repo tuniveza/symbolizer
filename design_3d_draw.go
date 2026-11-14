@@ -248,6 +248,7 @@ func (r *room3D) area(d *designState, w, h int, z float64) r3room {
 		r.blocks[i].off = r.blocks[i].off*k + 0.02*float64(r.blocks[i].o.Layer)
 	}
 	r.layerCopies(d, &rm)
+	r.pinCopies(d, &rm) // turned pins' cards (design_3d_pins.go)
 	return rm
 }
 
@@ -550,7 +551,17 @@ func (r *room3D) takeRoom(d *designState, c *boardCanvas, rm *r3room) {
 		}
 	}
 	if r.paint {
+		r.pinTexels(d, rm, defFG, defBG)
 		r.cleanCards(rm)
+		// Labels and name plates over them, as the flat board has them
+		// over its structures: on the clean cards, and on the structures
+		// off the screen or out on layers too (design_labels.go).
+		for _, b := range r.blocks {
+			if o := b.o; o.LabelStyle != labelNone || o.Plate != "" {
+				x, y, w, h := d.rect(o)
+				d.labelCells(o, x, y+b.shift, w, h, func(x, y int, cell uv.Cell) { put(x, y, &cell) })
+			}
+		}
 		r.paintGlyphs(rm)
 	}
 }
@@ -649,6 +660,13 @@ type r3face struct {
 	inside             bool    // its words hide behind its own block's other faces too (a cabinet's, design_3d_cabinet.go)
 	back               float64 // a block's: how far out its back stands (its layer)
 	tdy                int     // half rows its drawing is below its cells in the picture (a block on a layer, layerCopies)
+	// A card turned on its face (a board's turned pin, design_3d_pins.go):
+	// the picture's column at point p is au · p + a0 and its half row
+	// av · p + b0, within columns tcx0 ≤ x < tcx1 and half rows tpy0 ≤ y < tpy1.
+	aff                    bool
+	au, av                 r3vec
+	a0, b0                 float64
+	tcx0, tcx1, tpy0, tpy1 int
 }
 
 // depthOf is how far a kind of structure comes out of the wall, at 100%.
@@ -788,6 +806,9 @@ func (r *room3D) block(rm *r3room, i int, hw, hh float64, text uint32) {
 			f := cells
 			f.n, f.mat, f.col, f.edge, f.gloss = n, matSolid, col, true, 0.35
 			r.quadFace(f, a0, e, r3vec{0, 0, dep})
+		}
+		if o.Kind == kBoard {
+			r.pinFaces(i, dep, hw, hh) // its turned pins, cards in front of it (design_3d_pins.go)
 		}
 	}
 }
@@ -1393,6 +1414,13 @@ func (r *room3D) shadePixel(c *r3shade, idx, anchor int, dir r3vec) {
 			cx := max(fc.cx0, min(fc.cx1-1, int(ffloor(fx))))
 			hy := max(fc.py0, min(fc.py1-1, int(ffloor(hp))-fc.tdy))
 			hy += fc.tdy // a block out on a layer: its drawing is kept below the board (layerCopies)
+			sc := 1.0
+			if fc.aff { // a turned card (design_3d_pins.go)
+				fx, hp = fc.au.dot(p)+fc.a0, fc.av.dot(p)+fc.b0
+				cx = max(fc.tcx0, min(fc.tcx1-1, int(ffloor(fx))))
+				hy = max(fc.tpy0, min(fc.tpy1-1, int(ffloor(hp))))
+				sc = fc.affScale()
+			}
 			// The wall's pixel here (two a cell across, two down), from
 			// the picture about as fine as the screen's pixels are.
 			tx := 2*(cx-tx0) + int(2*(fx-float64(cx)))
@@ -1401,39 +1429,44 @@ func (r *room3D) shadePixel(c *r3shade, idx, anchor int, dir r3vec) {
 			// (more where the face is seen at a slant), and so which
 			// picture. s0 is how many units of the face a unit of the
 			// screen is.
-			k, s0 := 0, t/f
+			k, s0 := 0, t/f*sc
 			s := s0 * c.kpx
 			if s > 1.25 || nd > -0.5 {
 				q := math.Sqrt(math.Max(-nd/math.Sqrt(dir.x*dir.x+dir.y*dir.y+dir.z*dir.z), 0.03))
 				s /= q
 				s0 /= q
 			}
-			for ss := s; k < len(r.mips)-1 && ss > 1.6; ss /= 2 {
-				k++
-			}
-			col = r.mips[k][(ty>>k)*r.mipW[k]+tx>>k]
-			if k == 0 && r.paint {
+			if r.paint {
 				// The picture between its pixels, smoothly: a texture, a
 				// picture in half blocks, a coloured strip have soft edges,
-				// not squares.
-				col = r.smooth(2*(fx-float64(tx0)), hp-float64(2*ty0), s)
-			}
-			if k == 0 && r.paint {
-				// A letter, painted (design_3d_glyphs.go).
-				cy := hy >> 1
-				if t := &r.tex[(cy-ty0)*rm.tw+cx-tx0]; t.gl != nil {
-					u := fx - float64(cx) + float64(t.gx)
-					v := hp/2 - float64(cy)
-					col = mix32(t.bg, t.fg, t.gl.cover(u, v, s0/c.kx, s0/(2*c.ky)))
+				// not squares; far off, the smaller pictures blended
+				// (design_3d_glyphs.go).
+				col = r.wallAt(2*(fx-float64(tx0)), hp-float64(2*ty0), s)
+				if s < glyphGone {
+					// A letter, painted (design_3d_glyphs.go), fading into
+					// its tint as it gets too small to read.
+					cy := hy >> 1
+					if t := &r.tex[(cy-ty0)*rm.tw+cx-tx0]; t.gl != nil {
+						u := fx - float64(cx) + float64(t.gx)
+						v := hp/2 - float64(cy)
+						g := mix32(t.bg, t.fg, t.gl.cover(u, v, s0/c.kx, s0/(2*c.ky)))
+						col = mix32(col, g, clamp01((glyphGone-s)/(glyphGone-glyphFull)))
+					}
 				}
+			} else {
+				for ss := s; k < len(r.mips)-1 && ss > 1.6; ss /= 2 {
+					k++
+				}
+				col = r.mips[k][(ty>>k)*r.mipW[k]+tx>>k]
 			}
-			if s < 0.75 {
+			if s < lineGone {
 				// Seen bigger than on the flat board: a box line is
-				// drawn as a thin line, not a whole cell's tint.
+				// drawn as a thin line, not a whole cell's tint (and
+				// between the two smoothly, so it does not pop).
 				cy := hy >> 1
 				if t := &r.tex[(cy-ty0)*rm.tw+cx-tx0]; t.arms != 0 {
 					cov := lineCoverUV(int(t.arms), fx-float64(cx), hp/2-float64(cy), s0/c.kx, s0/(2*c.ky), c.minU, c.minV)
-					col = mix32(t.bg, t.fg, 0.85*cov)
+					col = mix32(col, mix32(t.bg, t.fg, 0.85*cov), clamp01((lineGone-s)/(lineGone-lineFull)))
 				}
 			}
 			if fc.mat == matBoard {

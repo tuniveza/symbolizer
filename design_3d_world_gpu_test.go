@@ -53,7 +53,7 @@ func TestDesign3DWorldGPUMatches(t *testing.T) {
 		if pw != gw || ph != gh || len(cpu) != len(gpu) || len(cpu) == 0 {
 			t.Fatalf("%s: sizes cpu %dx%d gpu %dx%d", v.name, pw, ph, gw, gh)
 		}
-		savePNG(t, "gpu-"+v.name, gpu, gw, gh)
+		saveWorldPNG(t, "gpu-"+v.name, gpu, gw, gh)
 		far, sum := 0, 0
 		for i := 0; i < len(cpu); i += 3 {
 			d := 0
