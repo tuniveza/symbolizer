@@ -999,7 +999,10 @@ func (m *Model) designFileInto(it, to *dOct) {
 		return
 	}
 	if to.Kind == kCabinet {
-		to.DrawerOpen = true // its doors open on the shelf it went on
+		if !to.DrawerOpen {
+			to.DrawerOpen = true // its doors open on the shelf it went on
+			d.startOpenAnim(to)
+		}
 		m.say(kindIcons[it.Kind] + " " + itemTitle(it) + " put in " + octName(to) + " (" + stackNames[it.Kind] + ").")
 		return
 	}
@@ -1082,8 +1085,9 @@ func (m *Model) designPutFrom(d *designState, o *dOct, from, title, text string)
 	d.nextID++
 	o.Items = append(o.Items, it)
 	o.OpenStack = kPage
-	if o.Kind == kCabinet {
+	if o.Kind == kCabinet && !o.DrawerOpen {
 		o.DrawerOpen = true // its doors open on the pages
+		d.startOpenAnim(o)
 	}
 	d.dirty = true
 	return true

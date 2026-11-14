@@ -194,6 +194,11 @@ func (r *room3D) boxBlock(blk *r3block, dep, hw, hh float64) bool {
 	lk := boxLookOf(o)
 	g := d.boxGridOf(o, w, h)
 	open := d.slotOpenness(o, 0, o.DrawerOpen) // 0 shut … 1 open
+	// The lid's pose, as the flat drawing has it (design_anim.go): how many
+	// inside rows it still covers; whole, it closes the box.
+	rows := s.insideRows(w, h)
+	covered := boxLidCover(open, len(rows))
+	whole := len(rows) > 0 && covered == len(rows) || len(rows) == 0 && open == 0
 	outer, inner := boxOutlines(s, w, h)
 	b := &r3box{r: r, o: o, x: x, y: y, w: w, h: h, hw: hw, hh: hh}
 	for _, p := range outer {
@@ -210,7 +215,7 @@ func (r *room3D) boxBlock(blk *r3block, dep, hw, hh float64) bool {
 		j := (i + 1) % n
 		return b.cells(own, outer[i], outer[j], inner[j], inner[i])
 	}
-	if open > 0 {
+	if !whole {
 		for i := range n {
 			j := (i + 1) % n
 			f := rimOf(i)
@@ -222,7 +227,7 @@ func (r *room3D) boxBlock(blk *r3block, dep, hw, hh float64) bool {
 	// The outside of its walls, by its design.
 	r.boxOuterWalls(b, s, lk, outer, rimOf, dep)
 
-	if open > 0 {
+	if !whole {
 		// The inside of its walls, darker the deeper; its floor.
 		bands := 3
 		if design == boxCrate {
@@ -255,31 +260,56 @@ func (r *room3D) boxBlock(blk *r3block, dep, hw, hh float64) bool {
 			b.flat(fl, floorZ, inner...)
 		}
 		r.boxThings3D(b, g, s, floorZ, dep)
-		if design == boxCardboard && open >= 1 {
+		if design == boxCardboard && !boxShutAt(open) { // its flaps up, as the flat drawing has them
 			r.boxFlaps(b, s, lk, outer, dep)
 		}
 	}
 
-	// The lid: on, it closes the front, showing the flat drawing's lid;
-	// coming off, it lifts away toward the viewer.
-	if open < 1 {
-		lt := clampF(0.06*dep, 0.3, 0.8)
-		z0 := dep + open*0.8*dep
+	// The lid: all on, it closes the front, showing the flat drawing's lid
+	// (and a gift box's bow); coming off or going on, it slides over the
+	// opening, its lower edge on the row the flat lid's is on, showing the
+	// flat drawing's lid there.
+	lt := clampF(0.06*dep, 0.3, 0.8)
+	lidEdge := c32(lk.lidC.shade(-0.18))
+	if whole {
 		f := b.cells(own, r3pt{0, float64(s.f0)}, r3pt{float64(w), float64(h)})
-		if open > 0 {
-			f.mat, f.col = matSolid, c32(lk.lidC)
-		} else {
-			f.mat, f.gloss = matFront, 0.35
-		}
-		b.flat(f, z0+lt, outer...)
+		f.mat, f.gloss = matFront, 0.35
+		b.flat(f, dep+lt, outer...)
 		for i := range n {
-			b.wall(rimOf(i), outer[i], outer[(i+1)%n], z0, z0+lt, true, c32(lk.lidC.shade(-0.18)))
+			b.wall(rimOf(i), outer[i], outer[(i+1)%n], dep, dep+lt, true, lidEdge)
 		}
-		if design == boxGift && open == 0 {
-			r.boxBow(b, lk, z0+lt)
+		if design == boxGift {
+			r.boxBow(b, lk, dep+lt)
+		}
+	} else if covered > 0 {
+		part := clipBelow(inner, float64(rows[covered-1]+1))
+		if len(part) >= 3 {
+			f := b.cells(own, part...)
+			f.mat, f.gloss = matFront, 0.35
+			b.flat(f, dep+lt, part...)
+			for i := range part {
+				b.wall(f, part[i], part[(i+1)%len(part)], dep, dep+lt, true, lidEdge)
+			}
 		}
 	}
 	return true
+}
+
+// clipBelow is outline pts cut off below row line v: the part with v ≤ at
+// (a box's lid, part way on).
+func clipBelow(pts []r3pt, at float64) []r3pt {
+	var out []r3pt
+	for i, p := range pts {
+		q := pts[(i+1)%len(pts)]
+		if p.v <= at {
+			out = append(out, p)
+		}
+		if (p.v-at)*(q.v-at) < 0 { // the edge crosses the line
+			t := (at - p.v) / (q.v - p.v)
+			out = append(out, r3pt{p.u + t*(q.u-p.u), at})
+		}
+	}
+	return out
 }
 
 // boxOuterWalls adds the outside of box b's walls, out to dep: plain, or

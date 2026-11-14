@@ -193,7 +193,9 @@ func (d *designState) recordUndo() {
 
 // restore puts the board as s has it. s stays as it was, for redo.
 func (d *designState) restore(s *boardState) {
+	was := d.octs
 	d.octs = copyOcts(s.octs)
+	d.animOpenChanges(was) // doors, lids and drawers that stand otherwise move there (design_anim.go)
 	d.links = append([]dLink(nil), s.links...)
 	d.marks = make(map[[2]int]dMark, len(s.marks))
 	for k, v := range s.marks {

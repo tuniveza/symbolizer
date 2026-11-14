@@ -142,8 +142,7 @@ func drawerLines(o *dOct) int {
 // slotLinesNow is how many rows drawer i's tray adds as it is drawn now:
 // opening or shutting, it slides down out of its front, or back up into it.
 func (d *designState) slotLinesNow(o *dOct, i int) int {
-	p := d.slotOpenness(o, i, slotOpen(o, i))
-	return int(math.Round(p * float64(slotTrayLines(o, i))))
+	return trayRows(d.slotOpenness(o, i, slotOpen(o, i)), slotTrayLines(o, i)) // design_anim.go
 }
 
 // drawerLinesNow is drawerLines as it is drawn now.
