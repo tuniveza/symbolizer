@@ -15,8 +15,8 @@ import (
 )
 
 // The Manager's scan: one walk over ~/an (and ~/Projects) that sorts every
-// folder into its category, names it from ~/an/lb/names.tsv (the same list
-// lb uses), finds the projects in it and adds up sizes, file counts and the
+// folder into its category, names it from ~/an/ca/sy/manager/names.tsv (the
+// same list the manager program uses), finds the projects in it and adds up sizes, file counts and the
 // last change. It runs in the background; the last result is kept in
 // ~/.cache/symbolizer/manager.json so the Manager opens at once.
 
@@ -104,7 +104,7 @@ func mgNames(path string) (map[string]mgName, map[string]mgName, []string, bool)
 	return exact, wild, order, true
 }
 
-// mgIgnores reads lb's IGNORE list from ~/an/lb/lb.conf: folders of copies,
+// mgIgnores reads the IGNORE list from manager.conf: folders of copies,
 // backups and other people's code. Their insides are not listed (only what
 // names.tsv names); the folder itself is one row. The Manager adds the
 // fixer-jobs copies wherever they are.
@@ -277,11 +277,12 @@ type mgDir struct {
 }
 
 // mgScan walks root (~/an) and extra roots (~/Projects) and builds the
-// categories. namesPath is ~/an/lb/names.tsv.
+// categories. namesPath is ~/an/ca/sy/manager/names.tsv; manager.conf is next to it.
 func mgScan(root string, extra []string, namesPath string) *mgData {
 	start := time.Now()
 	exact, wild, order, found := mgNames(namesPath)
-	ignores := mgIgnores(filepath.Join(filepath.Dir(namesPath), "lb.conf"))
+	mgrDir := filepath.Dir(namesPath) // ~/an/ca/sy/manager: never listed
+	ignores := mgIgnores(filepath.Join(mgrDir, "manager.conf"))
 	home, _ := os.UserHomeDir()
 
 	var dirs []mgDir
@@ -305,7 +306,7 @@ func mgScan(root string, extra []string, namesPath string) *mgData {
 				md := mgDir{path: p, parent: parent}
 				if parent >= 0 {
 					pd := dirs[parent]
-					md.skip = pd.skip || mgSkip[d.Name()]
+					md.skip = pd.skip || mgSkip[d.Name()] || p == mgrDir // the manager's own folder: its templates are not projects
 					md.topKey, md.subKey = pd.topKey, pd.subKey
 					if pd.parent == -1 {
 						md.topKey, md.topSelf = p, true
@@ -447,7 +448,7 @@ func mgScan(root string, extra []string, namesPath string) *mgData {
 		}
 	}
 
-	// projectRoots are the categories whose projects are listed (lb's ROOTS).
+	// projectRoots are the categories whose projects are listed (the ROOTS in manager.conf).
 	projectRoots := map[string]bool{"co": true, "pj": true, "ca": true}
 	for _, e := range extra {
 		projectRoots[rel(e)] = true
@@ -644,7 +645,7 @@ func mgLeftover(p string) bool {
 	return err == nil && len(es) == 1 && es[0].Name() == "run" && es[0].IsDir()
 }
 
-// mgKind says what kind of project a folder is, the way lb does.
+// mgKind says what kind of project a folder is, the way the manager program does.
 func mgKind(d *mgDir) string {
 	o := d.own
 	switch {

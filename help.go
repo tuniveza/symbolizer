@@ -180,7 +180,7 @@ var helpGroups = []helpGroup{
 		{"(text)", "all text in Design mode is centred: on the board, and the bars above and below it"},
 	}},
 	{"Manager mode", false, []helpLine{
-		{"(what it shows)", "all of ~/an sorted into its top folders, named from ~/an/lb/names.tsv; ◆ is a project with make.sh"},
+		{"(what it shows)", "all of ~/an sorted into its top folders, named from ~/an/ca/sy/manager/names.tsv; ◆ is a project with make.sh"},
 		{"Up / Down", "choose a row (PgUp, PgDn, Home, End too)"},
 		{"Left / Right", "the category before / after"},
 		{"type", "search everything at once; Backspace takes a letter off, Esc clears it"},
@@ -188,6 +188,9 @@ var helpGroups = []helpGroup{
 		{"Enter", "open it in Text mode: a folder with the file manager on it (and its README), a file as a tab"},
 		{"Shift + Enter", "open it in the desktop's own app (the file manager, a PDF viewer …)"},
 		{"Alt + C / F5", "copy its path / look at the folders again (it also looks each time the mode opens)"},
+		{"Alt + A", "actions: run, build, clean, watch or open the chosen project; for all of ~/an: new project, tidy, duplicates, set up tools, status …"},
+		{"  ↑↓ · Enter · Esc", "  choose · do it (it runs in the terminal, then any key comes back) · close"},
+		{"F6 / F7", "run / build the chosen project (its make.sh)"},
 	}},
 	{"Diary mode", false, []helpLine{
 		{"(chapters)", "a chapter a day; its pages in ~/.local/share/symbolizer/diary"},

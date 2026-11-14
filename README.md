@@ -14,7 +14,7 @@
 <br>
 Embers on charcoal. It saves by itself. Every key is meant for your hands.
 
-[Install](#-install) · [Key modes](#-key-modes) · [File manager](#-file-manager) · [Themes](#-colour-themes) · [Diary](#-diary) · [Design](#-design-mode) · [Every key](#-every-key)
+[Install](#-install) · [Key modes](#-key-modes) · [File manager](#-file-manager) · [Themes](#-colour-themes) · [Diary](#-diary) · [Manager](#-manager) · [Design](#-design-mode) · [Every key](#-every-key)
 
 <br>
 
@@ -57,6 +57,7 @@ sy notes.txt +42   open notes.txt at line 42
 sy ~/projects/web  open a folder as a project, with the file manager
 sy -t ~/notes      open every text file in a folder and its folders as tabs
 sy diary           Diary mode
+sy manager         Manager mode: all of ~/an by category
 sy design          Design mode   (also: slide, book, draw)
 sy --keys          show what each key does
 sy --version       show the version and build number (the status bar shows the build too)
@@ -152,6 +153,32 @@ Pages are plain text files: `~/.local/share/symbolizer/diary/2026-10-28/001.txt`
 <div align="center">
 <img src="docs/media/diary.gif" alt="Diary pages turned one by one, the all-pages view, then the Alt+M modes box" width="880">
 </div>
+
+<br>
+
+## ✦ Manager
+
+`sy manager` (or **Alt + M** → Manager). All of `~/an` on one screen, sorted into its top folders.
+The names come from `~/an/ca/sy/manager/names.tsv`. **◆** is a project with a `make.sh`.
+
+| Keys | What it does |
+|:---|:---|
+| **Up / Down** | choose a row |
+| **Left / Right** | the category before / after |
+| type | search everything. **Esc** clears it |
+| **Tab** | sort: by folder, biggest first, newest first |
+| **Enter** / **Shift + Enter** | open it in Text mode / in the desktop's own app |
+| **Alt + C** | copy its path |
+| **Alt + A** | the actions list (below) |
+| **F6** / **F7** | run / build the chosen project |
+| **F5** | look at the folders again |
+
+**Alt + A** lists what the manager program (`~/an/ca/sy/manager/bin/manager`) can do.
+For the chosen row: **Run**, **Build**, **Clean**, **Watch**, **Open in its editor** (or **Adopt** a folder with no `make.sh`).
+For all of `~/an`: **New project** (pick a language, type a name; it goes in the chosen category), **Find folders without make.sh**, **Adopt them all**, **Check all builds**, **Tidy** (shows the list first, then asks), **Find duplicates** (only lists), **Set up / repair tools**, **Status**, **Libraries**, **Refresh pictures**, **Card window**.
+**↑↓** choose, **Enter** does it, **Esc** closes. A letter jumps to the line that starts with it.
+It runs in the terminal, so you see what it prints. Then any key comes back to sy.
+After **New project**, **Adopt** and **Tidy**, the Manager looks at the folders again.
 
 <br>
 
@@ -312,7 +339,7 @@ Press **F1** inside Symbolizer for the full, scrollable list, or **AltGr + K** t
 | ŧ (Right Alt + T) | sy term: show or hide a kitty terminal under the editor |
 | Alt + Tab (Design mode, sy term) | the other split: the editor ↔ sy term (a kitty map in `~/.config/kitty/panes.conf`) |
 | Alt + R, then arrows | resize mode: each arrow moves the line between the panes that way; any other key stops (not in Text mode: there it is Emmet's remove tag) |
-| Alt + M | switch modes: Text, Design, Slides, Diary, Book, Draw |
+| Alt + M | switch modes: Text, Design, Slides, Diary, Book, Draw, Manager |
 | Design: Alt + N, then P · N · S · C · D · R · B · O | new page · note · shape · cabinet · drawer · rack · board · box (F1 in Design mode lists all its keys) |
 | Design: D · PgUp · PgDn (a box chosen) | the box's next design · its chosen thing a layer up · down (none chosen: look at one layer) |
 | Design: click · Tab · Esc (a container in a box) | open it out (what it holds) · open the next thing · fold it again |
@@ -387,6 +414,7 @@ map --when-focus-on title:Symbolizer kitty_mod+down
 | `tree.go` · `fileview.go` | the file manager |
 | `autosave.go` · `sessions.go` · `files.go` | saving, sessions and naming |
 | `diary.go` · `modes.go` | Diary mode and the modes box |
+| `manager.go` · `manager_scan.go` · `manager_actions.go` | Manager mode: the screen · looking at the folders · the actions list |
 | `design.go` · `design_paper.go` · `design_image.go` · `design_delete.go` · `design_undo.go` · `design_store.go` · `design_dnd.go` · `design_keys.go` | Design mode: the board · pages, notes, cabinets and drawers · pictures and layouts · deleting · undo and redo · the board on disk, in parts · drag and drop · moving around by keyboard |
 | `help.go` · `keycheck.go` | the F1 page and `sy --keys` |
 | `web.go` · `emmet/` | Emmet, closing tags and auto-correct in web files |

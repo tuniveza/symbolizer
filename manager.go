@@ -15,7 +15,7 @@ import (
 )
 
 // Manager mode: the whole of ~/an on one screen, sorted into its categories
-// (the top folders, named by ~/an/lb/names.tsv), with every project and what
+// (the top folders, named by ~/an/ca/sy/manager/names.tsv), with every project and what
 // it is, its size, its last change and its git state. The categories are on
 // the left, what is in the chosen one in the middle, and everything known
 // about the chosen row on the right.
@@ -27,6 +27,8 @@ import (
 //	Enter            open it in Text mode (a folder: the file manager on it)
 //	Shift + Enter    open it in the desktop's own app (Dolphin, a PDF viewer …)
 //	Alt + C          copy its path
+//	Alt + A          actions: run, build, new project, tidy … (manager_actions.go)
+//	F6 / F7          run / build the chosen project
 //	F5               look at the folders again
 //
 // The scan runs in the background (manager_scan.go); the last one is kept,
@@ -40,7 +42,8 @@ type mgState struct {
 	cat       int // the chosen category
 	sel, top  int // the chosen row and the first row shown
 	query     string
-	sort      int // 0 by folder, 1 biggest first, 2 newest first
+	sort      int     // 0 by folder, 1 biggest first, 2 newest first
+	menu      *mgMenu // the actions list, when it is open (manager_actions.go)
 	lastClick time.Time
 
 	// where the last frame put things, for the mouse
@@ -94,13 +97,14 @@ func (m *Model) mgScanCmd() tea.Cmd {
 	if os.Getenv("SY_AN") != "" {
 		extra = nil
 	}
+	names := filepath.Join(mgManagerDir(), "names.tsv")
 	return func() (msg tea.Msg) {
 		defer func() {
 			if r := recover(); r != nil { // a scan that goes wrong never takes the editor down
 				msg = mgScanMsg{err: fmt.Sprint(r)}
 			}
 		}()
-		d := mgScan(root, extra, filepath.Join(root, "lb", "names.tsv"))
+		d := mgScan(root, extra, names)
 		mgSave(mgCachePath(), d)
 		return mgScanMsg{data: d}
 	}
@@ -214,6 +218,9 @@ func (m *Model) managerKey(k tea.Key) tea.Cmd {
 		}
 	}
 	s := m.mgr
+	if s.menu != nil {
+		return m.mgMenuKey(k)
+	}
 	name := keyName(k)
 	n := len(s.rows())
 	page := max(s.listH-1, 1)
@@ -249,6 +256,12 @@ func (m *Model) managerKey(k tea.Key) tea.Cmd {
 			m.say("Copied " + shortPath(p))
 			return writeClipboard(p)
 		}
+	case "alt+a":
+		m.mgOpenMenu()
+	case "f6":
+		return m.mgRowAction("run")
+	case "f7":
+		return m.mgRowAction("build")
 	case "f5", "ctrl+r":
 		m.say("Looking at the folders again…")
 		return m.mgScanCmd()
@@ -339,7 +352,7 @@ func (m *Model) mgOpen(desktop bool) tea.Cmd {
 
 func (m *Model) managerClick(x, y int) tea.Cmd {
 	s := m.mgr
-	if s == nil || m.help {
+	if s == nil || m.help || s.menu != nil {
 		return nil
 	}
 	if !s.narrow && x < s.catX1 && y >= s.catY0 && s.data != nil {
@@ -363,7 +376,9 @@ func (m *Model) managerClick(x, y int) tea.Cmd {
 }
 
 func (m *Model) managerWheel(n int) {
-	if s := m.mgr; s != nil {
+	if s := m.mgr; s != nil && s.menu != nil {
+		s.menu.move(n)
+	} else if s != nil {
 		s.sel = max(0, min(s.sel+n, len(s.rows())-1))
 	}
 }
@@ -464,7 +479,9 @@ func (m *Model) managerRows(sb *strings.Builder) {
 	s := m.mgr
 	h := m.textHeight()
 	var lines []string
-	if s.data == nil {
+	if s.menu != nil {
+		lines = m.mgMenuLines(h)
+	} else if s.data == nil {
 		lines = m.mgWaiting(h)
 	} else if m.width >= 96 {
 		lines = m.mgWide(h)
@@ -514,7 +531,7 @@ func (m *Model) mgHeader() string {
 		{text: when, fg: cDim, bg: cBG, italic: true},
 	}
 	if d.Missing {
-		parts = append(parts, dot, seg{text: "no lb/names.tsv: folders keep their own names", fg: cWarning, bg: cBG})
+		parts = append(parts, dot, seg{text: "no manager/names.tsv: folders keep their own names", fg: cWarning, bg: cBG})
 	}
 	return mgFit2(mgRender(parts...), m.width)
 }
@@ -530,9 +547,9 @@ func mgFit2(line string, w int) string {
 func (m *Model) mgHint() string {
 	s := m.mgr
 	sortWord := mgSorts[s.sort]
-	full := "↑↓ choose · ←→ category · type to search · Tab sort: " + sortWord + " · Enter open · Shift+Enter its own app · Alt+C copy path · F5 look again"
-	mid := "↑↓ · ←→ category · type: search · Tab: " + sortWord + " · Enter open · F5 again"
-	short := "↑↓ ←→ · type · Tab · Enter · F5"
+	full := "↑↓ choose · ←→ category · type to search · Tab sort: " + sortWord + " · Enter open · Shift+Enter its own app · Alt+C copy path · Alt+A actions · F6 run · F7 build · F5 look again"
+	mid := "↑↓ · ←→ category · type: search · Tab: " + sortWord + " · Enter open · Alt+A actions · F5 again"
+	short := "↑↓ ←→ · type · Tab · Enter · Alt+A"
 	t := full
 	for _, c := range []string{full, mid, short} {
 		t = c
@@ -795,7 +812,7 @@ func (m *Model) mgDetail(w, h int) []string {
 	case it.Project:
 		field("Builds", "./make.sh ✓", cText)
 	case it.Kind != "" && it.Dir && r.cat < len(s.data.Cats) && mgProjectCat(s.data.Cats[r.cat].Key):
-		field("Builds", "no make.sh yet (lb adopt gives it one)", cDim)
+		field("Builds", "no make.sh yet (Alt+A → Adopt gives it one)", cDim)
 	}
 	if it.Dir {
 		field("Size", mgSize(it.Size)+" in "+mgCount(it.Files)+" files", cText)
@@ -828,7 +845,10 @@ func (m *Model) mgDetail(w, h int) []string {
 		}
 	}
 	// the keys, at the bottom
-	keys := [][2]string{{"Enter", "open in Text mode"}, {"Shift+Enter", "open in its own app"}, {"Alt+C", "copy the path"}}
+	keys := [][2]string{{"Enter", "open in Text mode"}, {"Shift+Enter", "open in its own app"}, {"Alt+C", "copy the path"}, {"Alt+A", "actions: run, build …"}}
+	if it.Project {
+		keys = append(keys, [2]string{"F6 / F7", "run / build"})
+	}
 	if !it.Dir && !looksTextName(it.Rel) {
 		keys[0][1] = "open in its own app"
 	}

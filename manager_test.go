@@ -17,8 +17,12 @@ func TestManagerScan(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	put("lb/names.tsv", "co\tCode\tby language\npj\tProjects\tbigger ones\nno\tNotes\nlb\tlb\nco/c/game\tMy Game\ta game in C\n", 0o644)
-	put("lb/lb.conf", "IGNORE=(\n  \"*backup*\"\n)\n", 0o644)
+	put("ca/sy/manager/names.tsv", "co\tCode\tby language\npj\tProjects\tbigger ones\nno\tNotes\nca\tApps\nco/c/game\tMy Game\ta game in C\n", 0o644)
+	put("ca/sy/manager/manager.conf", "IGNORE=(\n  \"*backup*\" pj/keepout ca/sy/manager\n)\n", 0o644)
+	put("ca/sy/make.sh", "#!/bin/sh\n", 0o755)
+	put("ca/sy/manager/templates/c/make.sh", "#!/bin/sh\n", 0o755) // a template, not a project
+	put("ca/sy/manager/bin/manager", "#!/bin/sh\n", 0o755)
+	put("pj/keepout/inner/package.json", "{}", 0o644)
 	put("co/c/game/make.sh", "#!/bin/sh\n", 0o755)
 	put("co/c/game/main.c", "int main(){}\n", 0o644)
 	put("co/c/game/README.md", "# Game\n\nA small game about embers.\n", 0o644)
@@ -30,14 +34,14 @@ func TestManagerScan(t *testing.T) {
 	os.MkdirAll(filepath.Join(root, "s1/run/pulse"), 0o755)
 	put("odd/thing.sh", "echo", 0o644)
 
-	d := mgScan(root, nil, filepath.Join(root, "lb/names.tsv"))
+	d := mgScan(root, nil, filepath.Join(root, "ca/sy/manager/names.tsv"))
 	cats := map[string]mgCat{}
 	var order []string
 	for _, c := range d.Cats {
 		cats[c.Key] = c
 		order = append(order, c.Key)
 	}
-	if got := strings.Join(order, " "); got != "pj co no lb ? !" {
+	if got := strings.Join(order, " "); got != "pj ca co no ? !" {
 		t.Fatalf("category order = %q", got)
 	}
 	find := func(key, rel string) *mgItem {
@@ -57,6 +61,17 @@ func TestManagerScan(t *testing.T) {
 	}
 	if b := find("pj", "pj/web-backup"); b == nil || b.Kind != "copies" || b.Project {
 		t.Fatalf("backup = %+v", b)
+	}
+	if k := find("pj", "pj/keepout"); k == nil || k.Kind != "copies" || find("pj", "pj/keepout/inner") != nil {
+		t.Fatalf("manager.conf's IGNORE is not used: %+v", k)
+	}
+	if find("ca", "ca/sy") == nil {
+		t.Fatalf("ca/sy is not listed: %+v", cats["ca"].Items)
+	}
+	for _, it := range cats["ca"].Items {
+		if strings.HasPrefix(it.Rel, "ca/sy/manager") {
+			t.Fatalf("the manager's own folder is listed: %+v", it)
+		}
 	}
 	if find("pj", "pj/web-backup/inner") != nil {
 		t.Fatal("a project inside copies is listed")
@@ -115,7 +130,7 @@ func TestManagerDraws(t *testing.T) {
 	}
 	root := t.TempDir()
 	os.MkdirAll(filepath.Join(root, "co/c"), 0o755)
-	m.mgr.data = mgScan(root, nil, filepath.Join(root, "lb/names.tsv"))
+	m.mgr.data = mgScan(root, nil, filepath.Join(root, "ca/sy/manager/names.tsv"))
 	for _, size := range [][2]int{{140, 40}, {80, 24}, {40, 12}} {
 		m.width, m.height = size[0], size[1]
 		_ = m.View()

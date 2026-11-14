@@ -442,6 +442,8 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	case mgScanMsg:
 		m.mgScanned(msg.data, msg.err) // manager.go
 		return nil
+	case mgDoneMsg:
+		return m.mgDone(msg) // manager_actions.go
 	case weatherMsg:
 		if msg.w != nil {
 			m.weather = msg.w
