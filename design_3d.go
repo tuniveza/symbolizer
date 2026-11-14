@@ -973,6 +973,7 @@ func (m *Model) design3DAfter() tea.Cmd {
 		return nil
 	}
 	r := &d.room
+	m.grabFollow()           // carried by Alt+Space: it follows the cross (design_grab.go)
 	m.design3DChooseMiddle() // the camera moved: what the middle of its view is on is chosen
 	var sharp tea.Cmd
 	if r.light && !r.sharpTick {

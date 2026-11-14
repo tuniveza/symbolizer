@@ -170,8 +170,8 @@ func (d *designState) recordUndo() {
 		d.undoBase = d.state()
 		return
 	}
-	if d.drag != dragNone || d.holding {
-		return // a drag (or a glide) is one step: made when it ends
+	if d.drag != dragNone || d.holding || d.grab.active {
+		return // a drag (or a glide, or a carry by Alt+Space) is one step: made when it ends
 	}
 	if d.sameAs(d.undoBase) {
 		return
