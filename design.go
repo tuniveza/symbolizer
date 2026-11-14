@@ -1307,6 +1307,9 @@ func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 
 func (m *Model) designRelease() tea.Cmd {
 	d := m.ds()
+	if d.room.on() && d.drag == dragMove {
+		defer m.design3DSettle(d.sel) // in 3D: on the lowest layer where it covers nothing (design_3d_layers.go)
+	}
 	if d.pinPress != nil { // a click on a pin opens it; a drag moved it (design_board.go)
 		m.pinRelease()
 		d.drag, d.dropOn = dragNone, -1

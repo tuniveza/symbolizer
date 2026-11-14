@@ -425,3 +425,140 @@ func TestDesign3DSavesFlatZoom(t *testing.T) {
 		t.Fatalf("saved in 3D: zoom %d cam %v,%v", f.Zoom, f.CamX, f.CamY)
 	}
 }
+
+// In 3D every container moves when pressed and dragged (its doors or
+// drawers do not open), and a press let go unmoved is still the click.
+func TestDesign3DDragContainers(t *testing.T) {
+	for _, kind := range []string{kCabinet, kDrawer, kRack, kBoard} {
+		m := room3DModel(t, 160, 50)
+		d := m.ds()
+		press(m, "ctrl+f")
+		var o *dOct
+		for _, p := range d.octs {
+			if p.Kind == kind {
+				o = p
+				break
+			}
+		}
+		mid := func(sx, sy int) bool {
+			px, py, pw, ph := d.rect(o)
+			return sx >= px+pw/2-1 && sx <= px+pw/2+1 && sy >= py+ph/2-1 && sy <= py+ph/2+1
+		}
+		x, y := cell3D(t, m, o.ID, mid)
+		x0, open := o.X, o.DrawerOpen
+		d.lastClick = time.Time{}
+		m.Update(tea.MouseClickMsg(tea.Mouse{X: x, Y: y, Button: tea.MouseLeft}))
+		for k := 1; k <= 3; k++ {
+			m.Update(tea.MouseMotionMsg(tea.Mouse{X: x + k, Y: y, Button: tea.MouseLeft}))
+		}
+		m.Update(tea.MouseReleaseMsg(tea.Mouse{X: x + 3, Y: y, Button: tea.MouseLeft}))
+		if o.X <= x0 || o.DrawerOpen != open {
+			t.Fatalf("%s dragged right: x %d (was %d), open %v (was %v)", kind, o.X, x0, o.DrawerOpen, open)
+		}
+	}
+	m := room3DModel(t, 160, 50)
+	d := m.ds()
+	press(m, "ctrl+f")
+	cab := d.octs[3]
+	x, y := cell3D(t, m, cab.ID, func(sx, sy int) bool { return d.hit(sx, sy).act == "doors" })
+	d.lastClick = time.Time{}
+	click(m, x, y, tea.MouseLeft)
+	if !cab.DrawerOpen {
+		t.Fatal("a click on the cabinet's doors (no drag) opens them")
+	}
+}
+
+// Let go after a drag in 3D, a structure goes on the lowest layer where it
+// covers nothing: in front of what it is over, back on the wall when clear.
+func TestDesign3DDragSettlesLayer(t *testing.T) {
+	m := room3DModel(t, 160, 50)
+	d := m.ds()
+	press(m, "ctrl+f")
+	o := d.octs[1]
+	o.Layer = 3
+	m.design3DSettle(o.ID)
+	if o.Layer != 0 || d.coversOnLayer(o) {
+		t.Fatalf("clear of the others it goes back to the wall: layer %d", o.Layer)
+	}
+	p := d.octs[2]
+	o.X, o.Y = p.X+2, p.Y+1
+	m.design3DSettle(o.ID)
+	if o.Layer != p.Layer+1 {
+		t.Fatalf("over %q (layer %d) it goes in front: layer %d", p.Header, p.Layer, o.Layer)
+	}
+}
+
+// The wheel zooms the lens in 3D, round the middle of the screen: the
+// cross stays on the same spot.
+func TestDesign3DWheelLens(t *testing.T) {
+	m := room3DModel(t, 120, 40)
+	d := m.ds()
+	press(m, "ctrl+f")
+	d.room.lookBy(10, 4)
+	bx, by := boardAtCross(t, m)
+	m.Update(tea.MouseWheelMsg(tea.Mouse{X: 5, Y: 5, Button: tea.MouseWheelUp}))
+	m.Update(tea.MouseWheelMsg(tea.Mouse{X: 5, Y: 5, Button: tea.MouseWheelUp}))
+	x, y := boardAtCross(t, m)
+	if d.room.lens <= 1 || math.Abs(x-bx) > 0.01 || math.Abs(y-by) > 0.01 {
+		t.Fatalf("lens %v, cross %.2f,%.2f, was %.2f,%.2f", d.room.lens, x, y, bx, by)
+	}
+	m.Update(tea.MouseWheelMsg(tea.Mouse{X: 5, Y: 5, Button: tea.MouseWheelDown}))
+	m.Update(tea.MouseWheelMsg(tea.Mouse{X: 5, Y: 5, Button: tea.MouseWheelDown}))
+	if math.Abs(d.room.lens-1) > 1e-9 {
+		t.Fatalf("down twice: back to %v", d.room.lens)
+	}
+}
+
+// Tab in 3D on a structure: the camera faces its front squarely, its
+// middle exactly in the middle of the screen, as near as shows all of it
+// (frontFill), and Tab writes in it, at any lens and layer.
+func TestDesign3DTabFront(t *testing.T) {
+	for _, c := range []struct {
+		i, layer int
+		lens     float64
+	}{{1, 0, 1}, {3, 0, 1}, {2, 2, 2.5}, {6, 1, 0.5}} {
+		m := room3DModel(t, 140, 46)
+		d := m.ds()
+		r := &d.room
+		press(m, "ctrl+f")
+		o := d.octs[c.i]
+		o.Layer = c.layer
+		r.lens = c.lens
+		cell3D(t, m, o.ID, func(sx, sy int) bool { return true })
+		r.lookBy(17, -9) // looking askew
+		d.sel = o.ID
+		press(m, "tab")
+		boardRows(m)
+		if r.look != [2]float64{0, 0} {
+			t.Fatalf("%s: looks %v, want square at the front", o.Kind, r.look)
+		}
+		v, _ := r.nowView()
+		var b r3block
+		for _, bb := range r.blocks {
+			if bb.o == o {
+				b = bb
+			}
+		}
+		rm := &r.rm
+		front := b.off + b.dep
+		proj := func(x, y float64) (float64, float64) { // screen point (cells, half rows) of a point on the front
+			q := r3vec{x, y, front}.sub(v.cam)
+			cz := q.dot(v.fwd)
+			return v.px + v.f*q.dot(v.right)/cz, v.py - v.f*q.dot(v.up)/cz
+		}
+		x0, x1 := float64(b.x0)-rm.hw, float64(b.x1)-rm.hw
+		yt, yb := rm.hh-float64(2*b.y0), rm.hh-float64(2*b.y1)
+		lx, ty := proj(x0, yt)
+		rx, by := proj(x1, yb)
+		if math.Abs((lx+rx)/2-v.px) > 0.05 || math.Abs((ty+by)/2-v.py) > 0.05 {
+			t.Fatalf("%s: its middle at %.2f,%.2f on the screen, the middle is %.2f,%.2f", o.Kind, (lx+rx)/2, (ty+by)/2, v.px, v.py)
+		}
+		fw, fh := (rx-lx)/float64(rm.w), (by-ty)/float64(2*rm.h)
+		if math.Max(fw, fh) > frontFill+0.01 || math.Max(fw, fh) < frontFill-0.05 {
+			t.Fatalf("%s: it takes %.2f of the width and %.2f of the height, want %.2f at most", o.Kind, fw, fh, frontFill)
+		}
+		if d.editing == partNone {
+			t.Fatalf("%s: Tab writes in it", o.Kind)
+		}
+	}
+}

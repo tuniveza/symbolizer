@@ -133,6 +133,8 @@ var helpGroups = []helpGroup{
 		{"  3D: click", "  clicks and drags act at the cross in the middle, not at the mouse (the pointer is hidden)"},
 		{"  3D: = − 0", "  zoom the camera's lens in, out, back to normal (3D always shows the board at 100%)"},
 		{"  3D: Shift + = · Shift + −", "  bring the chosen structure a layer out from the wall · take it a layer back"},
+		{"  3D: Tab", "  face the structure at the cross squarely, centred, and write in it"},
+		{"  3D: drag · wheel", "  drag any structure to move it (it takes the lowest free layer) · zoom the lens"},
 		{"  3D: Alt + N", "  places the new structure centred on the cross (in front of what the cross is on, or on the first free layer)"},
 		{"  3D: choosing", "  the cross in the middle chooses: what it is on is the chosen structure · keys and clicks work as on the flat board"},
 		{"  3D: blocks", "  click, double-click and drag them as on the flat board: drawers, lids, rows, pins, ✕, titles"},

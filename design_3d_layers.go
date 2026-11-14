@@ -24,6 +24,9 @@ package main
 import (
 	"fmt"
 	"math"
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 const (
@@ -339,4 +342,116 @@ func (m *Model) design3DZoomGuard() {
 	d.zoom = designZoom100
 	d.camX, d.camY = cx-w/2, cy-h/2
 	r.lens = clampF(r.lensK()*z, lensMin, lensMax)
+}
+
+// design3DDefers is whether a press on block hit waits to see what it is:
+// a container's front (its doors, drawers, lid, shelves, rows) does
+// something on a click, so in 3D a press there moves the whole container
+// once the mouse moves, and is the click only if it is let go unmoved.
+// Pressing what can be dragged out of it (a thing in a drawer or a box, a
+// pin) still drags that.
+func (m *Model) design3DDefers(hit r3hit) bool {
+	d := m.ds()
+	o := d.byID(hit.own)
+	if o == nil || !isContainer(o.Kind) || d.pen >= 0 || d.groupMode || d.linkMode || d.labelMode {
+		return false
+	}
+	act := d.hit(hit.sx, hit.sy).act
+	return !strings.HasPrefix(act, "item:") && !strings.HasPrefix(act, "boxthing") && !strings.HasPrefix(act, "pin:")
+}
+
+// design3DPendMotion: the mouse moved with a container pressed. The mouse
+// turns the camera (the cross moves), and once it has moved a cell the
+// container is taken up and follows the cross.
+func (m *Model) design3DPendMotion(ms tea.Mouse) tea.Cmd {
+	d := m.ds()
+	r := &d.room
+	_, look := m.design3DLook(ms)
+	col, row := ms.X, ms.Y-m.boardTop()
+	if col == r.pressX && row == r.pressY {
+		return look // not moved a cell yet: it may still be a click
+	}
+	r.pendOn = false
+	h := r.pend
+	o := d.byID(h.own)
+	if o == nil {
+		return look
+	}
+	// Taken up as the flat board takes up a structure dragged by its edge.
+	r.plane, r.mapX, r.mapY = h.p.z, h.sx, h.sy
+	d.toFront(o)
+	d.sel, d.selLink, d.editing = o.ID, -1, partNone
+	d.clearMulti()
+	d.origX, d.origY, d.origW, d.origH = o.X, o.Y, o.W, o.H
+	d.pressX, d.pressY, d.lastPX, d.lastPY = h.sx, h.sy, h.sx, h.sy
+	d.origCX, d.origCY = d.camX, d.camY
+	d.drag, d.dropOn, d.dropSlot = dragMove, -1, -1
+	d.dirty = true
+	return tea.Batch(look, m.designMotion(ms))
+}
+
+// design3DPendRelease: a container pressed and let go without moving: the
+// click it was (a door opens, a drawer pulls out).
+func (m *Model) design3DPendRelease() tea.Cmd {
+	r := &m.ds().room
+	r.pendOn = false
+	cmd := m.design3DPass(r.pendMS, r.pend)
+	return tea.Batch(cmd, m.designRelease())
+}
+
+// design3DSettle puts structure id, just dragged in 3D, on the lowest layer
+// where it covers nothing: on the wall where it is clear, else in front of
+// what it is over. The layer is the one it gets by where it is let go.
+func (m *Model) design3DSettle(id int) {
+	d := m.ds()
+	o := d.byID(id)
+	if o == nil {
+		return // filed into a container
+	}
+	was := o.Layer
+	for o.Layer = 0; o.Layer < maxLayer && d.coversOnLayer(o); o.Layer++ {
+	}
+	if o.Layer != was {
+		d.dirty = true
+		m.say(fmt.Sprintf("%s: %s.", itemTitle(o), layerName(o.Layer)))
+	}
+}
+
+// frontFill is how much of the screen's width or height the structure
+// takes once the camera faces it (Tab in 3D).
+const frontFill = 0.85
+
+// design3DFront stands the camera straight in front of the chosen
+// structure, looking square at its front, its middle exactly in the
+// middle of the screen and as near as lets all of it show (frontFill of
+// the screen), for writing on it. The blocks are all the way out (as
+// they are once the camera has moved), so the front is where it stays.
+func (m *Model) design3DFront() {
+	d := m.ds()
+	r := &d.room
+	o := d.byID(d.sel)
+	if o == nil || r.rm.w == 0 {
+		return
+	}
+	var b *r3block
+	for i := range r.blocks {
+		if r.blocks[i].o == o {
+			b = &r.blocks[i]
+		}
+	}
+	if b == nil {
+		return // not in the room (too far off the screen)
+	}
+	if !r.free {
+		m.design3DFree()
+	}
+	rm := &r.rm
+	r.freeK = 1
+	front := blockDepth(b, 1, rm.big) + float64(o.Layer)*(layerStep+0.02)
+	x0, x1 := float64(b.x0)-rm.hw, float64(b.x1)-rm.hw
+	yt, yb := rm.hh-float64(2*b.y0), rm.hh-float64(2*b.y1)
+	f := r.ff * r.lensK()
+	dist := math.Max((x1-x0)/2*f/(frontFill*float64(rm.w)/2), (yt-yb)/2*f/(frontFill*float64(rm.h)))
+	r.pos = r.inRoom(r3vec{(x0 + x1) / 2, (yt + yb) / 2, front + math.Max(dist, 2)})
+	r.look = [2]float64{0, 0}
 }

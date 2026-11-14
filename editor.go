@@ -582,6 +582,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if m.inDesign() && m.design != nil && m.design.room.camDrag != camNone {
 			return m.design3DMotion(msg.Mouse()) // 3D: a drag on the empty room looks round (design_3d.go)
 		}
+		if m.inDesign() && m.design != nil && m.design.room.pendOn {
+			return m.design3DPendMotion(msg.Mouse()) // 3D: a container pressed and dragged moves (design_3d_layers.go)
+		}
 		if m.inDesign() && m.design != nil && (m.design.drag != dragNone || m.design.rackPress != nil || m.design.pinPress != nil) {
 			if m.design.room.on() { // 3D: the mouse turns the camera, and what is dragged follows the cross (design_3d.go)
 				_, look := m.design3DLook(msg.Mouse())
@@ -605,6 +608,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	case tea.MouseReleaseMsg:
 		if m.inDesign() && m.design != nil && m.design.room.camDrag != camNone {
 			return m.design3DRelease(msg.Mouse())
+		}
+		if m.inDesign() && m.design != nil && m.design.room.pendOn {
+			return m.design3DPendRelease() // 3D: a container pressed and let go: a click on it (design_3d_layers.go)
 		}
 		if m.inDesign() && m.design != nil && (m.design.drag != dragNone || m.design.rackPress != nil || m.design.pinPress != nil) {
 			return m.designRelease()

@@ -115,6 +115,9 @@ type room3D struct {
 	flatZoom       int        // the flat board's zoom before 3D set it to 100% (design3DAt100)
 	flatCam        [2]float64 // and its camX, camY
 	flatSaved      bool       // flatZoom and flatCam are kept
+	pend           r3hit      // a container pressed: dragged it moves, let go it is a click (design3DDefers)
+	pendOn         bool       //
+	pendMS         tea.Mouse  // the press
 	warpOn         bool       // the pointer is being put back in the window's middle (design_3d_pointer.go)
 	warpAt         time.Time  // when it was asked for
 	passing        bool       // a mouse event handed on to the flat board (designPress and the rest)
@@ -215,6 +218,13 @@ func (m *Model) design3DKey(k tea.Key, name string) (bool, tea.Cmd) {
 		// so the blocks stay where they are on the wall.
 		d.editing = partNone
 		return true, m.design3DTurnKey(k, arrowDir(name))
+	case "tab", "shift+tab":
+		m.design3DFront() // the camera square in front of the chosen structure, to write on it (design_3d_layers.go)
+		if o := d.byID(d.sel); o != nil && isContainer(o.Kind) && d.editing == partNone {
+			m.designEdit() // a container: write its name (on the flat board Tab steps through its stacks)
+			return true, nil
+		}
+		return false, nil // then Tab writes in it, as on the flat board
 	}
 	if d.editing != partNone || d.placing || d.pin.active {
 		return false, nil // writing; Alt+N, then a letter; a pin's own letters: as on the flat board
@@ -592,6 +602,10 @@ func (m *Model) design3DPress(ms tea.Mouse) (bool, tea.Cmd) {
 	default:
 		return true, nil
 	}
+	if hit.flat && hit.own >= 0 && m.design3DDefers(hit) {
+		r.pend, r.pendOn, r.pendMS = hit, true, ms // a drag moves it, a click opens it (design_3d_layers.go)
+		return true, nil
+	}
 	if hit.flat && (hit.own >= 0 || m.design3DTakes(hit, ms)) {
 		return true, m.design3DPass(ms, hit)
 	}
@@ -745,6 +759,13 @@ func (m *Model) design3DWheel(ms tea.Mouse) (bool, tea.Cmd) {
 			ms.X, ms.Y = hit.sx, hit.sy+m.boardTop()
 			return true, m.designWheel(ms)
 		}
+		return true, nil
+	}
+	switch ms.Button { // the wheel zooms the lens, round the middle of the screen (design_3d_layers.go)
+	case tea.MouseWheelUp:
+		m.design3DLayerKey("=")
+	case tea.MouseWheelDown:
+		m.design3DLayerKey("-")
 	}
 	return true, nil
 }
