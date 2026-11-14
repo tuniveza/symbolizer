@@ -254,6 +254,7 @@ type designState struct {
 	pinPress       *pinPress      // a pin pressed: a click opens it, a drag moves it
 	rackPress      *rackPress     // a rack row pressed: a click opens it, a drag takes it out
 	boxPick        boxSel         // the chosen thing in a box (design_box.go)
+	grab           grabState      // Alt+Space: a structure carried by the keyboard (design_grab.go)
 	boxLayer       map[int]int    // the layer looked at in each box, by ID: 1 top, 2 middle, 3 bottom (none: all)
 	labelMode      bool           // Alt+L: L, C, I, T, G label the chosen structure (design_labels.go)
 	platesOpen     bool           // AltGr+P: the list of name plates shows
@@ -785,6 +786,9 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 	d := m.ds()
 	defer d.save()
 	name := keyName(k)
+	if ok, cmd := m.designGrabKey(k, name); ok { // Alt+Space: grab, or show big (design_grab.go)
+		return cmd
+	}
 	if ok, cmd := m.design3DKey(k, name); ok { // Ctrl + F: 3D; in 3D: its own keys (design_3d.go)
 		return cmd
 	}
@@ -1064,6 +1068,9 @@ func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 	defer d.save()
 	if ms.Y == m.height-3 && !d.room.passing {
 		return m.designToolClick(ms.X)
+	}
+	if d.grab.active && !d.room.passing { // carried by Alt+Space: a click puts it down (design_grab.go)
+		return m.grabDrop()
 	}
 	if ok, cmd := m.design3DPress(ms); ok { // the room in 3D: a look round, or handed on as a flat cell (design_3d.go)
 		return cmd
@@ -2624,6 +2631,8 @@ func (m *Model) designStatus() string {
 	switch {
 	case d.saveErr != "":
 		hint = "✗ board not saved: " + d.saveErr
+	case m.grabStatus() != "": // carried, or shown big, by Alt+Space (design_grab.go)
+		hint = m.grabStatus()
 	case d.drag == dragMove && d.dropOn >= 0:
 		hint = "Let go to put it in " + octName(d.byID(d.dropOn))
 		if t := d.byID(d.dropOn); t != nil && t.Kind == kDrawer && d.dropSlot >= 0 {

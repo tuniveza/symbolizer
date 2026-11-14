@@ -255,12 +255,16 @@ type rackOpen struct {
 	origW, origH int // its own size: open, it is as wide as the rack
 	pinX, pinY   int // from a board: where it was pinned (and its own size is kept)
 	active       bool
+	// Shown big by Alt+Space (design_grab.go): out of any container, on its
+	// own over the view; its place, layer and size in the container kept.
+	max                 bool
+	origX, origY, layer int
 }
 
 // openIn is the thing open inside rack r, or nil.
 func (d *designState) openIn(r *dOct) *dOct {
-	if !d.opened.active || r == nil || r.ID != d.opened.rack {
-		return nil
+	if !d.opened.active || d.opened.max || r == nil || r.ID != d.opened.rack {
+		return nil // (shown big is not in its container: design_grab.go)
 	}
 	return d.byID(d.opened.id)
 }
@@ -345,7 +349,7 @@ func (d *designState) openRow(r *dOct) int {
 // under its row, as wide as the rack inside.
 func (d *designState) openRect(it *dOct) (x, y, w, h int, ok bool) {
 	r := d.byID(d.opened.rack)
-	if r == nil || r.Kind == kBoard { // from a board: where it is, its own size
+	if r == nil || r.Kind == kBoard || d.opened.max { // from a board (or shown big): where it is, its own size
 		return 0, 0, 0, 0, false
 	}
 	at := d.openRow(r)
@@ -361,7 +365,7 @@ func (d *designState) openPlace(o *dOct) (x, y int, ok bool) {
 		return 0, 0, false
 	}
 	r := d.byID(d.opened.rack)
-	if r == nil || r.Kind == kBoard {
+	if r == nil || r.Kind == kBoard || d.opened.max {
 		return 0, 0, false
 	}
 	return r.X + 1, r.Y + 3 + rackRowLines*d.openRow(r) + 1, true
@@ -437,6 +441,10 @@ func (m *Model) designRackStep(step int) {
 		m.say("Nothing else in " + octName(r) + ".")
 		return
 	}
+	if op.max {
+		m.grabMaxStep(r, op, step) // shown big: the container's next thing shown big (design_grab.go)
+		return
+	}
 	m.designRackClose()
 	n := len(r.Items)
 	next := ((op.at+step)%n + n) % n
@@ -456,6 +464,9 @@ func (m *Model) designRackClose() bool {
 		return false
 	}
 	d.opened = rackOpen{}
+	if op.max {
+		m.grabCameraBack() // in 3D the camera goes back to where it was (design_grab.go)
+	}
 	it, r := d.byID(op.id), d.byID(op.rack)
 	if it == nil || r == nil {
 		return true // deleted while open, or its rack is gone: it stays where it is
@@ -464,6 +475,9 @@ func (m *Model) designRackClose() bool {
 	it.X, it.Y = 0, 0
 	if r.Kind == kBoard {
 		it.X, it.Y = op.pinX, op.pinY // back on its pin
+	}
+	if op.max {
+		it.X, it.Y, it.Layer = op.origX, op.origY, op.layer // back where it was in its container
 	}
 	it.W, it.H = op.origW, op.origH
 	at := min(max(op.at, 0), len(r.Items))
@@ -506,6 +520,9 @@ func (d *designState) openPutBack(octs []*dOct) []*dOct {
 			ic.X, ic.Y, ic.W, ic.H = 0, 0, op.origW, op.origH
 			if r.Kind == kBoard {
 				ic.X, ic.Y = op.pinX, op.pinY
+			}
+			if op.max {
+				ic.X, ic.Y, ic.Layer = op.origX, op.origY, op.layer
 			}
 			at := min(max(op.at, 0), len(r.Items))
 			rc.Items = append(append(append([]*dOct(nil), r.Items[:at]...), &ic), r.Items[at:]...)

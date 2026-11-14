@@ -154,6 +154,7 @@ var helpGroups = []helpGroup{
 		{"  L · C · I", "  label: icon + title → title + icon → icon → title → none · its colour · its icon (symbols, then pictures in design/images)"},
 		{"  T · G", "  the label's own words · its name plate: all with the same name are a group"},
 		{"Space", "on (or with the mouse over) a cabinet, drawer, rack, board or box: open it or shut it (a box: its lid); on anything else with a name plate: choose its whole group"},
+		{"Alt + Space", "grab: in 3D the structure at the cross (or nearest it) rides under the cross as the camera looks and moves; on the flat board the chosen one, moved by the arrows. Alt + Space again (or a click) puts it down, Esc or Alt twice puts it back. On a thing inside a container: shows it big (Alt + Space, Esc or Alt twice: back; Tab: the next one)"},
 		{"Ctrl + drag · Ctrl + click", "a shaded box chooses what it touches · choose one more (or one less); then drag one or Alt + arrows move them all, X X deletes them, Esc lets go"},
 		{"Shift + G", "group mode: click structures (or drag a box round them) to pick them, G picks the chosen one; Enter names them all with one name plate"},
 		{"AltGr + P  (þ)", "the list of name plates and what has each"},

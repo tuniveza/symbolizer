@@ -667,6 +667,9 @@ func (m *Model) designAltTap() bool {
 		return false
 	}
 	d.altTapAt = time.Time{}
+	if m.grabEsc() { // carried or shown big by Alt+Space: put back (design_grab.go)
+		return true
+	}
 	if d.room.on() && !m.design3DModeEsc() {
 		m.design3DEsc() // in 3D with nothing to leave: as Esc there, back to the flat board
 		return true
