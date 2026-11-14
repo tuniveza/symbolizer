@@ -651,8 +651,11 @@ func (r *room3D) takeRoom(d *designState, c *boardCanvas, rm *r3room) {
 		}
 		for _, p := range kept[0].parts {
 			p.read() // (drawn but never put on the screen: its cells not read yet)
-			// Only the rows and columns of it that are in the room.
-			px, py := p.l.GetX(), p.l.GetY()
+			// Only the rows and columns of it that are in the room. Where
+			// it is now (from its corner), not where its kept drawing was
+			// last put: off the screen (or out on a layer) the flat board
+			// does not draw it, so that place is from before it moved.
+			px, py := x+p.dx, y+p.dy
 			for cy := max(0, rm.ty0-py); cy < min(p.cells.Height(), rm.ty0+rm.th-py); cy++ {
 				line := p.cells.Lines[cy]
 				for cx := max(0, rm.tx0-px); cx < min(len(line), rm.tx0+rm.tw-px); cx++ {

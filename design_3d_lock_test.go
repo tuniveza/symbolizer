@@ -162,6 +162,35 @@ func TestDesign3DOverlapOwnDrawing(t *testing.T) {
 	if !r.own[page.ID] || !r.own[cab.ID] {
 		t.Fatalf("overlapping: own drawings %v, want both %d and %d", r.own, page.ID, cab.ID)
 	}
+	at := func() (int, int) { // where the page's title is in the room's picture, from the page's corner
+		x, y, _, _ := d.rect(page)
+		for ty := 0; ty < r.rm.th; ty++ {
+			var row strings.Builder
+			for tx := 0; tx < r.rm.tw; tx++ {
+				g := r.tex[ty*r.rm.tw+tx].glyph
+				if len(g) != 1 {
+					g = "#" // one byte a cell, so an index is a cell
+				}
+				row.WriteString(g)
+			}
+			if i := strings.Index(row.String(), "Hellothere"); i >= 0 {
+				for _, b := range r.blocks {
+					if b.o == page {
+						return i + r.rm.tx0 - x, ty + r.rm.ty0 - b.shift - y
+					}
+				}
+			}
+		}
+		t.Fatal("no page title in the room's picture")
+		return 0, 0
+	}
+	ax, ay := at()
+	page.X += 7 // moved (as a drag does), still over the cabinet: its kept drawing must go with it
+	page.Y++
+	boardRows(m)
+	if bx, by := at(); bx != ax || by != ay {
+		t.Fatalf("moved, its title is at %d,%d from its corner, was %d,%d: the drawing stayed behind", bx, by, ax, ay)
+	}
 	// Each title is in its own block's rows only.
 	for _, c := range []struct {
 		o     *dOct
@@ -179,8 +208,8 @@ func TestDesign3DOverlapOwnDrawing(t *testing.T) {
 			var row strings.Builder
 			for tx := 0; tx < r.rm.tw; tx++ {
 				g := r.tex[ty*r.rm.tw+tx].glyph
-				if g == "" {
-					g = " "
+				if len(g) != 1 {
+					g = "#" // one byte a cell, so an index is a cell
 				}
 				row.WriteString(g)
 			}
@@ -200,6 +229,48 @@ func TestDesign3DOverlapOwnDrawing(t *testing.T) {
 		}
 		if n != 1 {
 			t.Errorf("%q shows %d times in the room's picture, want once", c.title, n)
+		}
+	}
+}
+
+// A structure moved partly off the flat screen in 3D (dragged or carried
+// past its edge) keeps its drawing on its own front: the flat board no
+// longer draws it, so its kept drawing is put where it is now, not where
+// the flat board last put it (else its words stay behind, a strip of them
+// apart from it and its front blank).
+func TestDesign3DOffScreenDrawingFollows(t *testing.T) {
+	m := room3DModel(t, 160, 50)
+	d := m.ds()
+	o := d.octs[1]
+	o.Header = "Hellothere"
+	r := &d.room
+	r.yaw, r.pitch = 20, 8
+	at := func() (int, int) { // its title in the room's picture, from its corner
+		r.chosenCam = r.camKey(m.width, m.boardH())
+		boardRows(m)
+		x, y, _, _ := d.rect(o)
+		for ty := 0; ty < r.rm.th; ty++ {
+			var row strings.Builder
+			for tx := 0; tx < r.rm.tw; tx++ {
+				g := r.tex[ty*r.rm.tw+tx].glyph
+				if len(g) != 1 {
+					g = "#" // one byte a cell, so an index is a cell
+				}
+				row.WriteString(g)
+			}
+			if i := strings.Index(row.String(), "Hellothere"); i >= 0 {
+				return i + r.rm.tx0 - x, ty + r.rm.ty0 - y
+			}
+		}
+		t.Fatal("no title in the room's picture")
+		return 0, 0
+	}
+	ax, ay := at()                                      // on the screen: read from the flat board
+	for _, dx := range []int{m.width - o.X + 2, 5, 7} { // just off the screen's right edge, then further
+		o.X += dx
+		o.Y++
+		if bx, by := at(); bx != ax || by != ay {
+			t.Fatalf("moved to %d,%d: its title is at %d,%d from its corner, want %d,%d", o.X, o.Y, bx, by, ax, ay)
 		}
 	}
 }
