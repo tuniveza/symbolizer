@@ -19,6 +19,8 @@ pj	Projects	bigger projects
 st	Storage	asset packs, SDKs, saved files
 st/tools	Build tools	toolchains and libraries every project builds with (was lb)
 ~/Projects	~/Projects
+~/recovered_files	Recovered files	an old home folder saved from a disk: its projects, downloads and settings
+~/.local/src	Downloaded source	other people's programs, downloaded to build here (zathura, audacious …)
 
 # ---- ca: Claude apps -----------------------------------------------------------------------
 ca/ai	AI	neural networks

@@ -161,6 +161,7 @@ Pages are plain text files: `~/.local/share/symbolizer/diary/2026-10-28/001.txt`
 `sy manager` (or **Alt + M** → Manager). All of `~/an` on one screen, sorted into its top folders.
 The names come from `~/an/ca/sy/manager/names.tsv`. **◆** is a project: a `make.sh`, or a build file of its own (`go.mod`, `Cargo.toml`, `package.json` …), like Symbolizer.
 **Other projects** lists the projects outside `pj`, `ca` and `co` (brick in `br` …); each is also in its own category.
+**Recovered files** (`~/recovered_files`) and **Downloaded source** (`~/.local/src`) list other people's code and old copies: what is straight inside, and below it each git repository or project (CMake, meson, a Makefile …). The Manager never offers to adopt them.
 
 | Keys | What it does |
 |:---|:---|

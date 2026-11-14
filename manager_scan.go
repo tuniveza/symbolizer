@@ -14,7 +14,8 @@ import (
 	"time"
 )
 
-// The Manager's scan: one walk over ~/an (and ~/Projects) that sorts every
+// The Manager's scan: one walk over ~/an (and ~/Projects, ~/recovered_files,
+// ~/.local/src) that sorts every
 // folder into its category, names it from ~/an/ca/sy/manager/names.tsv (the
 // same list the manager program uses), finds the projects in it and adds up sizes, file counts and the
 // last change. It runs in the background; the last result is kept in
@@ -97,7 +98,7 @@ func mgNames(path string) (map[string]mgName, map[string]mgName, []string, bool)
 			continue
 		}
 		exact[p] = n
-		if !strings.Contains(p, "/") || p == "~/Projects" {
+		if !strings.Contains(p, "/") || p == "~/Projects" || mgOutsideKey(p) {
 			order = append(order, p)
 		}
 	}
@@ -183,6 +184,7 @@ const (
 	mkAndroid
 	mkMainRb
 	mkHaxe
+	mkMeson
 )
 
 // strong markers make a folder a project of its own, even without make.sh.
@@ -220,6 +222,8 @@ func mgMarker(name string, d fs.DirEntry) uint32 {
 		return mkMakefile
 	case "CMakeLists.txt":
 		return mkCMake
+	case "meson.build":
+		return mkMeson
 	case "index.html":
 		return mkIndex
 	case "v.mod":
@@ -451,7 +455,9 @@ func mgScan(root string, extra []string, namesPath string) *mgData {
 	// projectRoots are the categories whose projects are listed (the ROOTS in manager.conf).
 	projectRoots := map[string]bool{"co": true, "pj": true, "ca": true}
 	for _, e := range extra {
-		projectRoots[rel(e)] = true
+		if !mgOutsideKey(rel(e)) {
+			projectRoots[rel(e)] = true
+		}
 	}
 
 	var notNamed, leftovers []mgItem
@@ -475,7 +481,9 @@ func mgScan(root string, extra []string, namesPath string) *mgData {
 			continue
 		}
 		cat := mgCat{Key: key, Name: n.name, About: n.about, Size: td.size, Files: td.files, Changed: td.newest}
-		if projectRoots[key] {
+		if mgOutsideKey(key) {
+			cat.Items = mgOutside(dirs, ti, item)
+		} else if projectRoots[key] {
 			cat.Items = mgProjects(dirs, ti, rel, exact, item, ignores)
 		} else {
 			cat.Items = mgChildren(dirs, ti, index, td.path, item, nameOf)
@@ -490,7 +498,7 @@ func mgScan(root string, extra []string, namesPath string) *mgData {
 	// projects outside the project roots (brick in br …): one more category
 	var others []mgItem
 	for _, ti := range tops {
-		if projectRoots[rel(dirs[ti].path)] || strings.HasPrefix(filepath.Base(dirs[ti].path), ".") {
+		if k := rel(dirs[ti].path); projectRoots[k] || mgOutsideKey(k) || strings.HasPrefix(filepath.Base(dirs[ti].path), ".") {
 			continue
 		}
 		others = append(others, mgOthers(dirs, ti, rel, item, ignores)...)
@@ -533,7 +541,7 @@ func mgScan(root string, extra []string, namesPath string) *mgData {
 		return ri < rj
 	})
 	// projects first: pj, ca, co, then the rest in names.tsv's order
-	first := map[string]int{"pj": 0, "ca": 1, "co": 2, "~/Projects": 3, "+": 4}
+	first := map[string]int{"pj": 0, "ca": 1, "co": 2, "~/Projects": 3, "+": 4, "~/recovered_files": 5, "~/.local/src": 6}
 	sort.SliceStable(data.Cats, func(i, j int) bool {
 		fi, iok := first[data.Cats[i].Key]
 		fj, jok := first[data.Cats[j].Key]
@@ -624,6 +632,62 @@ func mgProjects(dirs []mgDir, top int, rel func(string) string, exact map[string
 			}
 		}
 		out = append(out, it)
+	}
+	return out
+}
+
+// mgOutsideRoots are folders outside ~/an that hold other people's code or
+// old copies: each is a category of its own, after Other projects.
+var mgOutsideRoots = []string{"recovered_files", ".local/src"}
+
+func mgOutsideKey(key string) bool {
+	for _, r := range mgOutsideRoots {
+		if key == "~/"+r {
+			return true
+		}
+	}
+	return false
+}
+
+// mgOutside lists one of those: every folder straight inside it, and below
+// those (at most three down) each git repository or project (make.sh, a
+// strong build file, CMake, a Makefile or meson). Nothing inside
+// a project found is looked at again: a recovered home folder holds caches
+// (go/pkg/mod …) with hundreds of go.mod files.
+func mgOutside(dirs []mgDir, top int, item func(*mgDir) mgItem) []mgItem {
+	var out []mgItem
+	topPath := dirs[top].path
+	level := map[int]int{top: 0}   // how far below the root
+	listed := map[int]int{top: -1} // listed folder → its indent
+	stop := map[int]bool{}
+	for i := top + 1; i < len(dirs); i++ {
+		d := &dirs[i]
+		if !inFolder(topPath, d.path) {
+			break // walk order: a folder's insides come straight after it
+		}
+		level[i] = level[d.parent] + 1
+		if stop[d.parent] || d.skip || strings.HasPrefix(filepath.Base(d.path), ".") || level[i] > 3 {
+			stop[i] = true
+			continue
+		}
+		project := d.own&(mkMake|mkStrong|mkGit|mkCMake|mkMakefile|mkMeson) != 0 // downloaded code builds with these
+		if !project && level[i] > 1 {
+			continue
+		}
+		depth := 0
+		for a := d.parent; a >= 0; a = dirs[a].parent {
+			if dd, ok := listed[a]; ok {
+				depth = dd + 1
+				break
+			}
+		}
+		listed[i] = depth
+		it := item(d)
+		it.Group, it.Depth, it.Project = level[i] == 1, depth, project
+		out = append(out, it)
+		if project {
+			stop[i] = true
+		}
 	}
 	return out
 }

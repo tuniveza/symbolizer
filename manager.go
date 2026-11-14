@@ -96,6 +96,9 @@ func (m *Model) mgScanCmd() tea.Cmd {
 	root := mgRoot()
 	home, _ := os.UserHomeDir()
 	extra := []string{filepath.Join(home, "Projects")}
+	for _, r := range mgOutsideRoots {
+		extra = append(extra, filepath.Join(home, r))
+	}
 	if os.Getenv("SY_AN") != "" {
 		extra = nil
 	}
@@ -907,12 +910,26 @@ func (m *Model) mgDetail(w, h int) []string {
 	p := mgPath(s.data.Root, it)
 	field("Where", shortPath(p), cAccent)
 	field("Kind", mgKindWord(it), cText)
+	hasMake := false // looked at here: a ◆ can be a go.mod or a git repository with no make.sh
+	if it.Dir {
+		if info, err := os.Stat(filepath.Join(p, "make.sh")); err == nil && info.Mode()&0o111 != 0 {
+			hasMake = true
+		}
+	}
+	key := ""
+	if r.cat < len(s.data.Cats) {
+		key = s.data.Cats[r.cat].Key
+	}
 	switch {
-	case it.Project && it.Reload:
+	case hasMake && it.Reload:
 		field("Builds", "./make.sh ✓  ./reload.sh ✓", cText)
-	case it.Project:
+	case hasMake:
 		field("Builds", "./make.sh ✓", cText)
-	case it.Kind != "" && it.Dir && r.cat < len(s.data.Cats) && mgProjectCat(s.data.Cats[r.cat].Key):
+	case mgOutsideKey(key):
+		if it.Project {
+			field("Builds", "its own way (someone else's code: no make.sh)", cDim)
+		}
+	case it.Kind != "" && it.Dir && mgProjectCat(key):
 		field("Builds", "no make.sh yet (Alt+A → Adopt gives it one)", cDim)
 	}
 	if it.Dir {
@@ -967,7 +984,7 @@ func (m *Model) mgDetail(w, h int) []string {
 }
 
 func mgProjectCat(key string) bool {
-	return key == "co" || key == "pj" || key == "ca" || key == "~/Projects"
+	return key == "co" || key == "pj" || key == "ca" || key == "~/Projects" || mgOutsideKey(key)
 }
 
 // looksTextName guesses from the name alone (the detail panel draws often,

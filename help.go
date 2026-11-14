@@ -180,7 +180,7 @@ var helpGroups = []helpGroup{
 		{"(text)", "all text in Design mode is centred: on the board, and the bars above and below it"},
 	}},
 	{"Manager mode", false, []helpLine{
-		{"(what it shows)", "all of ~/an sorted into its top folders, named from ~/an/ca/sy/manager/names.tsv; ◆ is a project (make.sh, go.mod …); Other projects: those outside pj, ca, co"},
+		{"(what it shows)", "all of ~/an sorted into its top folders, named from ~/an/ca/sy/manager/names.tsv; ◆ is a project (make.sh, go.mod …); Other projects: those outside pj, ca, co; Recovered files and Downloaded source: code outside ~/an"},
 		{"Up / Down", "choose a category; once in one, a row (PgUp, PgDn, Home, End too)"},
 		{"Right / Enter", "go into the chosen category: Up / Down then choose its rows"},
 		{"Left / Esc", "back out to the categories"},

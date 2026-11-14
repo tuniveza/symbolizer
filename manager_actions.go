@@ -123,7 +123,7 @@ func (m *Model) mgActions() (items []mgAction, title, about string) {
 			if fileExists(filepath.Join(pd, "reload.sh")) {
 				items = append(items, mgAction{label: "Watch (build and run on every save)", args: []string{"watch"}, dir: pd})
 			}
-		} else if r.it.Dir && r.it.Kind != "" && r.it.Kind != "copies" && r.it.Kind != "leftover" {
+		} else if r.it.Dir && r.it.Kind != "" && r.it.Kind != "copies" && r.it.Kind != "leftover" && !mgOutsideKey(s.data.Cats[r.cat].Key) { // never in other people's code
 			items = append(items, mgAction{label: "Adopt (give it a make.sh)", args: []string{"adopt", p}, dir: p, rescan: true})
 		}
 		dir := p
@@ -334,6 +334,10 @@ func (m *Model) mgRowAction(sub string) tea.Cmd {
 		return nil
 	}
 	pd := mgProjectDir(mgPath(mgRoot(), r.it))
+	if pd == "" && mgOutsideKey(m.mgr.data.Cats[r.cat].Key) {
+		m.sayErr(r.it.Name + " is downloaded or recovered code: it has no make.sh to run.")
+		return nil
+	}
 	if pd == "" {
 		m.sayErr(r.it.Name + " has no make.sh. Alt+A → Adopt gives it one.")
 		return nil

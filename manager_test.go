@@ -224,3 +224,56 @@ func TestManagerArrows(t *testing.T) {
 		key("left")
 	}
 }
+
+// Folders outside ~/an with other people's code (~/.local/src) or an old
+// copy of home (~/recovered_files): each is a category, listing what is
+// straight inside and the git repositories and projects below, but never
+// the hundreds of go.mod files in a Go cache.
+func TestManagerOutside(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	put := func(p, text string) {
+		p = filepath.Join(home, p)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put("an/ca/sy/manager/names.tsv", "ca\tApps\n~/.local/src\tDownloaded source\n~/recovered_files\tRecovered files\n")
+	put("an/ca/x.txt", "x")
+	put(".local/src/zathura/meson.build", "")
+	put(".local/src/zathura/src/inner/CMakeLists.txt", "") // inside a project: not again
+	put(".local/src/tarballs/lib-1.0/CMakeLists.txt", "")
+	put(".local/src/tarballs/lib-1.0.tar.gz", "")
+	put("recovered_files/Hyprland-Dots/.git/HEAD", "ref: refs/heads/main\n")
+	put("recovered_files/go/pkg/mod/github.com/x/go.mod", "module x\n") // a cache, too far down
+	put("recovered_files/Music/song.mp3", "")
+	var extra []string
+	for _, r := range mgOutsideRoots {
+		extra = append(extra, filepath.Join(home, r))
+	}
+	d := mgScan(filepath.Join(home, "an"), extra, filepath.Join(home, "an/ca/sy/manager/names.tsv"))
+	got := map[string]string{}
+	var order []string
+	for _, c := range d.Cats {
+		order = append(order, c.Key)
+		var rows []string
+		for _, it := range c.Items {
+			mark := ""
+			if it.Project {
+				mark = "◆"
+			}
+			rows = append(rows, mark+it.Rel)
+		}
+		got[c.Key] = strings.Join(rows, " ")
+	}
+	if o := strings.Join(order, " "); o != "ca ~/recovered_files ~/.local/src" {
+		t.Fatalf("category order = %q", o)
+	}
+	if g := got["~/.local/src"]; g != "◆~/.local/src/tarballs/lib-1.0 ~/.local/src/tarballs ◆~/.local/src/zathura" && g != "~/.local/src/tarballs ◆~/.local/src/tarballs/lib-1.0 ◆~/.local/src/zathura" {
+		t.Fatalf("downloaded source = %q", g)
+	}
+	if g := got["~/recovered_files"]; g != "◆~/recovered_files/Hyprland-Dots ~/recovered_files/Music ~/recovered_files/go" {
+		t.Fatalf("recovered files = %q", g)
+	}
+}
