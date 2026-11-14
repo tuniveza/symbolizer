@@ -336,6 +336,13 @@ void main() {
 		col = wallFinish(fcol, textCol, p.x, p.y, foot, plaster(p.x, p.y, foot));
 	} else if (mat == matCeiling) {
 		col = shade32(fcol, 5.0 * gk * plaster(p.x, p.z, foot));
+	} else if (mat == matWindow) {
+		bool glass;
+		col = windowAt(fi, n, p, dir, t, fcol, glass); // design_3d_world_glsl.go
+		if (glass) {
+			outCol = vec4(chans(col) / 255.0, 1.0);
+			return;
+		}
 	}
 
 	// The light (shadePixel), worked out at every pixel.
@@ -370,8 +377,9 @@ void main() {
 		mul = lAmbient + lFill * fill + lLamp * diff;
 		add = lGlow * diff + lSpec * spec;
 	}
-	// lit
-	vec3 o = floor(clamp(chans(col) * mul + add * vec3(1.0, 0.9, 0.72), 0.0, 255.0));
+	// lit, with the extra lights (design_3d_world_glsl.go)
+	vec3 E = mat == matLamp ? vec3(0.0) : xlightAt(n, p);
+	vec3 o = floor(clamp(chans(col) * (mul + E) + add * vec3(1.0, 0.9, 0.72) + lGlowE * E, 0.0, 255.0));
 	outCol = vec4(o / 255.0, 1.0);
 }
 `

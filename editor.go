@@ -304,6 +304,10 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		}
 		m.pointerCmd() // the pointer hidden while the room is in 3D (design_3d_pointer.go)
 		m.soundCmd()   // the music played while the room is in 3D (design_3d_sound.go)
+		// The people outside the windows walk on (design_3d_world.go).
+		if c := m.outsideCmd(); c != nil {
+			cmd = tea.Batch(cmd, c)
+		}
 	}()
 	if m.design != nil {
 		m.design.hoverOnly = false // set again below if this is only the mouse moving (designHover)
@@ -315,6 +319,12 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			if !r.light || time.Since(r.movedAt) < room3DStill {
 				m.design.hoverOnly = true // sharp already, or still moving (a tick again after)
 			}
+		}
+		return m, nil
+	}
+	if _, ok := msg.(room3DOutsideMsg); ok { // the View after this draws the people outside further on
+		if m.design != nil {
+			m.design.room.world.tick = false
 		}
 		return m, nil
 	}

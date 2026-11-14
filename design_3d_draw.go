@@ -739,6 +739,7 @@ func (r *room3D) scene(rm *r3room, z float64, lamp r3vec) {
 		r.layerOut(&r.blocks[i], f0, p0, hw, hh)
 	}
 	r.lamp(rm, lamp, text, bg, accent)
+	r.worldScene(rm) // the windows and the other lights (design_3d_world.go)
 }
 
 // block adds block i's faces, against the wall.
@@ -1208,16 +1209,18 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 	r.gpuDrawn = r.paint && len(r.rgbOut) == 3*pw*ph && r.gpuDraw(&c, rm)
 	if r.gpuDrawn {
 		r.base, r.mul, r.add, r.zb, r.face, r.plas = nil, nil, nil, nil, nil, nil
+		r.world.tint = nil
 	} else if n := pw * ph; len(r.base) != n {
 		r.base, r.mul, r.add = make([]uint32, n), make([]float32, n), make([]float32, n)
 		r.zb, r.face, r.plas = make([]float32, n), make([]int32, n), make([]float32, n)
+		r.world.tint = make([]uint32, n)
 	}
 	r.bands(ph, func(j0, j1 int) {
 		if r.gpuDrawn {
 			return
 		}
 		for i := j0 * pw; i < j1*pw; i++ {
-			r.base[i], r.mul[i], r.add[i] = c.outer, 1, 0
+			r.base[i], r.mul[i], r.add[i], r.world.tint[i] = c.outer, 1, 0, 0
 			r.zb[i], r.face[i] = math.MaxFloat32, -1
 		}
 		for fi := range r.faces {
@@ -1254,6 +1257,9 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 		r.words(&v, rm)
 	} else if len(r.chars) != w*h {
 		r.chars = make([]r3char, w*h) // none: in the picture the words are painted on (design_3d_glyphs.go)
+	}
+	if !r.pix {
+		r.townLetters(&c) // the town outside in the terminal's letters (design_3d_world.go)
 	}
 	if !r.plain {
 		r.finishInk()
@@ -1470,6 +1476,13 @@ func (r *room3D) shadePixel(c *r3shade, idx, anchor int, dir r3vec) {
 			col = plasterLit(fc.col, plas(p.x, p.z, foot()), ceilingGrain*c.gk)
 		case matLamp, matShade:
 			col = fc.col
+		case matWindow:
+			glass := false
+			if col, glass = r.windowAt(c, fc, n, p, dir, t, nil); glass {
+				// The town through the glass is as bright as it is outside.
+				r.base[idx], r.mul[idx], r.add[idx], r.world.tint[idx] = col, 1, 0, 0
+				return
+			}
 		}
 		r.base[idx] = col
 
@@ -1478,8 +1491,8 @@ func (r *room3D) shadePixel(c *r3shade, idx, anchor int, dir r3vec) {
 		// face (worked out before it), so it is worked out for a quarter
 		// of the pixels. The colours above, its letters and lines, are
 		// every pixel's own, so nothing is blurred.
-		if anchor != idx && r.face[anchor] == fi {
-			r.mul[idx], r.add[idx] = r.mul[anchor], r.add[anchor]
+		if anchor != idx && r.face[anchor] == fi && fc.mat != matWindow {
+			r.mul[idx], r.add[idx], r.world.tint[idx] = r.mul[anchor], r.add[anchor], r.world.tint[anchor]
 			return
 		}
 		if shadowOn {
@@ -1490,7 +1503,7 @@ func (r *room3D) shadePixel(c *r3shade, idx, anchor int, dir r3vec) {
 		vx, vy, vz := -dir.x*dl, -dir.y*dl, -dir.z*dl
 		fill := n.x*vx + n.y*vy + n.z*vz
 		if fc.mat == matLamp {
-			r.mul[idx], r.add[idx] = float32(0.85+0.15*fill), 0
+			r.mul[idx], r.add[idx], r.world.tint[idx] = float32(0.85+0.15*fill), 0, 0
 			return
 		}
 		lx, ly, lz := lamp.x-p.x, lamp.y-p.y, lamp.z-p.z
@@ -1518,6 +1531,7 @@ func (r *room3D) shadePixel(c *r3shade, idx, anchor int, dir r3vec) {
 		}
 		r.mul[idx] = float32(light.ambient + light.fill*fill + light.lamp*diff)
 		r.add[idx] = float32(light.glow*diff + light.spec*spec)
+		r.world.tint[idx] = r.world.xlightAt(n, p) // the other lights (design_3d_world.go)
 	}
 }
 
@@ -1788,6 +1802,12 @@ func (r *room3D) pixel(i int) uint32 { return r.lit(r.base[i], i) }
 func (r *room3D) lit(col uint32, i int) uint32 {
 	m, a := float64(r.mul[i]), float64(r.add[i])
 	cr, cg, cb := chans(col)
+	if e := r.world.tint; e != nil && e[i] != 0 {
+		// The other lights' colours too (design_3d_world.go).
+		er, eg, eb := unpackTint(e[i])
+		g := r.world.glowE
+		return rgb32(byteOf(cr*(m+er)+a*lampWarm[0]+g*er), byteOf(cg*(m+eg)+a*lampWarm[1]+g*eg), byteOf(cb*(m+eb)+a*lampWarm[2]+g*eb))
+	}
 	return rgb32(byteOf(cr*m+a*lampWarm[0]), byteOf(cg*m+a*lampWarm[1]), byteOf(cb*m+a*lampWarm[2]))
 }
 

@@ -179,6 +179,7 @@ type room3D struct {
 	segOn          bool
 	edgeAt         map[r3edgeKey]int32
 	edges          []r3edge // the blocks' edges this frame, and the faces either side (see edgeInk)
+	world          r3world  // the windows, the town outside and the other lights (design_3d_world.go)
 }
 
 // on is whether the board area shows the room in 3D: the first-person camera (or the tests' fixed one).
