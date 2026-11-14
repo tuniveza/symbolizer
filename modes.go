@@ -26,10 +26,11 @@ var modes = []mode{
 	{"\uf02d", "▣", "Diary", "a diary: writing kept by date, a chapter a day, one page in focus", true},
 	{"\U000f05da", "▥", "Book", "write books: chapters, pages and so on", false},
 	{"\U000f0f49", "✐", "Draw", "draw with the terminal itself as the drawing tool", false},
+	{"\uf07c", "▦", "Manager", "all of ~/an at a glance: every category, project and folder, with what it is, its size and its last change", true},
 }
 
 // modeWords are the names sy takes on the command line: sy design, sy slide ...
-var modeWords = map[string]int{"text": 0, "design": 1, "slide": 2, "slides": 2, "diary": 3, "book": 4, "draw": 5}
+var modeWords = map[string]int{"text": 0, "design": 1, "slide": 2, "slides": 2, "diary": 3, "book": 4, "draw": 5, "manager": 6}
 
 // Icons come from the Nerd Font symbols kitty (and some other terminals)
 // carry. Elsewhere plain symbols are used so nothing shows as an empty box.
@@ -136,6 +137,11 @@ func (m *Model) setMode(i int) tea.Cmd {
 	m.mode = i
 	if i == diaryMode {
 		m.enterDiary()
+	}
+	if i == managerMode {
+		cmd := m.enterManager() // manager.go
+		m.say(modes[i].Icon() + "  Manager. Up and Down choose, Left and Right change category, type to search.")
+		return cmd
 	}
 	if i == designMode {
 		m.ds()
