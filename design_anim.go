@@ -9,10 +9,12 @@ package main
 // clicks, keys and undo see the new state straight away.
 //
 // The flat board and the 3D room are drawn from the same openness, read
-// off the same clock (animNow), and turned into a pose by the same
-// functions below (doorTurn, doorFace, boxLidCover, boxShutAt, trayRows):
-// at any moment the 3D room shows the 3D form of the flat frame, and
-// turning to 3D (or back) while something moves, it goes on from where it is.
+// off the same clock (animNow) at one moment per frame (poseNow: every
+// part of a frame, flat drawing and 3D model alike, sees the same pose),
+// and turned into a pose by the same functions below (doorTurn, doorFace,
+// boxLidCover, boxShutAt, trayRows): at any moment the 3D room shows the
+// 3D form of the flat frame, and turning to 3D (or back) while something
+// moves, it goes on from where it is.
 
 import (
 	"math"
@@ -57,8 +59,8 @@ func (d *designState) startOpenAnim(o *dOct) {
 }
 
 // startSlotAnim starts drawer slot of o moving open (or shut). Moving
-// the other way already, it turns round from exactly where it is drawn;
-// moving that way already, it goes on as it was.
+// the other way already, it turns round from exactly where the last frame
+// showed it; moving that way already, it goes on as it was.
 func (d *designState) startSlotAnim(o *dOct, slot int, opening bool) {
 	if !designAnims || o == nil {
 		return
@@ -70,16 +72,42 @@ func (d *designState) startSlotAnim(o *dOct, slot int, opening bool) {
 	now := animNow()
 	start := now
 	if a, ok := d.anims[k]; ok {
-		if t := now.Sub(a.start); t < openAnimFor {
+		if t := d.poseNow().Sub(a.start); t < openAnimFor {
 			if a.opening == opening {
 				return
 			}
-			// Where it is now, and how far along the other way that is.
-			at := 1 - openEase(float64(t)/float64(openAnimFor))
+			// Where it is shown, and how far along the other way that is.
+			at := a.at(d.poseNow()) // how open
+			if !opening {
+				at = 1 - at // how shut
+			}
 			start = now.Add(-time.Duration(easeBack(at) * float64(openAnimFor)))
 		}
 	}
 	d.anims[k] = openAnim{start, opening}
+	if !d.poseAt.IsZero() {
+		d.poseAt = now // from now on (the next frame shows it from here)
+	}
+}
+
+// at is how open a moves to have it at moment now: 0 shut, 1 open.
+func (a openAnim) at(now time.Time) float64 {
+	e := openEase(float64(now.Sub(a.start)) / float64(openAnimFor))
+	if a.opening {
+		return e
+	}
+	return 1 - e
+}
+
+// poseNow is the moment doors, lids and drawers are shown at: the moment
+// the last frame was drawn at (flat or 3D, see designRows), so that every
+// part of a frame, flat drawing and 3D model alike, and the clicks on it,
+// see the same pose; before any frame, the clock.
+func (d *designState) poseNow() time.Time {
+	if d.poseAt.IsZero() {
+		return animNow()
+	}
+	return d.poseAt
 }
 
 // openEase is how far along a move is at time t (0 … 1 of openAnimFor):
@@ -120,16 +148,12 @@ func (d *designState) slotOpenness(o *dOct, slot int, open bool) float64 {
 	if !ok {
 		return done
 	}
-	t := float64(animNow().Sub(a.start)) / float64(openAnimFor)
-	if t >= 1 {
+	now := d.poseNow()
+	if now.Sub(a.start) >= openAnimFor {
 		delete(d.anims, k)
 		return done
 	}
-	e := openEase(t)
-	if a.opening {
-		return e
-	}
-	return 1 - e
+	return a.at(now)
 }
 
 // animating is whether anything is opening or shutting.

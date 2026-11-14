@@ -154,6 +154,19 @@ func (d *designState) drawerLinesNow(o *dOct) int {
 	return n
 }
 
+// drawerLinesMost is how many rows unit o takes, at 100%, with every
+// drawer that is out or moving out (or in): the most it takes while its
+// drawers slide.
+func (d *designState) drawerLinesMost(o *dOct) int {
+	n := drawerHeadLines(o)
+	for i := range drawerCount(o) {
+		if _, moving := d.anims[animKey{o.ID, i}]; moving || slotOpen(o, i) {
+			n += slotTrayLines(o, i)
+		}
+	}
+	return n
+}
+
 // What each line of a drawer unit on the screen is.
 const (
 	dlTop     = iota // its top edge (zoomed far out, with its name in it)

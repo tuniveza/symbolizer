@@ -211,7 +211,15 @@ func (r *room3D) area(d *designState, w, h int, z float64) r3room {
 		outmost = math.Max(outmost, b.off+b.dep)
 		r.blocks = append(r.blocks, b)
 		take(b.x0, b.y0, b.x1, b.y1)
-		if o.DrawerOpen && o.Kind != kCabinet {
+		if o.Kind == kDrawer && d.moving(o.ID) {
+			// While its drawers slide, the room is fitted to the unit
+			// with every moving drawer out: it does not grow or shrink
+			// under it row by row (the flat board stays still too).
+			if now, most := d.drawerLinesNow(o), d.drawerLinesMost(o); most > now && now > 0 {
+				take(b.x0, b.y0, b.x1, y+oh+(oh*(most-now)+now-1)/now)
+			}
+		}
+		if o.DrawerOpen && !isContainer(o.Kind) { // (a container's DrawerOpen is its doors, lid or drawers: inside its rect)
 			dx, dy, dw, dh := d.drawerRect(o) // drawn beside it, on the wall
 			take(dx, dy, dx+dw, dy+dh)
 		}

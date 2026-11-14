@@ -216,6 +216,7 @@ type designState struct {
 	layKey         uint64               // what lay was worked out from
 	layZoom        int                  // the zoom lay was worked out for, plus 1 (0: none yet)
 	animTick       bool                 // a frame for them is coming
+	poseAt         time.Time            // the moment the last frame showed them at (design_anim.go)
 	saveErr        string
 	savePending    bool        // a change waits to be written (designSaveLater)
 	saveTick       bool        // the wait for it has started (designSaveCmd)
@@ -1730,6 +1731,7 @@ func (m *Model) designRows(sb *strings.Builder) {
 		return
 	}
 	start := time.Now()
+	d.poseAt = animNow() // doors, lids and drawers as they are this moment, all over this frame (design_anim.go)
 	var fb strings.Builder
 	fb.Grow(len(d.frame) + len(d.frame)/8)
 	m.designCanvas().renderTo(&fb)
