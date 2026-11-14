@@ -234,8 +234,7 @@ func (d *designState) cabinetLayers(o *dOct) []*lipgloss.Layer {
 	title := centreLine(head.Render(ansi.Truncate("≣ "+name, iw-1, "…")), iw, fill)
 	switch {
 	case selected && d.editing == partHeader:
-		title = centreLine(head.Render(ansi.TruncateLeft("≣ "+o.Header, max(0, lipgloss.Width("≣ "+o.Header)-(iw-2)), "…"))+
-			st(cAccent, fill).Render("▏"), iw, fill)
+		title = centreLine(d.fieldHeader(o, "≣ ", iw-1, head, fill), iw, fill) // with the cursor (design_field.go)
 	case o.Header == "":
 		title = centreLine(st(mixHex(cDim, fill, 0.25), fill).Italic(true).Render(ansi.Truncate("≣ cabinet", iw, "")), iw, fill)
 	}

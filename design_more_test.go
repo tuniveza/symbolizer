@@ -2235,8 +2235,9 @@ func TestDesignFitKeepsShape(t *testing.T) {
 	}
 }
 
-// Nothing in Design mode needs Esc: an arrow stops writing and does its
-// work; a pen goes down with its number again.
+// While writing the arrows move the cursor (design_field.go); Esc, or
+// Alt tapped twice, stops writing, and then the arrows do their work. A
+// pen goes down with its number again.
 func TestDesignNoEsc(t *testing.T) {
 	m := designTest(t)
 	d := m.ds()
@@ -2247,16 +2248,27 @@ func TestDesignNoEsc(t *testing.T) {
 	b.X, b.Y, b.W, b.H = 60, 5, 24, 10
 	d.sel, d.editing = a.ID, partHeader
 	typeKeys(m, "Hi")
-	press(m, "right") // stops writing and jumps to b
+	press(m, "right") // the cursor: writing goes on
+	if d.editing != partHeader || d.sel != a.ID {
+		t.Fatalf("Right while writing: editing %d, chosen %d", d.editing, d.sel)
+	}
+	press(m, "esc")
+	press(m, "right") // jumps to b
 	if d.editing != partNone || a.Header != "Hi" || d.sel != b.ID {
-		t.Fatalf("Right while writing: editing %d, header %q, chosen %d", d.editing, a.Header, d.sel)
+		t.Fatalf("Esc, Right: editing %d, header %q, chosen %d", d.editing, a.Header, d.sel)
 	}
 	d.sel, d.editing = b.ID, partBody
 	typeKeys(m, "x")
 	x := b.X
-	press(m, "alt+right") // stops writing and moves it
-	if d.editing != partNone || b.X != x+1 {
+	press(m, "alt+right") // the end of the line: writing goes on
+	if d.editing != partBody || b.X != x {
 		t.Fatalf("Alt+Right while writing: editing %d, x %d → %d", d.editing, x, b.X)
+	}
+	m.designAltTap()
+	m.designAltTap() // Alt tapped twice: writing stops
+	press(m, "alt+right")
+	if d.editing != partNone || b.X != x+1 {
+		t.Fatalf("Alt twice, Alt+Right: editing %d, x %d → %d", d.editing, x, b.X)
 	}
 	press(m, "3")
 	press(m, "3")

@@ -190,8 +190,9 @@ type designState struct {
 	zoom           int // index into designZooms
 	nextID         int
 
-	sel      int // the chosen structure's ID, or -1
-	editing  int // the part being written in (partNone: none)
+	sel      int     // the chosen structure's ID, or -1
+	editing  int     // the part being written in (partNone: none)
+	field    fieldEd // that part's words as Text mode's buffer: its cursor, highlight and undo (design_field.go)
 	linkMode bool
 	linkFrom int  // in link mode: the structure the next click links to, or -1
 	pen      int  // the pen in hand (0–7, rubber), or -1
@@ -363,6 +364,9 @@ var designDisk sync.Mutex // guards writing and designState.written
 // save writes the board when something changed (or, with designSaveLater,
 // notes that it must be written soon: see designSaveCmd).
 func (d *designState) save() {
+	if d.editing == partNone && d.field.buf != nil {
+		d.field.buf = nil // writing stopped: next time it starts afresh, the cursor at the end (design_field.go)
+	}
 	if !d.dirty {
 		return
 	}
@@ -758,13 +762,10 @@ func (m *Model) designLinkToggle() {
 }
 
 // stopsWriting: keys that stop writing in a structure and then do their
-// usual work (no Esc needed): the arrows, with Shift or Alt too, Alt+N and
-// Alt+L. Writing has no cursor to move, so the arrows are free.
+// usual work: Alt+N and Alt+L. The arrows, with Shift, Ctrl or Alt, move
+// the cursor in the words while writing, as in Text mode (design_field.go);
+// Esc, or Alt tapped twice, stops writing.
 func stopsWriting(name string) bool {
-	switch arrowDir(name) {
-	case "left", "right", "up", "down":
-		return !strings.Contains(name, "ctrl+")
-	}
 	switch name {
 	case "alt+n", "alt+l", "alt+shift+l", "alt+L":
 		return true
@@ -792,6 +793,12 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 	if ok, cmd := m.design3DKey(k, name); ok { // Ctrl + F: 3D; in 3D: its own keys (design_3d.go)
 		return cmd
 	}
+	if d.editing != partNone {
+		if o := d.byID(d.sel); o != nil && !stopsWriting(name) {
+			return m.designWrite(d, o, k, name) // Text mode's keys, Ctrl + Z / Y on the writing too (design_field.go)
+		}
+		d.editing = partNone // Alt+N, Alt+L: writing stops, and the key does its work
+	}
 	switch name {
 	case "ctrl+z":
 		m.designUndo()
@@ -799,13 +806,6 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 	case "ctrl+y", "ctrl+shift+z", "ctrl+Z":
 		m.designRedo()
 		return nil
-	}
-	if d.editing != partNone {
-		if o := d.byID(d.sel); o != nil && !stopsWriting(name) {
-			m.designWrite(d, o, k, name)
-			return nil
-		}
-		d.editing = partNone // an arrow (or Alt+N, Alt+L): writing stops, and the key does its work
 	}
 	m.msg = ""
 	cx, cy := m.width/2, m.boardH()/2
@@ -1001,58 +1001,6 @@ func (m *Model) designPen(p int) {
 		where = "over"
 	}
 	m.say(fmt.Sprintf("%s pen, %s the text: drag to colour. %d again puts it down.", strings.ToUpper(penNames[p][:1])+penNames[p][1:], where, p+1))
-}
-
-// designWrite types into the part of the structure being written in.
-func (m *Model) designWrite(d *designState, o *dOct, k tea.Key, name string) {
-	field := map[int]*string{partHeader: &o.Header, partBody: &o.Body, partFooter: &o.Footer}[d.editing]
-	if field == nil || !hasPart(o, d.editing) {
-		d.editing = partNone
-		return
-	}
-	before := *field
-	switch name {
-	case "esc":
-		d.editing = partNone
-		return
-	case "tab":
-		d.editing = nextPart(o, d.editing, 1)
-		m.viewToPart(o, d.editing)
-		return
-	case "shift+tab":
-		d.editing = nextPart(o, d.editing, -1)
-		m.viewToPart(o, d.editing)
-		return
-	case "enter":
-		if d.editing == partBody {
-			*field += "\n"
-		} else {
-			d.editing = nextPart(o, d.editing, 1)
-			m.viewToPart(o, d.editing)
-			return
-		}
-	case "backspace":
-		r := []rune(*field)
-		if len(r) > 0 {
-			*field = string(r[:len(r)-1])
-		}
-	case "ctrl+u", "ctrl+backspace", "alt+backspace":
-		*field = ""
-	default:
-		if k.Text == "" || k.Mod.Contains(tea.ModCtrl) || k.Mod.Contains(tea.ModAlt) {
-			return
-		}
-		*field += textLike(k.Text)
-	}
-	if o.Kind == kNote && d.editing == partBody && !noteFits(o.Body) {
-		*field = before
-		m.say("This note is full: a note holds one page (" + fmt.Sprint(noteRows) + " lines). Use a page for more.")
-		return
-	}
-	d.dirty = true
-	if m.growToFit(o) { // all of it shows, without resizing by hand
-		m.keepInView(o, d.editing == partBody)
-	}
 }
 
 // ---- mouse -----------------------------------------------------------------------
@@ -1513,6 +1461,7 @@ type drawKey struct {
 	kind, header, body, footer, color       string
 	image, openStack, items, opened         string
 	layout, scroll, editing                 int
+	cur, selS, selE                         int // the cursor and highlight in the part being written (design_field.go)
 	drawerOpen, sel, source, drop           bool
 	pulled                                  string
 	linkMode                                bool
@@ -1586,6 +1535,7 @@ func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
 	}
 	if k.sel {
 		k.editing = d.editing
+		k.cur, k.selS, k.selE, _ = d.fieldMarks(o, d.editing)
 	}
 	if o.Kind == kBoard { // where each pin is, how it is turned, and which is chosen
 		var sb strings.Builder
@@ -2153,11 +2103,9 @@ func (d *designState) octLayers(o *dOct) []*lipgloss.Layer {
 	// The parts' words, with a placeholder when one is empty and the caret
 	// where the typing goes.
 	part := func(which int, s, placeholder string, style lipgloss.Style, room int) string {
-		caret := st(cAccent, fill).Render("▏")
 		switch {
-		case editing == which:
-			s = ansi.TruncateLeft(s, max(0, lipgloss.Width(s)-(room-1)), "…")
-			return style.Render(s) + caret
+		case editing == which: // with the cursor and the highlight (design_field.go)
+			return cellsStyled(d.fieldLine(o, which, "", room), style, fill)
 		case s == "":
 			return st(dim, fill).Italic(true).Render(placeholder)
 		}
@@ -2234,25 +2182,22 @@ func (d *designState) octBody(o *dOct, editing, w, rows int, fill, dim string) s
 	if o.Body == "" && editing != partBody {
 		return centreLine(st(dim, fill).Italic(true).Render(ansi.Truncate("double-click to write", w, "…")), w, fill)
 	}
-	lines := strings.Split(ansi.Wrap(o.Body, w, ""), "\n")
-	switch {
-	case editing == partBody:
-		if last := lines[len(lines)-1]; lipgloss.Width(last) >= w {
-			lines = append(lines, "")
-		}
-		if len(lines) > rows {
-			lines = lines[len(lines)-rows:] // keep the end, where the typing is
-		}
-	case len(lines) > rows:
-		lines = lines[:rows]
-		lines[rows-1] = ansi.Truncate(lines[rows-1], w-1, "") + "…"
-	}
 	text := st(cText, fill)
-	for i, l := range lines {
-		lines[i] = text.Render(strings.TrimRight(l, " "))
-	}
-	if editing == partBody {
-		lines[len(lines)-1] += st(cAccent, fill).Render("▏")
+	var lines []string
+	if editing == partBody { // the rows round the cursor, with it and the highlight (design_field.go)
+		cells, _, _ := d.fieldBody(o, w, rows)
+		for _, cs := range cells {
+			lines = append(lines, cellsStyled(cs, text, fill))
+		}
+	} else {
+		lines = strings.Split(ansi.Wrap(o.Body, w, ""), "\n")
+		if len(lines) > rows {
+			lines = lines[:rows]
+			lines[rows-1] = ansi.Truncate(lines[rows-1], w-1, "") + "…"
+		}
+		for i, l := range lines {
+			lines[i] = text.Render(strings.TrimRight(l, " "))
+		}
 	}
 	for i := range lines {
 		lines[i] = centreLine(lines[i], w, fill) // all text on the board is centred
@@ -2643,7 +2588,7 @@ func (m *Model) designStatus() string {
 		if o := d.byID(d.sel); o != nil && o.Kind != kOct {
 			part = map[int]string{partHeader: "title", partBody: "text", partFooter: "footer"}[d.editing]
 		}
-		hint = "Writing the " + part + "  ·  Tab: next part  ·  arrows: done"
+		hint = "Writing the " + part + "  ·  keys as in Text mode  ·  Tab: next part  ·  Esc or Alt twice: done"
 	case d.room.on():
 		hint = d.room.hint()
 	case d.platesOpen:
