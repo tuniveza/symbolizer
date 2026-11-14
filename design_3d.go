@@ -221,11 +221,10 @@ func (m *Model) design3DKey(k tea.Key, name string) (bool, tea.Cmd) {
 		d.editing = partNone
 		return true, m.design3DTurnKey(k, arrowDir(name))
 	case "tab", "shift+tab":
-		m.design3DFront() // the camera square in front of the chosen structure, to write on it (design_3d_layers.go)
-		if o := d.byID(d.sel); o != nil && isContainer(o.Kind) && d.editing == partNone {
-			m.designEdit() // a container: write its name (on the flat board Tab steps through its stacks)
-			return true, nil
+		if !d.placing && m.designSectionTab(name == "shift+tab") {
+			return true, nil // a container: its next section, the camera square in front of it (design_sections.go)
 		}
+		m.design3DFront() // the camera square in front of the chosen structure, to write on it (design_3d_layers.go)
 		return false, nil // then Tab writes in it, as on the flat board
 	}
 	if d.editing != partNone || d.placing || d.pin.active {
@@ -1009,7 +1008,7 @@ func (m *Model) design3DAfter() tea.Cmd {
 // view's own Esc (design3DEsc).
 func (m *Model) design3DModeEsc() bool {
 	d := m.ds()
-	if d.placing || len(d.multi) > 0 || d.platesOpen || d.groupMode || d.opened.active ||
+	if d.sect.on || d.placing || len(d.multi) > 0 || d.platesOpen || d.groupMode || d.opened.active ||
 		d.labelMode || d.linkMode || d.pen >= 0 || d.pin.active {
 		return true
 	}
@@ -1166,7 +1165,7 @@ func (m *Model) design3DChooseMiddle() bool {
 	d := m.ds()
 	r := &d.room
 	key := r.camKey(m.width, m.boardH())
-	if key == r.chosenCam || d.editing != partNone {
+	if key == r.chosenCam || d.editing != partNone || d.sect.on { // (Tab stepping through a container: the camera faces its sections)
 		return true
 	}
 	own, _, ok := r.middleHit()

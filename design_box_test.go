@@ -171,6 +171,8 @@ func TestDesignBoxClicksEveryZoom(t *testing.T) {
 func TestDesignBoxLayersAndUndo(t *testing.T) {
 	m, d, b := boxTest(t)
 	d.sel = b.ID
+	press(m, "tab") // its name
+	press(m, "tab") // its top layer
 	press(m, "tab") // the first thing on the top layer: Idea
 	_, it := d.chosenBoxThing()
 	if it == nil || it.Header != "Idea" {
@@ -222,28 +224,35 @@ func TestDesignBoxLayersAndUndo(t *testing.T) {
 	if f := findItem(d, 903); f.Slot != 0 {
 		t.Fatalf("Ctrl+Z should undo the first PgDn: slot %d, want 0", f.Slot)
 	}
-	// Tab and Shift+Tab go round, top layer first.
+	// Tab and Shift+Tab go round: its name, then each layer and the things on it, top layer first.
 	b = d.byID(b.ID)
 	d.sel, d.boxPick = b.ID, boxSel{}
 	var seen []string
-	for range 4 {
+	for range 8 {
 		press(m, "tab")
-		_, it := d.chosenBoxThing()
-		seen = append(seen, it.Header)
+		seen = append(seen, sectLabel(d))
 	}
-	if got := strings.Join(seen, " "); got != "Idea Plan Ball Idea" {
-		t.Fatalf("Tab went %s, want Idea Plan Ball Idea", got)
+	if got, want := strings.Join(seen, " "), "name layer:top Idea layer:middle Plan layer:bottom Ball name"; got != want {
+		t.Fatalf("Tab went %s, want %s", got, want)
 	}
 	press(m, "shift+tab")
-	if _, it := d.chosenBoxThing(); it.Header != "Ball" {
-		t.Fatalf("Shift+Tab should go back to Ball, not %s", it.Header)
+	if _, it := d.chosenBoxThing(); it == nil || it.Header != "Ball" {
+		t.Fatalf("Shift+Tab should go back to Ball, not %v", it)
 	}
-	// Esc lets go of the thing; X X with one chosen takes it away.
+	// Esc stops writing, the thing still chosen; Esc again lets go of it;
+	// X X with one chosen takes it away.
+	press(m, "esc")
+	if _, it := d.chosenBoxThing(); it == nil || d.editing != partNone {
+		t.Fatal("Esc should stop writing and keep the thing chosen")
+	}
 	press(m, "esc")
 	if _, it := d.chosenBoxThing(); it != nil || d.sel != b.ID {
 		t.Fatal("Esc should let go of the thing and keep the box chosen")
 	}
 	press(m, "tab")
+	press(m, "tab")
+	press(m, "tab")
+	press(m, "esc") // Idea chosen, not written in
 	pressXX(m)
 	if len(b.Items) != 2 || d.byID(b.ID) == nil {
 		t.Fatalf("X X should take the chosen thing away, not the box: %d left", len(b.Items))

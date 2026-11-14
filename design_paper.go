@@ -1121,6 +1121,10 @@ func (m *Model) designPaste(text string) tea.Cmd {
 		cx, cy := d.world(m.screenMiddle())
 		return m.dropFiles(paths, o, cx, cy)
 	}
+	if d.editing == partThing { // a thing in a container: its title (design_sections.go)
+		m.sectionPaste(text)
+		return nil
+	}
 	if d.editing != partNone && o != nil {
 		field := map[int]*string{partHeader: &o.Header, partBody: &o.Body, partFooter: &o.Footer}[d.editing]
 		add := textLike(text)

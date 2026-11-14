@@ -585,7 +585,8 @@ func (d *designState) drawerLayers(o *dOct) []*lipgloss.Layer {
 					minis = append(minis, ml)
 					break
 				}
-				minis = append(minis, miniLines(miniOfSize(o.Items[things[k]], l.mw, s.mh, false, true), inside))
+				written := d.sectionThing() == o.Items[things[k]] // Tab reached it: shown chosen (design_sections.go)
+				minis = append(minis, miniLines(miniOfSize(o.Items[things[k]], l.mw, s.mh, written, true), inside))
 			}
 			for my := range s.mh {
 				var sb strings.Builder
@@ -746,7 +747,7 @@ func (m *Model) designPull(o *dOct, back bool) {
 		m.say(octName(o) + " pulled out: click a thing to take it out · the handle pushes it in.")
 		return
 	}
-	m.say(drawerName(o, next) + " pulled out: click a thing to take it out · Tab: the next drawer.")
+	m.say(drawerName(o, next) + " pulled out: click a thing to take it out · Space: the next drawer.")
 }
 
 // designDrawerCount gives unit o delta more drawers (or fewer). What was in

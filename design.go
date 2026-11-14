@@ -254,6 +254,7 @@ type designState struct {
 	pinPress       *pinPress      // a pin pressed: a click opens it, a drag moves it
 	rackPress      *rackPress     // a rack row pressed: a click opens it, a drag takes it out
 	boxPick        boxSel         // the chosen thing in a box (design_box.go)
+	sect           sectState      // Tab stepping through a container's sections (design_sections.go)
 	boxLayer       map[int]int    // the layer looked at in each box, by ID: 1 top, 2 middle, 3 bottom (none: all)
 	labelMode      bool           // Alt+L: L, C, I, T, G label the chosen structure (design_labels.go)
 	platesOpen     bool           // AltGr+P: the list of name plates shows
@@ -785,6 +786,9 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 	d := m.ds()
 	defer d.save()
 	name := keyName(k)
+	if m.sectionGuard(name) { // Tab stepping through a container: Esc, an arrow, another chosen end it (design_sections.go)
+		return nil
+	}
 	if ok, cmd := m.design3DKey(k, name); ok { // Ctrl + F: 3D; in 3D: its own keys (design_3d.go)
 		return cmd
 	}
@@ -796,7 +800,14 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		m.designRedo()
 		return nil
 	}
-	if d.editing != partNone {
+	if (name == "tab" || name == "shift+tab") && !d.placing && m.designSectionTab(name == "shift+tab") {
+		return nil // a container: its next section (design_sections.go)
+	}
+	if d.editing == partThing { // a thing in a container: its title; other keys do their work (design_sections.go)
+		if m.sectionWrite(k, name) {
+			return nil
+		}
+	} else if d.editing != partNone {
 		if o := d.byID(d.sel); o != nil && !stopsWriting(name) {
 			m.designWrite(d, o, k, name)
 			return nil
@@ -948,15 +959,7 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 			d.moveByKeys(o, dx*step, dy*step) // it snaps to structures near it (design_snap.go)
 			d.dirty = true
 		}
-	case "tab", "shift+tab":
-		if d.opened.active { // open in a rack: the rack's next (or last) thing opens instead
-			m.designRackStep(map[bool]int{true: -1, false: 1}[name == "shift+tab"])
-			return nil
-		}
-		if o := d.byID(d.sel); o != nil && o.Kind == kBoard { // a board: its next (last) pin (design_board.go)
-			m.designPinStep(o, map[bool]int{true: -1, false: 1}[name == "shift+tab"])
-			return nil
-		}
+	case "tab", "shift+tab": // (a container's sections: designSectionTab, above)
 		m.designTab(name == "shift+tab")
 	case "c", "C", "shift+c":
 		if o := d.byID(d.sel); o != nil && o.Kind == kDrawer { // a drawer's colour, or texture (design_drawer_look.go)
@@ -1062,6 +1065,7 @@ func (m *Model) designMouseHere(y int) bool {
 func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 	d := m.ds()
 	defer d.save()
+	m.sectionDrop() // a click ends Tab's stepping through a container (design_sections.go)
 	if ms.Y == m.height-3 && !d.room.passing {
 		return m.designToolClick(ms.X)
 	}
@@ -1611,6 +1615,9 @@ func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
 	}
 	if it := d.openIn(o); it != nil {
 		k.opened = fmt.Sprintf("%d\x00%s\x00%s", d.opened.at, it.Kind, itemTitle(it))
+	}
+	if d.sect.on && d.sect.box == o.ID { // Tab stepping through it: the thing reached is shown (design_sections.go)
+		k.opened += "\x00sect" + itoa(d.sect.i)
 	}
 	if len(o.Items) > 0 {
 		var sb strings.Builder
@@ -2631,6 +2638,8 @@ func (m *Model) designStatus() string {
 		if t := d.byID(d.dropOn); t != nil && t.Kind == kDrawer && d.dropSlot >= 0 {
 			hint = "Let go to put it in " + drawerName(t, d.dropSlot) // the drawer under the mouse
 		}
+	case d.sect.on:
+		hint = d.sectionHint() // Tab stepping through a container (design_sections.go)
 	case d.editing != partNone:
 		part := map[int]string{partHeader: "header", partBody: "text", partFooter: "footer"}[d.editing]
 		if o := d.byID(d.sel); o != nil && o.Kind != kOct {
