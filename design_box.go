@@ -619,7 +619,7 @@ func (d *designState) boxEdges(g *boxGrid, o *dOct, s boxShape, lk boxLook, shut
 	} else if strings.TrimSpace(name) == "" {
 		name = boxDesignNames[s.design]
 	}
-	if n := len(drawerThings(o)); n > 0 && !(d.sel == o.ID && d.editing == partHeader) && !clean3D {
+	if n := len(drawerThings(o)); n > 0 && !(d.sel == o.ID && d.editing == partHeader) {
 		name += " · " + itoa(n)
 	}
 	if hi-lo >= 3 && !(d.sel == o.ID && d.editing == partHeader) {

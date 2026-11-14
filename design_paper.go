@@ -407,10 +407,6 @@ func drawRows(rows []stackRow, w int, fill, edge string) []string {
 			out[i] = centreLine(st(cAccent, fill).Bold(true).Render(ansi.Truncate(r.text, w-1, "…")), w, fill)
 		case strings.HasPrefix(r.act, "stack:"):
 			left, count, _ := strings.Cut(r.text, "\x00")
-			if clean3D {
-				out[i] = centreLine(st(mixHex(edge, cText, 0.5), fill).Bold(true).Render(ansi.Truncate(left, w-1, "…")), w, fill)
-				break
-			}
 			left = ansi.Truncate(" "+left, max(w-len(count)-2, 1), "…")
 			gap := max(w-lipgloss.Width(left)-len(count)-1, 1)
 			out[i] = st(mixHex(edge, cText, 0.5), fill).Bold(true).Render(left) +

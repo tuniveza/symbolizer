@@ -585,6 +585,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return cmd
 	case tea.MouseClickMsg:
 		m.sugg = nil
+		m.altTap = false // Alt held for a click is not Alt tapped
 		if m.diaryViewer() && msg.Mouse().Y != 0 && !m.help {
 			return nil // the page viewer has nothing to click but the top panel
 		}
@@ -638,6 +639,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		return nil
 	case tea.MouseWheelMsg:
+		m.altTap = false // Alt held for the wheel (Alt + wheel in 3D) is not Alt tapped: twice, it would be Esc
 		n := 3
 		if msg.Mouse().Button == tea.MouseWheelUp {
 			n = -3

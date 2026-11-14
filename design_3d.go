@@ -63,7 +63,7 @@ const (
 	walkFast   = 3                      // with Shift: this many times faster
 	walkTap    = 0.06 * float64(time.Second)
 	outWalk    = 0.3 // the blocks are all the way out of the wall once the camera has moved this much of the screen's bigger side (see outK)
-	roomHint   = "3D view · mouse: look · W A S D: move · Q E: up, down · Shift: faster · M: music · Esc: flat board"
+	roomHint   = "3D view · mouse: look · WASD QE: move · Shift: faster · Alt+wheel: near, far · M: music · Esc: flat"
 )
 
 // What a drag with the mouse does to the camera.
@@ -181,6 +181,18 @@ type room3D struct {
 	edgeAt         map[r3edgeKey]int32
 	edges          []r3edge // the blocks' edges this frame, and the faces either side (see edgeInk)
 	world          r3world  // the windows, the town outside and the other lights (design_3d_world.go)
+	fix            [4]int   // the first-person camera's room: the board cells it takes in (x0, y0, x1, y1), fixed going into 3D (see area)
+	fixKey         r3fixKey // the board area and its place when it was fixed: changed, it is fitted again
+	fixOn          bool     //
+	fixBase        float64  // and its rm.base
+	locked         bool     // the chosen structure stays chosen as the camera moves, till a click lets it go (see design3DChooseMiddle)
+}
+
+// r3fixKey is the board area's size and the flat board's place under it,
+// for the room's fixed size: when they change, the room is fitted afresh.
+type r3fixKey struct {
+	w, h       int
+	camX, camY float64
 }
 
 // on is whether the board area shows the room in 3D: the first-person camera (or the tests' fixed one).
@@ -371,8 +383,8 @@ func (m *Model) design3DFree() {
 	r.pullBack(v, was) // as far back as the flat board's zoom showed the wall: no jump
 	r.ff0, r.lens, r.anchor = r.ff, 1, [2]float64{d.camX, d.camY}
 	r.startPos, r.startLook = r.pos, r.look
-	r.freeK = r.outK() // the blocks as far out as they were: they do not jump
-	r.free = true
+	r.freeK = r.outK()                             // the blocks as far out as they were: they do not jump
+	r.free, r.fixOn, r.locked = true, false, false // the room fitted afresh at the next drawing, and kept that size
 	m.say("3D: the mouse looks, W A S D Q E move, clicks act at the cross.  Esc: flat board.")
 }
 
@@ -606,10 +618,17 @@ func (m *Model) design3DPress(ms tea.Mouse) (bool, tea.Cmd) {
 	}
 	if hit.flat && hit.own >= 0 && m.design3DDefers(hit) {
 		r.pend, r.pendOn, r.pendMS = hit, true, ms // a drag moves it, a click opens it (design_3d_layers.go)
+		if d.byID(hit.own) != nil {
+			d.sel, d.selLink = hit.own, -1
+			d.dirty = true
+		}
+		r.lockChosen(d)
 		return true, nil
 	}
 	if hit.flat && (hit.own >= 0 || m.design3DTakes(hit, ms)) {
-		return true, m.design3DPass(ms, hit)
+		cmd := m.design3DPass(ms, hit)
+		r.lockChosen(d)
+		return true, cmd
 	}
 	r.camDrag = camTurn
 	r.click, r.clickOn = hit, hit.flat
@@ -746,13 +765,25 @@ func (m *Model) design3DRelease(ms tea.Mouse) tea.Cmd {
 	return nil
 }
 
-// design3DWheel: the wheel does nothing to the camera in 3D. With Shift
-// and the cross on a block it does what it does on the flat board
-// (scrolls a page's text). It says whether it took it.
+// design3DWheel: the wheel zooms the lens in 3D. With Alt it moves the
+// chosen structure a layer nearer the camera (up) or back toward the wall
+// (down). With Shift and the cross on a block it does what it does on the
+// flat board (scrolls a page's text). It says whether it took it.
 func (m *Model) design3DWheel(ms tea.Mouse) (bool, tea.Cmd) {
-	r := &m.ds().room
+	d := m.ds()
+	r := &d.room
 	if !r.on() || r.passing {
 		return false, nil
+	}
+	if ms.Mod.Contains(tea.ModAlt) {
+		switch ms.Button {
+		case tea.MouseWheelUp:
+			m.design3DLayerBy(1)
+		case tea.MouseWheelDown:
+			m.design3DLayerBy(-1)
+		}
+		d.save() // each turn of the wheel an undo step
+		return true, nil
 	}
 	if ms.Mod.Contains(tea.ModShift) {
 		if hit := r.pickAim(); hit.flat && hit.own >= 0 {
@@ -824,14 +855,14 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 		r.plain = pic // where kitty shows pictures the room is a picture, its words painted on
 	}
 	r.paint = pic && r.plain
-	clean3D = r.paint // the structures drawn without the flat board's counts and tabs
+	pins3D = r.paint // turned pins are cards of their own (design_3d_pins.go); all else is drawn as on the flat board
 	all := d.octs
 	if d.layered() {
 		d.octs = d.onWall() // the wall without what stands out on layers (layerCopies, design_3d_layers.go)
 	}
 	c := m.designCanvas()
 	d.octs = all
-	clean3D = false
+	pins3D = false
 	d.mapCorner, d.platesOpen = corner, plates
 	r.ds = d
 	m.design3DZoomGuard() // the flat board's zoom changed in 3D: the lens takes it (design_3d_layers.go)
@@ -1024,7 +1055,7 @@ func (m *Model) design3DModeEsc() bool {
 // design3DEsc leaves 3D: the flat board, as it was.
 func (m *Model) design3DEsc() {
 	r := &m.ds().room
-	r.free, r.walking, r.camDrag = false, false, camNone
+	r.free, r.walking, r.camDrag, r.fixOn, r.locked = false, false, camNone, false, false
 	r.edge = [2]int{}
 	clear(r.held)
 	r.yaw, r.pitch, r.near, r.pan = 0, 0, 0, r3vec{}
@@ -1160,14 +1191,31 @@ func inFace(pts []r3vec, n, q r3vec) bool {
 	return true
 }
 
+// lockChosen keeps what is chosen now chosen as the camera moves (a click
+// on it, or it moved): the middle of the view chooses again once it is let
+// go (a click on the empty room or board, Esc, deleted). With nothing
+// chosen it lets go.
+func (r *room3D) lockChosen(d *designState) {
+	r.locked = d.byID(d.sel) != nil
+}
+
 // design3DChooseMiddle chooses what the middle of the camera's view is on,
-// once the camera has moved since it last chose (not while writing). It
-// says whether it could look (there has been a drawing).
+// once the camera has moved since it last chose (not while writing, nor
+// while a structure is locked as chosen: clicked or moved, it alone stays
+// chosen, and so is the only one keys and the wheel move, till it is
+// clicked off). It says whether it could look (there has been a drawing).
 func (m *Model) design3DChooseMiddle() bool {
 	d := m.ds()
 	r := &d.room
 	key := r.camKey(m.width, m.boardH())
+	if r.locked && (d.byID(d.sel) == nil || len(d.multi) > 0) {
+		r.locked = false // let go: a click off it, Esc, deleted, or several chosen
+	}
 	if key == r.chosenCam || d.editing != partNone || d.sect.on { // (Tab stepping through a container: the camera faces its sections)
+		return true
+	}
+	if r.locked && len(r.faces) > 0 {
+		r.chosenCam = key
 		return true
 	}
 	own, _, ok := r.middleHit()

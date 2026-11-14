@@ -173,6 +173,14 @@ func (m *Model) grab3DStart() {
 	if hit.ok && hit.own >= 0 {
 		o = d.byID(hit.own)
 	}
+	var lockedB *r3block // locked as chosen (clicked, or moved): it is what is taken up, wherever the cross is
+	if lk := d.byID(d.sel); r.locked && lk != nil && (o == nil || o.ID != lk.ID) {
+		for i := range r.blocks {
+			if r.blocks[i].o == lk {
+				lockedB, o = &r.blocks[i], nil
+			}
+		}
+	}
 	if o != nil && d.opened.active && !d.opened.max && o.ID == d.opened.id {
 		m.grabOpenedBig() // open in a rack: a thing in a container
 		return
@@ -187,7 +195,10 @@ func (m *Model) grab3DStart() {
 	plane := hit.p.z
 	near := false
 	if o == nil {
-		b := r.nearestBlock()
+		b := lockedB
+		if b == nil {
+			b = r.nearestBlock()
+		}
 		if b == nil {
 			m.say("Nothing to grab: no structure on the screen.")
 			return
@@ -291,6 +302,7 @@ func (m *Model) grabDrop() tea.Cmd {
 	d.sel = o.ID
 	d.dirty = true
 	if g.in3D {
+		d.room.lockChosen(d) // put down, it stays chosen till clicked off
 		d.drag = dragMove
 		into := d.byID(d.dropOn)
 		if into == nil {

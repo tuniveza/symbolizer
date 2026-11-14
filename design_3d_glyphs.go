@@ -17,11 +17,9 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"strings"
 	"sync"
 	"unicode/utf8"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/gomono"
@@ -29,10 +27,11 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-// clean3D is set while the structures are drawn for the 3D picture: their
-// drawings leave out what is only for working on the flat board (how many
-// things a drawer, cabinet or box holds, a box's layer tabs).
-var clean3D bool
+// pins3D is set while the structures are drawn for the 3D picture: a
+// board leaves out its turned pins, which are cards of their own there
+// (design_3d_pins.go). Everything else is drawn exactly as on the flat
+// board, so a structure's words look the same in 2D and in 3D.
+var pins3D bool
 
 // glyphW, glyphH: a cell's letter is drawn this many pixels wide and tall
 // at its finest (a terminal cell is about twice as tall as wide).
@@ -358,166 +357,6 @@ func (r *room3D) paintGlyphs(rm *r3room) {
 			n := &r.tex[i+1]
 			*n = *t
 			n.gx, n.glyph = 1, ""
-		}
-	}
-}
-
-// cleanCard is whether structure o is shown in 3D as a clean card made
-// from its words (cleanCards), not as its flat drawing.
-func cleanCard(o *dOct) bool {
-	switch o.Kind {
-	case kOct, kPage, kNote, kSlide, kBook, kDrawing:
-		return o.Image == ""
-	}
-	return false
-}
-
-// cleanCards draws each plain structure's front as a card: its colour,
-// a strip of its own colour along the top, its title, its text and its
-// footer (when it has one), the words in the middle. None of the flat
-// board's frame (lines, dotted rules, cut corners) nor its placeholders
-// ("footer", "3 lines"): those are for working on the flat board.
-func (r *room3D) cleanCards(rm *r3room) {
-	d := r.ds
-	if d == nil {
-		return
-	}
-	for _, b := range r.blocks {
-		o := b.o
-		if !cleanCard(o) {
-			continue
-		}
-		x, y, w, h := d.rect(o)
-		if w < 6 || h < 3 {
-			continue
-		}
-		y += b.shift // on a layer: its drawing is kept below the board (layerCopies)
-		fill := hex32(mixHex(boardBG(), o.Color, 0.2))
-		edge := hex32(o.Color)
-		head := hex32(mixHex(o.Color, cText, 0.35))
-		text := hex32(cText)
-		dim := hex32(mixHex(cText, mixHex(boardBG(), o.Color, 0.2), 0.35))
-		at := func(cx, cy int) *r3texel {
-			if cx < rm.tx0 || cy < rm.ty0 || cx >= rm.tx0+rm.tw || cy >= rm.ty0+rm.th {
-				return nil
-			}
-			return &r.tex[(cy-rm.ty0)*rm.tw+cx-rm.tx0]
-		}
-		for cy := y; cy < y+h; cy++ {
-			for cx := x; cx < x+w; cx++ {
-				if t := at(cx, cy); t != nil {
-					*t = r3texel{fg: text, bg: fill, q: [4]uint32{fill, fill, fill, fill}, blank: true}
-					if cy == y {
-						t.q[0], t.q[1] = edge, edge // the strip along the top
-					}
-					if o.Kind == kBook && cx == x {
-						t.q[0], t.q[2] = edge, edge // a book: its spine down the left
-					}
-				}
-			}
-		}
-		// line writes s in the middle of row cy, in colour fg.
-		line := func(s string, cy int, fg uint32, bold bool) {
-			n := ansi.StringWidth(s)
-			cx := x + (w-n)/2
-			for _, gr := range graphemes(s) {
-				gw := ansi.StringWidth(gr)
-				if t := at(cx, cy); t != nil && gw > 0 {
-					t.fg, t.bold, t.blank = fg, bold, gr == " "
-					if !t.blank {
-						t.glyph, t.wide = gr, gw == 2
-					}
-				}
-				cx += max(gw, 1)
-			}
-		}
-		room := w - 4
-		top, bottom := y+1, y+h-1 // rows for words: top ≤ row < bottom
-		editing := partNone
-		if d.sel == o.ID {
-			editing = d.editing
-		}
-		// marked writes the cells of words being written in the middle of
-		// row cy, with the cursor and the highlight as on the flat board
-		// (design_field.go).
-		hl, hlText, accent := hex32(cSelection), hex32(cSelectedText), hex32(cAccent)
-		marked := func(cs []fcell, cy int, fg uint32, bold bool) {
-			cx := x + (w-cellsWidth(cs))/2
-			for _, c := range cs {
-				gw := ansi.StringWidth(c.g)
-				if t := at(cx, cy); t != nil && gw > 0 {
-					t.fg, t.bold, t.blank = fg, bold, c.g == " "
-					if !t.blank {
-						t.glyph, t.wide = c.g, gw == 2
-					}
-					switch c.mark {
-					case markHL:
-						t.fg, t.bg, t.q = hlText, hl, [4]uint32{hl, hl, hl, hl}
-					case markCur:
-						t.fg, t.bg, t.q = fill, accent, [4]uint32{accent, accent, accent, accent}
-					case markCaret:
-						t.fg = accent
-					}
-				}
-				cx += max(gw, 1)
-			}
-		}
-		// part writes the title or footer: being written, round its cursor.
-		part := func(s string, p, cy int, fg uint32, bold bool) {
-			if editing != p {
-				line(ansi.Truncate(s, room, "…"), cy, fg, bold)
-				return
-			}
-			marked(d.fieldLine(o, p, "", room), cy, fg, bold)
-		}
-		if o.Header != "" || editing == partHeader {
-			part(o.Header, partHeader, top, head, true)
-			top += 2
-		}
-		if (o.Footer != "" || editing == partFooter) && bottom-top >= 2 {
-			bottom--
-			part(o.Footer, partFooter, bottom, dim, false)
-			bottom-- // a blank row above it
-		}
-		if editing == partBody && bottom > top {
-			// Being written: the rows round the cursor, with it and the highlight.
-			rows, _, _ := d.fieldBody(o, room-1, bottom-top)
-			for i, cs := range rows {
-				marked(cs, top+i, text, false)
-			}
-		} else if o.Kind == kDrawing && o.Body != "" && bottom > top {
-			// A drawing keeps its lines as they are, one under another,
-			// the whole of it in the middle.
-			lines := strings.Split(o.Body, "\n")
-			lines = lines[:min(len(lines), bottom-top)]
-			widest := 0
-			for _, l := range lines {
-				widest = max(widest, ansi.StringWidth(l))
-			}
-			x0 := x + max(0, (w-min(widest, room))/2)
-			for i, l := range lines {
-				cx := x0
-				for _, gr := range graphemes(ansi.Truncate(l, room, "")) {
-					gw := ansi.StringWidth(gr)
-					if t := at(cx, top+i); t != nil && gw > 0 && gr != " " {
-						t.fg, t.blank, t.glyph, t.wide = text, false, gr, gw == 2
-					}
-					cx += max(gw, 1)
-				}
-			}
-		} else if o.Body != "" && bottom > top {
-			lines := strings.Split(ansi.Wrap(o.Body, room, ""), "\n")
-			if o.Kind == kPage && o.Scroll > 0 && o.Scroll < len(lines) {
-				lines = lines[o.Scroll:]
-			}
-			rows := bottom - top
-			if len(lines) > rows {
-				lines = lines[:rows]
-				lines[rows-1] = ansi.Truncate(lines[rows-1], room-1, "") + "…"
-			}
-			for i, l := range lines {
-				line(strings.TrimRight(l, " "), top+i, text, false)
-			}
 		}
 	}
 }

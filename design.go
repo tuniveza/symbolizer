@@ -1239,6 +1239,7 @@ func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 			}
 			nx, ny := d.followMouse(o, sx-d.pressX, sy-d.pressY) // under the mouse at every zoom (design_layout.go)
 			o.X, o.Y = d.snapNearest(o, nx, ny)
+			d.keepInRoom(o) // in 3D: inside the room's walls, which keep their place (design_3d_draw.go)
 			d.dropOn, d.dropSlot = -1, -1
 			if d.multiOn(o) {
 				d.dragMulti(o) // the others chosen with it move as much
@@ -1480,7 +1481,7 @@ type drawKey struct {
 	linkMode                                bool
 	bg, text, dim, accent, err, bar, stText string
 	stBG, ember                             string
-	clean                                   bool // drawn for the 3D picture (clean3D)
+	pins3D                                  bool // drawn for the 3D picture: turned pins left out (pins3D)
 }
 
 type drawnStruct struct {
@@ -1544,7 +1545,7 @@ func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
 		image: o.Image, openStack: o.OpenStack, layout: o.Layout, scroll: o.Scroll, drawerOpen: o.DrawerOpen,
 		sel: d.sel == o.ID, source: d.linkMode && d.linkFrom == o.ID, drop: d.dropOn == o.ID, linkMode: d.linkMode,
 		bg: cBG, text: cText, dim: cDim, accent: cAccent, err: cError, bar: cBarBG, stText: cStatusText,
-		stBG: cStatusBG, ember: cEmber, clean: clean3D,
+		stBG: cStatusBG, ember: cEmber, pins3D: pins3D,
 	}
 	if k.sel {
 		k.editing = d.editing

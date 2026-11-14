@@ -351,9 +351,20 @@ void main() {
 			uint g = mix32(cell.y, cell.x, glyphCover(int(gi) - 1, u, v, s0 / kx, s0 / (2.0 * ky)));
 			col = mix32(col, g, clamp01((glyphGone - s) / (glyphGone - glyphFull)));
 		}
-		if (s < lineGone && cell.w != 0u) {
-			float cov = lineCoverUV(int(cell.w), fx - float(cx), hp / 2.0 - float(cy), s0 / kx, s0 / (2.0 * ky), minU, minV);
-			col = mix32(col, mix32(cell.y, cell.x, 0.85 * cov), clamp01((lineGone - s) / (lineGone - lineFull)));
+		if ((s < lineGone || s < 2.0 * wallSharp) && cell.w != 0u) {
+			// (flat0 has a box line's cell as its background: its tint goes
+			// on in the cell only, so it does not bleed beside it; see draw)
+			float u = fx - float(cx), v = hp / 2.0 - float(cy);
+			int b = int(cell.w) & ((v >= 0.5 ? 2 : 1) | (u >= 0.5 ? 8 : 4)); // the arms touching this quarter
+			float n = float((b & 1) + ((b >> 1) & 1) + ((b >> 2) & 1) + ((b >> 3) & 1));
+			float kk = 1.0 - clamp01(log2(max(s, 1e-9) / wallSharp)); // the sharp picture's share of col (see wallAt)
+			uint under = rgb32(clamp(chans(col) + kk * (chans(mix32(cell.y, cell.x, 0.45 * n)) - chans(cell.y)), 0.0, 255.0) + 0.5);
+			if (s < lineGone) {
+				float cov = lineCoverUV(int(cell.w), u, v, s0 / kx, s0 / (2.0 * ky), minU, minV);
+				col = mix32(under, mix32(cell.y, cell.x, 0.85 * cov), clamp01((lineGone - s) / (lineGone - lineFull)));
+			} else {
+				col = under;
+			}
 		}
 		if (mat == matBoard) {
 			if (col == bgPlain) col = wallFinish(wallCol, textCol, p.x, p.y, foot, plaster(p.x, p.y, foot));

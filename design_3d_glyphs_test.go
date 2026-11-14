@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"testing"
 )
@@ -44,11 +45,12 @@ func TestPaintedWords(t *testing.T) {
 	}
 }
 
-// A clean card shows its words and none of the flat board's frame or
-// placeholders; drawers, boxes and cabinets show no counts. A box's layer
-// tabs show, as they can be clicked in 3D as on the flat board.
-func TestCleanCardTexels(t *testing.T) {
+// In 3D every structure's words are its flat drawing's, painted on its
+// face: the cards' words, the drawers', boxes' and cabinets' counts and a
+// box's layer tabs all show, as on the flat board.
+func TestCardTexelsMatchFlat(t *testing.T) {
 	m := wordsScene(t, 140, 40)
+	flat := strings.ReplaceAll(ansi.Strip(strings.Join(boardRows(m), "")), " ", "")
 	withPixels(t, m, 10, 20)
 	r := &m.ds().room
 	r.yaw, r.pitch = 20, 10
@@ -62,17 +64,12 @@ func TestCleanCardTexels(t *testing.T) {
 		text.WriteString(tx.glyph)
 	}
 	s := text.String()
-	for _, want := range []string{"Shoppinglist", "Breadandmilk"} {
+	for _, want := range []string{"Shoppinglist", "Breadandmilk", "top1", "Tools·1"} {
 		if !strings.Contains(s, want) {
-			t.Errorf("no %q in the cards' words", want)
+			t.Errorf("no %q in the 3D faces' words", want)
 		}
-	}
-	if !strings.Contains(s, "top1") {
-		t.Error("no layer tabs on the box")
-	}
-	for _, not := range []string{"footer", "lines", "Tools·", "Cardbox·"} {
-		if strings.Contains(s, not) {
-			t.Errorf("placeholder %q on a card", not)
+		if !strings.Contains(flat, want) {
+			t.Errorf("no %q on the flat board", want)
 		}
 	}
 }
@@ -99,14 +96,15 @@ func TestGlyphCover(t *testing.T) {
 	}
 }
 
-// The flat board keeps its counts: clean3D is only for the 3D picture.
+// The flat board keeps its counts, and pins3D is only on while the 3D
+// picture is drawn.
 func TestFlatKeepsCounts(t *testing.T) {
 	m := wordsScene(t, 140, 40)
 	rows := strings.Join(boardRows(m), "\n")
 	if !strings.Contains(rows, "Tools · 1") {
 		t.Fatal("the flat board lost the drawer's count")
 	}
-	if clean3D {
-		t.Fatal("clean3D left on")
+	if pins3D {
+		t.Fatal("pins3D left on")
 	}
 }

@@ -5,7 +5,9 @@ package main
 // Every structure stands on a layer: 0 is on the wall, and each layer out
 // stands layerStep further into the room. Structures on the same layer
 // share it (a new one is moved off the others on its layer only); Shift
-// + = brings the chosen one a layer out, Shift + − takes it a layer back.
+// + = (or Alt + the wheel up) brings the chosen one a layer out, nearer
+// the camera, and Shift + − (Alt + the wheel down) takes it a layer back.
+// It never comes out past the camera.
 // On the flat board the layer does not show.
 //
 // 3D always shows the board at 100%: the flat board's zoom would shrink
@@ -186,22 +188,55 @@ func (m *Model) design3DLayerBy(n int) {
 		m.say("Put the cross on a structure first: Shift + = and Shift + − move it out and back.")
 		return
 	}
-	moved := false
+	moved, atCam := false, false
 	for _, o := range them {
-		if l := max(0, min(maxLayer, o.Layer+n)); l != o.Layer {
+		l := max(0, min(maxLayer, o.Layer+n))
+		if n > 0 && d.room.pastCamera(o, l) {
+			l, atCam = o.Layer, true // no nearer than just in front of the camera
+		}
+		if l != o.Layer {
 			o.Layer, moved = l, true
 		}
 	}
 	if !moved {
-		m.say(map[bool]string{true: "It is on the wall: it cannot go further back.", false: "It is as far out as it goes."}[n < 0])
+		switch {
+		case n < 0:
+			m.say("It is on the wall: it cannot go further back.")
+		case atCam:
+			m.say("It is right in front of the camera: step back (S) to bring it nearer.")
+		default:
+			m.say("It is as far out as it goes.")
+		}
 		return
 	}
 	d.dirty = true
+	if len(them) == 1 {
+		d.room.lockChosen(d) // moved, it stays the chosen one till clicked off
+	}
 	if len(them) == 1 {
 		m.say(fmt.Sprintf("%s: %s.", itemTitle(them[0]), layerName(them[0].Layer)))
 	} else {
 		m.say(fmt.Sprintf("%d structures moved %s a layer.", len(them), map[bool]string{true: "out", false: "back"}[n > 0]))
 	}
+}
+
+// pastCamera is whether structure o on layer l would stand with its front
+// at or behind the first-person camera (less than a step in front of it),
+// so it would fill the view or go out of sight behind it.
+func (r *room3D) pastCamera(o *dOct, l int) bool {
+	if !r.free {
+		return false
+	}
+	dep := 0.0
+	for i := range r.blocks {
+		if r.blocks[i].o == o {
+			dep = blockDepth(&r.blocks[i], 1, r.rm.big)
+		}
+	}
+	// Where its front is once the blocks are all the way out of the wall
+	// (as they come once the camera moves: see outK).
+	front := float64(l)*(layerStep+0.02) + dep
+	return front > r.pos.z-2
 }
 
 // layerName says where layer l is.
@@ -387,6 +422,7 @@ func (m *Model) design3DPendMotion(ms tea.Mouse) tea.Cmd {
 	d.origCX, d.origCY = d.camX, d.camY
 	d.drag, d.dropOn, d.dropSlot = dragMove, -1, -1
 	d.dirty = true
+	r.lockChosen(d)
 	return tea.Batch(look, m.designMotion(ms))
 }
 
@@ -396,6 +432,7 @@ func (m *Model) design3DPendRelease() tea.Cmd {
 	r := &m.ds().room
 	r.pendOn = false
 	cmd := m.design3DPass(r.pendMS, r.pend)
+	r.lockChosen(m.ds())
 	return tea.Batch(cmd, m.designRelease())
 }
 

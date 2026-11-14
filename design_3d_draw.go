@@ -26,6 +26,7 @@ package main
 import (
 	"image/color"
 	"math"
+	"math/bits"
 	"runtime"
 	"sort"
 	"strconv"
@@ -234,6 +235,30 @@ func (r *room3D) area(d *designState, w, h int, z float64) r3room {
 	// stays well inside the room, under the ceiling and between the side
 	// walls, at every turn; the floor stays just under the lowest block.
 	x0, y0, x1 = min(x0, 0), min(y0, 0), max(x1, w)
+	if r.free {
+		// The first-person camera's room keeps the size it had going into
+		// 3D: a structure moved or opened past its
+		// edge does not make the whole room grow; it stays in the room
+		// (see keepInRoom) and what still reaches past a wall is cut there.
+		key := r3fixKey{w, h, d.camX, d.camY}
+		if !r.fixOn || r.fixKey != key {
+			r.fix, r.fixKey, r.fixOn = [4]int{x0, y0, x1, y1}, key, true
+			r.fixBase = 0
+		}
+		x0, y0, x1, y1 = r.fix[0], r.fix[1], r.fix[2], r.fix[3]
+		wx0, wy0, wx1, wy1 := x0-roomMarginX, y0-roomMarginY, x1+roomMarginX, y1+roomMarginY
+		kept := r.blocks[:0]
+		for _, b := range r.blocks {
+			b.x0, b.y0, b.x1, b.y1 = max(b.x0, wx0), max(b.y0, wy0), min(b.x1, wx1), min(b.y1, wy1)
+			if b.x0 >= b.x1 || b.y0 >= b.y1 {
+				continue // all of it past a wall: not in the room
+			}
+			bx, by, bw, bh := d.rect(b.o)
+			b.whole = b.x0 == bx && b.y0 == by && b.x1 == bx+bw && b.y1 == by+bh
+			kept = append(kept, b)
+		}
+		r.blocks = kept
+	}
 	x0, y0, x1, y1 = x0-roomMarginX, y0-roomMarginY, x1+roomMarginX, y1+roomMarginY
 	rm := r3room{w: w, h: h, hw: float64(w) / 2, hh: float64(h), tx0: x0, ty0: y0, tw: x1 - x0, th: y1 - y0, big: big}
 	rm.x0, rm.x1 = float64(x0)-rm.hw, float64(x1)-rm.hw
@@ -241,6 +266,12 @@ func (r *room3D) area(d *designState, w, h int, z float64) r3room {
 	// The floor comes out a little under half the room's size (no more
 	// than for the screen), and over three times the deepest block.
 	rm.base = math.Max(8, math.Max(deepest/0.3, 0.45*math.Min(big, math.Max(rm.x1-rm.x0, rm.y1-rm.y0))))
+	if r.free {
+		if r.fixBase == 0 {
+			r.fixBase = rm.base
+		}
+		rm.base = r.fixBase // the camera, the lamp and the floor stay where they were
+	}
 	// Structures out on layers make the room deeper, only as far as they
 	// need: the camera, the lamp and the lens keep to rm.base, so a
 	// structure far out does not push the camera back and narrow its view.
@@ -258,6 +289,23 @@ func (r *room3D) area(d *designState, w, h int, z float64) r3room {
 	r.layerCopies(d, &rm)
 	r.pinCopies(d, &rm) // turned pins' cards (design_3d_pins.go)
 	return rm
+}
+
+// keepInRoom keeps structure o, being moved in 3D, inside the room's
+// fixed size (see area): it stops at a side wall, the floor or the top,
+// rather than the room growing round it. Bigger than the room, its top
+// left corner stays in.
+func (d *designState) keepInRoom(o *dOct) {
+	r := &d.room
+	if !r.free || !r.fixOn {
+		return
+	}
+	x, y, w, h := d.rect(o)
+	dx := max(r.fix[0]-x, min(0, r.fix[2]-(x+w)))
+	dy := max(r.fix[1]-y, min(0, r.fix[3]-(y+h)))
+	z := d.z()
+	o.X += int(math.Round(float64(dx) / z))
+	o.Y += int(math.Round(float64(dy) / z))
 }
 
 // outTurn is the turn (degrees away from straight at the wall) by which
@@ -395,13 +443,8 @@ func texelOf(cell *uv.Cell, defFG, defBG uint32) r3texel {
 			t.mark = s // ╱ ╲ ╳
 			break
 		}
-		touch := [4]int{1 | 4, 1 | 8, 2 | 4, 2 | 8} // up and left touch the top left quarter, and so on
-		for i, m := range touch {
-			n := 0
-			for b := arms & m; b != 0; b &= b - 1 {
-				n++
-			}
-			t.q[i] = mix32(t.bg, t.fg, 0.45*float64(n))
+		for i := range t.q {
+			t.q[i] = lineTint(arms, t.bg, t.fg, float64(i&1)/2+0.25, float64(i>>1)/2+0.25)
 		}
 	case ru >= 0x2580 && ru <= 0x259f && ru != '▏' && size == len(s):
 		all(mix32(t.bg, t.fg, 0.45)) // the other blocks (▁ ▂ … ▉ ▊ …): about half the cell
@@ -423,6 +466,37 @@ func texelOf(cell *uv.Cell, defFG, defBG uint32) r3texel {
 		}
 	}
 	return t
+}
+
+// lineTint is a box line cell's colour at (u, v) in it (0 to 1 across and
+// down) when it is too small to draw as a line: each quarter of the cell is
+// tinted by the arms of the line that touch it (up and left the top left
+// quarter, and so on), so a corner stays a corner.
+func lineTint(arms int, bg, fg uint32, u, v float64) uint32 {
+	m := 1 // up
+	if v >= 0.5 {
+		m = 2 // down
+	}
+	if u >= 0.5 {
+		m |= 8 // right
+	} else {
+		m |= 4 // left
+	}
+	n := bits.OnesCount(uint(arms & m))
+	return mix32(bg, fg, 0.45*float64(n))
+}
+
+// lineUnder is a box line cell's colour under its line in the painted
+// picture: col (wallAt there) is its background blended with the smaller
+// pictures, which hold its tint; the background's share is swapped for the
+// tint, so it fades as it did when the sharp picture held the tint too.
+func lineUnder(col, tint, bg uint32, s float64) uint32 {
+	k := 1 - clamp01(math.Log2(math.Max(s, 1e-9)/wallSharp)) // the sharp picture's share of col (see wallAt)
+	cr, cg, cb := chans(col)
+	tr, tg, tb := chans(tint)
+	br, bgc, bb := chans(bg)
+	cl := func(v float64) float64 { return clampF(v, 0, 255) }
+	return rgb32(cl(cr+k*(tr-br))+0.5, cl(cg+k*(tg-bgc))+0.5, cl(cb+k*(tb-bb))+0.5)
 }
 
 // lineCover is how much of a pixel at (u, v) in a cell (0 to 1 across
@@ -509,10 +583,10 @@ func (r *room3D) takeRoom(d *designState, c *boardCanvas, rm *r3room) {
 		}
 	}
 	w, h := rm.w, rm.h
-	// The structures as the 3D view draws them (clean3D: see design3DRows),
+	// The structures as the 3D view draws them (pins3D: see design3DRows),
 	// so their drawings are the ones made for it.
-	clean3D = r.paint
-	defer func() { clean3D = false }()
+	pins3D = r.paint
+	defer func() { pins3D = false }()
 	for _, b := range r.blocks {
 		x, y, ow, oh := d.rect(b.o)
 		if b.shift == 0 && x >= 0 && y >= 0 && x+ow <= w && y+oh <= h {
@@ -560,9 +634,8 @@ func (r *room3D) takeRoom(d *designState, c *boardCanvas, rm *r3room) {
 	}
 	if r.paint {
 		r.pinTexels(d, rm, defFG, defBG)
-		r.cleanCards(rm)
 		// Labels and name plates over them, as the flat board has them
-		// over its structures: on the clean cards, and on the structures
+		// over its structures: on the structures on the screen, and on those
 		// off the screen or out on layers too (design_labels.go).
 		for _, b := range r.blocks {
 			if o := b.o; o.LabelStyle != labelNone || o.Plate != "" {
@@ -608,7 +681,7 @@ func (r *room3D) mipmap(rm *r3room) {
 		copy(r.flat0, l0)
 		for cy := 0; cy < rm.th; cy++ {
 			for cx := 0; cx < rm.tw; cx++ {
-				if t := &r.tex[cy*rm.tw+cx]; t.gl != nil {
+				if t := &r.tex[cy*rm.tw+cx]; t.gl != nil || t.arms != 0 { // (a box line: its tint is put on in its cell, see draw)
 					i := 2*cy*w + 2*cx
 					r.flat0[i], r.flat0[i+1], r.flat0[i+w], r.flat0[i+w+1] = t.bg, t.bg, t.bg, t.bg
 				}
@@ -1467,14 +1540,27 @@ func (r *room3D) shadePixel(c *r3shade, idx, anchor int, dir r3vec) {
 				}
 				col = r.mips[k][(ty>>k)*r.mipW[k]+tx>>k]
 			}
-			if s < lineGone {
+			if s < lineGone || r.paint && s < 2*wallSharp {
 				// Seen bigger than on the flat board: a box line is
 				// drawn as a thin line, not a whole cell's tint (and
 				// between the two smoothly, so it does not pop).
 				cy := hy >> 1
 				if t := &r.tex[(cy-ty0)*rm.tw+cx-tx0]; t.arms != 0 {
-					cov := lineCoverUV(int(t.arms), fx-float64(cx), hp/2-float64(cy), s0/c.kx, s0/(2*c.ky), c.minU, c.minV)
-					col = mix32(col, mix32(t.bg, t.fg, 0.85*cov), clamp01((lineGone-s)/(lineGone-lineFull)))
+					u, v := fx-float64(cx), hp/2-float64(cy)
+					under := col
+					if r.paint {
+						// The sharp picture (smooth) has a box line's cell as
+						// its background, so the line's tint does not bleed
+						// into the cells beside it as a faint second line:
+						// its tint is put here, in the cell only.
+						under = lineUnder(col, lineTint(int(t.arms), t.bg, t.fg, u, v), t.bg, s)
+					}
+					if s < lineGone {
+						cov := lineCoverUV(int(t.arms), u, v, s0/c.kx, s0/(2*c.ky), c.minU, c.minV)
+						col = mix32(under, mix32(t.bg, t.fg, 0.85*cov), clamp01((lineGone-s)/(lineGone-lineFull)))
+					} else {
+						col = under
+					}
 				}
 			}
 			if fc.mat == matBoard {

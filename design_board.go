@@ -381,7 +381,7 @@ func (d *designState) boardLayers(o *dOct) []*lipgloss.Layer {
 	if name == "" {
 		name = kindNames[kBoard]
 	}
-	if n := len(drawerThings(o)); n > 0 && !clean3D {
+	if n := len(drawerThings(o)); n > 0 {
 		name += " · " + plural(n, "pin")
 	}
 	title := fieldCells([]rune(" "+kindIcons[kBoard]+" "+name+" "), nil, -1, 0, 0)
@@ -413,7 +413,7 @@ func (d *designState) boardLayers(o *dOct) []*lipgloss.Layer {
 		if it == nil {
 			continue
 		}
-		if clean3D && pinCarded(it) {
+		if pins3D && pinCarded(it) {
 			continue // a card of its own in the 3D picture (design_3d_pins.go)
 		}
 		sel := d.pin.active && d.pin.board == o.ID && d.pin.at == j
@@ -734,7 +734,7 @@ func pinCard(it *dOct, w, h int, sel bool) [][]miniCell {
 	}
 	title, body := pinLines(it, w-2, h-3)
 	set(1+max(0, (w-2-len([]rune(title)))/2), 1, title, titleFG)
-	if len(body) == 0 && h > 3 && !clean3D {
+	if len(body) == 0 && h > 3 {
 		set(2, 2, "empty", mixHex(cDim, fill, 0.2))
 	}
 	for i, l := range body {
@@ -855,7 +855,7 @@ func drawPin(it *dOct, p pinMap, sel bool, pic string, put pinPut) {
 	n := min(1+max(len(all), 1), bottom-top+1)
 	top = min(max(mrow-(n-1)/2, top), bottom-n+1)
 	title, body := pinLines(it, max(widest-1, 1), n-1)
-	if len(body) == 0 && n > 1 && !clean3D {
+	if len(body) == 0 && n > 1 {
 		body = []string{"empty"}
 	}
 	line := func(r int, text, fg string, centre, bold bool) {
