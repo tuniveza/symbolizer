@@ -322,3 +322,21 @@ func (d *designState) onWall() []*dOct {
 	}
 	return them
 }
+
+// design3DZoomGuard keeps the board at 100% in 3D: if anything changed
+// the flat board's zoom (a key, the mouse, the board loaded again), the
+// change goes to the lens instead, and the board is set back to 100%
+// round the same middle, so the room never changes size under the camera.
+func (m *Model) design3DZoomGuard() {
+	d := m.ds()
+	r := &d.room
+	if !r.free || d.zoom == designZoom100 {
+		return
+	}
+	z := d.z()
+	w, h := float64(m.width), float64(m.boardH())
+	cx, cy := d.camX+w/2/z, d.camY+h/2/z
+	d.zoom = designZoom100
+	d.camX, d.camY = cx-w/2, cy-h/2
+	r.lens = clampF(r.lensK()*z, lensMin, lensMax)
+}

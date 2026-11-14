@@ -923,8 +923,8 @@ func (m *Model) designDrawer(o *dOct) {
 func (d *designState) dropTarget(o *dOct, sx, sy int) *dOct {
 	for i := len(d.octs) - 1; i >= 0; i-- {
 		p := d.octs[i]
-		if p == o {
-			continue
+		if p == o || d.room.on() && p.Layer != o.Layer {
+			continue // (in 3D, a structure on another layer is not where it is dropped)
 		}
 		x, y, w, h := d.rect(p)
 		if hx, hy, label, ok := d.handleSpot(p, x, y, w, h); ok {

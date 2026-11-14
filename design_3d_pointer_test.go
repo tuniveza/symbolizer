@@ -155,3 +155,36 @@ func TestDesign3DPointerRecenter(t *testing.T) {
 		t.Fatalf("near the middle again: no more put back: %v", got[5:])
 	}
 }
+
+// After the window (or the font) changes size, the next mouse report only
+// notes where the mouse is: the camera does not jump, nor turn on by
+// itself at an edge it seems to rest on.
+func TestDesign3DResizeMouseCalm(t *testing.T) {
+	m := room3DModel(t, 120, 40)
+	d := m.ds()
+	r := &d.room
+	press(m, "ctrl+f")
+	move := func(x, y int) { m.Update(tea.MouseMotionMsg(tea.Mouse{X: x, Y: y})) }
+	move(60, 20)
+	move(62, 20)
+	m.Update(tea.WindowSizeMsg{Width: 90, Height: 30})
+	look := r.look
+	move(89, 5) // (where the same spot is read with the new size: far off, at the edge)
+	if r.look != look || r.edge != [2]int{} || r.edgeOn {
+		t.Fatalf("after a resize the first report turned the camera: %v, was %v (edge %v)", r.look, look, r.edge)
+	}
+}
+
+// With the pointer hidden (Hyprland) the window's edge never turns the
+// camera on its own: the pointer is put back in the middle instead.
+func TestDesign3DNoEdgeTurnWhenHidden(t *testing.T) {
+	fakeHyprPtr(t, false)
+	m := room3DModel(t, 120, 40)
+	r := &m.ds().room
+	press(m, "ctrl+f")
+	m.Update(tea.MouseMotionMsg(tea.Mouse{X: 110, Y: 20}))
+	m.Update(tea.MouseMotionMsg(tea.Mouse{X: 119, Y: 20}))
+	if r.edgeOn || r.edge != [2]int{} {
+		t.Fatalf("the edge turns the camera with the pointer hidden: %v", r.edge)
+	}
+}

@@ -112,6 +112,21 @@ func (m *Model) pixelMouseIn(msg tea.Msg) tea.Msg {
 	return msg
 }
 
+// pixelMouseResized: the window (or the terminal's font) changed size. A
+// cell has other pixels now, so reports in pixels are read with the new
+// size, and mouse look starts afresh: the next report only notes where the
+// mouse is (read with the old size it was far off, and the camera jumped,
+// then turned on by itself at the edge it seemed to rest on).
+func (m *Model) pixelMouseResized() {
+	if p := &m.pxm; p.on {
+		p.cw, p.ch = termCell(m.width, m.height)
+	}
+	if m.design != nil {
+		r := &m.design.room
+		r.hoverOn, r.edge = false, [2]int{}
+	}
+}
+
 // mouseAt is where the mouse is, in window cells to a fraction: the pixel
 // it is on in pixel mode, else the middle of its cell.
 func (m *Model) mouseAt(ms tea.Mouse) (float64, float64) {
@@ -163,6 +178,10 @@ func wrap180(a float64) float64 {
 // edge, a move like the last one more would have passed it, and none came.
 func (m *Model) design3DEdge(x, y, dx, dy float64) tea.Cmd {
 	r := &m.ds().room
+	if m.pointerWanted() {
+		r.edge = [2]int{} // the hidden pointer is put back in the middle instead (design_3d_pointer.go): it never rests at the edge
+		return nil
+	}
 	r.edge = [2]int{edgeWay(x, dx, float64(m.width)), edgeWay(y, dy, float64(m.height))}
 	if r.edge == [2]int{} || r.edgeOn {
 		return nil

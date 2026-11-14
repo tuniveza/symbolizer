@@ -21,7 +21,9 @@ import (
 func aim3D(t *testing.T, m *Model, what string, ok func(h r3hit) bool) (int, int) {
 	t.Helper()
 	r := &m.ds().room
-	for try := 0; try < 6; try++ {
+	lens := r.lens
+	defer func() { r.lens = lens }()
+	for try := 0; try < 8; try++ {
 		boardRows(m)
 		var found *r3hit
 		if h := r.pickAim(); h.ok && ok(h) {
@@ -48,6 +50,10 @@ func aim3D(t *testing.T, m *Model, what string, ok func(h r3hit) bool) (int, int
 			}
 		}
 		if found == nil {
+			if r.lens > 1 {
+				r.lens = 1 // zoomed in: look for it with the normal lens, then aim zoomed in
+				continue
+			}
 			if !r.free || r.pos == r.startPos && r.look == r.startLook {
 				break
 			}
@@ -59,6 +65,7 @@ func aim3D(t *testing.T, m *Model, what string, ok func(h r3hit) bool) (int, int
 		}
 		c := found.p.sub(r.pos).norm()
 		r.look = [2]float64{math.Atan2(c.x, -c.z) * 180 / math.Pi, math.Asin(clampF(-c.y, -1, 1)) * 180 / math.Pi}
+		r.lens = lens
 		boardRows(m)
 		if h := r.pickAim(); h.ok && ok(h) {
 			col, row := r.aim()

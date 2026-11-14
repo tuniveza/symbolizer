@@ -462,7 +462,19 @@ func (r *room3D) walk(keys map[rune]bool, secs float64, fast bool) {
 	if fast {
 		speed *= walkFast
 	}
-	r.pos = r.pos.add(way.norm().mul(speed * secs))
+	r.pos = r.inRoom(r.pos.add(way.norm().mul(speed * secs)))
+}
+
+// inRoom is point p kept inside the room's walls, floor and ceiling (as
+// last drawn), a little off them: the camera cannot walk out of the room
+// into the dark round it.
+func (r *room3D) inRoom(p r3vec) r3vec {
+	rm := &r.rm
+	if rm.wx1 <= rm.wx0 || rm.cy <= rm.fy || rm.fz <= 0 {
+		return p // not drawn yet
+	}
+	const off = 1.5
+	return r3vec{clampF(p.x, rm.wx0+off, rm.wx1-off), clampF(p.y, rm.fy+off, rm.cy-off), clampF(p.z, off, rm.fz-off)}
 }
 
 // ---- the mouse ----------------------------------------------------------------------------
@@ -798,6 +810,7 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 	clean3D = false
 	d.mapCorner, d.platesOpen = corner, plates
 	r.ds = d
+	m.design3DZoomGuard() // the flat board's zoom changed in 3D: the lens takes it (design_3d_layers.go)
 	r.keepCamera(d, w, h) // the window or the board under it changed: the camera stays on the same spot (design_3d_layers.go)
 	rm := r.area(d, w, h, d.z())
 	rm.walls, rm.floor = d.walls, d.floor // the finishes (design_3d_finish.go)
@@ -844,6 +857,10 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 		}
 	}
 	r.draw(&rm, d.z(), &fb)
+	if traceOn() { // where the camera is, for SY_3D_TRACE (design_3d_trace.go)
+		traceLine("cam pos %.1f,%.1f,%.1f look %.1f,%.1f ff %.1f lens %.2f board %dx%d cam %.1f,%.1f zoom %d pic %dx%d",
+			r.pos.x, r.pos.y, r.pos.z, r.look[0], r.look[1], r.ff, r.lensK(), w, h, d.camX, d.camY, d.zoom, r.pw, r.ph)
+	}
 	if was := d.sel; r.chosenCam == (r3camKey{}) && m.design3DChooseMiddle() && d.sel != was {
 		// The room's first drawing: only now can the middle of the camera
 		// choose, and the chosen structure looks chosen, so draw it again

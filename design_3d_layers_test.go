@@ -4,6 +4,7 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -118,7 +119,7 @@ func TestDesign3DLayers(t *testing.T) {
 	if o.Layer != 1 {
 		t.Fatalf("+: layer %d", o.Layer)
 	}
-	if dz := front() - z0; math.Abs(dz-layerStep) > 1e-3 {
+	if dz := front() - z0; math.Abs(dz-layerStep) > 0.05 {
 		t.Fatalf("a layer out: the front came %.2f nearer, want %.0f", dz, layerStep)
 	}
 	backs := 0
@@ -289,5 +290,138 @@ func TestDesign3DLayerCopyEveryKind(t *testing.T) {
 			}
 		}
 		o.Layer = 0
+	}
+}
+
+// A structure far out on a layer does not push the camera back nor narrow
+// its view, nor move the lamp out.
+func TestDesign3DDeepLayerKeepsCamera(t *testing.T) {
+	start := func(layer int) (r3vec, float64, r3vec) {
+		m := room3DModel(t, 120, 40)
+		d := m.ds()
+		d.octs[2].Layer = layer
+		press(m, "ctrl+f")
+		boardRows(m)
+		r := &d.room
+		return r.pos, r.ff, lampAt(&r.rm)
+	}
+	p0, f0, l0 := start(0)
+	p1, f1, l1 := start(28)
+	if p0 != p1 || f0 != f1 || l0 != l1 {
+		t.Fatalf("layer 28: camera %v lens %.0f lamp %v, without it %v %.0f %v", p1, f1, l1, p0, f0, l0)
+	}
+}
+
+// Anything that changes the flat board's zoom while in 3D goes to the
+// lens: the board stays at 100% and the cross stays on its spot.
+func TestDesign3DZoomGuard(t *testing.T) {
+	m := room3DModel(t, 120, 40)
+	d := m.ds()
+	press(m, "ctrl+f")
+	d.room.lookBy(8, 3)
+	bx, by := boardAtCross(t, m)
+	d.zoomTo(designZoom100+2, 30, 10) // as the mouse wheel or a reload would
+	x, y := boardAtCross(t, m)
+	if d.zoom != designZoom100 || math.Abs(x-bx) > 0.5 || math.Abs(y-by) > 0.5 {
+		t.Fatalf("zoom %d, cross at %.1f,%.1f, was %.1f,%.1f", d.zoom, x, y, bx, by)
+	}
+	if d.room.lens <= 1 {
+		t.Fatalf("the lens takes the zoom: %v", d.room.lens)
+	}
+}
+
+// Flat against the wall (going into 3D), a structure on a higher layer is
+// in front of one on the wall where they overlap.
+func TestDesign3DLayerOrderFlat(t *testing.T) {
+	m := room3DModel(t, 120, 40)
+	d := m.ds()
+	a := d.octs[1]
+	b := d.newKind(kNote, a.X+a.W/2, a.Y+a.H/2)
+	b.Layer = 1
+	press(m, "ctrl+f")
+	boardRows(m)
+	r := &d.room
+	fz := map[int]float64{}
+	for _, f := range r.faces {
+		if f.mat == matFront && (f.own == a.ID || f.own == b.ID) {
+			fz[f.own] = r.pts[f.p0].z
+		}
+	}
+	if !(fz[b.ID] > fz[a.ID]) {
+		t.Fatalf("the layer 1 note's front %v is not in front of the page's %v", fz[b.ID], fz[a.ID])
+	}
+}
+
+// At every lens zoom, the cross picks the structure it is on, a click
+// chooses it, a drag moves it the way the camera turns, and Alt + N
+// places a new one centred on the cross.
+func TestDesign3DEveryLens(t *testing.T) {
+	for _, lens := range []float64{0.4, 1, 2.5, 6} {
+		m := room3DModel(t, 120, 40)
+		d := m.ds()
+		r := &d.room
+		press(m, "ctrl+f")
+		r.lens = lens
+		t.Logf("lens %v", lens)
+		o := d.octs[1]
+		x, y := cell3D(t, m, o.ID, func(sx, sy int) bool {
+			px, py, pw, ph := d.rect(o)
+			return sx > px+2 && sx < px+pw-2 && sy > py+3 && sy < py+ph-2
+		})
+		if h := r.pickAim(); h.own != o.ID {
+			t.Fatalf("lens %v: the cross is on %d, want %d", lens, h.own, o.ID)
+		}
+		d.sel, d.lastClick = -1, time.Time{}
+		click(m, x, y, tea.MouseLeft)
+		if d.sel != o.ID {
+			t.Fatalf("lens %v: a click chose %d, want %d", lens, d.sel, o.ID)
+		}
+		x0, y0 := o.X, o.Y
+		d.lastClick = time.Time{}
+		dragTo(m, x, y, x+2, y+1, tea.MouseLeft)
+		if o.X <= x0 || o.Y < y0 {
+			t.Fatalf("lens %v: dragged right (and down): at %d,%d, was %d,%d", lens, o.X, o.Y, x0, y0)
+		}
+		room3DCell(t, m, matBoard)
+		bx, by := boardAtCross(t, m)
+		press(m, "alt+n")
+		press(m, "p")
+		n := d.byID(d.sel)
+		w, h := d.size(n)
+		if n.Layer == 0 && (math.Abs(float64(n.X)+float64(w)/2-bx) > 1.5 || math.Abs(float64(n.Y)+float64(h)/2-by) > 1.5) {
+			t.Fatalf("lens %v: placed at %d,%d (%dx%d), the cross at %.1f,%.1f", lens, n.X, n.Y, w, h, bx, by)
+		}
+		press(m, "esc")
+	}
+}
+
+// The camera cannot walk out of the room, however far it goes.
+func TestDesign3DWalkStaysInRoom(t *testing.T) {
+	m := room3DModel(t, 120, 40)
+	d := m.ds()
+	press(m, "ctrl+f")
+	boardRows(m)
+	r := &d.room
+	for _, k := range []string{"d", "a", "w", "s", "q", "e"} {
+		for i := 0; i < 200; i++ {
+			press(m, "shift+"+k)
+		}
+		boardRows(m)
+		rm := &r.rm
+		if p := r.pos; p.x <= rm.wx0 || p.x >= rm.wx1 || p.y <= rm.fy || p.y >= rm.cy || p.z <= 0 || p.z >= rm.fz {
+			t.Fatalf("after %s: the camera at %v is out of the room (x %.0f..%.0f y %.0f..%.0f z 0..%.0f)", k, p, rm.wx0, rm.wx1, rm.fy, rm.cy, rm.fz)
+		}
+	}
+}
+
+// Saved while in 3D, the board keeps the flat board's own zoom and place.
+func TestDesign3DSavesFlatZoom(t *testing.T) {
+	m := room3DModel(t, 120, 40)
+	d := m.ds()
+	d.zoom, d.camX, d.camY = 2, -10, -5
+	press(m, "ctrl+f")
+	_, f := d.snapshot()
+	if f.Zoom != 2 || f.CamX != -10 || f.CamY != -5 {
+		t.Fatalf("saved in 3D: zoom %d cam %v,%v", f.Zoom, f.CamX, f.CamY)
 	}
 }

@@ -140,11 +140,20 @@ type r3room struct {
 	tw, th         int
 	x0, x1, y0, y1 float64 // the box round the blocks: its sides, bottom and top
 	depth          float64 // how far the box comes out
+	base           float64 // how far it comes out but for the layers: the camera and the lamp keep to it
 	big            float64 // the screen's bigger side, in units
 	// The room's walls (see enclose): the side walls at wx0 and wx1, the
 	// floor at fy, the ceiling at cy and the wall behind the camera at fz.
 	wx0, wx1, fy, cy, fz float64
 	walls, floor         int // the finishes (design_3d_finish.go)
+}
+
+// baseDepth is rm.base (rm.depth for a room made without it).
+func (rm *r3room) baseDepth() float64 {
+	if rm.base > 0 {
+		return rm.base
+	}
+	return rm.depth
 }
 
 // enclose stands the room's walls round the box of the blocks, and further
@@ -188,7 +197,7 @@ func (r *room3D) area(d *designState, w, h int, z float64) r3room {
 			x0, y0, x1, y1 = min(x0, bx0), min(y0, by0), max(x1, bx1), max(y1, by1)
 		}
 	}
-	deepest := 0.0
+	deepest, outmost := 0.0, 0.0 // the deepest block against the wall; the front furthest out, layers and all
 	for _, o := range d.octs {
 		x, y, ow, oh := d.rect(o)
 		if x >= lx1 || y >= ly1 || x+ow <= lx0 || y+oh <= ly0 {
@@ -198,7 +207,8 @@ func (r *room3D) area(d *designState, w, h int, z float64) r3room {
 		b.whole = b.x0 == x && b.y0 == y && b.x1 == x+ow && b.y1 == y+oh
 		b.dep = blockDepth(&b, z, big)
 		b.off = float64(o.Layer) * layerStep
-		deepest = math.Max(deepest, b.off+b.dep)
+		deepest = math.Max(deepest, b.dep)
+		outmost = math.Max(outmost, b.off+b.dep)
 		r.blocks = append(r.blocks, b)
 		take(b.x0, b.y0, b.x1, b.y1)
 		if o.DrawerOpen && o.Kind != kCabinet {
@@ -222,14 +232,20 @@ func (r *room3D) area(d *designState, w, h int, z float64) r3room {
 	rm.y1, rm.y0 = rm.hh-float64(2*y0), rm.hh-float64(2*y1)
 	// The floor comes out a little under half the room's size (no more
 	// than for the screen), and over three times the deepest block.
-	rm.depth = math.Max(8, math.Max(deepest/0.3, 0.45*math.Min(big, math.Max(rm.x1-rm.x0, rm.y1-rm.y0))))
+	rm.base = math.Max(8, math.Max(deepest/0.3, 0.45*math.Min(big, math.Max(rm.x1-rm.x0, rm.y1-rm.y0))))
+	// Structures out on layers make the room deeper, only as far as they
+	// need: the camera, the lamp and the lens keep to rm.base, so a
+	// structure far out does not push the camera back and narrow its view.
+	rm.depth = math.Max(rm.base, outmost+0.15*big)
 	// The blocks come out of the wall as the room turns (see outK): seen
 	// nearly straight on they are nearly flat, so each one is the size it
 	// is on the flat board, not bigger for standing nearer the camera.
 	k := r.outK()
 	for i := range r.blocks {
 		r.blocks[i].dep = math.Max(0.02, r.blocks[i].dep*k)
-		r.blocks[i].off *= k
+		// Layers come out with the blocks; a hair apart even flat against
+		// the wall, so a higher layer is always in front.
+		r.blocks[i].off = r.blocks[i].off*k + 0.02*float64(r.blocks[i].o.Layer)
 	}
 	r.layerCopies(d, &rm)
 	return rm
@@ -672,7 +688,7 @@ func (r *room3D) quadFace(f r3face, o, u, v r3vec) {
 
 // lampAt is where the lamp hangs: at the front left, near the top.
 func lampAt(rm *r3room) r3vec {
-	return r3vec{rm.x0 + 0.15*(rm.x1-rm.x0), rm.y1 - math.Max(1, 0.02*(rm.y1-rm.y0)), 0.6 * rm.depth}
+	return r3vec{rm.x0 + 0.15*(rm.x1-rm.x0), rm.y1 - math.Max(1, 0.02*(rm.y1-rm.y0)), 0.6 * rm.baseDepth()}
 }
 
 // scene puts the room, the blocks and the lamp in faces.
@@ -985,9 +1001,8 @@ var lampWarm = [3]float64{1, 0.9, 0.72}
 // the room (moved by the pan) at the room's turn and tilt.
 func (r *room3D) orbitView(rm *r3room) r3view {
 	fw, fh := float64(rm.w), float64(2*rm.h)
-	depth := rm.depth
-	dist0 := depth + 1.05*rm.big // the camera's distance from the back wall, straight on
-	f := dist0                   // so straight on, the back wall is the board area cell for cell
+	dist0 := rm.baseDepth() + 1.05*rm.big // the camera's distance from the back wall, straight on
+	f := dist0                            // so straight on, the back wall is the board area cell for cell
 	// The camera turns round the middle of the screen on the back wall, at
 	// the same distance and with the same lens at every turn: the wall and
 	// the blocks on it stay where they are on the screen, only seen from
@@ -1091,7 +1106,7 @@ func (r *room3D) draw(rm *r3room, z float64, sb *strings.Builder) {
 		v = r.orbitView(rm)
 	}
 	if r.free {
-		rm.enclose(r.startPos) // the room as it was round the camera when 3D began: it can be walked out of
+		rm.enclose(r.startPos) // the room as it was round the camera when 3D began (walking stays inside it: inRoom)
 	} else {
 		rm.enclose(v.cam)
 	}

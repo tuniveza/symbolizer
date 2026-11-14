@@ -390,6 +390,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		m.pixelMouseResized() // the mouse's pixels to cells anew, mouse look starting afresh (design_3d_mouse.go)
 		m.input.SetWidth(m.inputWidth())
 		m.ensureVisible()
 		return nil

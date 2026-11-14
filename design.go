@@ -381,7 +381,11 @@ func (d *designState) snapshot() (int, designFile) {
 	// The copy undo keeps (state) shares what has not changed since the
 	// last one, so taking it costs little even on a large board.
 	st := d.state()
-	f := designFile{Octs: d.openPutBack(st.octs), Links: st.links, CamX: d.camX, CamY: d.camY, Zoom: d.zoom, NextID: d.nextID,
+	camX, camY, zoom := d.camX, d.camY, d.zoom
+	if r := &d.room; r.flatSaved { // in 3D the board is at 100%: the flat board's own zoom and place are saved
+		camX, camY, zoom = r.flatCam[0], r.flatCam[1], r.flatZoom
+	}
+	f := designFile{Octs: d.openPutBack(st.octs), Links: st.links, CamX: camX, CamY: camY, Zoom: zoom, NextID: d.nextID,
 		Walls: finishName(wallNames, d.walls), Floor: finishName(floorNames, d.floor),
 		marksMap: st.marks, marksVer: st.marksVer}
 	d.snapGen++
