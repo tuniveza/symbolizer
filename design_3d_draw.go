@@ -28,6 +28,7 @@ import (
 	"math"
 	"math/bits"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -286,6 +287,7 @@ func (r *room3D) area(d *designState, w, h int, z float64) r3room {
 		// the wall, so a higher layer is always in front.
 		r.blocks[i].off = r.blocks[i].off*k + 0.02*float64(r.blocks[i].o.Layer)
 	}
+	r.stackOverlaps()
 	r.layerCopies(d, &rm)
 	r.pinCopies(d, &rm) // turned pins' cards (design_3d_pins.go)
 	return rm
@@ -306,6 +308,43 @@ func (d *designState) keepInRoom(o *dOct) {
 	z := d.z()
 	o.X += int(math.Round(float64(dx) / z))
 	o.Y += int(math.Round(float64(dy) / z))
+}
+
+// stackOverlaps stands each block that is over another where they
+// overlap (on a higher layer, or on the same layer and drawn after it, as
+// the flat board draws it on top) at least just in front of that one's
+// front: a page dragged over a cabinet shows on the cabinet's front, not
+// inside it; two cards of the same depth never stand in one plane, where
+// each would flicker through the other; and a cabinet's knobs, which
+// stand out of its front, never poke through what is in front of it. Only
+// the blocks that show their own drawing (ownDrawings) can be over another.
+func (r *room3D) stackOverlaps() {
+	if len(r.own) == 0 {
+		return
+	}
+	var them []int
+	for i := range r.blocks {
+		if r.own[r.blocks[i].o.ID] {
+			them = append(them, i)
+		}
+	}
+	// Lowest layer first, then as drawn: what is under is placed first.
+	slices.SortStableFunc(them, func(a, b int) int { return r.blocks[a].o.Layer - r.blocks[b].o.Layer })
+	for _, i := range them {
+		b := &r.blocks[i]
+		for j := range r.blocks {
+			u := &r.blocks[j]
+			under := u.o.Layer < b.o.Layer || u.o.Layer == b.o.Layer && j < i && r.own[u.o.ID]
+			if !under || u.x0 >= b.x1 || b.x0 >= u.x1 || u.y0 >= b.y1 || b.y0 >= u.y1 {
+				continue
+			}
+			gap := 0.02
+			if u.o.Kind == kCabinet {
+				gap += 1.3 // clear of its doors' knobs, which stand out of its front (design_3d_cabinet.go)
+			}
+			b.off = math.Max(b.off, u.off+u.dep+gap)
+		}
+	}
 }
 
 // outTurn is the turn (degrees away from straight at the wall) by which

@@ -179,13 +179,14 @@ type room3D struct {
 	seg            [4]float32    // the line being marked: a point on the screen (cells, rows) and its way (see line)
 	segOn          bool
 	edgeAt         map[r3edgeKey]int32
-	edges          []r3edge // the blocks' edges this frame, and the faces either side (see edgeInk)
-	world          r3world  // the windows, the town outside and the other lights (design_3d_world.go)
-	fix            [4]int   // the first-person camera's room: the board cells it takes in (x0, y0, x1, y1), fixed going into 3D (see area)
-	fixKey         r3fixKey // the board area and its place when it was fixed: changed, it is fitted again
-	fixOn          bool     //
-	fixBase        float64  // and its rm.base
-	locked         bool     // the chosen structure stays chosen as the camera moves, till a click lets it go (see design3DChooseMiddle)
+	edges          []r3edge     // the blocks' edges this frame, and the faces either side (see edgeInk)
+	world          r3world      // the windows, the town outside and the other lights (design_3d_world.go)
+	fix            [4]int       // the first-person camera's room: the board cells it takes in (x0, y0, x1, y1), fixed going into 3D (see area)
+	fixKey         r3fixKey     // the board area and its place when it was fixed: changed, it is fitted again
+	fixOn          bool         //
+	fixBase        float64      // and its rm.base
+	own            map[int]bool // the structures whose block shows its own drawing, not the wall's (see ownDrawings)
+	locked         bool         // the chosen structure stays chosen as the camera moves, till a click lets it go (see design3DChooseMiddle)
 }
 
 // r3fixKey is the board area's size and the flat board's place under it,
@@ -857,8 +858,17 @@ func (m *Model) design3DRows(sb *strings.Builder) {
 	r.paint = pic && r.plain
 	pins3D = r.paint // turned pins are cards of their own (design_3d_pins.go); all else is drawn as on the flat board
 	all := d.octs
-	if d.layered() {
-		d.octs = d.onWall() // the wall without what stands out on layers (layerCopies, design_3d_layers.go)
+	r.own = d.ownDrawings()
+	if len(r.own) > 0 {
+		// The wall without what shows its own drawing: what stands out on
+		// layers, and what overlaps another (layerCopies, design_3d_layers.go).
+		wall := make([]*dOct, 0, len(all))
+		for _, o := range all {
+			if o != nil && !r.own[o.ID] {
+				wall = append(wall, o)
+			}
+		}
+		d.octs = wall
 	}
 	c := m.designCanvas()
 	d.octs = all

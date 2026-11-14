@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -138,5 +139,67 @@ func TestDesign3DAltWheelNotTap(t *testing.T) {
 	}
 	if !d.room.on() || o.Layer != 2 {
 		t.Fatalf("Alt + wheel twice: 3D %v, layer %d; want still 3D and layer 2", d.room.on(), o.Layer)
+	}
+}
+
+// Two structures overlapping on the wall (a page dragged over a deep
+// cabinet): each block's front shows only its own drawing. The cabinet's
+// front stands in front of the thin page's, so were it read from the flat
+// board it would show the page's words too, split between two fronts.
+func TestDesign3DOverlapOwnDrawing(t *testing.T) {
+	m := room3DModel(t, 160, 50)
+	d := m.ds()
+	withPixels(t, m, 8, 16)
+	page, cab := d.octs[1], d.octs[3]
+	page.Header = "Hellothere"
+	cab.Header = "Toolbox"
+	page.X, page.Y = cab.X+6, cab.Y+2 // over the cabinet, on the same layer
+	d.toFront(page)
+	press(m, "ctrl+f")
+	r := &d.room
+	aimFree(m, page, -25, 5, 0.45, 1)
+	boardRows(m)
+	if !r.own[page.ID] || !r.own[cab.ID] {
+		t.Fatalf("overlapping: own drawings %v, want both %d and %d", r.own, page.ID, cab.ID)
+	}
+	// Each title is in its own block's rows only.
+	for _, c := range []struct {
+		o     *dOct
+		title string
+	}{{page, "Hellothere"}, {cab, "Toolbox"}} {
+		var b *r3block
+		for i := range r.blocks {
+			if r.blocks[i].o == c.o {
+				b = &r.blocks[i]
+			}
+		}
+		x, y, w, h := d.rect(c.o)
+		n := 0
+		for ty := 0; ty < r.rm.th; ty++ {
+			var row strings.Builder
+			for tx := 0; tx < r.rm.tw; tx++ {
+				g := r.tex[ty*r.rm.tw+tx].glyph
+				if g == "" {
+					g = " "
+				}
+				row.WriteString(g)
+			}
+			s := row.String()
+			for i := 0; ; {
+				j := strings.Index(s[i:], c.title)
+				if j < 0 {
+					break
+				}
+				cx, cy := i+j+r.rm.tx0, ty+r.rm.ty0
+				n++
+				if cx < x || cx >= x+w || cy < y+b.shift || cy >= y+h+b.shift {
+					t.Errorf("%q at cell %d,%d: not in its own drawing (cells %d..%d, rows %d..%d)", c.title, cx, cy, x, x+w, y+b.shift, y+h+b.shift)
+				}
+				i += j + 1
+			}
+		}
+		if n != 1 {
+			t.Errorf("%q shows %d times in the room's picture, want once", c.title, n)
+		}
 	}
 }

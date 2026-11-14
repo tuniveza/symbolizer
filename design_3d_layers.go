@@ -26,6 +26,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -316,7 +317,8 @@ func (d *designState) coversOnLayer(o *dOct) bool {
 }
 
 // layerCopies makes room in the room's picture of the wall for the
-// drawings of the blocks out on layers: the wall behind such a block is
+// drawings of the blocks out on layers, and of those that overlap another
+// (see ownDrawings): the wall behind such a block is
 // drawn without it (design3DRows leaves it out of the flat board read
 // for the wall), so its words do not show on the wall behind it as well,
 // and its own drawing is kept in rows added below the board, which the
@@ -327,7 +329,7 @@ func (r *room3D) layerCopies(d *designState, rm *r3room) {
 	for i := range r.blocks {
 		b := &r.blocks[i]
 		b.shift = 0
-		if b.o.Layer <= 0 {
+		if b.o.Layer <= 0 && !r.own[b.o.ID] {
 			continue
 		}
 		_, y, _, oh := d.rect(b.o)
@@ -339,26 +341,49 @@ func (r *room3D) layerCopies(d *designState, rm *r3room) {
 	}
 }
 
-// layered is whether any structure stands out on a layer.
-func (d *designState) layered() bool {
+// ownDrawings is the structures whose block shows its own drawing, kept
+// apart from the wall's (see layerCopies): those out on a layer, and those
+// that overlap another on the same layer. Two such blocks stand one in the
+// other, the deeper one's front in front of the thinner one's; were both
+// fronts read from the flat board, the deeper front would show whatever
+// the flat board draws on top there (the other one's words), so the words
+// would be split between two fronts at different depths.
+func (d *designState) ownDrawings() map[int]bool {
+	own := map[int]bool{}
+	type box struct {
+		o              *dOct
+		x0, y0, x1, y1 int
+	}
+	var bs []box
 	for _, o := range d.octs {
-		if o != nil && o.Layer > 0 {
-			return true
+		if o == nil {
+			continue
+		}
+		if o.Layer > 0 {
+			own[o.ID] = true
+			continue
+		}
+		if o.DrawerOpen && !isContainer(o.Kind) {
+			continue // its pulled out drawer is drawn beside it on the wall: it stays on the wall
+		}
+		x, y, w, h := d.rect(o)
+		bs = append(bs, box{o, x, y, x + w, y + h})
+	}
+	slices.SortFunc(bs, func(a, b box) int { return a.x0 - b.x0 })
+	for i := range bs {
+		a := &bs[i]
+		for j := i + 1; j < len(bs) && bs[j].x0 < a.x1; j++ {
+			b := &bs[j]
+			if b.y0 >= a.y1 || a.y0 >= b.y1 {
+				continue
+			}
+			if op := d.opened; op.active && !op.max && (a.o.ID == op.id && b.o.ID == op.rack || b.o.ID == op.id && a.o.ID == op.rack) {
+				continue // a rack's thing open inside it: drawn over it, as on the flat board
+			}
+			own[a.o.ID], own[b.o.ID] = true, true
 		}
 	}
-	return false
-}
-
-// onWall is the structures on the wall (layer 0): the flat board the wall
-// shows (see layerCopies).
-func (d *designState) onWall() []*dOct {
-	var them []*dOct
-	for _, o := range d.octs {
-		if o != nil && o.Layer == 0 {
-			them = append(them, o)
-		}
-	}
-	return them
+	return own
 }
 
 // design3DZoomGuard keeps the board at 100% in 3D: if anything changed
