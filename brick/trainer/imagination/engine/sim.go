@@ -226,6 +226,8 @@ type Network struct {
 	predCache                     *predSnap
 	alikeMarks, nearMarks         marks
 	alikeCache                    alikeX
+	normPass, normEnded           bool
+	Encoded                       *JV // run.js's job.omegas: the encoder's starting frequencies, by word
 	nearList                      []int
 	rarity                        []float64
 	rarityOK                      bool
@@ -1016,6 +1018,7 @@ func (net *Network) rarityOf() {
 func (net *Network) decide() {
 	pred := net.predIndex()
 	te, fe, fi := net.fnPower("Te"), net.fnPower("Fe"), net.fnPower("Fi")
+	net.normPass = true // sim.js: this._norm = new Map() (see AlikeZeroOutsidePass)
 	for _, l := range net.links.All() {
 		a, b := net.Get(l.A), net.Get(l.B)
 		if a == nil || b == nil {
@@ -1055,6 +1058,7 @@ func (net *Network) decide() {
 			}
 		}
 	}
+	net.normPass, net.normEnded = false, true // sim.js: this._norm = null
 	for _, n := range net.N {
 		if !n.Fixed {
 			n.Omega0 += 0.05 * (n.Omega - n.Omega0)
@@ -1592,7 +1596,12 @@ func (net *Network) AddWords(words []string) {
 		if v, ok := numberValue(w); ok {
 			net.addSpec(&SpecNeuron{Label: w, Omega: numberOmega(v), Fixed: true})
 		} else {
-			om := 2 + net.rand.Next()*band
+			var om float64
+			if enc := net.Encoded.Get(w); !enc.IsNullish() { // the encoder's frequency, when it has one
+				om = enc.Num()
+			} else {
+				om = 2 + net.rand.Next()*band
+			}
 			net.addSpec(&SpecNeuron{Label: w, Omega: om, Fixed: len(w) > 0 && w[0] == '='})
 		}
 	}
@@ -1834,15 +1843,14 @@ func (net *Network) Read(word string, context []string, steps int) *ReadResult {
 	for _, s := range senses {
 		isSense[s] = true
 	}
-	type sum struct{ v [nEnergies]float64 }
-	var sums OMap[int, *sum]
+	var sums OMap[int, *energySum]
 	add := func(x *Neuron, k int, v float64) {
 		if !(v > 0) {
 			return
 		}
 		t, ok := sums.Get(x.id)
 		if !ok {
-			t = &sum{}
+			t = &energySum{}
 			sums.Set(x.id, t)
 		}
 		t.v[k] += v
@@ -1963,6 +1971,14 @@ func (net *Network) Read(word string, context []string, steps int) *ReadResult {
 			}
 		}
 	}
+	return net.verdictFrom(senses, &sums)
+}
+
+// energySum is what one neuron took in from a context, per energy.
+type energySum struct{ v [nEnergies]float64 }
+
+// verdictFrom is verdictFrom(senses, sums, keys): the 16-percentage verdict (read and readLine share it).
+func (net *Network) verdictFrom(senses []*Neuron, sums *OMap[int, *energySum]) *ReadResult {
 	var alive []*Neuron
 	for _, x := range senses {
 		if net.alive(x) {

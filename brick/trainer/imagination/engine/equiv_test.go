@@ -14,19 +14,21 @@ import (
 
 // equivCase is one run, done by both engines (testdata/equiv.js and runCase) and compared byte for byte.
 type equivCase struct {
-	Kind       string   `json:"kind"`
-	Gap        float64  `json:"gap,omitempty"`
-	Data       string   `json:"data,omitempty"`
-	Mode       string   `json:"mode,omitempty"`
-	Seed       float64  `json:"seed,omitempty"`
-	Brain      string   `json:"brain,omitempty"`
-	Intuition  bool     `json:"intuition,omitempty"`
-	Batch      float64  `json:"batch,omitempty"`
-	Ticks      int      `json:"ticks,omitempty"`
-	Questions  string   `json:"questions,omitempty"`
-	State      string   `json:"state,omitempty"`
-	Candidates float64  `json:"candidates,omitempty"`
-	Bricks     []string `json:"bricks,omitempty"`
+	Kind       string             `json:"kind"`
+	Gap        float64            `json:"gap,omitempty"`
+	Data       string             `json:"data,omitempty"`
+	Mode       string             `json:"mode,omitempty"`
+	Seed       float64            `json:"seed,omitempty"`
+	Brain      string             `json:"brain,omitempty"`
+	Intuition  bool               `json:"intuition,omitempty"`
+	Batch      float64            `json:"batch,omitempty"`
+	Ticks      int                `json:"ticks,omitempty"`
+	Questions  string             `json:"questions,omitempty"`
+	State      string             `json:"state,omitempty"`
+	Candidates float64            `json:"candidates,omitempty"`
+	Bricks     []string           `json:"bricks,omitempty"`
+	Readline   []string           `json:"readline,omitempty"`
+	Omegas     map[string]float64 `json:"omegas,omitempty"`
 }
 
 func runCase(t testing.TB, c equivCase) []byte {
@@ -55,6 +57,11 @@ func runCase(t testing.TB, c equivCase) []byte {
 		}
 		net = NewNetwork(&Spec{}, seed, nil, brain, true).Load(st)
 		spec := DataSpec(c.Data, "raw", seed)
+		om, _ := json.Marshal(c.Omegas)
+		if c.Omegas == nil {
+			om = []byte("{}")
+		}
+		net.Encoded, _ = ParseJSON(om)
 		net.Sentences = spec.Sentences
 		var all []string
 		for _, s := range spec.Sentences {
@@ -154,6 +161,61 @@ func runCase(t testing.TB, c equivCase) []byte {
 			w.raw("null")
 		}
 		w.raw("}")
+	}
+	w.raw(`],"readline":[`)
+	if c.Readline != nil {
+		for i, a := range net.ReadLine(c.Readline, 40) {
+			if i > 0 {
+				w.raw(",")
+			}
+			w.raw(`{"word":`)
+			w.str(a.Word)
+			r := a.Result
+			if r == nil {
+				w.raw(`,"found":false}`)
+				continue
+			}
+			best := r.Ranked[0]
+			role := net.RoleOf(best.S)
+			w.raw(`,"verdict":`)
+			w.str(r.Verdict)
+			w.raw(`,"clear":`)
+			w.boolean(r.Clear)
+			w.raw(`,"meaning":`)
+			w.ostrVal(r.Meaning)
+			w.raw(`,"sense":`)
+			w.str(best.S.Label)
+			w.raw(`,"matched":`)
+			w.num(float64(best.Matched))
+			w.raw(`,"carried":`)
+			w.num(float64(r.Carried))
+			w.raw(`,"role":`)
+			if role != nil {
+				w.str(role.Role)
+			} else {
+				w.raw("null")
+			}
+			w.raw(`,"senses":[`)
+			for k, x := range r.Ranked {
+				if k > 0 {
+					w.raw(",")
+				}
+				w.raw(`{"label":`)
+				w.str(x.S.Label)
+				w.raw(`,"matched":`)
+				w.num(float64(x.Matched))
+				w.raw(`,"profile":{`)
+				for q, p := range x.Profile {
+					if q > 0 {
+						w.raw(",")
+					}
+					w.key(p.Key)
+					w.num(p.Pct)
+				}
+				w.raw("}}")
+			}
+			w.raw("]}")
+		}
 	}
 	w.raw("]}\n")
 	w.b = append(w.b, net.Save()...)
@@ -350,4 +412,26 @@ func TestEquivArchetypes(t *testing.T) {
 func TestEquivFieldAndUse(t *testing.T) {
 	equiv(t, "use", equivCase{Kind: "data", Data: SampleData, Mode: "use", Seed: 4, Ticks: ticks(1000), Questions: SampleQuestions})
 	equiv(t, "random", equivCase{Kind: "data", Data: SampleData, Mode: "random", Seed: 5, Ticks: ticks(1000), Questions: SampleQuestions})
+}
+
+// readLine: a whole line in one run (small network: all-pairs pool; the 260-neuron one: the filtered pool).
+func TestEquivReadLine(t *testing.T) {
+	equiv(t, "readLine small", equivCase{Kind: "word", Gap: 1.2, Seed: 1, Ticks: ticks(600), Readline: []string{"crap", "clear", "write", "test", "check", "crap", "nothing"}})
+	equiv(t, "readLine big", equivCase{Kind: "data", Data: genData(260, 500, 7), Mode: "raw", Seed: 3, Intuition: true, Batch: 3, Ticks: ticks(600),
+		Readline: []string{"w5", "w1", "w2", "then", "w9", "w40", "#3", "zzz"}})
+}
+
+// readLine and omegas on brick's own saved network (BRICK_NETWORK or the usual place).
+func TestEquivSavedReadLine(t *testing.T) {
+	path := os.Getenv("BRICK_NETWORK")
+	if path == "" {
+		path = filepath.Join("..", "..", "data", "neurons", "network.json")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Skip("no saved network at " + path + " (set BRICK_NETWORK to a network.json)")
+	}
+	data := "put the window on the left side of the screen\nplace brown text at the top right || =write\nzorbleword and flimflam appear"
+	equiv(t, "saved readLine + omegas", equivCase{Kind: "load", State: path, Data: data, Seed: 1, Batch: 3, Ticks: ticks(60),
+		Omegas:   map[string]float64{"zorbleword": 7.25, "flimflam": 3.5, "window": 99},
+		Readline: strings.Fields("put window left side screen place text brown top right")})
 }

@@ -43,12 +43,25 @@ func (j *jobRunner) network(withState bool) (*Network, bool, error) {
 		data = d.String()
 	}
 	spec := DataSpec(data, "raw", j.seed)
+	enc := j.job.Get("omegas") // the encoder's starting frequencies (trainer/encoder.py)
+	if enc == nil || !enc.Truthy() || enc.Kind != JObj {
+		enc = &JV{Kind: JObj}
+	}
+	for i := range spec.Neurons {
+		n := &spec.Neurons[i]
+		if v := enc.Get(n.Label); !v.IsNullish() && !n.Fixed {
+			n.Omega = v.Num()
+		}
+	}
 	var net *Network
 	if saved != nil {
 		net = NewNetwork(&Spec{}, j.seed, nil, j.brain, true)
-		net.Load(saved)
 	} else {
 		net = NewNetwork(spec, j.seed, nil, j.brain, true)
+	}
+	net.Encoded = enc
+	if saved != nil {
+		net.Load(saved)
 	}
 	net.Sentences = spec.Sentences
 	var all []string
@@ -253,7 +266,7 @@ func RunJob(input []byte) ([]byte, error) {
 		return w.b, nil
 	}
 
-	loadState := func() (*Network, *JV, error) {
+	loadState := func(brain *Archetype) (*Network, *JV, error) {
 		p := job.Get("state")
 		b, err := os.ReadFile(p.String())
 		if err != nil {
@@ -263,13 +276,13 @@ func RunJob(input []byte) ([]byte, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		net := NewNetwork(&Spec{}, j.seed, nil, nil, true)
+		net := NewNetwork(&Spec{}, j.seed, nil, brain, true)
 		net.Load(saved)
 		return net, saved, nil
 	}
 
 	if task == "bricks" {
-		net, _, err := loadState()
+		net, _, err := loadState(nil)
 		if err != nil {
 			return nil, err
 		}
@@ -306,8 +319,86 @@ func RunJob(input []byte) ([]byte, error) {
 		return w.b, nil
 	}
 
+	// Read a whole line with the saved, learned network (no training first): one run for the line.
+	if task == "readline" {
+		net, _, err := loadState(j.brain)
+		if err != nil {
+			return nil, err
+		}
+		var words []string
+		if ws := job.Get("words"); ws.Truthy() && ws.Kind == JArr {
+			for _, x := range ws.A {
+				words = append(words, x.String())
+			}
+		}
+		answers := net.ReadLine(words, 40)
+		w.raw(`{"answers":[`)
+		for i, a := range answers {
+			if i > 0 {
+				w.raw(",")
+			}
+			if a.Result == nil {
+				w.raw(`{"word":`)
+				w.str(a.Word)
+				w.raw(`,"found":false}`)
+				continue
+			}
+			r := a.Result
+			best := r.Ranked[0]
+			role := net.RoleOf(best.S)
+			w.raw(`{"word":`)
+			w.str(a.Word)
+			w.raw(`,"found":true,"verdict":`)
+			w.str(r.Verdict)
+			w.raw(`,"clear":`)
+			w.boolean(r.Clear)
+			w.raw(`,"meaning":`)
+			w.ostrVal(r.Meaning)
+			w.raw(`,"sense":`)
+			w.str(best.S.Label)
+			w.raw(`,"matched":`)
+			w.num(float64(best.Matched))
+			w.raw(`,"carried":`)
+			w.num(float64(r.Carried))
+			w.raw(`,"role":`)
+			if role != nil {
+				w.str(role.Role)
+			} else {
+				w.raw("null")
+			}
+			w.raw(`,"senses":`)
+			writeSenses(w, net, r)
+			w.raw("}")
+		}
+		n := len(answers)
+		for _, word := range words { // asked for but not in the network
+			found := false
+			for _, a := range answers {
+				if a.Word == word {
+					found = true
+					break
+				}
+			}
+			if !found {
+				if n > 0 {
+					w.raw(",")
+				}
+				n++
+				w.raw(`{"word":`)
+				w.str(word)
+				w.raw(`,"found":false}`)
+			}
+		}
+		w.raw(`],"split":[],"neurons":`)
+		w.num(float64(len(net.N)))
+		w.raw(`,"links":`)
+		w.num(float64(net.links.Len()))
+		w.raw(`,"learned":true}`)
+		return w.b, nil
+	}
+
 	if task == "score" {
-		net, saved, err := loadState()
+		net, saved, err := loadState(nil)
 		if err != nil {
 			return nil, err
 		}
@@ -371,7 +462,28 @@ func RunJob(input []byte) ([]byte, error) {
 			}
 			return jsRound(100 * float64(c) / float64(len(top))), true
 		}
-		placed := 0
+		placed, alikePlaced := 0, 0
+		for _, n := range gold { // only the lines Ne proposed and Te kept, or the compiler proved
+			var vote OMap[string, float64]
+			for _, l := range n.adj {
+				if l.HasTent || !(l.Ne || l.Proved.Truthy()) {
+					continue
+				}
+				o := net.Get(l.other(n.id))
+				if o == nil || o.Word == n.Word || groupsOf[o.Word] == nil {
+					continue
+				}
+				for _, g := range groups.Keys {
+					if groupsOf[o.Word][g] {
+						v, _ := vote.Get(g)
+						vote.Set(g, v+l.W)
+					}
+				}
+			}
+			if best, ok := topVote(&vote); ok && groupsOf[n.Word][best] {
+				alikePlaced++
+			}
+		}
 		for _, n := range gold {
 			var vote OMap[string, float64]
 			for _, l := range n.adj {
@@ -426,6 +538,8 @@ func RunJob(input []byte) ([]byte, error) {
 		}
 		w.raw(`,"placed":`)
 		w.num(jsRound(100 * float64(placed) / math.Max(1, float64(len(gold)))))
+		w.raw(`,"placedAlike":`)
+		w.num(jsRound(100 * float64(alikePlaced) / math.Max(1, float64(len(gold)))))
 		w.raw(`,"chance":`)
 		w.num(jsRound(100 * float64(chance) / math.Max(1, float64(cn))))
 		w.raw(`,"ni":`)
@@ -634,4 +748,42 @@ func (o *NumObjAny) set(k string, v *BrickGuess) {
 	}
 	o.keys = append(o.keys, k)
 	o.vals = append(o.vals, v)
+}
+
+// topVote is [...vote].sort((x, y) => y[1] - x[1])[0][0]: the first of the highest.
+func topVote(vote *OMap[string, float64]) (string, bool) {
+	type kv struct {
+		k string
+		v float64
+	}
+	var list []kv
+	for k, v := range vote.All() {
+		list = append(list, kv{k, v})
+	}
+	sort.SliceStable(list, func(x, y int) bool { return list[y].v-list[x].v < 0 })
+	if len(list) == 0 {
+		return "", false
+	}
+	return list[0].k, true
+}
+
+func writeSenses(w *jw, net *Network, r *ReadResult) {
+	w.raw("[")
+	for i, x := range r.Ranked {
+		if i > 0 {
+			w.raw(",")
+		}
+		w.raw(`{"label":`)
+		w.str(x.S.Label)
+		w.raw(`,"matched":`)
+		w.num(float64(x.Matched))
+		w.raw(`,"near":`)
+		near := net.Neighbours(x.S)
+		if len(near) > 3 {
+			near = near[:3]
+		}
+		writeStrList(w, near)
+		w.raw("}")
+	}
+	w.raw("]")
 }

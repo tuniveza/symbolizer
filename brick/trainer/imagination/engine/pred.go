@@ -86,11 +86,22 @@ func (m *marks) next(n int) {
 	}
 }
 
+// AlikeZeroOutsidePass mirrors sim.js as of brick-mode a743999: alike()'s norm cache (this._norm) starts
+// undefined, is a Map inside propose() and decide(), and is set to null when each of them ends. Once it is null,
+// `const memo = this._norm && this._norm.get(x.id)` is null, which `memo !== undefined` takes as a cached norm of
+// null, so alike() returns 0 outside those passes: candidates() after any training sees every likeness as 0
+// (a network that has not run propose/decide yet, like run.js's score task, is not affected). When sim.js is
+// fixed (e.g. `if (memo != null) return memo`), set this to false and the Go engine follows.
+var AlikeZeroOutsidePass = true
+
 // alike is alike(a, b, pred): cosine of how the two are used, each context neuron weighted by its rarity.
 // Its three sums (dot, na, nb) are kept apart, each added up in sim.js's order.
 func (net *Network) alike(a, b *Neuron, pred *predSnap) float64 {
 	if !net.rarityOK {
 		net.rarityOf()
+	}
+	if AlikeZeroOutsidePass && net.normEnded && !net.normPass {
+		return 0
 	}
 	pak, pav := pred.row(a.id)
 	pbk, pbv := pred.row(b.id)
@@ -287,6 +298,7 @@ func (net *Network) propose(x *Neuron) {
 	if x.Seen < 3 || special(x.Word) {
 		return
 	}
+	net.normEnded = true // sim.js sets this._norm = null at the end of this pass
 	nm := &net.nearMarks
 	nm.next(net.nextID)
 	near := net.nearList[:0]

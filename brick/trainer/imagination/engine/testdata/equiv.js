@@ -14,6 +14,7 @@ process.stdin.on("end", () => {
   else if (c.kind === "load") {
     net = new S.Network({ neurons: [] }, seed, null, c.brain || null, { intuition: true }).load(JSON.parse(fs.readFileSync(c.state, "utf8")));
     const spec = S.dataSpec(c.data || "", "raw", seed);
+    net.encoded = c.omegas || {};
     net.sentences = spec.sentences;
     net.addWords([...new Set(spec.sentences.flat())]);
   }
@@ -31,6 +32,12 @@ process.stdin.on("end", () => {
   });
   const cands = c.candidates ? net.candidates(c.candidates) : [];
   const extra = { warmth: net.warmth, orderPull: net.orderPull, steps: net.steps, t: net.t, log: net.log.map(l => l.text), stats: net.stats(),
-                  bricks: (c.bricks || []).map(w => net.brickOf(w)) };
+                  bricks: (c.bricks || []).map(w => net.brickOf(w)),
+                  readline: (c.readline ? net.readLine(c.readline) : []).map(({ word, result: r }) => {
+                    if (!r) return { word, found: false };
+                    const best = r.ranked[0], role = net.roleOf(best.s);
+                    return { word, verdict: r.verdict, clear: r.clear, meaning: r.meaning, sense: best.s.label, matched: best.matched, carried: r.carried,
+                             role: role && role.role, senses: r.ranked.map(x => ({ label: x.s.label, matched: x.matched, profile: x.profile })) };
+                  }) };
   process.stdout.write(JSON.stringify(answers) + "\n" + JSON.stringify(cands) + "\n" + JSON.stringify(extra) + "\n" + JSON.stringify(net.save()) + "\n");
 });
