@@ -30,6 +30,7 @@ type Highlighter struct {
 	base    int
 	whole   bool // lines covers the whole file
 	running bool
+	brick   bool // brick mode: brick colours the words by what it reads them as (brick_mode.go)
 	done    int // buffer version the colours match
 }
 
@@ -118,7 +119,7 @@ func (h *Highlighter) covers(top, height int) bool {
 // Want asks for new colours when the text changed or the screen moved past
 // the coloured part. It waits a moment so a burst of typing becomes one run.
 func (h *Highlighter) Want(version, top, height int) tea.Cmd {
-	if h.running || h.Name == "Text" || (h.done == version && h.covers(top, height)) {
+	if h.running || (h.Name == "Text" && !h.brick) || (h.done == version && h.covers(top, height)) {
 		return nil
 	}
 	h.running = true

@@ -156,6 +156,7 @@ func (b *Buffer) Save(path string) error {
 	}
 	b.Path = path
 	b.MarkSaved(b.version, mod)
+	go noteWritten(path) // everything you write is input for brick's learning (brick_learning.go)
 	return nil
 }
 

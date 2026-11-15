@@ -18,7 +18,7 @@ Each round (every 5 seconds) it:
   links      words to how they're used, in brick's brain (trainer/brain.py, trainer/data/brain.txt): every
              direction it proves, your .brick files, the sentence pool, the universe, the dictionary and
              ConceptNet, so a word brick doesn't know can be read as one used the same way
-  leaves     what it couldn't settle for a person to decide: Trainer → Decisions in brick gui (trainer/outliers.py,
+  leaves     what it couldn't settle for a person to decide: the Decisions panel in Symbolizer's brick mode (trainer/outliers.py,
              trainer/data/unsure.txt)
 
 It runs while brick runs (brick gui, or a program running in the terminal) and stops with it.
@@ -920,7 +920,7 @@ def code_stamp():
     newest = 0.0
     for folder in (HERE, os.path.join(HERE, "trainer")):
         for name in os.listdir(folder):
-            if name.endswith(".py") or name == "gui.html":
+            if name.endswith(".py"):
                 try:
                     newest = max(newest, os.path.getmtime(os.path.join(folder, name)))
                 except OSError:

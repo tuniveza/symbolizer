@@ -236,20 +236,9 @@ def desktop():
 
 
 def panel(source):
-    """Open the review panel for this program: in brick gui if it's open, or a brick gui of its own that
-    closes once the review is done."""
-    import gui
-    with socket.socket() as s:
-        open_already = s.connect_ex(("127.0.0.1", gui.PORT)) == 0
-    if open_already:
-        webbrowser.open(f"http://127.0.0.1:{gui.PORT}/?file={quote(os.path.abspath(source))}&review=1")
-    else:
-        subprocess.Popen([sys.executable, os.path.join(HERE, "brick.py"), "gui", os.path.abspath(source), "--review"],
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         start_new_session=True)
+    """The review questions for this program (the web review panel went with brick's web window)."""
+    return ask(source)
 
-
-# ---------------- a correction, made general ----------------
 
 def generalise(line, meant, words_file="mywords.txt"):
     """'bg red' = 'set the background colour to red' -> 'bg a colour = set the background colour to a colour':

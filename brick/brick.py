@@ -6,8 +6,8 @@
   brick console game.txt      makes it and runs it in a new console window (brick window works too)
   brick here game.txt         makes it and runs it right here, in this terminal
   brick build game.txt        only makes ./game
-  brick gui                   a window to write, run and watch it being made (brick gui game.txt)
-                              brick gui --app: in a window of its own (what the brick launcher opens)
+  brick gui                   Symbolizer's brick mode: write, run and watch it being made (brick gui game.txt;
+                              the same as sy brick game.txt). brick gui --app: in a kitty window of its own
   brick export game.txt       writes game.brick: the program and everything brick made from it,
                               as plain text, to give to Claude to read (Save .brick in brick gui)
   brick bits game.txt         writes the program as brick materials, next to game.txt (Save bits in
@@ -36,7 +36,7 @@ The trainer: everything brick learns, in one place (the code in trainer/, what i
                               dictionary groups and practice directions, they say what each word of the line
                               means there, proved by 16 energy percentages, or that none is relevant.
                               --as "mirror oracle" gives them an archetype's brain (--archetypes lists them);
-                              the same is in brick gui: Trainer, Neurons
+                              the same is in Symbolizer's brick mode: the Neurons panel
   brick trainer brain         brick's brain: it links each word to how it's used, by itself, so a word
                               brick doesn't know can be read as one used the same way ('hi in vermilion'
                               like 'hi in red'). brick trainer brain: is it on, how much it knows;
@@ -182,6 +182,22 @@ WantedBy=default.target
 """
 
 
+def open_brick_mode(args):
+    """brick gui [file] [--app]: Symbolizer in brick mode (sy brick file). From a terminal it opens right there;
+    with --app (the launcher) or no terminal, in a kitty window of its own."""
+    files = [a for a in args if not a.startswith("--")]
+    here = os.path.dirname(os.path.abspath(__file__))
+    sy = shutil.which("sy") or os.path.join(os.path.dirname(here), "sy")
+    command = [sy, "brick"] + [os.path.abspath(f) for f in files]
+    if "--app" in args or not sys.stdout.isatty():
+        if shutil.which("kitty"):
+            subprocess.Popen(["kitty", "--class", "symbolizer", "--title", "Symbolizer"] + command,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+            return 0
+    os.execv(sy, command)
+
+
 TRAINER_COMMANDS = ("neurons", "brain", "neural", "learn", "imagine", "dream", "imaginations", "show", "look", "universe",
                     "universes", "sight", "scramble", "feeder", "review")
 
@@ -211,7 +227,7 @@ def trainer_command(args):
         sys.exit(1)
     always = subprocess.run(["systemctl", "--user", "is-enabled", "--quiet", SERVICE]).returncode == 0
     print("The trainer is " + ("ON all the time (brick trainer off to stop that)." if always else
-                               "on while brick runs (brick gui, or a program running here)."))
+                               "on while brick runs (Symbolizer's brick mode, or a program running here)."))
     print("Right now it's " + ("running." if trainer.running() else "not running."))
     log = os.path.join(trainer.FOLDER, "log.txt")
     if os.path.isfile(log):
@@ -222,7 +238,7 @@ def trainer_command(args):
         with open(trainer.POOL, encoding="utf-8", errors="replace") as f:
             print(f"sentence pool: {sum(1 for _ in f):,} lines in {trainer.POOL}")
     from trainer import outliers
-    print(f"waiting for you to decide: {len(outliers.entries())} (Trainer → Decisions in brick gui)")
+    print(f"waiting for you to decide: {len(outliers.entries())} (the Decisions panel in Symbolizer's brick mode)")
 
 
 TOOLS = ["Read", "Edit", "Write", "Grep", "Glob"] + [f"Bash({c}:*)" for c in (
@@ -273,6 +289,9 @@ def helper(name, focus):
 
 def main():
     args = sys.argv[1:]
+    if args[:1] == ["serve"]:                         # brick for Symbolizer's brick mode: JSON lines on stdin/stdout
+        import serve
+        return serve.main()
     if args[:1] == ["factory"]:                       # the trainer's old name
         args = ["trainer"] + (["digest"] + args[2:] if args[1:2] == ["learn"] else args[1:])
     if args[:1] == ["trainer"]:                       # brick trainer ...: everything brick learns
@@ -327,13 +346,10 @@ def main():
     if args[:2] == ["help", "dictionary"] or args[:1] == ["dictionary"]:
         print(dictionary.listing(args[2:] if args[0] == "help" else args[1:]))
         return
-    if args[:1] == ["gui"]:
-        from trainer import core as trainer
-        import gui
-        trainer.start_alongside(os.getcwd())          # it learns while the window is open, and stops with it
-        return gui.main(args[1:])
+    if args[:1] == ["gui"]:                           # brick's window is Symbolizer's brick mode now
+        return open_brick_mode(args[1:])
     if args[:1] == ["export"] and len(args) == 2:
-        import gui
+        import kiln as gui
         source = find_source(args[1])
         if source is None:
             print(f"I can't find {args[1]} in {os.getcwd()}. Check the name, or cd to its folder first.")
@@ -346,7 +362,7 @@ def main():
         print(f"Wrote {where}. Give it to Claude and ask what the program is about.")
         return
     if args[:1] in (["bits"], ["sand"], ["clay"], ["shale"], ["cement"]) and len(args) == 2:
-        import gui
+        import kiln as gui
         source = find_source(args[1])
         if source is None:
             print(f"I can't find {args[1]} in {os.getcwd()}. Check the name, or cd to its folder first.")

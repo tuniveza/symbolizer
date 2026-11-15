@@ -218,7 +218,7 @@ def findings(count=40):
     from trainer import outliers
     waiting, handed = len(outliers.entries()), len(outliers.entries(outliers.FOR_DIRECTOR))
     if waiting or handed:
-        lines += ["", f"Waiting for a person (Trainer → Decisions in brick gui): {waiting}. "
+        lines += ["", f"Waiting for a person (the Decisions panel in Symbolizer's brick mode): {waiting}. "
                       f"Left for the English Director: {handed} (trainer/data/for-director.txt)."]
     return "\n".join(lines)
 

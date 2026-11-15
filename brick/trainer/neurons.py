@@ -229,6 +229,9 @@ def command(args):
     if args[:1] and args[0] in ("always", "off", "status"):
         from trainer import daemon                       # the training daemon (a systemd user service)
         return daemon.command(args[0])
+    if args[:1] == ["repair"]:
+        from trainer import repair                       # find what's missing in a program and fix it
+        return repair.command(args[1:])
     if args[:1] == ["words"]:
         from trainer import wordfeed                     # new words from the internet dictionary, made into bricks
         got = wordfeed.feed(int(args[1]) if len(args) > 1 and args[1].isdigit() else 20, say=lambda s: print(s, flush=True))

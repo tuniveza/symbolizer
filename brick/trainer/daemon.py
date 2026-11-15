@@ -141,6 +141,13 @@ def main():
     log("stopped")
 
 
+def state():
+    """The daemon as data: {"running", "enabled", ...the last status fields}."""
+    running = subprocess.run(["systemctl", "--user", "is-active", "--quiet", SERVICE]).returncode == 0
+    enabled = subprocess.run(["systemctl", "--user", "is-enabled", "--quiet", SERVICE]).returncode == 0
+    return {"running": running, "enabled": enabled, **read_status(), "log": LOG}
+
+
 def command(what):
     unit = os.path.expanduser(f"~/.config/systemd/user/{SERVICE}")
     if what in ("always", "off"):

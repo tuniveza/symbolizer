@@ -94,6 +94,9 @@ func (m *Model) View() tea.View {
 			sb.WriteString(r)
 			sb.WriteByte('\n')
 		}
+		if m.inBrick() {
+			m.brickRows(&sb) // brick's panel (brick_mode.go)
+		}
 		sb.WriteString(paintRow(m.infoLine(), m.height-3, m.width))
 		sb.WriteByte('\n')
 		sb.WriteString(paintRow(m.statusBar(), m.height-2, m.width))

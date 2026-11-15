@@ -1,24 +1,18 @@
-"""A window for brick: write plain English on the left, build and run it, and watch how it's made.
+"""brick's kiln: building a program and seeing how it's made, for any front end (Symbolizer's brick mode uses
+it through serve.py; brick export uses it too).
 
-  brick gui                   opens it in your web browser (python3 gui.py works too)
-  brick gui game.txt          opens it with game.txt loaded
-  brick gui --app             opens it in a window of its own (a browser app window), and closes
-                              itself a few minutes after that window is closed (the launcher uses this)
+  watch(text, folder)               build it as `brick` would, noting line by line how each line was split and
+                                    tidied and which machine code it made (objdump turns the bytes back)
+  build_for_running(text, path)     build it next to its file, ready to run
+  export(text, path)                game.brick: the program and everything about it, as plain text to read
+  write_materials(text, path, ...)  the program's bytes as game.sand, game.clay, game.shale, game.cement
+  fix_options / keep_general        'Not what I meant' on a line: other readings, and keeping a correction
 
-Save .brick (in the window) or `brick export game.txt` writes game.brick: the program and everything
-the window shows about it, as plain text, to hand to someone (or Claude) to read.
-
-It's a small web page served from this computer only (http://127.0.0.1:8766). The page is gui.html.
-Building looks just like `brick build`; running happens in a console inside the page, or in a
-console window of its own. Watching the build: a Compiler that notes, line by line, how each line
-was split and tidied and which machine code it made, then objdump turns the bytes back into
-instructions we can read.
+(brick's old web window, gui.py and gui.html, was replaced by Symbolizer's brick mode on 15 Nov 2026.)
 """
 import base64
-import fcntl
 import json
 import os
-import pty
 import re
 import shutil
 import signal
@@ -26,17 +20,12 @@ import struct
 import subprocess
 import sys
 import tempfile
-import termios
 import threading
 import time
-import webbrowser
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, quote, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-import brick  # noqa: E402
 from trainer import review  # noqa: E402
 import dictionary  # noqa: E402
 import runtime  # noqa: E402
@@ -47,11 +36,7 @@ from elf import FILE_ADDRESS, HEADERS_SIZE, SPACE_ADDRESS, wrap  # noqa: E402
 from expressions import Problem  # noqa: E402
 from reader import group_parts, split_line  # noqa: E402
 
-PORT = int(os.environ.get("BRICK_GUI_PORT") or 8766)   # BRICK_GUI_PORT: for tests, beside a real one
-from trainer import core as trainer  # noqa: E402
-STAMP = trainer.code_stamp()                # brick's code as this server started with it
-NOWHERE = "class:^brick-gui-no-window$"     # a run inside the page has no window of its own to move
-
+scratch = []                                # one folder for unsaved programs, made when first needed
 
 # ---- watching a build ----
 
@@ -559,74 +544,6 @@ def write_materials(text, path, folder, kinds=tuple(MATERIALS)):
     return written
 
 
-# ---- running a program in the page ----
-
-class Session:
-    """One running program, in a pseudo-terminal. The page fetches what it writes and sends keys."""
-
-    def __init__(self, program, folder, rows, cols):
-        self.output = bytearray()
-        self.done = None                       # its exit code once it stops
-        self.changed = threading.Condition()
-        keyboard, terminal = pty.openpty()
-        fcntl.ioctl(terminal, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
-        env = dict(os.environ, BRICK_WINDOW=NOWHERE, TERM="xterm-256color")
-        self.process = subprocess.Popen([program], stdin=terminal, stdout=terminal, stderr=terminal,
-                                        cwd=folder, env=env, start_new_session=True)
-        os.close(terminal)
-        self.keyboard = keyboard
-        threading.Thread(target=self.read, daemon=True).start()
-
-    def read(self):
-        while True:
-            try:
-                chunk = os.read(self.keyboard, 65536)
-            except OSError:
-                chunk = b""
-            if not chunk:
-                break
-            with self.changed:
-                self.output += chunk
-                self.changed.notify_all()
-        code = self.process.wait()
-        with self.changed:
-            self.done = code if code >= 0 else 128 - code
-            self.changed.notify_all()
-        os.close(self.keyboard)
-
-    def since(self, offset, seconds=20):
-        with self.changed:
-            self.changed.wait_for(lambda: len(self.output) > offset or self.done is not None, seconds)
-            return bytes(self.output[offset:]), self.done
-
-    def type(self, data):
-        if self.done is None:
-            try:
-                os.write(self.keyboard, data)
-            except OSError:
-                pass
-
-    def resize(self, rows, cols):
-        if self.done is None:
-            try:
-                fcntl.ioctl(self.keyboard, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
-                os.killpg(self.process.pid, signal.SIGWINCH)
-            except OSError:
-                pass
-
-    def stop(self):
-        if self.done is None:
-            try:
-                os.killpg(self.process.pid, signal.SIGTERM)
-            except OSError:
-                pass
-
-
-sessions = {}
-lock = threading.Lock()
-last_id = [0]
-scratch = []                                # one folder for unsaved programs, made when first needed
-
 
 def build_for_running(text, path):
     """Build the text next to its file (as `brick build` would), or in a scratch folder if it's not saved.
@@ -693,7 +610,8 @@ def keep_general(line, meant, words_file):
         pass
 
 
-# ---- the web server ----
+# ---- brick's examples and a folder's programs ----
+
 
 def examples():
     folder = os.path.join(HERE, "texts", "examples")
@@ -710,381 +628,3 @@ def files_here(folder):
         return sorted(n for n in os.listdir(folder) if n.endswith(".txt") and os.path.isfile(os.path.join(folder, n)))
     except OSError:
         return []
-
-
-APP_IDLE = 180                                  # --app: seconds with no word from the page before it closes
-last_seen = [time.monotonic()]                  # when the page last asked for anything
-
-
-def open_app(address):
-    """Open the page as an app window (no tabs or address bar) in a Chromium-type browser, else a tab."""
-    for browser in (os.path.expanduser("~/.local/bin/emberline-helium"), "helium", "chromium",
-                    "google-chrome-stable", "brave", "thorium-browser"):
-        found = browser if os.path.isfile(browser) and os.access(browser, os.X_OK) else shutil.which(browser)
-        if found:
-            subprocess.Popen([found, f"--app={address}"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL, start_new_session=True)
-            return
-    webbrowser.open(address)
-
-
-def close_when_idle(server):
-    """--app: the window pings every 20 seconds (once a minute at worst while hidden); once it's
-    been quiet for APP_IDLE, the window has gone, so stop (and the trainer stops with brick gui)."""
-    while True:
-        time.sleep(15)
-        if time.monotonic() - last_seen[0] > APP_IDLE:
-            print("The brick window has closed, so brick gui is closing too.", flush=True)
-            server.shutdown()
-            return
-
-
-def restart_when_changed(server, args):
-    """When brick's code on disk changes, start again with it (same port, so an open page carries on).
-    Waits while a program runs in the page. The page sees the new stamp and reloads itself."""
-    while True:
-        time.sleep(4)
-        if trainer.code_stamp() == STAMP or any(s.done is None for s in sessions.values()):
-            continue
-        time.sleep(1)                                 # let a save that's still writing finish
-        print("brick's code changed, so brick gui restarts with it.", flush=True)
-        server.socket.close()
-        os.execv(sys.executable, [sys.executable, os.path.join(HERE, "brick.py"), "gui"] + args)
-
-
-def server_on_port():
-    """The process listening on PORT -> its pid, or None. (Looks in /proc: no extra tools needed.)"""
-    inodes = set()
-    for table in ("/proc/net/tcp", "/proc/net/tcp6"):
-        try:
-            with open(table) as f:
-                for row in list(f)[1:]:
-                    part = row.split()
-                    if part[1].endswith(f":{PORT:04X}") and part[3] == "0A":
-                        inodes.add(part[9])
-        except OSError:
-            pass
-    for pid in filter(str.isdigit, os.listdir("/proc")):
-        try:
-            for fd in os.listdir(f"/proc/{pid}/fd"):
-                link = os.readlink(f"/proc/{pid}/fd/{fd}")
-                if link.startswith("socket:[") and link[8:-1] in inodes:
-                    return int(pid)
-        except OSError:
-            continue
-    return None
-
-
-def replace_old_server():
-    """Port taken. A brick gui from before servers updated themselves can't be told to: stop it, so a
-    new one with the current code takes over -> True. A current one keeps itself up to date -> False."""
-    from urllib.request import urlopen
-    try:
-        with urlopen(f"http://127.0.0.1:{PORT}/api/alive", timeout=3) as r:
-            if "stamp" in json.loads(r.read() or b"{}"):
-                return False
-    except Exception:
-        pass
-    pid = server_on_port()
-    if not pid or pid == os.getpid():
-        return False
-    try:
-        with open(f"/proc/{pid}/cmdline", "rb") as f:
-            if b"brick.py" not in f.read():           # someone else's program: leave it alone
-                return False
-        os.kill(pid, signal.SIGTERM)
-    except OSError:
-        return False
-    for _ in range(50):
-        if server_on_port() is None:
-            return True
-        time.sleep(0.1)
-    return False
-
-
-class Handler(BaseHTTPRequestHandler):
-    start_folder = os.getcwd()
-    reviewing = False
-    start_file = None
-
-    def log_message(self, *args):
-        pass
-
-    def send(self, body, kind="application/json", status=200):
-        last_seen[0] = time.monotonic()
-        if not isinstance(body, (bytes, bytearray)):
-            body = json.dumps(body).encode()
-        self.send_response(status)
-        self.send_header("Content-Type", kind)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
-
-    def asked(self):
-        length = int(self.headers.get("Content-Length") or 0)
-        return json.loads(self.rfile.read(length) or b"{}")
-
-    def full_path(self, path):
-        path = os.path.expanduser(path.strip())
-        return os.path.abspath(os.path.join(self.start_folder, path))
-
-    def do_GET(self):
-        url = urlparse(self.path)
-        query = {k: v[0] for k, v in parse_qs(url.query).items()}
-        if url.path == "/api/alive":                 # the window is still open (and which code is serving it)
-            return self.send({"ok": True, "stamp": STAMP})
-        if url.path in ("/", "/index.html"):
-            with open(os.path.join(HERE, "gui.html"), "rb") as f:
-                return self.send(f.read(), "text/html; charset=utf-8")
-        if url.path == "/api/start":
-            text = ""
-            if self.start_file and os.path.isfile(self.start_file):
-                with open(self.start_file, encoding="utf-8", errors="replace") as f:
-                    text = f.read()
-            colours = {name: code.split(";", 2)[2].replace(";", ",") for name, (code, _) in dictionary.colour_table().items()
-                       if code.startswith("38;2;")}
-            colours.update({name: code.split(";", 2)[2].replace(";", ",") for name, code in COLOURS.items()
-                            if code.startswith("38;2;")})
-            return self.send({"folder": self.start_folder, "file": self.start_file, "text": text,
-                              "starters": sorted(STARTERS), "colours": colours,
-                              "files": files_here(self.start_folder), "examples": examples()})
-        if url.path == "/api/decisions":
-            from trainer import core as trainer
-            from trainer import outliers
-            log = os.path.join(trainer.FOLDER, "log.txt")
-            activity = []
-            if os.path.isfile(log):
-                with open(log, encoding="utf-8", errors="replace") as f:
-                    activity = [line.rstrip() for line in f][-40:][::-1]
-            return self.send({"running": trainer.running(), "activity": activity, "items": outliers.entries(),
-                              "groups": outliers.groups(),
-                              "director": len(outliers.entries(outliers.FOR_DIRECTOR))})
-        if url.path == "/api/neurons/archetypes":    # the Trainer's Neurons tab: the archetypes to pick from
-            from trainer import neurons
-            try:
-                return self.send({"archetypes": neurons.archetypes()})
-            except Exception as error:                  # node missing or the engine broke: say so in the tab
-                return self.send({"archetypes": [], "error": str(error) or "node isn't installed"})
-        if url.path == "/api/imagination":           # what brick imagined: newest first, with where it came from
-            from trainer import core as trainer
-            from trainer import imagine
-            origin = query.get("origin") if query.get("origin") in imagine.ORIGINS else None
-            items = imagine.entries(origin, most=min(200, int(query.get("most") or 40)))
-            for item in items:
-                item["url"] = f"/imagination/{item['picture']}" if item["exists"] else None
-                item.pop("path", None)
-            tally = imagine.Tally()
-            return self.send({"items": items, "eye": tally.summary(), "hardest": tally.worst("shape"),
-                              "tuned": tally.notes["tuned"][:3], "learned": tally.notes["learned"][:5],
-                              "totals": dict(tally.totals), "running": trainer.running()})
-        if url.path.startswith("/imagination/"):     # an imagined picture, from trainer/data/imagination
-            from trainer import imagine
-            name = os.path.basename(url.path)
-            where = os.path.join(imagine.PICTURES, name)
-            if name.endswith(".png") and os.path.isfile(where):
-                with open(where, "rb") as f:
-                    return self.send(f.read(), "image/png")
-            return self.send({"error": "That picture isn't kept any more."}, status=404)
-        if url.path == "/api/bricks":
-            import bricks
-            return self.send({"groups": bricks.palette()})
-        if url.path == "/api/help":
-            return self.send({"phrases": help_text(), "dictionary": dictionary.listing(None)})
-        if url.path == "/api/output":
-            session = sessions.get(query.get("id"))
-            if not session:
-                return self.send({"error": "That program isn't running."}, status=404)
-            data, done = session.since(int(query.get("from", 0)))
-            return self.send({"data": base64.b64encode(data).decode(), "done": done})
-        return self.send({"error": "not here"}, status=404)
-
-    def do_POST(self):
-        url = urlparse(self.path)
-        asked = self.asked()
-        if url.path == "/api/watch":
-            folder = os.path.dirname(asked["path"]) if asked.get("path") else self.start_folder
-            return self.send(watch(asked.get("text", ""), folder))
-        if url.path == "/api/open":
-            path = self.full_path(asked["path"])
-            if not os.path.isfile(path) and os.path.isfile(path + ".txt"):
-                path += ".txt"
-            if not os.path.isfile(path):
-                return self.send({"error": f"I can't find {path}."})
-            with open(path, encoding="utf-8", errors="replace") as f:
-                return self.send({"path": path, "text": f.read()})
-        if url.path == "/api/save":
-            path = self.full_path(asked["path"])
-            if not path.endswith(".txt"):
-                path += ".txt"
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(asked.get("text", ""))
-            return self.send({"path": path, "files": files_here(os.path.dirname(path))})
-        if url.path == "/api/fix_options":
-            # 'Not what I meant' on a line: what brick does with it now, and the other ways to read it
-            folder = os.path.dirname(asked["path"]) if asked.get("path") else self.start_folder
-            return self.send(fix_options(asked.get("text", ""), int(asked.get("number", 1)),
-                                         os.path.join(folder, "mywords.txt")))
-        if url.path == "/api/fix":
-            folder = os.path.dirname(asked["path"]) if asked.get("path") else self.start_folder
-            words = os.path.join(folder, "mywords.txt")
-            text, number, meant = asked.get("text", ""), int(asked.get("number", 1)), asked.get("meant", "").strip()
-            problem = review.correct(text, number, meant, words) if meant else "Say what it means first."
-            if problem:
-                return self.send({"ok": False, "message": problem})
-            line = text.split("\n")[number - 1].strip()
-            threading.Thread(target=keep_general, args=(line, meant, words), daemon=True).start()
-            return self.send({"ok": True, "message": f"Kept: brick reads '{line}' as '{meant}' from now on."})
-        if url.path.startswith("/api/words/"):       # the Words tab: teach brick words, try lines
-            import words
-            folder = os.path.dirname(asked["path"]) if asked.get("path") else self.start_folder
-            mine = os.path.join(folder, "mywords.txt")
-            what = url.path.rsplit("/", 1)[1]
-            if what == "list":
-                return self.send({**words.listing(mine), "unknown": words.unknown(asked.get("text", ""), mine),
-                                  "folder": folder})
-            if what == "teach":
-                if asked.get("where") == "here":
-                    ok, message, example = words.teach_here(asked.get("word", ""), asked.get("meaning", ""), mine)
-                else:
-                    ok, message, example = words.teach(asked.get("word", ""), asked.get("meaning", ""))
-                return self.send({"ok": ok, "message": message, "example": example})
-            if what == "forget":
-                ok, message = words.forget_here(asked.get("key", ""), mine) if asked.get("where") == "here" \
-                    else words.forget(asked.get("word", ""))
-                return self.send({"ok": ok, "message": message})
-            if what == "try":
-                return self.send(words.try_text(asked.get("text", ""), mine))
-            return self.send({"error": "not here"}, status=404)
-        if url.path == "/api/neurons":               # read a line with the imagination neurons (view only, ~6 s)
-            from trainer import neurons
-            return self.send(neurons.read_line(asked.get("line", ""), asked.get("archetype") or None, bool(asked.get("long"))))
-        if url.path == "/api/read_line":
-            import bricks
-            return self.send({"directions": bricks.read_line(asked.get("line", ""))})
-        if url.path == "/api/read_lines":
-            # the whole program as bricks, line by line (the Brick wall)
-            import bricks
-            lines = []
-            for number, raw in enumerate(asked.get("text", "").split("\n"), 1):
-                stripped = raw.strip()
-                kind = "blank" if not stripped else "note" if stripped.startswith("#") else "line"
-                lines.append({"number": number, "text": raw, "kind": kind,
-                              "indent": len(raw.expandtabs(4)) - len(raw.expandtabs(4).lstrip()),
-                              "directions": bricks.read_line(raw) if kind == "line" else []})
-            return self.send({"lines": lines})
-        if url.path == "/api/decide-group":           # one decision for every line that grew from one root
-            from trainer import outliers
-            ok, message = outliers.decide_group(asked.get("key", ""), asked.get("action", ""),
-                                                asked.get("meaning", "").strip())
-            return self.send({"ok": ok, "message": message})
-        if url.path == "/api/decide":
-            from trainer import outliers
-            ok, message = outliers.decide(asked.get("id", ""), asked.get("action", ""), asked.get("meaning", "").strip())
-            return self.send({"ok": ok, "message": message})
-        if url.path == "/api/guessed":
-            folder = os.path.dirname(asked["path"]) if asked.get("path") else self.start_folder
-            return self.send({"guessed": review.guessed(asked.get("text", ""), os.path.join(folder, "mywords.txt"))})
-        if url.path == "/api/review":
-            # each answer: {"number", "line", "told", "meant"}; meant == told means 'yes, that's right'
-            folder = os.path.dirname(asked["path"]) if asked.get("path") else self.start_folder
-            problems = {}
-            for answer in asked.get("answers", []):
-                if answer["meant"].strip() == answer["told"]:
-                    review.confirm(answer["line"], answer["told"])
-                else:
-                    problem = review.correct(asked.get("text", ""), int(answer["number"]), answer["meant"].strip(),
-                                             os.path.join(folder, "mywords.txt"))
-                    if problem:
-                        problems[answer["number"]] = problem
-            if self.reviewing and not problems:       # opened just for this review: close in a moment
-                threading.Timer(3, self.server.shutdown).start()
-            return self.send({"problems": problems, "closing": self.reviewing and not problems})
-        if url.path == "/api/export":
-            where = brick_path(asked.get("path"), self.start_folder)
-            with open(where, "w", encoding="utf-8") as f:
-                f.write(export(asked.get("text", ""), asked.get("path"), asked.get("console")))
-            return self.send({"path": where})
-        if url.path == "/api/bits":
-            written = write_materials(asked.get("text", ""), asked.get("path"), self.start_folder)
-            if written is None:
-                return self.send({"error": "It didn't build, so there are no bits yet."})
-            return self.send({"paths": written})
-        if url.path == "/api/run":
-            program, folder, problems, notes = build_for_running(asked.get("text", ""), asked.get("path"))
-            if not program:
-                return self.send({"problems": problems, "notes": notes})
-            if asked.get("where") == "build":
-                return self.send({"built": program, "notes": notes})
-            if asked.get("where") == "window":
-                if brick.open_window(program, os.path.basename(program), asked.get("path")):
-                    return self.send({"window": True, "notes": notes})
-                notes.append("(No graphical desktop here, so it runs inside this page instead.)")
-            notes_guessed = review.guessed(asked.get("text", ""), os.path.join(folder, "mywords.txt"))
-            session = Session(program, folder, int(asked.get("rows", 24)), int(asked.get("cols", 80)))
-            with lock:
-                last_id[0] += 1
-                key = str(last_id[0])
-                sessions[key] = session
-            return self.send({"id": key, "notes": notes, "guessed": notes_guessed})
-        if url.path in ("/api/type", "/api/resize", "/api/stop"):
-            session = sessions.get(str(asked.get("id")))
-            if not session:
-                return self.send({"error": "That program isn't running."}, status=404)
-            if url.path == "/api/type":
-                session.type(asked.get("data", "").encode())
-            elif url.path == "/api/resize":
-                session.resize(int(asked["rows"]), int(asked["cols"]))
-            else:
-                session.stop()
-            return self.send({"ok": True})
-        return self.send({"error": "not here"}, status=404)
-
-
-def main(args=None):
-    args = sys.argv[1:] if args is None else args
-    show = "--no-browser" not in args
-    app = "--app" in args                           # a window of its own, from the launcher
-    Handler.reviewing = "--review" in args          # opened just for a review: it closes once that's done
-    restart_args = [a for a in args if a != "--review"] + (["--no-browser"] if "--no-browser" not in args else [])
-    args = [a for a in args if a not in ("--no-browser", "--review", "--app")]
-    if args:
-        source = brick.find_source(args[0])
-        if source is None:
-            print(f"I can't find {args[0]} in {os.getcwd()}. Check the name, or cd to its folder first.")
-            sys.exit(1)
-        Handler.start_file = os.path.abspath(source)
-    server = None
-    for attempt in range(2):
-        try:
-            server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-            break
-        except OSError:
-            if attempt or not replace_old_server():
-                break
-            print("An older brick gui was open; it has stopped, so this one (with the current code) takes over.")
-    if server is None:
-        print(f"Something is already using port {PORT}; brick gui may be open already: http://127.0.0.1:{PORT}")
-        if show:
-            (open_app if app else webbrowser.open)(f"http://127.0.0.1:{PORT}")
-        return
-    server.daemon_threads = True
-    address = f"http://127.0.0.1:{PORT}" + (f"/?file={quote(Handler.start_file)}&review=1" if Handler.reviewing else "")
-    print(f"brick gui is at {address}  (press Ctrl+C here to close it)")
-    if show:
-        threading.Timer(0.3, lambda: (open_app if app else webbrowser.open)(address)).start()
-    if app:
-        threading.Thread(target=close_when_idle, args=(server,), daemon=True).start()
-    if not Handler.reviewing:
-        threading.Thread(target=restart_when_changed, args=(server, restart_args), daemon=True).start()
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print()
-    finally:
-        for session in sessions.values():
-            session.stop()
-
-
-if __name__ == "__main__":
-    main()

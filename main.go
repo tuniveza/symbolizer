@@ -40,6 +40,7 @@ func main() {
 				"  sy book           Book mode     (zsh: bo)\n" +
 				"  sy draw           Draw mode     (zsh: dr)\n" +
 				"  sy manager         Manager mode: all of ~/an at a glance (zsh: ma)\n" +
+				"  sy brick [FILE]    Brick mode: write programs in plain English, brick builds them (brick gui opens it too)\n" +
 				"  sy FILE            open (or create) FILE\n" +
 				"  sy FOLDER          open FOLDER as a project, with the file manager\n" +
 				"  sy -t [FOLDER]     open the text files in FOLDER (or here), subfolders too, as tabs\n" +

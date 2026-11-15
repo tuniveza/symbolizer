@@ -27,10 +27,11 @@ var modes = []mode{
 	{"\U000f05da", "▥", "Book", "write books: chapters, pages and so on", false},
 	{"\U000f0f49", "✐", "Draw", "draw with the terminal itself as the drawing tool", false},
 	{"\uf07c", "▦", "Manager", "all of ~/an at a glance: every category, project and folder, with what it is, its size and its last change", true},
+	{"\U000f06a9", "⧈", "Brick", "write programs in plain English: brick builds them, colours every word by what it reads, and keeps learning", true},
 }
 
 // modeWords are the names sy takes on the command line: sy design, sy slide ...
-var modeWords = map[string]int{"text": 0, "design": 1, "slide": 2, "slides": 2, "diary": 3, "book": 4, "draw": 5, "manager": 6}
+var modeWords = map[string]int{"text": 0, "design": 1, "slide": 2, "slides": 2, "diary": 3, "book": 4, "draw": 5, "manager": 6, "brick": 7}
 
 // Icons come from the Nerd Font symbols kitty (and some other terminals)
 // carry. Elsewhere plain symbols are used so nothing shows as an empty box.
@@ -134,7 +135,14 @@ func (m *Model) setMode(i int) tea.Cmd {
 	if m.diary != nil {
 		m.diary.writing = false
 	}
+	if m.mode == brickMode {
+		m.leaveBrick()
+	}
 	m.mode = i
+	if i == brickMode {
+		m.say(modes[i].Icon() + "  Brick mode. F6 runs, F7 checks, F8 gives the panel the keys, F9 next panel, F12 learning.")
+		return tea.Batch(m.enterBrick(), m.tellKittyMode())
+	}
 	if i == diaryMode {
 		m.enterDiary()
 	}
@@ -180,7 +188,7 @@ func (m *Model) modeCols() int {
 // description.
 func (m *Model) modesBox() string {
 	var box string
-	for tight := 0; tight <= 3; tight++ {
+	for tight := 0; tight <= 4; tight++ { // 4: one line per mode and no title, for very small windows
 		box = m.modesBoxAt(tight)
 		if lipgloss.Height(box) <= m.height-2 && lipgloss.Width(box) <= m.width {
 			break
@@ -223,8 +231,10 @@ func (m *Model) modesBoxAt(tight int) string {
 	var parts []string
 	if tight == 0 {
 		parts = []string{title, center(cDim, false, false, "Alt+M"), "", grid, ""}
-	} else {
+	} else if tight < 4 {
 		parts = []string{title, grid}
+	} else {
+		parts = []string{grid}
 	}
 	parts = append(parts, center(cEmber, true, false, md.Icon()+"  "+md.name))
 	if tight < 3 {

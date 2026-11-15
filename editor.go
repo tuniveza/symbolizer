@@ -155,6 +155,10 @@ type Model struct {
 	pxm        pixelMouse   // the mouse reported to the pixel in the 3D view (design_3d_mouse.go)
 	diary      *diaryState  // diary mode: chapters, pages, the page in focus (diary.go)
 	mgr        *mgState     // manager mode: all of ~/an (manager.go)
+	brick      *brState     // brick mode: brick inside Symbolizer (brick_mode.go)
+	bk         *brickClient // brick serve, running in the background (brick_client.go)
+
+	brickLearningLamp bool // brick's training daemon is learning (brick_learning.go)
 	design     *designState // design mode: the board, its structures, links and pen (design.go)
 	startDir   string       // folder sy was started in
 	snip       snippetStops // Tab's stops after an Emmet expansion (web.go)
@@ -251,12 +255,20 @@ func (m *Model) Init() tea.Cmd {
 	if m.inManager() {
 		mgr = m.enterManager() // started as sy manager
 	}
-	return tea.Batch(mgr, m.tellKittyMode(), m.hl.Want(m.buf.Version(), m.top, m.textHeight()), nextMinute(), loadWeather(), weatherEvery(), m.startLamps(), watchDisk())
+	if m.inBrick() {
+		mgr = tea.Batch(mgr, m.enterBrick()) // started as sy brick
+	}
+	return tea.Batch(mgr, checkBrickLamp(), m.tellKittyMode(), m.hl.Want(m.buf.Version(), m.top, m.textHeight()), nextMinute(), loadWeather(), weatherEvery(), m.startLamps(), watchDisk())
 }
 
 func (m *Model) say(s string)    { m.msg, m.msgErr = s, false }
 func (m *Model) sayErr(s string) { m.msg, m.msgErr = s, true }
-func (m *Model) textHeight() int { return max(m.height-5, 1) } // top panel, tab bar, info line, status bar, message line
+func (m *Model) textHeight() int { // top panel, tab bar, info line, status bar, message line (and brick's panel)
+	if m.inBrick() {
+		return max(m.height-5-brPanelH, 1)
+	}
+	return max(m.height-5, 1)
+}
 
 // textTop is the screen row where the text starts (under the top panel and
 // the tab bar).
@@ -413,7 +425,15 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.releases = msg.SupportsEventTypes()
 		return nil
 	case highlightTick:
+		if m.hl.brick {
+			return m.brickColour() // brick mode: brick reads the words (brick_mode.go)
+		}
 		return m.hl.Start(m.buf, m.top, m.textHeight())
+	case brickMsg:
+		return m.brickAnswer(msg)
+	case brickLampMsg:
+		m.brickLearningLamp = bool(msg)
+		return nil
 	case highlightMsg:
 		m.hl.Finish(msg)
 		return nil
@@ -555,6 +575,14 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		if m.modesOpen {
 			return m.modesKey(keyName(msg.Key()), msg.Key().Text)
+		}
+		if keyName(msg.Key()) == "f12" && !m.help && m.prompt == pNone {
+			return m.brickLearningSwitch() // brick learning on/off, in every mode (brick_learning.go)
+		}
+		if m.inBrick() && !m.help && m.prompt == pNone && m.picker == nil && !(m.treeFocus && m.showTree && m.tree != nil) {
+			if cmd, done := m.brickKey(keyName(msg.Key()), msg.Key().Text); done {
+				return cmd
+			}
 		}
 		if m.inDesign() && !m.help && m.prompt == pNone && m.picker == nil && !(m.treeFocus && m.showTree && m.tree != nil) {
 			return m.designKey(msg.Key())

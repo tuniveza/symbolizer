@@ -2,7 +2,9 @@
 
     brick trainer neurons words [count]      take that many new words (default 20) through the whole way
 
-1. New words: the commonest English words (a public list of 10,000) that brick doesn't know yet.
+1. New words: first the words in your own writing that brick doesn't know yet (the owner said yes to this on
+   15 Nov 2026: single words only, never sentences; diary words only while the diary switch is on), then the
+   commonest English words (a public list of 10,000).
 2. The internet dictionary (dictionaryapi.dev, free, no key): each word's definitions, examples and synonyms.
    Each word is fetched once and kept in trainer/data/sources/dictionary-api/.
 3. The neurons learn it: the definitions and examples become input (trainer/data/sources/public/definitions.txt),
@@ -13,7 +15,7 @@
    action out of them ("to blink something means open something then close something"), checks it builds, and
    puts it in your Decisions list: a guess from a definition is never kept without you.
 
-Only the word itself is sent to the dictionary; nothing about you or your programs.
+Only single words are sent to the dictionary, one per request: never a sentence or anything else you wrote.
 """
 import json
 import os
@@ -136,7 +138,11 @@ def feed(count=20, rounds=2, say=print):
     except OSError as error:
         say(f"Couldn't get the word list: {error}")
         return None
-    fresh = [w for w in words if w not in known and len(w) >= 3 and w not in neurons.SMALL and not intuition.brick_knows(w)][:count]
+    from collections import Counter
+    yours = Counter(w for line in intuition.your_writing() for w in re.findall(r"[a-z]+", line.lower()) if len(w) >= 3)
+    mine = [w for w, n in yours.most_common() if n >= 2]               # your words first, most used first
+    fresh = [w for w in dict.fromkeys(mine + words) if w not in known and len(w) >= 3 and w not in neurons.SMALL
+             and not intuition.brick_knows(w)][:count]
     if not fresh:
         say("Every word on the list has been looked up already.")
         return None

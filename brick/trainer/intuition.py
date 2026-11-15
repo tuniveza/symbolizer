@@ -91,7 +91,7 @@ def untokens(words):
     return " ".join(w.lstrip("#~") if w.startswith("#") else w for w in words)
 
 
-TRACES = os.path.join(FOLDER, "traces.json")          # what brick builds from each sentence (its output pieces)
+TRACES = os.path.join(FOLDER, "traces-2.json")      # (2: window routines are traced too)          # what brick builds from each sentence (its output pieces)
 _traces = None
 
 
@@ -114,10 +114,10 @@ def trace(text):
     try:
         with tempfile.TemporaryDirectory() as where:
             c = Compiler(os.path.join(where, "mywords.txt"), ask_user=lambda q: "no")
-            for name in [n for n in dir(c) if n.startswith("do_")]:
+            for name in [n for n in dir(c) if is_action(n)]:
                 real = getattr(c, name)
                 def spy(*a, _real=real, _name=name, **k):
-                    ran.append("=" + _name[3:])
+                    ran.append(piece_name(_name))
                     return _real(*a, **k)
                 setattr(c, name, spy)
             try:
@@ -132,6 +132,19 @@ def trace(text):
                 os.environ[k] = v
     _traces[text] = list(dict.fromkeys(ran)) if got is not None and ran else None
     return _traces[text]
+
+
+# brick's action routines: the do_ actions, its window's (bitwin) element and window routines, and the console's
+WINDOW_ROUTINES = {"gui_make", "gui_window_settings", "gui_draw", "gui_event", "gui_when", "gui_every", "window_action",
+                   "move_to_spot", "set_title", "make_disappear", "nudge", "write_placed", "blank_out"}
+
+
+def is_action(name):
+    return name.startswith("do_") or name in WINDOW_ROUTINES
+
+
+def piece_name(name):
+    return "=" + (name[3:] if name.startswith("do_") else name)
 
 
 def save_traces():
@@ -156,6 +169,49 @@ def pieces(texts, traced=False):
     return out
 
 
+SY = os.path.expanduser("~/.local/share/symbolizer")
+READING = os.path.join(SY, "brick", "reading.list")     # every file you save in Symbolizer (it writes this list)
+SETTINGS = os.path.join(SY, "brick", "settings.json")    # {"diary": "on"/"off"}: Symbolizer's brick switches
+WRITING_CAP = 3_000_000                                  # characters of your writing per round (newest first)
+
+
+def diary_on():
+    try:
+        with open(SETTINGS, encoding="utf-8") as f:
+            return json.load(f).get("diary") == "on"
+    except (OSError, ValueError):
+        return False
+
+
+def your_writing():
+    """Everything you write in Symbolizer, as lines: every file you saved (code and prose alike), your sessions,
+    and your diary only when its switch is on. Newest first, up to WRITING_CAP characters. Never leaves your PC."""
+    paths = []
+    for line in lines_of(READING):
+        p = line.strip()
+        if p and os.path.isfile(p) and "/diary/" not in p:
+            paths.append(p)
+    for folder in [os.path.join(SY, "sessions")] + ([os.path.join(SY, "diary")] if diary_on() else []):
+        for root, _, names in os.walk(folder):
+            paths += [os.path.join(root, n) for n in names if n.endswith(".txt")]
+    paths = sorted(set(paths), key=lambda p: -os.path.getmtime(p))
+    texts, size = [], 0
+    for p in paths:
+        try:
+            if os.path.getsize(p) > 1_000_000:
+                continue
+            with open(p, encoding="utf-8") as f:
+                text = f.read()
+        except (OSError, UnicodeDecodeError):
+            continue                                       # not text
+        text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text).replace("_", " ")   # code: drawTile, max_size -> words
+        texts += [l for l in text.splitlines() if len(l.split()) >= 2]
+        size += len(text)
+        if size > WRITING_CAP:
+            break
+    return texts
+
+
 def public_text():
     """Public sentences in trainer/data/sources/public/*.txt (one per line), e.g. Tatoeba's English sentences."""
     texts = []
@@ -172,12 +228,13 @@ def raw_input():
     public text. brick's own words get neurons first; public text fills the rest up to CAP and adds practice."""
     heard = os.path.join(HERE, "trainer", "data", "heard.txt")     # your own lines from real builds (trainer/core.py)
     texts = lines_of(neurons.POOL) + lines_of(heard) + (lines_of(IMAGINED) if OWN else [])
+    mine_written = your_writing()                           # your own writing counts as brick's own input
     for folder in (neurons.EXAMPLES, WAREHOUSE):
         if os.path.isdir(folder):
             for name in sorted(os.listdir(folder)):
                 if name.endswith(".txt"):
                     texts += lines_of(os.path.join(folder, name))
-    own, public = pieces(texts, traced=True), pieces(public_text())
+    own, public = pieces(texts, traced=True) + pieces(mine_written), pieces(public_text())
     save_traces()
     mine, theirs = Counter(w for d in own for w in d), Counter(w for d in public for w in d)
     keep = [w for w, n in mine.most_common() if n >= 2][:CAP]
