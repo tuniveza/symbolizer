@@ -417,8 +417,9 @@ def pmap(fn, items):
     """fn over items side by side in worker processes (brick's compiler checks don't depend on each other), in the
     same order, so the results are the same as one after another. BRICK_PARALLEL=off runs them one by one."""
     items = list(items)
-    if len(items) < 3 or os.environ.get("BRICK_PARALLEL", "on") == "off":
-        return [fn(x) for x in items]
+    main = getattr(__import__("sys").modules.get("__main__"), "__file__", None)
+    if len(items) < 3 or os.environ.get("BRICK_PARALLEL", "on") == "off" or not (main and os.path.isfile(main)):
+        return [fn(x) for x in items]                      # (workers need a real main file; a script on stdin has none)
     global _pool
     try:
         if _pool is None:
