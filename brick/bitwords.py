@@ -503,6 +503,10 @@ class BitWords:
                        self.read_thickness):
             if stop_only and reader in (self.read_bare_colour,):
                 continue
+            if stop_only and reader == self.read_texture and self.gui_texture_word(t, i) and \
+                    not t.at(i + self.gui_texture_word(t, i)[1], "texture", "pattern", "effect", "finish", "look"):
+                continue                      # 'saying hello from brick': a bare texture word is one of the words
+                                              # ('with a brick texture', 'in red stripes' still are textures)
             found = reader(t, i, end, ctx)
             if found and found[0] > 0 and i + found[0] <= end:
                 return found
