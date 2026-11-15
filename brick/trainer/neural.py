@@ -31,6 +31,24 @@ CACHE = os.path.join(HERE, "trainer", "data", "neural.json")
 SERVER = "http://127.0.0.1:11434"
 MODEL = "qwen2.5:3b"
 patient = True                   # False while brick gui previews as you type: never wait for the model then
+_here = threading.local()        # per request (brick serve answers several at once): impatient() for one thread only
+
+
+def is_patient():
+    return getattr(_here, "patient", patient)
+
+
+class impatient:
+    """with neural.impatient(): this thread never waits for the model (it asks in the background); others still do."""
+    def __enter__(self):
+        self.was = getattr(_here, "patient", None)
+        _here.patient = False
+
+    def __exit__(self, *exc):
+        if self.was is None:
+            del _here.patient
+        else:
+            _here.patient = self.was
 
 GUIDE = """You translate loose, messy English into brick, a tiny programming language written in plain English.
 brick can do only these things, written exactly like this:
@@ -191,7 +209,7 @@ def readings(line, before=""):
     key = f"{settings()['model']}|{VERSION}|{before.strip()[-200:]}|{line}"
     if key in cache():
         return cache()[key]
-    if not patient:
+    if not is_patient():
         if key not in _asking and not off():
             _asking.add(key)
             threading.Thread(target=ask, args=(line, before, key), daemon=True).start()
@@ -238,7 +256,7 @@ def choose(line, ways, before=""):
     key = f"choose|{settings()['model']}|{VERSION}|{before.strip()[-200:]}|{line}|" + "||".join(ways)
     if key in cache():
         return cache()[key]
-    if not patient:
+    if not is_patient():
         return None
     try:
         if not ready():

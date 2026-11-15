@@ -13,7 +13,7 @@ ROWS_COLUMNS = 0x5413          # ioctl: how many rows and columns the console ha
 
 def add_all(a):
     for brick in (console_size, place_cursor, getenv, desktop):
-        brick(a)
+        a.piece(brick)                 # left out when nothing uses it (Asm.prune)
 
 
 def remember_environment(a):

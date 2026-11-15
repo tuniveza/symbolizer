@@ -86,17 +86,27 @@ def do_check(asked):
         mine = os.path.join(scratch, "mywords.txt")
         if os.path.isfile(words_file):
             shutil.copy(words_file, mine)
-        compiler = Compiler(mine, ask_user=lambda question: "yes")
-        neural.patient = False
-        started, problems, program = time.perf_counter(), [], None
-        try:
-            program = compiler.compile(asked.get("text", ""))
-        except Problem as problem:
-            problems = str(problem).split("\n")
-        except Exception as error:
-            problems = [f"Line {compiler.line_number}: (brick itself tripped up here)", f"    {type(error).__name__}: {error}"]
-        neural.patient = True
-    return {"ok": program is not None, "problems": problems, "notes": compiler.notes,
+        started = time.perf_counter()
+
+        def build():
+            compiler = Compiler(mine, ask_user=lambda question: "yes")
+            try:
+                return compiler, compiler.compile(asked.get("text", "")), []
+            except Problem as problem:
+                return compiler, None, str(problem).split("\n")
+            except Exception as error:
+                return compiler, None, [f"Line {compiler.line_number}: (brick itself tripped up here)",
+                                        f"    {type(error).__name__}: {error}"]
+        with neural.impatient():
+            compiler, program, problems = build()   # at once, never waiting for the language model ...
+        waited = False
+        if neural._asking:                          # ... which was asked about new lines in the background:
+            until = time.time() + 15                # wait for its answers, then build again with them, so the
+            while neural._asking and time.time() < until:   # check shows what brick will really build
+                time.sleep(0.1)
+            compiler, program, problems = build()
+            waited = True
+    return {"ok": program is not None, "problems": problems, "notes": compiler.notes, "waited": waited,
             "took": round((time.perf_counter() - started) * 1000, 1), "layout": {"file": len(program) if program else 0}, "light": True}
 
 

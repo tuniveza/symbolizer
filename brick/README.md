@@ -40,7 +40,7 @@ $ brick game.txt
 ```
 
 That's a reaction-time game, in one sentence.
-`./game` is about 7 KB: no Python inside, no C compiler, no libraries.
+`./game` is a few hundred bytes to a few KB: only the routines it uses go in. No Python inside, no C compiler, no libraries.
 
 <br>
 

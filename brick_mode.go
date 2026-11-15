@@ -211,6 +211,9 @@ func (m *Model) brickAnswer(a brickMsg) tea.Cmd {
 		}
 	case "watch", "check":
 		s.watch = d
+		if s.watched != m.buf.Version() && m.inBrick() {
+			return tea.Batch(next, m.brickColour()) // you typed while it waited for the language model: check again
+		}
 		return tea.Batch(next, m.brickBrain())
 	case "words":
 		if _, isList := d["here"]; isList {
