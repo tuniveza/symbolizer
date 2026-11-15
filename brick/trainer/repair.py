@@ -155,13 +155,19 @@ def judge(text, number, want, base_line):
     got = traced_build(text)
     if not got["ok"]:
         return None, got
-    made = set(p for n, ps in got["lines"].items() for p in ps)
+    made = set(got["lines"].get(number, []))               # what the repaired line itself made
     covered = any(p in made for p in want) if want else bool(made - {"=write"})
     content = [w for w, r in intuition.roles_in(base_line) if r in ("thing", "place")]
     read = " ".join(got["read"].values()).lower()
     shown = re.findall(r"\bwrite ([a-z ]+?)(?: in | at | on |$)", read)
     lost = [w for w in content if any(w in s.split() for s in shown)]
     return (covered, not lost), got
+
+
+def _judge(job):
+    text, n, want, line = job
+    score, got = judge(text, n, want, line)
+    return score, {"bits": got["bits"]} if score is not None else None
 
 
 def repair(text, number=None):
@@ -220,11 +226,15 @@ def repair(text, number=None):
         for f_lines, f_change in firsts[:2]:
             for t_lines, t_change in [t for t in tries if not t[1][0].startswith("added")][:4]:
                 tries.append((f_lines[:n - 1 + 1] + t_lines[n - 1:], f_change + t_change))
+        jobs = []
+        for t_lines, change in tries:                       # what the brain expects first (quick), then build them all side by side
+            at = n - 1 + sum(1 for c in change if c.startswith("added"))   # your line moves down past added steps
+            tried_line = t_lines[at] if at < len(t_lines) else line
+            jobs.append(("\n".join(t_lines), at + 1, expected(tried_line) or want, line))
+        results = intuition.pmap(_judge, jobs)
         judged = []
-        for t_lines, change in tries:
+        for (t_lines, change), (score, got) in zip(tries, results):
             t_text = "\n".join(t_lines)
-            tried_line = next((l for l in t_lines[n - 1:] if l.strip()), line)
-            score, got = judge(t_text, n, expected(tried_line) or want, line)
             if score is None:
                 continue
             covered, kept = score
