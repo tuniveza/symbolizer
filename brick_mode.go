@@ -16,15 +16,19 @@ import (
 // coloured by what brick reads it as. Under it, a panel with brick's whole
 // system (it replaces brick's old web window):
 //
-//	Bricks       is the program right? what the brain thinks of it; every brick in use, live as you type
-//	Words        words brick doesn't know in this file, and the words you taught (type "zap means write")
-//	Decisions    what brick's trainer couldn't settle by itself: Left/Right pick a reading, Enter keeps it
-//	Imagination  what brick imagined, with its pictures, and what its eye saw
-//	Neurons      the imagination neurons read the cursor's line (Left/Right pick an archetype's brain)
-//	Learning     the training daemon: on/off, the diary switch, what it learned
+//	1 Bricks       is the program right? what the brain thinks of it; every brick in use, live as you type
+//	2 Words        words brick doesn't know in this file, and the words you taught (type "zap means write")
+//	3 Decisions    what brick's trainer couldn't settle by itself: Left/Right pick a reading, Enter keeps it
+//	4 Imagination  what brick imagined, with its pictures, and what its eye saw
+//	5 Neurons      the imagination neurons read the cursor's line (Left/Right pick an archetype's brain)
+//	6 Learning     the training daemon: on/off, the diary switch, the brains' voices, what it learned
+//	7 Phrases      every kind of line brick can build, with examples
+//
+// The keys, kept to four while you write (the panel's own keys are on screen once it has them):
 //
 //	Alt+R  run the program (a kitty window beside this one)   Alt+C  check it now, and look for fixes
-//	Alt+P  keys to the panel / back to the text               Alt+N  next panel
+//	Alt+P  keys to the panel / back to the text (Esc too)     Alt+N  next panel
+//	In the panel: 1-7 jump to a panel, Tab / Shift+Tab next / back, one letter or Enter for each thing it does.
 //	F12 (in every mode) brick learning on / off.  Alt tapped twice, then B (in every mode): brick mode.
 //
 // The brain checks the program by itself while you type (once you pause):
@@ -38,25 +42,25 @@ import (
 const brickMode = 7 // its place in modes
 const brPanelH = 10 // rows the panel takes under the text
 
-var brTabs = []string{"Bricks", "Words", "Decisions", "Imagination", "Neurons", "Learning"}
+var brTabs = []string{"Bricks", "Words", "Decisions", "Imagination", "Neurons", "Learning", "Phrases"}
 
 type brState struct {
-	tab, sel, pick, arch                                            int
-	focus                                                           bool   // the panel has the keys
-	typed                                                           string // what's typed in the Words panel
-	watch, words, decisions, imagination, neurons, learning, daemon map[string]any
-	voices                                                          bool // the brains speak what they learn (trainer/narrator.py)
-	archetypes                                                      []any
-	cursorLine                                                      map[string]any  // the cursor's line as bricks
-	repair                                                          map[string]any  // a line the brain judged not precise, and its fixes
-	lines                                                           []any           // every line as bricks (brick's latest reading): the wall of bricks in use
-	watched, coloured                                               int             // buffer versions
-	brainAsked, brainV                                              int             // the version the brain was asked about / its verdict (repair) is for
-	manual, runAfter                                                bool            // Alt+C asked (say what it found) / Alt+R waits for the brain, then builds
-	fixed                                                           []string        // what the brain fixed during this Alt+R (it fixes line after line)
-	fixedSeen                                                       map[string]bool // program texts its fixes made, so it never goes round in circles
-	busy                                                            map[string]bool
-	note                                                            string
+	tab, sel, pick, arch                                                     int
+	focus                                                                    bool   // the panel has the keys
+	typed                                                                    string // what's typed in the Words panel
+	watch, words, decisions, imagination, neurons, learning, daemon, phrases map[string]any
+	voices                                                                   bool // the brains speak what they learn (trainer/narrator.py)
+	archetypes                                                               []any
+	cursorLine                                                               map[string]any  // the cursor's line as bricks
+	repair                                                                   map[string]any  // a line the brain judged not precise, and its fixes
+	lines                                                                    []any           // every line as bricks (brick's latest reading): the wall of bricks in use
+	watched, coloured                                                        int             // buffer versions
+	brainAsked, brainV                                                       int             // the version the brain was asked about / its verdict (repair) is for
+	manual, runAfter                                                         bool            // Alt+C asked (say what it found) / Alt+R waits for the brain, then builds
+	fixed                                                                    []string        // what the brain fixed during this Alt+R (it fixes line after line)
+	fixedSeen                                                                map[string]bool // program texts its fixes made, so it never goes round in circles
+	busy                                                                     map[string]bool
+	note                                                                     string
 }
 
 func (m *Model) inBrick() bool { return m.mode == brickMode }
@@ -272,6 +276,15 @@ func (m *Model) brickAnswer(a brickMsg) tea.Cmd {
 			s.runAfter = false
 			return tea.Batch(next, m.brickRunChecked())
 		}
+	case "bits":
+		var names []string
+		for _, p := range list(d, "paths") {
+			ps, _ := p.(string)
+			names = append(names, filepath.Base(ps))
+		}
+		m.say("brick wrote the bits: " + strings.Join(names, ", ") + " (next to the file).")
+	case "help":
+		s.phrases = d
 	case "bitstream":
 		m.say(fmt.Sprintf("brick: %d bytes from \"%s\" (%s)", int(num(d, "bytes")), str(d, "line"), str(d, "why")))
 	}
@@ -317,7 +330,7 @@ func (m *Model) brickKey(k string, text string) (tea.Cmd, bool) {
 	case "alt+p":
 		s.focus = !s.focus
 		if s.focus {
-			m.say("The panel has the keys: " + brFocusKeys[brTabs[s.tab]] + ". Alt+P or Esc gives them back to the text.")
+			m.say("The panel has the keys: 1-7 pick a panel · " + brFocusKeys[brTabs[s.tab]] + ". Esc gives them back to the text.")
 		} else {
 			m.say("The text has the keys again.")
 		}
@@ -327,13 +340,14 @@ func (m *Model) brickKey(k string, text string) (tea.Cmd, bool) {
 	case "altgr+v", "“":
 		return m.brickVoicesSwitch(), true
 	case "alt+n":
-		s.tab = (s.tab + 1) % len(brTabs)
-		s.sel, s.pick = 0, 0
-		m.say(brTabHelp[brTabs[s.tab]])
-		return m.brickTabOpened(), true
+		return m.brickOpenTab((s.tab + 1) % len(brTabs)), true
 	}
 	if !s.focus {
 		return nil, false
+	}
+	tab := brTabs[s.tab]
+	if len(k) == 1 && k >= "1" && k <= fmt.Sprint(len(brTabs)) && !(tab == "Words" && s.typed != "") {
+		return m.brickOpenTab(int(k[0] - '1')), true // 1-7: straight to that panel
 	}
 	switch k {
 	case "esc":
@@ -341,15 +355,9 @@ func (m *Model) brickKey(k string, text string) (tea.Cmd, bool) {
 		m.say("The text has the keys again.")
 		return nil, true
 	case "tab":
-		s.tab = (s.tab + 1) % len(brTabs)
-		s.sel, s.pick = 0, 0
-		m.say(brTabHelp[brTabs[s.tab]])
-		return m.brickTabOpened(), true
+		return m.brickOpenTab((s.tab + 1) % len(brTabs)), true
 	case "shift+tab":
-		s.tab = (s.tab + len(brTabs) - 1) % len(brTabs)
-		s.sel, s.pick = 0, 0
-		m.say(brTabHelp[brTabs[s.tab]])
-		return m.brickTabOpened(), true
+		return m.brickOpenTab((s.tab + len(brTabs) - 1) % len(brTabs)), true
 	case "up":
 		s.sel = max(0, s.sel-1)
 		s.pick = 0
@@ -360,41 +368,125 @@ func (m *Model) brickKey(k string, text string) (tea.Cmd, bool) {
 		return nil, true
 	case "left":
 		s.pick = max(0, s.pick-1)
-		if brTabs[s.tab] == "Neurons" && len(s.archetypes) > 0 {
+		if tab == "Neurons" && len(s.archetypes) > 0 {
 			s.arch = (s.arch + len(s.archetypes)) % (len(s.archetypes) + 1)
 		}
 		return nil, true
 	case "right":
 		s.pick++
-		if brTabs[s.tab] == "Neurons" && len(s.archetypes) > 0 {
+		if tab == "Neurons" && len(s.archetypes) > 0 {
 			s.arch = (s.arch + 1) % (len(s.archetypes) + 1)
 		}
 		return nil, true
 	case "enter":
 		return m.brickEnter(), true
-	case "backspace":
-		if s.typed != "" {
-			_, n := utf8.DecodeLastRuneInString(s.typed)
-			s.typed = s.typed[:len(s.typed)-n]
+	}
+	switch tab {
+	case "Words": // letters are typed; Delete forgets the chosen taught word
+		switch {
+		case k == "backspace":
+			if s.typed != "" {
+				_, n := utf8.DecodeLastRuneInString(s.typed)
+				s.typed = s.typed[:len(s.typed)-n]
+			}
+		case k == "delete":
+			return m.brickForget(), true
+		case text != "":
+			s.typed += text
 		}
-		return nil, true
-	}
-	if brTabs[s.tab] == "Words" && text != "" {
-		s.typed += text
-		return nil, true
-	}
-	if brTabs[s.tab] == "Decisions" && (k == "d" || k == "delete") {
-		if it := m.brickDecision(); it != nil {
-			return m.brickAsk("decide", map[string]any{"id": str(it, "id"), "action": "dismiss"}), true
+	case "Bricks":
+		switch k {
+		case "b":
+			return m.brickBytes(), true
+		case "s":
+			return m.brickSaveBits(), true
 		}
-	}
-	if brTabs[s.tab] == "Learning" && k == "d" {
-		return m.brickDiarySwitch(), true
-	}
-	if brTabs[s.tab] == "Learning" && k == "v" {
-		return m.brickVoicesSwitch(), true
+	case "Decisions":
+		if k == "d" || k == "delete" {
+			if it := m.brickDecision(); it != nil {
+				return m.brickAsk("decide", map[string]any{"id": str(it, "id"), "action": "dismiss"}), true
+			}
+		}
+	case "Learning":
+		switch k {
+		case "l":
+			return m.brickLearningSwitch(), true
+		case "d":
+			return m.brickDiarySwitch(), true
+		case "v":
+			return m.brickVoicesSwitch(), true
+		}
 	}
 	return nil, true
+}
+
+// brickOpenTab shows panel i (the panel keeps the keys).
+func (m *Model) brickOpenTab(i int) tea.Cmd {
+	s := m.br()
+	s.tab, s.sel, s.pick = i, 0, 0
+	m.say(brTabHelp[brTabs[i]])
+	return m.brickTabOpened()
+}
+
+// brickBytes: how many bytes the cursor's line builds to, and how brick read it (B in the Bricks panel).
+func (m *Model) brickBytes() tea.Cmd {
+	line := strings.TrimSpace(string(m.buf.Lines[m.buf.Cursor.Row]))
+	if line == "" {
+		m.sayErr("Put the cursor on a line first.")
+		return nil
+	}
+	return m.brickAsk("bitstream", map[string]any{"line": line})
+}
+
+// brickSaveBits writes the program's bits next to its file (S in the Bricks panel): the program itself, and its parts.
+func (m *Model) brickSaveBits() tea.Cmd {
+	if m.buf.Draft || m.buf.Path == "" {
+		m.sayErr("Save the file first: the bits go next to it.")
+		return nil
+	}
+	m.say("Writing the bits next to the file ...")
+	return m.brickAsk("bits", map[string]any{"text": m.buf.Text(), "path": m.buf.Path})
+}
+
+// brWord: one row of the Words panel.
+type brWord struct{ label, unknown, guess, word, key string }
+
+func (m *Model) brickWordRows() []brWord {
+	var rows []brWord
+	for _, u := range list(m.br().words, "unknown") {
+		o := obj(u)
+		r := brWord{unknown: str(o, "word"), guess: str(o, "guess")}
+		r.label = fmt.Sprintf("not known yet: %s   (line %d: %s)", r.unknown, int(num(o, "number")), str(o, "line"))
+		if r.guess != "" {
+			r.label += "   maybe: " + r.guess
+		}
+		rows = append(rows, r)
+	}
+	for _, e := range list(m.br().words, "here") {
+		rows = append(rows, brWord{label: "taught for this folder: " + str(obj(e), "line"), key: str(obj(e), "key")})
+	}
+	for _, e := range list(m.br().words, "every") {
+		o := obj(e)
+		rows = append(rows, brWord{label: "taught: " + str(o, "word") + " = " + str(o, "meaning"), word: str(o, "word")})
+	}
+	return rows
+}
+
+// brickForget forgets the chosen taught word (Delete in the Words panel).
+func (m *Model) brickForget() tea.Cmd {
+	rows := m.brickWordRows()
+	if len(rows) == 0 {
+		return nil
+	}
+	r := rows[min(m.br().sel, len(rows)-1)]
+	switch {
+	case r.key != "":
+		return m.brickAsk("words", map[string]any{"what": "forget", "where": "here", "key": r.key, "path": m.buf.Path})
+	case r.word != "":
+		return m.brickAsk("words", map[string]any{"what": "forget", "word": r.word})
+	}
+	m.sayErr("That word isn't taught yet: Enter starts teaching it.")
+	return nil
 }
 
 // brickBrain asks the brain to check the program as it is now (in the
@@ -463,21 +555,23 @@ func (m *Model) brickRun(why string) tea.Cmd {
 
 // What each panel is for (said when it opens), and its keys while it has them.
 var brTabHelp = map[string]string{
-	"Bricks":      "Bricks: does it build, what the brain thinks, and every brick you've used. Alt+R runs it.",
-	"Words":       "Words: words brick doesn't know yet. Alt+P, then type: zap means write, then Enter.",
-	"Decisions":   "Decisions: readings brick couldn't settle. Alt+P, Up/Down choose, Left/Right pick, Enter keeps it.",
-	"Imagination": "Imagination: pictures brick imagined while learning, and what its eye saw. Alt+P, then Up/Down.",
-	"Neurons":     "Neurons: how the brain reads the cursor's line. Alt+P, Left/Right pick a brain, Enter reads.",
-	"Learning":    "Learning: brick learning in the background. AltGr+D: your diary on/off · AltGr+V: the brains' voices on/off.",
+	"Bricks":      "1 Bricks: does it build, what the brain thinks, and every brick you've used.",
+	"Words":       "2 Words: words brick doesn't know yet, and the words you taught.",
+	"Decisions":   "3 Decisions: readings brick couldn't settle by itself.",
+	"Imagination": "4 Imagination: pictures brick imagined while learning, and what its eye saw.",
+	"Neurons":     "5 Neurons: how the brain reads the cursor's line.",
+	"Learning":    "6 Learning: brick learning in the background, your diary, the brains' voices.",
+	"Phrases":     "7 Phrases: every kind of line brick can build, with examples.",
 }
 
 var brFocusKeys = map[string]string{
-	"Bricks":      "Left/Right pick a fix · Enter writes it in",
-	"Words":       "type: zap means write · Enter teaches it",
-	"Decisions":   "Up/Down choose · Left/Right pick · Enter keeps · d dismisses",
+	"Bricks":      "Left/Right pick a fix · Enter writes it in · B bytes of this line · S save the bits",
+	"Words":       "type: zap means write · Enter teaches · Up/Down choose · Delete forgets",
+	"Decisions":   "Up/Down choose · Left/Right pick · Enter keeps · D dismisses",
 	"Imagination": "Up/Down look",
 	"Neurons":     "Left/Right pick a brain · Enter reads the line",
-	"Learning":    "Enter on/off · d diary · v voices",
+	"Learning":    "L learning on/off · D diary on/off · V voices on/off",
+	"Phrases":     "Up/Down scroll",
 }
 
 // brickTabOpened fetches what the chosen panel shows.
@@ -492,6 +586,10 @@ func (m *Model) brickTabOpened() tea.Cmd {
 		return m.brickAsk("imagination", map[string]any{"most": 30})
 	case "Learning":
 		return tea.Batch(m.brickAsk("daemon", nil), m.brickAsk("learning", nil), m.brickAsk("narrator", nil))
+	case "Phrases":
+		if s.phrases == nil {
+			return m.brickAsk("help", nil)
+		}
 	}
 	return nil
 }
@@ -508,10 +606,23 @@ func (m *Model) brickEnter() tea.Cmd {
 	s := m.br()
 	switch brTabs[s.tab] {
 	case "Words":
+		if strings.TrimSpace(s.typed) == "" {
+			if rows := m.brickWordRows(); len(rows) > 0 {
+				if r := rows[min(s.sel, len(rows)-1)]; r.unknown != "" {
+					s.typed = r.unknown + " means " + r.guess
+					if r.guess != "" {
+						m.say("Enter teaches it. Or Backspace and type another meaning.")
+					} else {
+						m.say("Now type what '" + r.unknown + "' means, then Enter.")
+					}
+					return nil
+				}
+			}
+		}
 		t := strings.TrimSpace(s.typed)
 		parts := strings.SplitN(strings.Replace(t, " = ", " means ", 1), " means ", 2)
 		if len(parts) != 2 {
-			m.sayErr(`Type it like this: zap means write`)
+			m.sayErr(`Type it like this: zap means write (or pick a word with Up/Down and press Enter)`)
 			return nil
 		}
 		s.typed = ""
@@ -555,8 +666,7 @@ func (m *Model) brickEnter() tea.Cmd {
 			m.say("Fixed. Ctrl+Z takes it back.")
 			return m.brickColour()
 		}
-		line := strings.TrimSpace(string(m.buf.Lines[m.buf.Cursor.Row]))
-		return m.brickAsk("bitstream", map[string]any{"line": line})
+		return m.brickBytes()
 	}
 	return nil
 }
@@ -583,9 +693,9 @@ func (m *Model) brickVoicesSwitch() tea.Cmd {
 	what := "off"
 	if s.voices {
 		what = "on"
-		m.say("The brains' voices: on. Each archetype says what it's learning, in its own voice, now and then. AltGr+V turns them off.")
+		m.say("The brains' voices: on. Each archetype says what it's learning, in its own voice, now and then. V in panel 6 (or AltGr+V) turns them off.")
 	} else {
-		m.say("The brains' voices: off. AltGr+V turns them on.")
+		m.say("The brains' voices: off. V in panel 6 (or AltGr+V) turns them on.")
 	}
 	return m.brickAsk("narrator", map[string]any{"what": what})
 }
@@ -594,9 +704,9 @@ func (m *Model) brickDiarySwitch() tea.Cmd {
 	on := !brickDiaryOn()
 	setBrickDiary(on)
 	if on {
-		m.say("brick learns from your diary too now (it never leaves your PC). AltGr+D turns it off.")
+		m.say("brick learns from your diary too now (it never leaves your PC). D in panel 6 (or AltGr+D) turns it off.")
 	} else {
-		m.say("brick no longer reads your diary. AltGr+D turns it on.")
+		m.say("brick no longer reads your diary. D in panel 6 (or AltGr+D) turns it on.")
 	}
 	return nil
 }
@@ -608,21 +718,34 @@ func (m *Model) brickRows(sb *strings.Builder) {
 	base := st(cText, cBG)
 	dim := st(cDim, cBG)
 	hot := st(cEmber, cBG).Bold(true)
-	var tabs strings.Builder
-	tabs.WriteString(hot.Render(" " + modes[brickMode].Icon() + " brick  "))
-	for i, t := range brTabs {
-		if i == s.tab {
-			tabs.WriteString(st(cBG, cEmber).Bold(true).Render(" " + t + " "))
-		} else {
-			tabs.WriteString(dim.Render(" " + t + " "))
-		}
-	}
-	keys := "  Alt+R run · Alt+C check · Alt+P panel · Alt+N next · F1 help"
+	keys := "  Alt+R run · Alt+C check · Alt+P panel · F1 all keys"
 	if s.focus {
-		keys = "  " + brFocusKeys[brTabs[s.tab]] + " · Alt+P/Esc back"
+		keys = "  " + brFocusKeys[brTabs[s.tab]] + " · Esc back to text"
 	}
-	tabs.WriteString(dim.Render(keys))
-	rows := []string{tabs.String()}
+	tabRow := func(short bool) string { // short: only the open panel's name, the others by number, so the keys fit
+		var tabs strings.Builder
+		tabs.WriteString(hot.Render(" " + modes[brickMode].Icon() + " brick  "))
+		for i, t := range brTabs {
+			label := fmt.Sprintf(" %d %s ", i+1, t)
+			if i == s.tab {
+				tabs.WriteString(st(cBG, cEmber).Bold(true).Render(label))
+				continue
+			}
+			if short {
+				label = fmt.Sprintf(" %d ", i+1)
+			}
+			tabs.WriteString(dim.Render(label))
+		}
+		return tabs.String()
+	}
+	tabs := tabRow(false)
+	if lipgloss.Width(tabs+keys) > w {
+		tabs = tabRow(true)
+	}
+	rows := []string{tabs + dim.Render(keys)}
+	if lipgloss.Width(tabs+keys) > w { // too narrow: the keys get their own line, so they're always seen
+		rows = []string{tabs, dim.Render(keys)}
+	}
 	rows = append(rows, m.brickPanel(w)...)
 	for len(rows) < brPanelH {
 		rows = append(rows, "")
@@ -662,17 +785,13 @@ func (m *Model) brickPanel(w int) []string {
 	case "Bricks":
 		return m.brickBricksPanel(w, h)
 	case "Words":
-		out := []string{text.Render("  Teach: ") + hot.Render(s.typed+"▏") + dim.Render("   (type: zap means write, then Enter)")}
+		out := []string{text.Render("  Teach: ") + hot.Render(s.typed+"▏") + dim.Render("   (type: zap means write, then Enter · or pick a word below)")}
 		if s.words == nil {
 			return append(out, dim.Render("  Loading ..."))
 		}
 		var items []string
-		for _, u := range list(s.words, "unknown") {
-			us, _ := u.(string)
-			items = append(items, "not known yet: "+us)
-		}
-		for _, e := range append(list(s.words, "here"), list(s.words, "every")...) {
-			items = append(items, "taught: "+str(obj(e), "line"))
+		for _, r := range m.brickWordRows() {
+			items = append(items, r.label)
 		}
 		if len(items) == 0 {
 			items = []string{"No new words in this file, and none taught yet."}
@@ -760,6 +879,17 @@ func (m *Model) brickPanel(w int) []string {
 			out = append(out, text.Render(clip(fmt.Sprintf("  %-12s %-22s %-28s %s", str(o, "word"), str(o, "meaning"), str(o, "sure"), str(o, "senses")))))
 		}
 		return out
+	case "Phrases":
+		if s.phrases == nil {
+			return []string{dim.Render("  Loading ...")}
+		}
+		var rows []string
+		for _, l := range strings.Split(str(s.phrases, "phrases"), "\n") {
+			if strings.TrimSpace(l) != "" {
+				rows = append(rows, l)
+			}
+		}
+		return choose(rows)
 	case "Learning":
 		d := s.daemon
 		state := "off"
@@ -771,9 +901,9 @@ func (m *Model) brickPanel(w int) []string {
 			diary = "on"
 		}
 		out := []string{
-			text.Render("  Learning: ") + hot.Render(state) + dim.Render("   Enter (or F12 anywhere) turns it on/off"),
-			text.Render("  Your diary: ") + hot.Render(diary) + dim.Render("   AltGr+D turns it on/off (all writing stays on your PC)"),
-			text.Render("  Voices: ") + hot.Render(map[bool]string{true: "on", false: "off"}[s.voices]) + dim.Render("   AltGr+V turns them on/off (the brains say what they learn, each archetype in its own voice)"),
+			text.Render("  Learning: ") + hot.Render(state) + dim.Render("   L (or F12 anywhere) turns it on/off"),
+			text.Render("  Your diary: ") + hot.Render(diary) + dim.Render("   D turns it on/off (all writing stays on your PC)"),
+			text.Render("  Voices: ") + hot.Render(map[bool]string{true: "on", false: "off"}[s.voices]) + dim.Render("   V turns them on/off (the brains say what they learn, each archetype in its own voice)"),
 		}
 		if d != nil && num(d, "rounds") > 0 {
 			out = append(out, text.Render(fmt.Sprintf("  %d rounds · %d neurons (%d phrases) · %d lines, %d proved · Ni guesses %d%% of next words, %d%% of brick's output",
