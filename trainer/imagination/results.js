@@ -64,8 +64,11 @@ out.random = score({ randomFreq: true }); line("random frequencies", out.random)
 out.drives = {};
 for (const e of S.ENERGIES) { out.drives[e.key] = score({ energies: { [e.key]: 0 } }, 6); line(e.key + " off", out.drives[e.key]); }
 out.scale = {};
-for (const n of [20, 100, 300, 1000]) {
-  const net = new S.Network(S.fieldSpec(n, 5), 5);
+for (const n of [20, 100, 300, 1000, 10000]) {      // a vocabulary-like network: ~5 lines a word, a band that grows with size
+  const r = S.rng(9), neurons = [], links = [];
+  for (let i = 0; i < n; i++) neurons.push({ label: "n" + i, omega: 2 + r() * Math.max(4, n / 25), x: r(), y: r() });
+  for (let i = 0; i < n; i++) for (let k = 0; k < 5; k++) { const j = Math.floor(r() * n); if (j !== i) links.push(["n" + i, "n" + j, 0.4]); }
+  const net = new S.Network({ neurons, links, sentences: [] }, 5);
   const k = n >= 300 ? 4 : 30, t0 = process.hrtime.bigint();
   for (let i = 0; i < k; i++) net.step();
   out.scale[n] = +(Number(process.hrtime.bigint() - t0) / 1e6 / k).toFixed(2); line("scale " + n, out.scale[n] + " ms/step");

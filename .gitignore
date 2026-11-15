@@ -3,3 +3,8 @@ __pycache__/
 
 # your own brick programs (kept out of the public repo)
 wa/
+
+# downloaded data and what the neurons learned (rebuilt by brick trainer neurons ...)
+trainer/data/sources/public/
+trainer/data/sources/dictionary-api/
+trainer/data/neurons/

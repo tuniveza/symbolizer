@@ -198,6 +198,7 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
             <option value="groups">From your groups</option>
             <option value="use">Stand-in encoder (from use only)</option>
             <option value="random">Random (no encoder)</option>
+            <option value="raw">Nothing given: it learns by itself (Ni + Ne)</option>
           </select>
         </div>
         <div class="row">
@@ -332,7 +333,8 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
   $("#brain").addEventListener("change", () => { brainNote(); build(); });
   function build() {
     seed = Math.floor(Math.random() * 1e6);
-    net = new Network(preset === "words" ? wordSpec(1.2) : preset === "data" ? dataSpec(liveData.text, liveData.mode, seed) : fieldSpec(16, seed % 97 + 1), seed, energy, $("#brain").value || null);
+    net = new Network(preset === "words" ? wordSpec(1.2) : preset === "data" ? dataSpec(liveData.text, liveData.mode, seed) : fieldSpec(16, seed % 97 + 1), seed, energy, $("#brain").value || null,
+      { intuition: preset === "data" && liveData.mode === "raw" });
     lastLog = 0; $("#log").innerHTML = "<div>Nothing yet. Watch for a split around 20–40 seconds in.</div>";
     $("#answer").textContent = preset !== "field" ? "Pick a word in a context. Each sense gets 16 percentages, one per energy. A meaning counts as accurate when a sense gets more than its fair share on over half of the energies." : "Asking works on the Word meanings network.";
     askButtons();
@@ -397,7 +399,7 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
   }
   function readout() {
     const s = net.stats();
-    $("#readout").innerHTML = `<span>in sync <b>${Math.round(s.order * 100)}%</b></span><span>hot <b>${s.hot}</b></span><span>cold <b>${s.cold}</b></span><span>neurons <b>${s.neurons}</b></span><span>lines <b>${s.links}</b></span><span>lit <b>${s.lit}</b></span>${net.brain ? `<span>warmth <b>${net.warmth.toFixed(2)}×</b></span><span>order pull <b>${net.orderPull.toFixed(2)}×</b></span>` : ""}`;
+    $("#readout").innerHTML = `<span>in sync <b>${Math.round(s.order * 100)}%</b></span><span>hot <b>${s.hot}</b></span><span>cold <b>${s.cold}</b></span><span>neurons <b>${s.neurons}</b></span><span>lines <b>${s.links}</b></span><span>lit <b>${s.lit}</b></span>${net.intuition ? `<span>Ni guesses <b>${Math.round(net.niRate() * 100)}%</b></span><span>Ne kept <b>${net.confirmed}</b> of ${net.proposed}</span>` : ""}${net.brain ? `<span>warmth <b>${net.warmth.toFixed(2)}×</b></span><span>order pull <b>${net.orderPull.toFixed(2)}×</b></span>` : ""}`;
     $("#clock").textContent = Math.round(net.t) + " s";
     if (net.log.length !== lastLog) {
       const items = net.log.slice(-14).reverse().map(l => `<div class="${l.text.startsWith("nuclear") ? "fission" : l.text.startsWith("radiant") ? "radiant" : ""}"><span>${Math.round(l.t)}s</span>${l.text}</div>`);
@@ -454,7 +456,7 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
     for (let seed = 1; seed <= n; seed++) {
       $("#runStatus").textContent = `Training run ${seed} of ${n}…`;
       await new Promise(r => setTimeout(r, 20));
-      const t = new Network(dataSpec(text, mode, seed), seed, e, brain);
+      const t = new Network(dataSpec(text, mode, seed), seed, e, brain, { intuition: mode === "raw" });
       for (let k = 0; k < steps; k++) { if (k % C.TRAIN_EVERY === 0) t.train(); t.step(); }
       for (const w of new Set(t.N.filter(x => x.label.includes("·")).map(x => x.word))) res.splits[w] = (res.splits[w] || 0) + 1;
       qs.forEach((q, i) => {
@@ -475,7 +477,7 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
     if (!runs.length) return;
     const qtexts = [...new Set(runs.flatMap(r => r.q.map(q => q.text)))];
     const head = `<tr><th>Test</th>${runs.map((r, i) => `<th>${esc(r.name)} <button class="x" data-i="${i}" aria-label="Remove ${esc(r.name)}">×</button></th>`).join("")}</tr>`;
-    const modeName = { groups: "from your groups", use: "stand-in encoder", random: "random" };
+    const modeName = { groups: "from your groups", use: "stand-in encoder", random: "random", raw: "nothing given (learns by itself)" };
     const settings = `<tr><td>Settings</td>${runs.map(r => `<td>${r.n} run${r.n > 1 ? "s" : ""} · ${r.steps * C.dt} s training<small>frequencies ${modeName[r.mode]} · ${r.sentences} sentences, ${r.words} words</small><small>${r.brain ? "archetype: " + esc(r.brain) : "no archetype"}</small><small>${r.changed.length ? "changed: " + esc(r.changed.join(", ")) : "all energies at 1"}</small></td>`).join("")}</tr>`;
     const overall = `<tr><td>As expected</td>${runs.map(r => { const ok = r.q.reduce((t, q) => t + q.ok, 0), j = r.q.reduce((t, q) => t + q.judged, 0);
       return `<td>${j ? `<b>${Math.round(100 * ok / j)}%</b> (${ok} of ${j})` : "no expectations given"}</td>`; }).join("")}</tr>`;

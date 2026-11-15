@@ -198,6 +198,7 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
             <option value="groups">From your groups</option>
             <option value="use">Stand-in encoder (from use only)</option>
             <option value="random">Random (no encoder)</option>
+            <option value="raw">Nothing given: it learns by itself (Ni + Ne)</option>
           </select>
         </div>
         <div class="row">
@@ -360,12 +361,25 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
     };
   }
 
+  const pairKey = (a, b) => a < b ? a + "|" + b : b + "|" + a;
+  // Special neurons (raw input): "=write" bitstream (a piece of brick's output), "@place" slot (a job in a line),
+  // "#2" number (one scale: near frequency = near amount). Order and flip words are ordinary words with a duty.
+  const ORDER = new Set(["then", "after", "before", "next", "first", "finally", "until", "while", "when", "once", "afterwards", "later"]);
+  const FLIP = new Set(["not", "don't", "dont", "never", "unless", "no", "without", "stop", "nor"]);
+  const special = w => /^[=@#]/.test(w);
+  function numberValue(w) { const m = /^#~?(\d+(?:\.\d+)?)$/.exec(w); return m ? +m[1] : null; }
+  function numberOmega(v) { return 0.4 + 1.3 * Math.log10(1 + v) / Math.log10(10001); }   // 0..10000 -> 0.4..1.7
+
   function defaults() { const e = {}; for (const x of ENERGIES) e[x.key] = 1; return e; }
 
   class Network {
     // brain: an archetype (object or name). Its personality sets the 16 energies and steers heat and order;
     // its decisions set the rules (how strict, how soon to split, how long to keep lines, ...). No brain = neutral.
-    constructor(spec, seed = 1, energies = null, brain = null) {
+    // opts.intuition: learn by itself (the owner's loop: Se takes in, Si recalls, Ni predicts, Ne proposes; Ti, Te,
+    // Fi and Fe decide what stays). Off = the first version, where meaning groups and lines were given.
+    constructor(spec, seed = 1, energies = null, brain = null, opts = {}) {
+      this.intuition = !!opts.intuition;
+      this.ni = []; this.proposed = 0; this.confirmed = 0; this.rejected = 0; this.lastSentence = null;
       this.rand = rng(seed);
       this.brain = brain ? (typeof brain === "string" ? findArchetype(brain) : brain) : null;
       if (brain && !this.brain) throw new Error("no archetype called " + brain);
@@ -388,7 +402,7 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
       const neuron = {
         id: this.nextId++, label: n.label, word: n.word || n.label, group: n.group || null,
         omega: n.omega, omega0: n.omega, theta: r() * Math.PI * 2, amp: 0.6, E: 0, T: C.T_REST, lit: 0,
-        inbox: new Map(), co: new Map(), stepIn: new Map(), stepHeat: new Map(), stepThermal: new Map(), stepLit: new Map(), litBy: null, refined: 0, x: n.x ?? r(), y: n.y ?? r(), relayed: 0, hidden: !!n.hidden,
+        inbox: new Map(), co: new Map(), next: new Map(), out: new Map(), fixed: !!n.fixed, truth: n.truth || null, seen: n.seen || 0, stepIn: new Map(), stepHeat: new Map(), stepThermal: new Map(), stepLit: new Map(), litBy: null, refined: 0, x: n.x ?? r(), y: n.y ?? r(), relayed: 0, hidden: !!n.hidden,
       };
       this.N.push(neuron);
       return neuron;
@@ -399,10 +413,20 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
     link(a, b) { return this.links.get(this.key(a, b)); }
     connect(a, b, w = 0.5) {
       if (!a || !b || a === b) return;
-      this.links.set(this.key(a, b), { a: a.id, b: b.id, w, w0: w, carried: 0, idle: 0 });
+      this.links.set(this.key(a, b), { a: a.id, b: b.id, w, w0: w, carried: 0, idle: 0 }); this.linkVersion = (this.linkVersion || 0) + 1;
     }
-    linksOf(n) { const out = []; for (const l of this.links.values()) if (l.a === n.id || l.b === n.id) out.push(l); return out; }
-    get(id) { return this.N.find(n => n.id === id); }
+    linksOf(n) {
+      if (!this.linkIndex || this.linkIndexSize !== this.links.size || this.linkIndexVersion !== this.linkVersion) {
+        this.linkIndex = new Map();
+        for (const l of this.links.values()) for (const id of [l.a, l.b]) { let m = this.linkIndex.get(id); if (!m) this.linkIndex.set(id, m = []); m.push(l); }
+        this.linkIndexSize = this.links.size; this.linkIndexVersion = this.linkVersion;
+      }
+      return (this.linkIndex.get(n.id) || []).filter(l => this.links.get(this.key(this.get(l.a) || { id: l.a }, this.get(l.b) || { id: l.b })) === l);
+    }
+    get(id) {
+      if (!this.byId || this.byIdSize !== this.N.length || this.byIdStale) { this.byId = new Map(this.N.map(n => [n.id, n])); this.byIdSize = this.N.length; this.byIdStale = false; }
+      return this.byId.get(id);
+    }
 
     say(text) { this.log.push({ t: this.t, text }); if (this.log.length > 200) this.log.shift(); }
 
@@ -433,9 +457,23 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
       for (const x of N) { x.stepIn = new Map(); x.stepHeat = new Map(); x.stepThermal = new Map(); x.stepLit = new Map(); }   // what arrives this step, by source
       const bar = x => C.SYNC - 0.12 * e.potential * Math.min(x.T, 1.5) / 1.5;   // potential: heat lowers the bar
 
-      for (let i = 0; i < n; i++) {
+      // Pairs to work on: every pair while small; once big, only pairs close enough in frequency to touch (beyond
+      // 1.8 sigma, sync under 4%) plus every linked pair, which gives the same physics without checking all n x n pairs.
+      let pairs = null;
+      if (n > 120) {
+        pairs = [];
+        const order = [...N.keys()].sort((p, q) => N[p].omega - N[q].omega), done = new Set(), reach = 1.8 * C.SIGMA;   // beyond this frequency similarity is under 4%
+        for (let u = 0; u < n; u++) for (let v = u + 1; v < n && N[order[v]].omega - N[order[u]].omega < reach; v++) {
+          const p = Math.min(order[u], order[v]), q = Math.max(order[u], order[v]); pairs.push(p, q); done.add(p * n + q); }
+        const index = new Map(N.map((x, k) => [x.id, k]));
+        for (const l of this.links.values()) { const p0 = index.get(l.a), q0 = index.get(l.b); if (p0 == null || q0 == null) continue;
+          const p = Math.min(p0, q0), q = Math.max(p0, q0); if (!done.has(p * n + q)) { pairs.push(p, q); done.add(p * n + q); } }
+      }
+      const total = pairs ? pairs.length / 2 : n * (n - 1) / 2;
+      for (let pi = 0, i = 0, j = 0; pi < total; pi++) {
+        if (pairs) { i = pairs[2 * pi]; j = pairs[2 * pi + 1]; } else { j++; if (pi === 0) { i = 0; j = 1; } if (j >= n) { i++; j = i + 1; } }
         const a = N[i];
-        for (let j = i + 1; j < n; j++) {
+        {
           const b = N[j];
           const { df, fsim, s } = this.sync(a, b);
           const l = this.link(a, b), w = l ? l.w : 0;
@@ -513,6 +551,7 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
         }
         dOmega[i] += e.chemical * C.CHEM * (a.omega0 - a.omega);              // chemical: hold your own frequency
         a.omega += dOmega[i] * dt;
+        if (a.fixed) a.omega = a.omega0;                                    // bitstream, slot and number neurons hold still
         a.amp = Math.min(1, Math.max(0.15, a.amp));
         a.T = Math.max(0, a.T);
         a.lit = Math.max(0, Math.min(1, a.lit * (1 - C.LIT_DECAY * dt)));
@@ -603,9 +642,10 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
     // The imagination layer: redesigns lines, steered by the drives.
     imagine() {
       const e = this.e;
+      if (this.intuition) this.decide();
       // nuclear fission: a cold neuron whose impacts come from two separate groups splits into two
       for (const a of [...this.N]) {
-        if (a.T >= C.T_COLD) continue;
+        if (a.T >= C.T_COLD || a.fixed) continue;
         const sp = this.contexts(a);                                         // the layer sees use, not only impacts
         if (!sp || !sp.bimodal || sp.total < 0.05) continue;
         const score = e.nuclear * sp.share * 2 * (0.5 + 0.5 * e.electric) - 0.25 * e.chemical;
@@ -625,7 +665,7 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
       }
       // radiant + imagination: a hidden, unlinked neuron that was lit up gets retuned and joined, regardless of sync
       for (const a of this.N) {
-        if (this.linksOf(a).length || a.lit < this.d.radiant || a.litBy == null) continue;
+        if (a.lit < this.d.radiant || a.litBy == null || this.linksOf(a).length) continue;
         const src = this.get(a.litBy);
         if (!src || e.radiant <= 0) continue;
         a.omega0 = a.omega = a.omega + 0.6 * (src.omega - a.omega);
@@ -635,13 +675,326 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
       }
     }
 
+    // ---------- intuition: learning by itself ----------
+    fnPower(fn) { const [a, b] = FUNCTIONS[fn]; return (this.e[a] + this.e[b]) / 2; }
+
+    // The sense of a word that fits the rest of the moment best (its contextual association).
+    senseIn(word, words) {
+      const senses = this.N.filter(n => n.word === word);
+      if (senses.length < 2) return senses[0] || null;
+      const others = this.N.filter(n => n.word !== word && words.includes(n.word));
+      const fit = sn => others.reduce((t, o) => { const l = this.link(sn, o); return t + (l ? l.w : 0) + this.sync(sn, o).fsim; }, 0);
+      return senses.reduce((best, sn) => fit(sn) > fit(best) ? sn : best);
+    }
+
+    // Ni predicts each next word from the words before it. A wrong guess becomes absorbed impact (heat); a right guess
+    // lets a cold neuron refine. Each earlier word then expects what really came a little more (more after a surprise).
+    // Te: words that keep predicting each other get a line. Ne: a surprise lights up proposals.
+    intuit(words) {
+      const seq = words.filter(w => !/^[=@]/.test(w)).map(w => this.senseIn(w, words)).filter(Boolean);
+      for (const x of seq) x.seen++;
+      let start = 0;                                                    // order neurons: a new step starts after them
+      const ni = this.fnPower("Ni"), ne = this.fnPower("Ne"), te = this.fnPower("Te"), R = 0.5;
+      for (let i = 1; i < seq.length; i++) {
+        const x = seq[i], score = new Map();
+        if (ORDER.has(seq[i - 1].word)) start = i - 1;                 // Ni still predicts what follows "then" ...
+        let total = 0;
+        for (let j = i - 1, r = 1; j >= start && r > 0.1; j--, r *= R) for (const [id, v] of seq[j].next) { score.set(id, (score.get(id) || 0) + r * v); total += r * v; }
+        let best = null, top = 0;
+        for (const [id, v] of score) if (v > top) { top = v; best = id; }
+        const p = total > 0 ? (score.get(x.id) || 0) / (total + 0.2) : 0;   // 0.2 keeps room for the unexpected
+        this.ni.push(best === x.id ? 1 : 0); if (this.ni.length > 300) this.ni.shift();
+        const surprise = 1 - p, eta = 0.25 * ni;
+        for (let j = i - 1, r = 1; j >= start && r > 0.1; j--, r *= R) {   // ... but not across it from the step before
+          const c = seq[j], k = eta * r;
+          if (c.word === x.word) continue;
+          for (const [id, v] of c.next) if (id !== x.id) { const nv = v * (1 - 0.1 * k); if (nv < 1e-3) c.next.delete(id); else c.next.set(id, nv); }
+          const old = c.next.get(x.id) || 0, nv = old + k * surprise * (1 - old);
+          c.next.set(x.id, nv);
+          if (nv > 0.35 / Math.max(0.3, te) && !this.link(c, x)) { this.connect(c, x, 0.3); }   // Te: it works, keep a line
+        }
+        x.T += C.ABSORB * this.e.mechanical * surprise * 0.4;                                    // Ni: a wrong guess is heat
+        if (p > 0.5 && x.T < C.T_COLD) x.amp = Math.min(1, x.amp + 0.05 * this.e.work);          // Ni: a right guess refines
+        if (surprise > 0.6 && this.rand() < 0.5 * ne) this.propose(x, i ? seq[i - 1] : null);
+      }
+      this.predCache = null; this.rarity = null;
+    }
+
+    // Who comes before each neuron, and how strongly (built from every neuron's predictions).
+    predIndex() {
+      if (this.predCache) return this.predCache;
+      const pred = new Map();
+      for (const a of this.N) for (const [id, v] of a.next) { let m = pred.get(id); if (!m) pred.set(id, m = new Map()); m.set(a.id, v); }
+      return this.predCache = pred;
+    }
+    // How alike two neurons are used: what comes before them and what they predict, compared (cosine).
+    // A context neuron used everywhere (like "in") says little, so each one counts less the more it is used.
+    alike(a, b, pred = this.predIndex()) {
+      const pa = pred.get(a.id) || new Map(), pb = pred.get(b.id) || new Map();
+      const rare = this.rarity || (this.rarity = this.rarityOf());
+      let dot = 0, na = 0, nb = 0;
+      const side = (ma, mb) => {
+        for (const [k, v] of ma) { const q = v * (rare.get(k) || 1); na += q * q; if (mb.has(k) && k !== a.id && k !== b.id) dot += q * mb.get(k) * (rare.get(k) || 1); }
+        for (const [k, v] of mb) { const q = v * (rare.get(k) || 1); nb += q * q; }
+      };
+      side(a.next, b.next); side(pa, pb);
+      return na && nb ? dot / Math.sqrt(na * nb) : 0;
+    }
+    rarityOf() {
+      const total = this.N.reduce((t, n) => t + n.seen, 0) || 1, out = new Map();
+      for (const n of this.N) out.set(n.id, Math.log(1 + total / (1 + n.seen)) / Math.log(1 + total));
+      return out;
+    }
+
+    // Ne proposes: lines to neurons used in the same places as this one (it could stand in for them).
+    propose(x) {
+      const pred = this.predIndex(), cands = [];
+      if (x.seen < 3 || special(x.word)) return;                        // Ti: too little evidence to say anything yet
+      this.banned = this.banned || new Set();
+      const near = new Set();                                            // only words that share a neighbour can be alike
+      for (const k of x.next.keys()) for (const p of (pred.get(k) || new Map()).keys()) near.add(p);
+      for (const p of (pred.get(x.id) || new Map()).keys()) { const q = this.get(p); if (q) for (const k of q.next.keys()) near.add(k); }
+      for (const id of near) {
+        const y = this.get(id);
+        if (!y || y === x || y.word === x.word || y.seen < 3 || special(y.word) || this.link(x, y) || this.banned.has(pairKey(x.word, y.word))) continue;
+        const sim = this.alike(x, y, pred);
+        if (sim > 0.25) cands.push([y, sim]);
+      }
+      cands.sort((a, b) => b[1] - a[1]);
+      for (const [y] of cands.slice(0, 2)) { this.connect(x, y, 0.15); this.link(x, y).tent = this.t; this.proposed++; }
+    }
+
+    // Ti, Te, Fi and Fe decide what stays. Fi: two neurons must be alike enough to share a line (each keeps itself).
+    // Te: a proposal that holds is strengthened until it's a real line; one that doesn't is cut. Fe: linked neurons
+    // align their frequencies, so meanings settle into bands by use alone. (Ti splits and merges in imagine().)
+    decide() {
+      const pred = this.predIndex(), te = this.fnPower("Te"), fe = this.fnPower("Fe"), fi = this.fnPower("Fi");
+      for (const [k, l] of this.links) {
+        const a = this.get(l.a), b = this.get(l.b);
+        if (!a || !b) continue;
+        if (l.tent != null && this.t - l.tent > 8) {
+          if (this.alike(a, b, pred) > 0.35 * fi) {
+            l.w = Math.min(1, l.w + 0.08 * te);
+            if (l.w >= 0.3) { l.tent = null; l.w0 = l.w; l.ne = true; this.confirmed++; this.say(`Ne proposed, Te kept: ${a.label}—${b.label} (used in the same places)`); }
+          } else { l.w -= 0.05 * Math.max(0.2, te); if (l.w <= 0.03) { this.links.delete(k); this.rejected++; continue; } }
+        }
+        if (l.tent == null) {
+          const pull = fe * 0.02 * l.w * (b.omega - a.omega);
+          if (a.fixed && b.fixed) continue;
+          if (a.fixed) b.omega -= 2 * pull; else if (b.fixed) a.omega += 2 * pull; else { a.omega += pull; b.omega -= pull; }
+        }
+      }
+      for (const n of this.N) if (!n.fixed) n.omega0 += 0.05 * (n.omega - n.omega0);   // what it learned becomes its own frequency
+      this.fusePhrases(pred);
+      if (this.steps % (C.IMAGINE_EVERY * 10) === 0) this.assignSlots();
+    }
+    // ---------- bitstream neurons ----------
+    // From every sentence brick built, each word learns which pieces of output ("=write", "=wait") it makes:
+    // a delta rule, like Ni's guesses. Before learning, Ni guesses the output from the words alone, and that guess is
+    // scored (bitRate): the brain's own measure of how precisely it turns English into bits. A word right after a flip
+    // neuron ("don't clear") learns nothing from it. Te gives a word a line to an output it reliably makes, and Fe
+    // then pulls it toward that output's fixed frequency: words that make the same bits end up tuned alike.
+    learnBits(words) {
+      const want = new Set(words.out), outs = words.out.map(o => this.N.find(n => n.word === o)).filter(Boolean);
+      if (!outs.length) return;
+      const seq = words.map(w => this.senseIn(w, words)).filter(x => x && !special(x.word));
+      const flipped = new Set();
+      seq.forEach((x, i) => { if (FLIP.has(x.word) && seq[i + 1]) flipped.add(seq[i + 1]); });
+      const guess = this.guessBits(seq.filter(x => !flipped.has(x)));
+      if (guess.length) { this.bits = this.bits || []; this.bits.push(want.has(guess[0].o) ? 1 : 0); if (this.bits.length > 300) this.bits.shift(); }
+      const eta = 0.2 * this.fnPower("Ni"), te = this.fnPower("Te");
+      for (const x of seq) {
+        if (flipped.has(x)) continue;
+        for (const [id, v] of x.out) if (!outs.some(o => o.id === id)) { const nv = v * (1 - 0.15 * eta); if (nv < 1e-3) x.out.delete(id); else x.out.set(id, nv); }
+        for (const o of outs) {
+          const nv = (x.out.get(o.id) || 0) + eta * (1 - (x.out.get(o.id) || 0));
+          x.out.set(o.id, nv);
+          if (nv > 0.5 / Math.max(0.3, te) && x.seen >= 3 && !this.link(x, o)) { this.connect(x, o, 0.4); this.link(x, o).bits = true; }
+        }
+      }
+    }
+    // Which outputs the words would make: each word's learned outputs, or for a word with none, its settled lines'.
+    guessBits(seq) {
+      const score = new Map();
+      for (const x of seq) {
+        let m = x.out;
+        if (!m.size) { m = new Map(); for (const l of this.linksOf(x)) { if (l.tent != null) continue; const o = this.get(l.a === x.id ? l.b : l.a);
+          if (o && !special(o.word)) for (const [id, v] of o.out) m.set(id, (m.get(id) || 0) + v * l.w); } }
+        for (const [id, v] of m) score.set(id, (score.get(id) || 0) + v);
+      }
+      const total = [...score.values()].reduce((a, b) => a + b, 0);
+      return [...score].map(([id, v]) => ({ o: this.get(id)?.word, share: total ? v / total : 0 })).filter(x => x.o).sort((a, b) => b.share - a.share);
+    }
+    // The brain's own prediction of the brick a word stands for: its strongest output, and how sure (share).
+    brickOf(word) {
+      const n = this.N.filter(x => x.word === word).sort((a, b) => b.seen - a.seen)[0];
+      if (!n) return null;
+      const g = this.guessBits([n]);
+      return g.length ? { output: g[0].o, share: +g[0].share.toFixed(3), second: g[1] ? g[1].o : null } : null;
+    }
+    bitRate() { return this.bits && this.bits.length ? this.bits.reduce((a, b) => a + b, 0) / this.bits.length : 0; }
+
+    // ---------- slot neurons ----------
+    // One neuron per job a word can have in a line ("@do", "@place", "@colour" ...). Words brick reads are lined to
+    // their slot; a word brick doesn't know gets lined to the slot its settled lines clearly vote for (2+ votes, 60%+).
+    slots(roles) {
+      const band = Math.max(4, this.N.length / 25), kinds = [...new Set(Object.values(roles || {}))].sort();
+      kinds.forEach((r, k) => { const w = "@" + r; if (!this.N.some(n => n.word === w)) this.add({ label: w, omega: 2 + band * (k + 0.5) / kinds.length, x: 0.05 + 0.9 * (k + 0.5) / kinds.length, y: 0.97, fixed: true }); });
+      for (const n of this.N) { if (!n.role || special(n.word)) continue; const slot = this.N.find(x => x.word === "@" + n.role);
+        if (slot && !this.link(n, slot)) { this.connect(n, slot, 0.3); this.link(n, slot).proved = "role"; } }
+    }
+    assignSlots() {
+      for (const n of this.N) {
+        if (n.role || special(n.word) || n.seen < 3 || this.linksOf(n).some(l => { const o = this.get(l.a === n.id ? l.b : l.a); return o && o.word[0] === "@"; })) continue;
+        const vote = new Map(); let total = 0;
+        for (const l of this.linksOf(n)) { if (l.tent != null) continue; const o = this.get(l.a === n.id ? l.b : l.a);
+          if (o && o.role && !special(o.word)) { vote.set(o.role, (vote.get(o.role) || 0) + 1); total++; } }
+        const best = [...vote].sort((a, b) => b[1] - a[1])[0];
+        if (best && best[1] >= 2 && best[1] / total >= 0.6) { const slot = this.N.find(x => x.word === "@" + best[0]); if (slot) this.connect(n, slot, 0.2); }
+      }
+    }
+
+    // ---------- phrase neurons ----------
+    // Ti fuses: when Ni sees one word almost always come right after another (it predicts it, and nothing else
+    // usually comes before it), the two become one phrase neuron ("top right", then "top right corner"). A phrase
+    // neuron is used like a word: it has its own frequency, lines, senses and role, so it can fill a slot.
+    fusePhrases(pred = this.predIndex()) {
+      this.phrases = this.phrases || new Set();
+      const ti = this.fnPower("Ti"), cap = Math.max(20, Math.round(this.N.length * 0.3));
+      if (this.phrases.size >= cap || ti <= 0) return;
+      const made = [];
+      for (const c of this.N) {
+        if (c.seen < 5 || c.word.split(" ").length >= 4 || special(c.word) || ORDER.has(c.word)) continue;
+        for (const [id, v] of c.next) {
+          const x = this.get(id);
+          if (!x || x.seen < 5 || v < 0.6 / Math.min(1.5, ti) || x.word === c.word || special(x.word) || ORDER.has(x.word)) continue;
+          const word = c.word + " " + x.word;
+          if (word.split(" ").length > 4 || this.phrases.has(word)) continue;
+          const before = pred.get(x.id) || new Map(); let total = 0; for (const [, u] of before) total += u;
+          if (total && v / total > 0.5) made.push([c, x, word]);
+        }
+      }
+      for (const [c, x, word] of made.slice(0, 5)) {
+        if (this.phrases.size >= cap) break;
+        const p = this.add({ label: word, word, omega: (c.omega + x.omega) / 2, x: (c.x + x.x) / 2, y: (c.y + x.y) / 2 + 0.03 });
+        p.parts = [c.word, x.word]; p.phrase = true;
+        this.connect(p, c, 0.5); this.connect(p, x, 0.5);
+        this.phrases.add(word);
+        this.say(`Ti fused "${word}" into one phrase neuron (Ni nearly always sees ${x.word} right after ${c.word})`);
+      }
+    }
+    // A sentence with its phrases joined, longest first: "at the top right corner" -> at, the, "top right corner".
+    chunk(words) {
+      if (!this.phrases || !this.phrases.size) return words;
+      const out = [];
+      for (let i = 0; i < words.length;) {
+        let took = 1;
+        for (let k = Math.min(4, words.length - i); k > 1; k--) if (this.phrases.has(words.slice(i, i + k).join(" "))) { took = k; break; }
+        out.push(words.slice(i, i + took).join(" ")); i += took;
+      }
+      return out;
+    }
+
+    niRate() { return this.ni.length ? this.ni.reduce((a, b) => a + b, 0) / this.ni.length : 0; }
+
+    // Save and load everything it has learned (by label, so it survives in a file).
+    save() {
+      const lab = id => this.get(id)?.label;
+      const map = m => Object.fromEntries([...m].filter(([id]) => lab(id) != null).map(([id, v]) => [lab(id), +v.toFixed(4)]));
+      return { version: 1, t: this.t, steps: this.steps, senseCount: this.senseCount || {}, intuition: this.intuition,
+        neurons: this.N.map(n => ({ label: n.label, word: n.word, group: n.group, truth: n.truth, omega: +n.omega.toFixed(4), omega0: +n.omega0.toFixed(4),
+          T: +n.T.toFixed(3), amp: +n.amp.toFixed(3), seen: n.seen, role: n.role || null, x: +n.x.toFixed(3), y: +n.y.toFixed(3), next: map(n.next), co: map(n.co), out: map(n.out), fixed: n.fixed || undefined })),
+        links: [...this.links.values()].map(l => [lab(l.a), lab(l.b), +l.w.toFixed(4), +l.w0.toFixed(4), l.tent == null ? null : 0, l.ne ? 1 : 0, l.proved || 0]),
+        banned: [...(this.banned || [])], checked: [...(this.checked || [])], phrases: [...(this.phrases || [])],
+        stats: { proposed: this.proposed, confirmed: this.confirmed, rejected: this.rejected, ni: +this.niRate().toFixed(3), bits: +this.bitRate().toFixed(3) } };
+    }
+    load(state) {
+      this.N = []; this.links = new Map(); this.nextId = 0;
+      for (const n of state.neurons) { const x = this.add(n); Object.assign(x, { omega0: n.omega0, T: n.T, amp: n.amp, group: n.group, truth: n.truth, seen: n.seen || 0, role: n.role || null }); }
+      const byLabel = new Map(this.N.map(n => [n.label, n]));
+      state.neurons.forEach((n, i) => { const x = this.N[i];
+        for (const [l, v] of Object.entries(n.next || {})) if (byLabel.has(l)) x.next.set(byLabel.get(l).id, v);
+        for (const [l, v] of Object.entries(n.co || {})) if (byLabel.has(l)) x.co.set(byLabel.get(l).id, v);
+        for (const [l, v] of Object.entries(n.out || {})) if (byLabel.has(l)) x.out.set(byLabel.get(l).id, v);
+        x.fixed = !!n.fixed; });
+      for (const [a, b, w, w0, tent, ne, proved] of state.links) { const A = byLabel.get(a), B = byLabel.get(b); if (!A || !B) continue; this.connect(A, B, w0); const l = this.link(A, B); l.w = w; if (tent != null) l.tent = this.t; if (ne) l.ne = true; if (proved) l.proved = proved === 1 ? "role" : proved; }
+      this.banned = new Set(state.banned || []); this.checked = new Set(state.checked || []); this.phrases = new Set(state.phrases || []);
+      for (const n of this.N) if (this.phrases.has(n.word)) { n.phrase = true; n.parts = n.word.split(" "); }
+      this.senseCount = state.senseCount || {}; this.t = state.t || 0; this.steps = state.steps || 0;
+      Object.assign(this, state.stats ? { proposed: state.stats.proposed, confirmed: state.stats.confirmed, rejected: state.stats.rejected } : {});
+      this.predCache = null;
+      return this;
+    }
+    // ---------- the reality check (brick's compiler, done outside the engine) ----------
+    // Ne's own sentences: a known sentence with one word swapped for a word Ne thinks is used the same way. Each one
+    // tests one line between two words. Lines already checked are not asked about again.
+    candidates(k = 20) {
+      const pred = this.predIndex(), out = [], asked = new Set();
+      this.checked = this.checked || new Set();
+      const lines = [...this.links.values()].map(l => ({ l, a: this.get(l.a), b: this.get(l.b) }))
+        .filter(x => x.a && x.b && x.a.word !== x.b.word && !special(x.a.word) && !special(x.b.word) && !this.checked.has(pairKey(x.a.word, x.b.word)) && (x.l.tent != null || x.l.ne))
+        .map(x => ({ ...x, sim: this.alike(x.a, x.b, pred) })).sort((p, q) => q.sim - p.sim);
+      for (const { a, b, sim } of lines) {
+        if (out.length >= k) break;
+        const key = pairKey(a.word, b.word);
+        if (asked.has(key)) continue;
+        const [from, to] = this.rand() < 0.5 ? [a, b] : [b, a];
+        const hosts = this.sentences.map(st => this.chunk(st)).filter(st => st.includes(from.word) && !st.includes(to.word));
+        if (!hosts.length) continue;
+        const host = hosts[Math.floor(this.rand() * hosts.length)];
+        asked.add(key);
+        out.push({ a: from.word, b: to.word, alike: +sim.toFixed(2), original: host.join(" "), swapped: host.map(w => w === from.word ? to.word : w).join(" ") });
+      }
+      return out;
+    }
+    // What the check said. ok: the line becomes a settled line (and the swapped sentence becomes practice);
+    // false: the line is cut and never proposed again; null: no answer (stays tentative, not asked again for now).
+    applyVerdicts(verdicts) {
+      this.checked = this.checked || new Set(); this.banned = this.banned || new Set();
+      for (const v of verdicts || []) {
+        const key = pairKey(v.a, v.b);
+        this.checked.add(key);
+        if (v.ok == null) continue;
+        for (const x of this.N.filter(n => n.word === v.a)) for (const y of this.N.filter(n => n.word === v.b)) {
+          const l = this.link(x, y);
+          const level = v.level || "role", w = level === "meaning" ? 0.7 : 0.5;   // same meaning binds harder than same role
+          if (v.ok) { if (l) { l.w = l.w0 = Math.max(l.w, w); l.tent = null; l.proved = level; } else { this.connect(x, y, w); this.link(x, y).proved = level; } }
+          else if (l) this.links.delete(this.key(x, y));
+        }
+        if (v.ok === false) this.banned.add(key);
+        this.say(v.ok ? `the check agreed: ${v.a}—${v.b} (${v.why || "same role"})` : `the compiler disagreed: ${v.a}—${v.b} cut (${v.why || "different role"})`);
+      }
+      this.predCache = null;
+    }
+    // Roles (what a word does in a line: do, thing, place, colour, time, ...). Words brick reads come with their role
+    // from brick's reader; a word it doesn't know gets the role its settled lines vote for.
+    roleOf(n) {
+      if (n.role) return { role: n.role, from: "brick's reader" };
+      const slot = this.linksOf(n).map(l => this.get(l.a === n.id ? l.b : l.a)).find(o => o && o.word[0] === "@");
+      if (slot) return { role: slot.word.slice(1), from: "its slot neuron" };
+      const vote = {};
+      for (const l of this.linksOf(n)) { if (l.tent != null) continue; const o = this.get(l.a === n.id ? l.b : l.a); if (o && o.role && o.word !== n.word) vote[o.role] = (vote[o.role] || 0) + l.w * (l.proved ? 2 : 1); }
+      const best = Object.entries(vote).sort((a, b) => b[1] - a[1])[0];
+      return best ? { role: best[0], from: "learned from its lines" } : null;
+    }
+
+    // New words from new input join as fresh neurons (random frequency, no lines): it learns them by itself.
+    addWords(words) {
+      const have = new Set(this.N.map(n => n.word));
+      const band = Math.max(4, this.N.length / 25);
+      for (const w of words) if (!have.has(w)) { have.add(w); const v = numberValue(w), out = w[0] === "=";
+        this.add(v != null ? { label: w, omega: numberOmega(v), fixed: true } : { label: w, omega: 2 + this.rand() * band, fixed: out }); }
+    }
+
     fission(a, sp) {
       const base = a.word;
       this.senseCount = this.senseCount || {};
       const mk = (part, mean, side) => {
         const suffix = this.senseCount[base] = (this.senseCount[base] || 0) + 1;
         const child = this.add({ label: `${base}·${suffix}`, word: base, omega: mean, x: a.x + side * 0.05, y: a.y + 0.05 });
-        child.T = a.T; child.amp = a.amp; child.theta = a.theta; child.parentLabel = a.label;
+        child.T = a.T; child.amp = a.amp; child.theta = a.theta; child.parentLabel = a.label; child.truth = a.truth;
+        child.next = new Map(a.next);
+        for (const x of this.N) if (x.next.has(a.id)) x.next.set(child.id, x.next.get(a.id));
         for (const { s } of part) { const old = this.link(a, s); this.connect(child, s, old ? old.w : 0.3); }
         return child;
       };
@@ -667,8 +1020,8 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
 
     remove(a) {
       for (const [k, l] of this.links) if (l.a === a.id || l.b === a.id) this.links.delete(k);
-      this.N = this.N.filter(x => x !== a);
-      for (const x of this.N) { x.inbox.delete(a.id); x.co.delete(a.id); }
+      this.N = this.N.filter(x => x !== a); this.byIdStale = true;
+      for (const x of this.N) { x.inbox.delete(a.id); x.co.delete(a.id); x.next.delete(a.id); }
     }
 
     // One training moment: a random sentence from the spec, felt as impacts on its words.
@@ -686,8 +1039,26 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
           if (one.length) s = one[Math.floor(this.rand() * one.length)];
         }
       }
+      if (!s && this.intuition && this.lastSentence && this.rand() < 0.2 * this.fnPower("Si")) {   // Si: recall a similar past moment
+        const like = this.sentences.filter(x => x !== this.lastSentence && x.some(w => this.lastSentence.includes(w)));
+        if (like.length) s = like[Math.floor(this.rand() * like.length)];
+      }
       s = s || this.sentences[Math.floor(this.rand() * this.sentences.length)];
-      this.stimulate(s, 1.2);
+      const out = s.out;
+      if (this.intuition) { s = this.chunk(s); if (out) s.out = out; }                     // phrase neurons take their words
+      this.stimulate(s, this.intuition ? 1.2 * Math.min(1.5, this.fnPower("Se")) : 1.2);   // Se: take it in
+      if (this.intuition) {
+        this.intuit(s);
+        if (s.out) this.learnBits(s);
+        // Ni and Ne can read faster than the physics runs: with batch > 1 they also read that many more sentences
+        // per training moment (no impacts, only guessing and proposing), so big inputs get read in time.
+        for (let k = 1; k < (this.batch || 1); k++) {
+          const raw = this.sentences[Math.floor(this.rand() * this.sentences.length)], c = this.chunk(raw);
+          if (raw.out) c.out = raw.out;
+          this.intuit(c); if (c.out) this.learnBits(c);
+        }
+      }
+      this.lastSentence = s;
       return s;
     }
 
@@ -708,7 +1079,10 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
         const cx = this.N.filter(isCtx);
         if (!cx.length) continue;
         const ctxOmega0 = cx.reduce((t, n) => t + n.omega0, 0) / cx.length, dt = C.dt;
-        for (const r of this.N) {
+        // big networks: only neurons the context can reach (near it in frequency, linked, or sent something this step)
+        const pool = this.N.length <= 120 ? this.N : this.N.filter(r => !isCtx(r) && (senses.includes(r) || r.stepIn.size || r.stepLit.size ||
+          cx.some(o => Math.abs(o.omega - r.omega) < 1.8 * C.SIGMA || this.link(r, o))));
+        for (const r of pool) {
           if (isCtx(r)) continue;
           const take = m => { let v = 0; for (const [id, a] of m) { const src = this.get(id); if (src && isCtx(src)) v += a; } return v; };
           const imp = take(r.stepIn), allIn = [...r.stepIn.values()].reduce((t, v) => t + v, 0);
@@ -718,7 +1092,7 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
           add(r, "work", take(r.inbox) * dt);
           add(r, "chemical", Math.exp(-(((r.omega0 - ctxOmega0) / C.SIGMA) ** 2)) * dt);
           let fsAll = 0;
-          for (const o of this.N) if (o !== r && !isCtx(o)) fsAll += this.sync(r, o).fsim;
+          for (const o of pool) if (o !== r && !isCtx(o)) fsAll += this.sync(r, o).fsim;
           for (const o of cx) {
             const sy = this.sync(r, o), l = this.link(r, o);
             add(r, "rest", sy.s * dt); add(r, "magnetic", sy.fsim * dt);
@@ -764,8 +1138,8 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
     // The group a neuron's linked neighbours mostly belong to (for display and scoring only; the dynamics never read it).
     meaningOf(n) {
       if (n.group) return n.group;                                       // a word that never split keeps its own group
-      const count = {};
-      for (const l of this.linksOf(n)) { const o = this.get(l.a === n.id ? l.b : l.a); if (o && o.group) count[o.group] = (count[o.group] || 0) + l.w; }
+      const count = {};                                                  // raw input: named by its neighbours' groups
+      for (const l of this.linksOf(n)) { const o = this.get(l.a === n.id ? l.b : l.a); const g = o && (o.group || o.truth); if (g && o.word !== n.word && l.tent == null) count[g] = (count[g] || 0) + l.w; }
       const best = Object.entries(count).sort((a, b) => b[1] - a[1])[0];
       if (best) return best[0];
       const near = this.neighbours(n).slice(0, 2);                     // no groups given: name it by its strongest lines
@@ -784,7 +1158,7 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
       if (!r) return false;
       if (/^(not relevant|none|no)$/.test(want)) return r.verdict !== "accurate";
       if (r.verdict !== "accurate" || !r.clear) return false;
-      if (this.N.some(x => x.group === want)) return this.meaningOf(r.winner) === want;
+      if (this.N.some(x => (x.group || x.truth) === want)) return this.meaningOf(r.winner) === want;
       return this.neighbours(r.winner).slice(0, 4).includes(want);
     }
 
@@ -942,12 +1316,13 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
   function parseData(text) {
     const groups = {}, sentences = [];
     for (const raw of String(text).split(/\n/)) {
-      const line = raw.replace(/#.*/, "").trim().toLowerCase();
+      const line = raw.replace(/^\s*#.*|\s#(\s.*)?$/, "").trim().toLowerCase();   // "# note" lines; "#2" is a number
       if (!line) continue;
       const g = line.match(/^group\s+([a-z0-9_-]+)\s*:\s*(.+)$/);
       if (g) { groups[g[1]] = (g[2].match(/[a-z0-9']+/g) || []); continue; }
-      const words = line.match(/[a-z0-9']+/g) || [];
-      if (words.length) sentences.push(words);
+      const [said, made] = line.split("||");                    // "words || =write =wait": what brick built from it
+      const words = said.match(/[#~a-z0-9'.]+/g) || [];
+      if (words.length) { if (made) words.out = made.match(/[=a-z0-9_:-]+/g) || []; sentences.push(words); }
     }
     return { groups, sentences };
   }
@@ -955,7 +1330,7 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
   function parseQuestions(text) {
     const out = [];
     for (const raw of String(text).split(/\n/)) {
-      const line = raw.replace(/#.*/, "").trim().toLowerCase();
+      const line = raw.replace(/^\s*#.*|\s#(\s.*)?$/, "").trim().toLowerCase();   // "# note" lines; "#2" is a number
       const m = line.match(/^([a-z0-9']+)\s*@\s*([^=]+?)\s*(?:=\s*(.+))?$/);
       if (m) out.push({ word: m[1], context: m[2].match(/[a-z0-9']+/g) || [], want: m[3] ? m[3].trim() : null, text: line });
     }
@@ -974,7 +1349,8 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
     for (const st of sentences) for (const a of st) for (const b of st) if (a !== b) { co[a] = co[a] || {}; co[a][b] = (co[a][b] || 0) + 1; }
     const names = Object.keys(groups);
     names.forEach((g, i) => groups[g].forEach((w, k) => { groupOf[w] = groupOf[w] || g; if (mode === "groups") omega[w] = omega[w] ?? 2 + i * 1.2 + (k - (groups[g].length - 1) / 2) * 0.12; }));
-    if (mode === "random") words.forEach(w => omega[w] = 2 + r() * 4);
+    const band = Math.max(4, words.length / 25);   // more words, a wider band of frequencies (room for every meaning)
+    if (mode === "random" || mode === "raw") words.forEach(w => omega[w] = 2 + r() * band);
     else {
       const free = words.filter(w => omega[w] === undefined);
       const fixed = words.length - free.length;
@@ -990,10 +1366,17 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
         else free.slice().sort((a, b) => next[a] - next[b]).forEach((w, k) => omega[w] = 2 + 4 * k / Math.max(1, free.length - 1));   // keep them spread
       }
     }
+    const raw = mode === "raw";      // raw: nothing given but the sentences; groups are only used to name what it learned
     const neurons = words.map(w => {
       const a = ((omega[w] - 1.6) / 5) * Math.PI * 2, rad = 0.3 + 0.1 * r();
-      return { label: w, group: groupOf[w] || null, omega: omega[w], x: 0.5 + rad * Math.cos(a), y: 0.5 + rad * 0.95 * Math.sin(a) };
+      return { label: w, group: raw ? null : groupOf[w] || null, truth: groupOf[w] || null, omega: omega[w], x: 0.5 + rad * Math.cos(a), y: 0.5 + rad * 0.95 * Math.sin(a) };
     });
+    if (raw) {
+      const outs = [...new Set(sentences.flatMap(st => st.out || []))];
+      outs.forEach((o, k) => neurons.push({ label: o, omega: 2 + band * (k + 0.5) / outs.length, x: 0.05 + 0.9 * (k + 0.5) / outs.length, y: 0.04, fixed: true }));
+      for (const n of neurons) { const v = numberValue(n.label); if (v != null) { n.omega = numberOmega(v); n.fixed = true; } }
+      return { neurons, links: [], sentences, groups: {} };
+    }
     const links = [], linked = new Set(), key = (a, b) => a < b ? a + "|" + b : b + "|" + a;
     for (const g of Object.values(groups)) for (let i = 0; i < g.length; i++) for (let j = i + 1; j < g.length; j++) if (!linked.has(key(g[i], g[j]))) { linked.add(key(g[i], g[j])); links.push([g[i], g[j], 0.5]); }
     for (const a of Object.keys(co)) for (const b of Object.keys(co[a])) if (!linked.has(key(a, b))) { linked.add(key(a, b)); links.push([a, b, 0.4]); }
@@ -1041,7 +1424,7 @@ test @ window = not relevant`;
     return { neurons, links, sentences: neurons.map(x => [x.label]) };
   }
 
-  const api = { ENERGIES, PROOF, C, Network, FUNCTIONS, STACKS, ARCHETYPES, NEUTRAL, findArchetype, personality, decisions, parseData, parseQuestions, dataSpec, SAMPLE_DATA, SAMPLE_QUESTIONS, wordSpec, fieldSpec, rng, defaults };
+  const api = { ORDER, FLIP, numberValue, ENERGIES, PROOF, C, Network, FUNCTIONS, STACKS, ARCHETYPES, NEUTRAL, findArchetype, personality, decisions, parseData, parseQuestions, dataSpec, SAMPLE_DATA, SAMPLE_QUESTIONS, wordSpec, fieldSpec, rng, defaults };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.INeuron = api;
 })(typeof window !== "undefined" ? window : globalThis);
 
@@ -1738,7 +2121,7 @@ test @ window = not relevant`;
  }
 };
   const $ = s => document.querySelector(s);
-  const RESULTS = {"rows":[{"test":"Right meaning in a trained context","value":"82% right · 0% wrong · 18% held back","pct":82,"means":"15 contexts × 10 runs. When it isn't sure, it says \"partly\" instead of guessing, so it was never wrong."},{"test":"Unrelated context marked “not relevant”","value":"100%","pct":100,"means":"\"put crap\", \"window test\" and 4 more. The 16 percentages show no sense gets a fair share, so it claims no meaning."},{"test":"Contexts it never saw in training","value":"95% right · 0% wrong","pct":95,"means":"\"quote crap\" and \"compare test\" were left out of training. It still read them right through the lines it already had."},{"test":"Words split into meanings by themselves","value":"crap 10/10 · test 10/10","pct":100,"means":"First split after about 35 s. No word with only one meaning ever split (0 wrong splits)."},{"test":"A third meaning grows on its own","value":"9/10 runs","pct":90,"means":"When \"crap\" is also used with put and place, it ends up with 3 senses."},{"test":"Forgetting with no practice","value":"~57 s","pct":null,"means":"Stop feeding sentences and a meaning loses its lines after about 57 s of simulated time (refinement removes unused lines)."},{"test":"How close meaning groups can be","value":"1.6: 81% · 1.2: 84% · 0.9: 79% · 0.6: 85% · 0.4: 84% · 0.25: 63%","pct":null,"means":"Frequency gap between groups. Splitting comes from use, so closeness barely matters here."},{"test":"Random frequencies (no cortex engine)","value":"30% right · 5% wrong","pct":30,"means":"Frequencies scrambled, as if nothing encoded the words. Reading gets clearly worse: frequencies carry part of the meaning."},{"test":"Energies it can't do without","value":"Nuclear (46%), Rest (38%), Kinetic (0%), Electric (29%)","pct":null,"means":"Each energy switched off on its own (6 runs each). These dropped accuracy by more than 15 points. Barely missed: Heat, Radiant, Thermal, Gravity, Potential, Chemical, Elastic, Magnetic, Mechanical work, Mechanical oscillation."},{"test":"Speed as it grows","value":"20: 0.08 ms · 100: 0.85 ms · 300: 6.9 ms · 1000: 111.58 ms","pct":null,"means":"Time per step in this browser engine. Every neuron checks every other one, so 10× more neurons costs about 100× more time."}],"verdicts":[{"kind":"yes","label":"Works","title":"Finds meanings from use","text":"Ambiguous words split by themselves when their contexts never meet: crap 10/10, test 10/10, and no false splits."},{"kind":"yes","label":"Works","title":"Proves or rejects a meaning","text":"With 16 percentages per sense it picked the right meaning 82% of the time, was never wrong, and marked unrelated contexts not relevant 100% of the time."},{"kind":"yes","label":"Works","title":"Keeps growing","text":"A third use of a word grew a third sense in 9 of 10 runs. This is your \"keep generating bricks\" idea, at small size."},{"kind":"part","label":"Partly","title":"It forgets","text":"A meaning nobody uses fades after about 57 s. Good for tidiness, bad for rare words. It needs practice or replay (like sleep) to keep rare meanings."},{"kind":"part","label":"Partly","title":"Needs your cortex engines","text":"With scrambled frequencies it scored 30% instead of 82%. Splitting works from use alone, but reading a context also relies on frequencies, and nothing makes those yet."},{"kind":"no","label":"Limit","title":"Doesn't understand","text":"It groups words by how they're used together. It can't know a meaning nobody ever used, and two meanings that share the same contexts can never be told apart."},{"kind":"no","label":"Limit","title":"Size","text":"1000 neurons take 111.58 ms per step. A real vocabulary (100,000 words) would be about 10,000× slower per step unless neurons only check nearby frequencies."},{"kind":"no","label":"Limit","title":"Only proven on a toy","text":"19 neurons, 18 practice sentences, settings I tuned on this example. Messy real text will need retuning and new tests before any claim holds there."}],"choices":["<b>Frequencies are set by hand<\/b>, one band per meaning group, with \"crap\" and \"test\" starting between two groups.","<b>In sync<\/b> = how close two frequencies are × how aligned their rhythms are. An impact relays above 0.45 (a little lower when a neuron is warm: potential).","<b>Hot<\/b> is a temperature above 1.0 and <b>cold<\/b> is below 0.5. Splitting (nuclear fission) only happens while cold.","<b>The imagination layer sees use, not only impacts.<\/b> It notes which words come in the same sentence. Without this, \"crap\" was pulled to one side before it ever cooled down, and never split.","<b>A word splits<\/b> when its partners form two groups that are never used together (each with 2+ members and at least 25% of its use).","<b>A context attaches to the sense it fits best.<\/b> Without this, new senses kept splitting again and again.","<b>Ionization only pushes apart neurons with no line between them.<\/b> Otherwise it pushed a new sense away from its own meaning group.","<b>Lines unused for about 40 s fade<\/b> (refinement). This is what causes forgetting.","<b>Proving a meaning:<\/b> for each energy, a sense's percentage is its share of the context's energy among all neurons reached. Over a fair share counts as a match. More than half the energies = accurate, a quarter = partly, less = not relevant.","<b>What each energy counts as evidence is my reading:<\/b> Mechanical: impact it absorbed from the context; Heat: heat it took in from hot context neurons along its lines; Nuclear: how often it was used together with the context (meaning bound at its core); Radiant: light it received from the context; Rest: how closely its own rhythm locked onto the context's; Thermal: temperature it exchanged with the context; Gravity: strength of its lines to the context; Ionization: how cleanly it belongs with the context rather than with anything else; Potential: activation it built up from the context's impacts; Kinetic: impacts it received from the context; Chemical: how close its own original frequency is to the context's; Elastic: the settled strength its lines to the context spring back to; Electric: its own charge, in step with the context; Magnetic: how much its field overlaps the context's; Mechanical work: past impacts from the context it refined itself toward; Mechanical oscillation: sharp rhythm it shares with the context."]};
+  const RESULTS = {"rows":[{"test":"Right meaning in a trained context","value":"82% right · 0% wrong · 18% held back","pct":82,"means":"15 contexts × 10 runs. When it isn't sure, it says \"partly\" instead of guessing, so it was never wrong."},{"test":"Unrelated context marked “not relevant”","value":"100%","pct":100,"means":"\"put crap\", \"window test\" and 4 more. The 16 percentages show no sense gets a fair share, so it claims no meaning."},{"test":"Contexts it never saw in training","value":"95% right · 0% wrong","pct":95,"means":"\"quote crap\" and \"compare test\" were left out of training. It still read them right through the lines it already had."},{"test":"Words split into meanings by themselves","value":"crap 10/10 · test 10/10","pct":100,"means":"First split after about 35 s. No word with only one meaning ever split (0 wrong splits)."},{"test":"A third meaning grows on its own","value":"9/10 runs","pct":90,"means":"When \"crap\" is also used with put and place, it ends up with 3 senses."},{"test":"Forgetting with no practice","value":"~57 s","pct":null,"means":"Stop feeding sentences and a meaning loses its lines after about 57 s of simulated time (refinement removes unused lines)."},{"test":"How close meaning groups can be","value":"1.6: 81% · 1.2: 84% · 0.9: 79% · 0.6: 85% · 0.4: 84% · 0.25: 63%","pct":null,"means":"Frequency gap between groups. Splitting comes from use, so closeness barely matters here."},{"test":"Random frequencies (no cortex engine)","value":"30% right · 5% wrong","pct":30,"means":"Frequencies scrambled, as if nothing encoded the words. Reading gets clearly worse: frequencies carry part of the meaning."},{"test":"Energies it can't do without","value":"Nuclear (46%), Rest (38%), Kinetic (0%), Electric (29%)","pct":null,"means":"Each energy switched off on its own (6 runs each). These dropped accuracy by more than 15 points. Barely missed: Heat, Radiant, Thermal, Gravity, Potential, Chemical, Elastic, Magnetic, Mechanical work, Mechanical oscillation."},{"test":"Speed as it grows","value":"20: 0.22 ms · 100: 1.18 ms · 300: 2.61 ms · 1000: 9.41 ms · 10000: 106.34 ms","pct":null,"means":"Time per step on a vocabulary-like network (about 5 lines a word). Once big, a neuron only checks neurons close to its frequency and its own lines, so 10× more neurons costs about 10× more time."}],"verdicts":[{"kind":"yes","label":"Works","title":"Finds meanings from use","text":"Ambiguous words split by themselves when their contexts never meet: crap 10/10, test 10/10, and no false splits."},{"kind":"yes","label":"Works","title":"Proves or rejects a meaning","text":"With 16 percentages per sense it picked the right meaning 82% of the time, was never wrong, and marked unrelated contexts not relevant 100% of the time."},{"kind":"yes","label":"Works","title":"Keeps growing","text":"A third use of a word grew a third sense in 9 of 10 runs. This is your \"keep generating bricks\" idea, at small size."},{"kind":"part","label":"Partly","title":"It forgets","text":"A meaning nobody uses fades after about 57 s. Good for tidiness, bad for rare words. It needs practice or replay (like sleep) to keep rare meanings."},{"kind":"part","label":"Partly","title":"Needs your cortex engines","text":"With scrambled frequencies it scored 30% instead of 82%. Splitting works from use alone, but reading a context also relies on frequencies, and nothing makes those yet."},{"kind":"no","label":"Limit","title":"Doesn't understand","text":"It groups words by how they're used together. It can't know a meaning nobody ever used, and two meanings that share the same contexts can never be told apart."},{"kind":"part","label":"Partly","title":"Size","text":"1,000 neurons take 9.41 ms per step and 10,000 take 106.34 ms: neurons only check nearby frequencies now. A full English vocabulary is still slow, but no longer out of reach."},{"kind":"yes","label":"Works","title":"Learns by itself","text":"Pick \"Nothing given\" under Frequencies: no groups, no lines, random frequencies. Ni guesses each next word and learns from every wrong guess; Ne proposes words used alike. In brick, its proposals are checked by brick's compiler, and new bricks are only kept when they build exactly the same bits."}],"choices":["<b>Frequencies are set by hand<\/b>, one band per meaning group, with \"crap\" and \"test\" starting between two groups.","<b>In sync<\/b> = how close two frequencies are × how aligned their rhythms are. An impact relays above 0.45 (a little lower when a neuron is warm: potential).","<b>Hot<\/b> is a temperature above 1.0 and <b>cold<\/b> is below 0.5. Splitting (nuclear fission) only happens while cold.","<b>The imagination layer sees use, not only impacts.<\/b> It notes which words come in the same sentence. Without this, \"crap\" was pulled to one side before it ever cooled down, and never split.","<b>A word splits<\/b> when its partners form two groups that are never used together (each with 2+ members and at least 25% of its use).","<b>A context attaches to the sense it fits best.<\/b> Without this, new senses kept splitting again and again.","<b>Ionization only pushes apart neurons with no line between them.<\/b> Otherwise it pushed a new sense away from its own meaning group.","<b>Lines unused for about 40 s fade<\/b> (refinement). This is what causes forgetting.","<b>Proving a meaning:<\/b> for each energy, a sense's percentage is its share of the context's energy among all neurons reached. Over a fair share counts as a match. More than half the energies = accurate, a quarter = partly, less = not relevant.","<b>What each energy counts as evidence is my reading:<\/b> Mechanical: impact it absorbed from the context; Heat: heat it took in from hot context neurons along its lines; Nuclear: how often it was used together with the context (meaning bound at its core); Radiant: light it received from the context; Rest: how closely its own rhythm locked onto the context's; Thermal: temperature it exchanged with the context; Gravity: strength of its lines to the context; Ionization: how cleanly it belongs with the context rather than with anything else; Potential: activation it built up from the context's impacts; Kinetic: impacts it received from the context; Chemical: how close its own original frequency is to the context's; Elastic: the settled strength its lines to the context spring back to; Electric: its own charge, in step with the context; Magnetic: how much its field overlaps the context's; Mechanical work: past impacts from the context it refined itself toward; Mechanical oscillation: sharp rhythm it shares with the context."]};
   const MEANING = { remove: "remove things", show: "show it as text", check: "check something", place: "place or window" };
 
   // ---------- energies UI ----------
@@ -1767,7 +2150,8 @@ test @ window = not relevant`;
   $("#brain").addEventListener("change", () => { brainNote(); build(); });
   function build() {
     seed = Math.floor(Math.random() * 1e6);
-    net = new Network(preset === "words" ? wordSpec(1.2) : preset === "data" ? dataSpec(liveData.text, liveData.mode, seed) : fieldSpec(16, seed % 97 + 1), seed, energy, $("#brain").value || null);
+    net = new Network(preset === "words" ? wordSpec(1.2) : preset === "data" ? dataSpec(liveData.text, liveData.mode, seed) : fieldSpec(16, seed % 97 + 1), seed, energy, $("#brain").value || null,
+      { intuition: preset === "data" && liveData.mode === "raw" });
     lastLog = 0; $("#log").innerHTML = "<div>Nothing yet. Watch for a split around 20–40 seconds in.</div>";
     $("#answer").textContent = preset !== "field" ? "Pick a word in a context. Each sense gets 16 percentages, one per energy. A meaning counts as accurate when a sense gets more than its fair share on over half of the energies." : "Asking works on the Word meanings network.";
     askButtons();
@@ -1832,7 +2216,7 @@ test @ window = not relevant`;
   }
   function readout() {
     const s = net.stats();
-    $("#readout").innerHTML = `<span>in sync <b>${Math.round(s.order * 100)}%</b></span><span>hot <b>${s.hot}</b></span><span>cold <b>${s.cold}</b></span><span>neurons <b>${s.neurons}</b></span><span>lines <b>${s.links}</b></span><span>lit <b>${s.lit}</b></span>${net.brain ? `<span>warmth <b>${net.warmth.toFixed(2)}×</b></span><span>order pull <b>${net.orderPull.toFixed(2)}×</b></span>` : ""}`;
+    $("#readout").innerHTML = `<span>in sync <b>${Math.round(s.order * 100)}%</b></span><span>hot <b>${s.hot}</b></span><span>cold <b>${s.cold}</b></span><span>neurons <b>${s.neurons}</b></span><span>lines <b>${s.links}</b></span><span>lit <b>${s.lit}</b></span>${net.intuition ? `<span>Ni guesses <b>${Math.round(net.niRate() * 100)}%</b></span><span>Ne kept <b>${net.confirmed}</b> of ${net.proposed}</span>` : ""}${net.brain ? `<span>warmth <b>${net.warmth.toFixed(2)}×</b></span><span>order pull <b>${net.orderPull.toFixed(2)}×</b></span>` : ""}`;
     $("#clock").textContent = Math.round(net.t) + " s";
     if (net.log.length !== lastLog) {
       const items = net.log.slice(-14).reverse().map(l => `<div class="${l.text.startsWith("nuclear") ? "fission" : l.text.startsWith("radiant") ? "radiant" : ""}"><span>${Math.round(l.t)}s</span>${l.text}</div>`);
@@ -1889,7 +2273,7 @@ test @ window = not relevant`;
     for (let seed = 1; seed <= n; seed++) {
       $("#runStatus").textContent = `Training run ${seed} of ${n}…`;
       await new Promise(r => setTimeout(r, 20));
-      const t = new Network(dataSpec(text, mode, seed), seed, e, brain);
+      const t = new Network(dataSpec(text, mode, seed), seed, e, brain, { intuition: mode === "raw" });
       for (let k = 0; k < steps; k++) { if (k % C.TRAIN_EVERY === 0) t.train(); t.step(); }
       for (const w of new Set(t.N.filter(x => x.label.includes("·")).map(x => x.word))) res.splits[w] = (res.splits[w] || 0) + 1;
       qs.forEach((q, i) => {
@@ -1910,7 +2294,7 @@ test @ window = not relevant`;
     if (!runs.length) return;
     const qtexts = [...new Set(runs.flatMap(r => r.q.map(q => q.text)))];
     const head = `<tr><th>Test</th>${runs.map((r, i) => `<th>${esc(r.name)} <button class="x" data-i="${i}" aria-label="Remove ${esc(r.name)}">×</button></th>`).join("")}</tr>`;
-    const modeName = { groups: "from your groups", use: "stand-in encoder", random: "random" };
+    const modeName = { groups: "from your groups", use: "stand-in encoder", random: "random", raw: "nothing given (learns by itself)" };
     const settings = `<tr><td>Settings</td>${runs.map(r => `<td>${r.n} run${r.n > 1 ? "s" : ""} · ${r.steps * C.dt} s training<small>frequencies ${modeName[r.mode]} · ${r.sentences} sentences, ${r.words} words</small><small>${r.brain ? "archetype: " + esc(r.brain) : "no archetype"}</small><small>${r.changed.length ? "changed: " + esc(r.changed.join(", ")) : "all energies at 1"}</small></td>`).join("")}</tr>`;
     const overall = `<tr><td>As expected</td>${runs.map(r => { const ok = r.q.reduce((t, q) => t + q.ok, 0), j = r.q.reduce((t, q) => t + q.judged, 0);
       return `<td>${j ? `<b>${Math.round(100 * ok / j)}%</b> (${ok} of ${j})` : "no expectations given"}</td>`; }).join("")}</tr>`;

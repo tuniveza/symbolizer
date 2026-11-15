@@ -226,6 +226,16 @@ def describe(archetype):
 
 
 def command(args):
+    if args[:1] and args[0] in ("always", "off", "status"):
+        from trainer import daemon                       # the training daemon (a systemd user service)
+        return daemon.command(args[0])
+    if args[:1] == ["words"]:
+        from trainer import wordfeed                     # new words from the internet dictionary, made into bricks
+        got = wordfeed.feed(int(args[1]) if len(args) > 1 and args[1].isdigit() else 20, say=lambda s: print(s, flush=True))
+        return 0 if got else 1
+    if args[:1] and args[0] in ("learn", "learned", "forget", "score", "build", "bricks"):
+        from trainer import intuition                    # learning by itself (Ni + Ne), checked by brick's compiler
+        return intuition.command(args)
     line, long, brain, listing = split_args(args)
     if listing:
         if not shutil.which("node"):

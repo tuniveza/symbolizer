@@ -48,6 +48,7 @@ from trainer import brain  # noqa: E402
 from trainer import senses as brick_senses  # noqa: E402 (wordnet.senses is another thing)
 from trainer import imagine  # noqa: E402
 from trainer import symbols  # noqa: E402
+from trainer import intuition  # noqa: E402
 from trainer import conceptnet  # noqa: E402
 import dictionary  # noqa: E402
 from trainer import outliers  # noqa: E402
@@ -725,6 +726,9 @@ class Trainer:
             imagined = imagine.dream_round()          # imagined pictures, read back by the eye (trainer/imagine.py)
             if imagined:
                 self.say(f"imagination: {imagined}")
+            learnt = intuition.background_round()     # the imagination neurons learning by themselves (trainer/intuition.py)
+            if learnt:
+                self.say(f"intuition: {learnt}")
         self.practise()
         self.revisit()
         self.check()

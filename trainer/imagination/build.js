@@ -29,7 +29,7 @@ const rows = [
   { test: "Energies it can't do without", value: essential.length ? essential.join(", ") : "none on this test", pct: null,
     means: `Each energy switched off on its own (6 runs each). These dropped accuracy by more than 15 points. Barely missed: ${harmless.join(", ")}.` },
   { test: "Speed as it grows", value: Object.entries(R.scale).map(([n, ms]) => `${n}: ${ms} ms`).join(" · "), pct: null,
-    means: `Time per step in this browser engine. Every neuron checks every other one, so 10× more neurons costs about 100× more time.` },
+    means: `Time per step on a vocabulary-like network (about 5 lines a word). Once big, a neuron only checks neurons close to its frequency and its own lines, so 10× more neurons costs about 10× more time.` },
 ];
 
 const verdicts = [
@@ -39,8 +39,8 @@ const verdicts = [
   { kind: "part", label: "Partly", title: "It forgets", text: `A meaning nobody uses fades after about ${avg(R.forget.times)} s. Good for tidiness, bad for rare words. It needs practice or replay (like sleep) to keep rare meanings.` },
   { kind: "part", label: "Partly", title: "Needs your cortex engines", text: `With scrambled frequencies it scored ${R.random.right}% instead of ${b.right}%. Splitting works from use alone, but reading a context also relies on frequencies, and nothing makes those yet.` },
   { kind: "no", label: "Limit", title: "Doesn't understand", text: `It groups words by how they're used together. It can't know a meaning nobody ever used, and two meanings that share the same contexts can never be told apart.` },
-  { kind: "no", label: "Limit", title: "Size", text: `1000 neurons take ${R.scale[1000]} ms per step. A real vocabulary (100,000 words) would be about 10,000× slower per step unless neurons only check nearby frequencies.` },
-  { kind: "no", label: "Limit", title: "Only proven on a toy", text: `19 neurons, 18 practice sentences, settings I tuned on this example. Messy real text will need retuning and new tests before any claim holds there.` },
+  { kind: "part", label: "Partly", title: "Size", text: `1,000 neurons take ${R.scale[1000]} ms per step and 10,000 take ${R.scale[10000]} ms: neurons only check nearby frequencies now. A full English vocabulary is still slow, but no longer out of reach.` },
+  { kind: "yes", label: "Works", title: "Learns by itself", text: `Pick "Nothing given" under Frequencies: no groups, no lines, random frequencies. Ni guesses each next word and learns from every wrong guess; Ne proposes words used alike. In brick, its proposals are checked by brick's compiler, and new bricks are only kept when they build exactly the same bits.` },
 ];
 
 const choices = [
