@@ -110,7 +110,7 @@
     }
 
     byLabel(label) { return this.N.find(n => n.label === label); }
-    key(a, b) { return a.id < b.id ? a.id + "|" + b.id : b.id + "|" + a.id; }
+    key(a, b) { return a.id < b.id ? a.id * 2097152 + b.id : b.id * 2097152 + a.id; }   // a number: faster than text
     link(a, b) { return this.links.get(this.key(a, b)); }
     connect(a, b, w = 0.5) {
       if (!a || !b || a === b) return;
@@ -433,12 +433,21 @@
     alike(a, b, pred = this.predIndex()) {
       const pa = pred.get(a.id) || new Map(), pb = pred.get(b.id) || new Map();
       const rare = this.rarity || (this.rarity = this.rarityOf());
-      let dot = 0, na = 0, nb = 0;
-      const side = (ma, mb) => {
-        for (const [k, v] of ma) { const q = v * (rare.get(k) || 1); na += q * q; if (mb.has(k) && k !== a.id && k !== b.id) dot += q * mb.get(k) * (rare.get(k) || 1); }
-        for (const [k, v] of mb) { const q = v * (rare.get(k) || 1); nb += q * q; }
+      // a neuron's own size (sum of squares) only depends on itself, so within one pass (propose, decide,
+      // candidates: nothing changes meanwhile) it is worked out once, adding in the same order as before
+      const norm = (x, px) => {
+        const memo = this._norm && this._norm.get(x.id);
+        if (memo !== undefined) return memo;
+        let t = 0;
+        for (const [k, v] of x.next) { const q = v * (rare.get(k) || 1); t += q * q; }
+        for (const [k, v] of px) { const q = v * (rare.get(k) || 1); t += q * q; }
+        if (this._norm) this._norm.set(x.id, t);
+        return t;
       };
-      side(a.next, b.next); side(pa, pb);
+      let dot = 0;
+      for (const [k, v] of a.next) if (b.next.has(k) && k !== a.id && k !== b.id) dot += v * (rare.get(k) || 1) * b.next.get(k) * (rare.get(k) || 1);
+      for (const [k, v] of pa) if (pb.has(k) && k !== a.id && k !== b.id) dot += v * (rare.get(k) || 1) * pb.get(k) * (rare.get(k) || 1);
+      const na = norm(a, pa), nb = norm(b, pb);
       return na && nb ? dot / Math.sqrt(na * nb) : 0;
     }
     rarityOf() {
@@ -450,7 +459,8 @@
     // Ne proposes: lines to neurons used in the same places as this one (it could stand in for them).
     propose(x) {
       const pred = this.predIndex(), cands = [];
-      if (x.seen < 3 || special(x.word)) return;                        // Ti: too little evidence to say anything yet
+      if (x.seen < 3 || special(x.word)) return;
+      this._norm = new Map();                                           // sizes worked out once in this pass                        // Ti: too little evidence to say anything yet
       this.banned = this.banned || new Set();
       const near = new Set();                                            // only words that share a neighbour can be alike
       for (const k of x.next.keys()) for (const p of (pred.get(k) || new Map()).keys()) near.add(p);
@@ -461,6 +471,7 @@
         const sim = this.alike(x, y, pred);
         if (sim > 0.25) cands.push([y, sim]);
       }
+      this._norm = null;
       cands.sort((a, b) => b[1] - a[1]);
       for (const [y] of cands.slice(0, 2)) { this.connect(x, y, 0.15); this.link(x, y).tent = this.t; this.proposed++; }
     }
@@ -470,6 +481,7 @@
     // align their frequencies, so meanings settle into bands by use alone. (Ti splits and merges in imagine().)
     decide() {
       const pred = this.predIndex(), te = this.fnPower("Te"), fe = this.fnPower("Fe"), fi = this.fnPower("Fi");
+      this._norm = new Map();
       for (const [k, l] of this.links) {
         const a = this.get(l.a), b = this.get(l.b);
         if (!a || !b) continue;
@@ -485,6 +497,7 @@
           if (a.fixed) b.omega -= 2 * pull; else if (b.fixed) a.omega += 2 * pull; else { a.omega += pull; b.omega -= pull; }
         }
       }
+      this._norm = null;
       for (const n of this.N) if (!n.fixed) n.omega0 += 0.05 * (n.omega - n.omega0);   // what it learned becomes its own frequency
       this.fusePhrases(pred);
       if (this.steps % (C.IMAGINE_EVERY * 10) === 0) this.assignSlots();
@@ -684,7 +697,8 @@
       const have = new Set(this.N.map(n => n.word));
       const band = Math.max(4, this.N.length / 25);
       for (const w of words) if (!have.has(w)) { have.add(w); const v = numberValue(w), out = w[0] === "=";
-        this.add(v != null ? { label: w, omega: numberOmega(v), fixed: true } : { label: w, omega: 2 + this.rand() * band, fixed: out }); }
+        const enc = this.encoded && this.encoded[w];        // the encoder's frequency, when it has one
+        this.add(v != null ? { label: w, omega: numberOmega(v), fixed: true } : { label: w, omega: enc != null ? enc : 2 + this.rand() * band, fixed: out }); }
     }
 
     fission(a, sp) {
@@ -783,9 +797,20 @@
         // big networks: only neurons the context can reach (near it in frequency, linked, or sent something this step)
         const pool = this.N.length <= 120 ? this.N : this.N.filter(r => !isCtx(r) && (senses.includes(r) || r.stepIn.size || r.stepLit.size ||
           cx.some(o => Math.abs(o.omega - r.omega) < 1.8 * C.SIGMA || this.link(r, o))));
-        for (const r of pool) {
-          if (isCtx(r)) continue;
-          const take = m => { let v = 0; for (const [id, a] of m) { const src = this.get(id); if (src && isCtx(src)) v += a; } return v; };
+        // how close every pair in the pool is (frequency similarity), worked out once per step instead of once per
+        // pair per neuron: the same formula and the same adding order, so the results are bit for bit the same
+        const ctxIds = new Set(cx.map(n => n.id)), P = pool.length;
+        if (!this.readBuf || this.readBuf.length < P * P) this.readBuf = new Float64Array(P * P);
+        const F = this.readBuf, skip = new Uint8Array(P);
+        for (let i = 0; i < P; i++) {
+          skip[i] = ctxIds.has(pool[i].id) ? 1 : 0;
+          const oi = pool[i].omega;
+          for (let j = i + 1; j < P; j++) { const v = Math.exp(-(((oi - pool[j].omega) / C.SIGMA) ** 2)); F[i * P + j] = v; F[j * P + i] = v; }
+        }
+        for (let ri = 0; ri < P; ri++) {
+          const r = pool[ri];
+          if (skip[ri]) continue;
+          const take = m => { let v = 0; for (const [id, a] of m) { if (ctxIds.has(id)) v += a; } return v; };
           const imp = take(r.stepIn), allIn = [...r.stepIn.values()].reduce((t, v) => t + v, 0);
           add(r, "kinetic", imp); add(r, "mechanical", imp * C.ABSORB);
           add(r, "heat", take(r.stepHeat)); add(r, "thermal", take(r.stepThermal)); add(r, "radiant", take(r.stepLit));
@@ -793,7 +818,7 @@
           add(r, "work", take(r.inbox) * dt);
           add(r, "chemical", Math.exp(-(((r.omega0 - ctxOmega0) / C.SIGMA) ** 2)) * dt);
           let fsAll = 0;
-          for (const o of pool) if (o !== r && !isCtx(o)) fsAll += this.sync(r, o).fsim;
+          for (let j = 0; j < P; j++) if (j !== ri && !skip[j]) fsAll += F[ri * P + j];
           for (const o of cx) {
             const sy = this.sync(r, o), l = this.link(r, o);
             add(r, "rest", sy.s * dt); add(r, "magnetic", sy.fsim * dt);
