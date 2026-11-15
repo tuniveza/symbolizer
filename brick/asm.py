@@ -31,6 +31,7 @@ class Asm:
         self.text_log = []     # every text asked for, in order (so the compiler knows which line used which)
         self.count = 0
         self.pieces = []       # (start, end) of each library routine: left out of the program when nothing uses it
+        self.stops = set()     # positions right after a ret or a jump that always jumps (nothing runs on into them)
 
     # ---- labels, texts and space ----
 
@@ -218,6 +219,7 @@ class Asm:
 
     def jump(self, label):
         self.jump_to(0xE9, label)
+        self.stops.add(len(self.code))
 
     def jump_if(self, condition, label):
         self.jump_to(bytes([0x0F, 0x80 + condition]), label)
@@ -229,6 +231,7 @@ class Asm:
     def ret(self):
         """RETURN C3"""
         self.emit(0xC3)
+        self.stops.add(len(self.code))
 
     def syscall(self):
         self.emit(0x0F, 0x05)
@@ -242,6 +245,7 @@ class Asm:
     def jump_reg(self, reg):
         """JMP reg (FF /4)."""
         self.reg_reg(0xFF, 4, reg, wide=False)
+        self.stops.add(len(self.code))
 
     def load32(self, reg, base, offset=0):
         """reg = the 4 bytes at [base + offset], zero-extended."""
@@ -340,12 +344,19 @@ class Asm:
 
     # ---- putting it together ----
 
-    def piece(self, brick):
-        """Add a library routine (a brick of the runtime) as a piece prune() may leave out."""
+    def piece(self, brick, split=False):
+        """Add a library routine (a brick of the runtime) as a piece prune() may leave out.
+        split: the brick writes many routines one after another; each becomes a piece of its own. A routine
+        starts at a label right after a ret or an always-jump, so no code runs on from one into the next."""
         start = len(self.code)
         brick(self)
-        if len(self.code) > start:
-            self.pieces.append((start, len(self.code)))
+        end = len(self.code)
+        if end <= start:
+            return
+        cuts = [start]
+        if split:
+            cuts += sorted({at for at in self.labels.values() if start < at < end and at in self.stops})
+        self.pieces += zip(cuts, cuts[1:] + [end])
 
     def prune(self):
         """Leave out every library routine nothing in the program can reach, and the fixed texts only they used.

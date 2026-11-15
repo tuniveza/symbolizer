@@ -2351,20 +2351,14 @@ def add_all(a, text_sizes=None):
     a.space.setdefault("gui_target", 32)
     a.space.setdefault("gui_clip", 32)
     p = Writer(a)
-    clip_routines(p)
-    lerp_routine(p)
-    shape_routine(p)
-    row_fill(p)
-    row_texture(p)
-    edge_routine(p)
-    row_box(p)
-    row_ellipse(p)
-    row_blend(p)
-    shadow_routine(p)
-    line_routine(p)
-    triangle_routine(p)
-    text_routines(p)
-    font.add(a, text_sizes)
+    routines = (clip_routines, lerp_routine, shape_routine, row_fill, row_texture, edge_routine, row_box, row_ellipse,
+                row_blend, shadow_routine, line_routine, triangle_routine, text_routines)
+
+    def add_routines(a):
+        for routine in routines:
+            routine(p)
+        font.add(a, text_sizes)
+    a.piece(add_routines, split=True)                  # each routine left out when nothing uses it (Asm.prune)
     a.space["paint_rowc"] = MAXW * 4
     a.space["paint_rowa"] = MAXW
     a.space["paint_rowm"] = MAXW

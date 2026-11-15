@@ -312,9 +312,9 @@ def add_all(a):
     for kind, make in MESHES.items():
         a.data[f"gl_mesh_{kind}"] = mesh_bytes(*make())
     g = Gen(a, s, k)
-    for routine in (g.new_view, g.add, g.find, g.find_kind, g.last, g.turn_camera, g.zoom, g.advance,
-                    g.check_animating, g.sincos, g.matmul, g.render, g.object, g.project, g.triangle):
-        routine()
+    routines = (g.new_view, g.add, g.find, g.find_kind, g.last, g.turn_camera, g.zoom, g.advance,
+                g.check_animating, g.sincos, g.matmul, g.render, g.object, g.project, g.triangle)
+    a.piece(lambda a: [routine() for routine in routines], split=True)     # each left out when unused (Asm.prune)
     a.space["gl_vars"] = max(s.size, 8)
     a.data["gl_k"] = k.raw()
 

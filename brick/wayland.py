@@ -77,9 +77,9 @@ def add_all(a):
     a.space.setdefault("gui_scale", 8)
     a.space["wl_pointer"] = 16
     a.data["wl_keys"] = key_table()
-    for routine in (open_window, present, event, close, new_id, begin, put, put_text, end, flush, now, read,
-                    dispatch_all, handle, try_bind, push, pop, wait, make_buffers, set_target, to_real, scale_to):
-        routine(a)
+    routines = (open_window, present, event, close, new_id, begin, put, put_text, end, flush, now, read,
+                dispatch_all, handle, try_bind, push, pop, wait, make_buffers, set_target, to_real, scale_to)
+    a.piece(lambda a: [routine(a) for routine in routines], split=True)    # each left out when unused (Asm.prune)
 
 
 # ---- keys: evdev key codes -> characters, US layout ----

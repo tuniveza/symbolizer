@@ -2758,68 +2758,70 @@ class BitWords:
 def add_routines(a, slots, sizes=None, gl=False):
     """bww_window (opens the window the first time it's needed), bww_sleep (waiting with a window open),
     bww_key_text (the last key as text), then the bitwin runtime (bitwin.add_all)."""
-    a.label("bww_window")
-    done = a.new_label("bww_open_done")
-    a.address(RAX, slots["opened"])
-    a.load(RCX, RAX)
-    a.op("test", RCX, RCX)
-    a.jump_if(NOT_EQUAL, done)
-    a.set(RCX, 1)
-    a.store(RAX, 0, RCX)
-    for slot, default, reg in (("title", None, RAX), ("w", 640, RCX), ("h", 480, RDX)):
-        ok = a.new_label("bww_given")
-        a.address(reg, slots[slot])
-        a.load(reg, reg)
-        a.op("test", reg, reg)
-        a.jump_if(NOT_EQUAL, ok)
-        if default is None:
-            a.address(reg, a.text("brick"))
-        else:
-            a.set(reg, default)
-        a.label(ok)
-        if reg == RAX:
-            a.push(RAX)
-        elif reg == RCX:
-            a.push(RCX)
-    a.pop(RCX)
-    a.pop(RAX)
-    a.address(R8, slots["resizable"])
-    a.load(R8, R8)
-    a.call("bw_open")
-    a.label(done)
-    a.ret()
-
-    a.label("bww_sleep")                    # rax = nanoseconds, like sleep
-    a.set(RDX, 0)
-    a.set(RCX, 1_000_000)
-    a.divide(RCX)
-    a.push(RAX)
-    a.call("bww_window")
-    a.pop(RAX)
-    a.call("bw_wait")
-    a.ret()
-
-    a.label("bww_key_text")
-    a.address(RAX, "bw_key")
-    a.load(RAX, RAX)
-    for code, name in ((8, "backspace"), (9, "tab"), (10, "enter"), (13, "enter"), (27, "escape"), (1001, "left"),
-                       (1002, "right"), (1003, "up"), (1004, "down"), (1005, "home"), (1006, "end"), (1007, "delete")):
-        other = a.new_label("bww_key")
-        a.op_n("cmp", RAX, code)
-        a.jump_if(NOT_EQUAL, other)
-        a.address(RAX, a.text(name))
+    def window_routines(a):
+        a.label("bww_window")
+        done = a.new_label("bww_open_done")
+        a.address(RAX, slots["opened"])
+        a.load(RCX, RAX)
+        a.op("test", RCX, RCX)
+        a.jump_if(NOT_EQUAL, done)
+        a.set(RCX, 1)
+        a.store(RAX, 0, RCX)
+        for slot, default, reg in (("title", None, RAX), ("w", 640, RCX), ("h", 480, RDX)):
+            ok = a.new_label("bww_given")
+            a.address(reg, slots[slot])
+            a.load(reg, reg)
+            a.op("test", reg, reg)
+            a.jump_if(NOT_EQUAL, ok)
+            if default is None:
+                a.address(reg, a.text("brick"))
+            else:
+                a.set(reg, default)
+            a.label(ok)
+            if reg == RAX:
+                a.push(RAX)
+            elif reg == RCX:
+                a.push(RCX)
+        a.pop(RCX)
+        a.pop(RAX)
+        a.address(R8, slots["resizable"])
+        a.load(R8, R8)
+        a.call("bw_open")
+        a.label(done)
         a.ret()
-        a.label(other)
-    a.push(RAX)
-    a.set(RCX, 16)
-    a.call("alloc")
-    a.pop(RCX)
-    a.set(RDX, 0xFF)
-    a.op("and", RCX, RDX)
-    a.set(RDX, 1)
-    a.store(RAX, 0, RDX)
-    a.store(RAX, 8, RCX)
-    a.ret()
+
+        a.label("bww_sleep")                    # rax = nanoseconds, like sleep
+        a.set(RDX, 0)
+        a.set(RCX, 1_000_000)
+        a.divide(RCX)
+        a.push(RAX)
+        a.call("bww_window")
+        a.pop(RAX)
+        a.call("bw_wait")
+        a.ret()
+
+        a.label("bww_key_text")
+        a.address(RAX, "bw_key")
+        a.load(RAX, RAX)
+        for code, name in ((8, "backspace"), (9, "tab"), (10, "enter"), (13, "enter"), (27, "escape"), (1001, "left"),
+                           (1002, "right"), (1003, "up"), (1004, "down"), (1005, "home"), (1006, "end"), (1007, "delete")):
+            other = a.new_label("bww_key")
+            a.op_n("cmp", RAX, code)
+            a.jump_if(NOT_EQUAL, other)
+            a.address(RAX, a.text(name))
+            a.ret()
+            a.label(other)
+        a.push(RAX)
+        a.set(RCX, 16)
+        a.call("alloc")
+        a.pop(RCX)
+        a.set(RDX, 0xFF)
+        a.op("and", RCX, RDX)
+        a.set(RDX, 1)
+        a.store(RAX, 0, RDX)
+        a.store(RAX, 8, RCX)
+        a.ret()
+    a.piece(window_routines, split=True)            # each left out when nothing uses it (Asm.prune)
 
     try:
         import bitwin

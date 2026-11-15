@@ -246,11 +246,11 @@ def add_all(a):
     a.data["bw_list_style"] = style(1, LIST_BG, radius=6, border=1, borderc=LIST_BORDER, shadow=4)
     a.data["bw_pick_style"] = style(1, ACCENT, radius=4)
     a.data["bw_accent_style"] = style(1, ACCENT)
-    for routine in (scaling, init, depth_range, new, elem, find, set_text, add_item, item_handler, depth_moves,
-                    shapes, small_ones, open_window, measure, sub, lines, fit, flow_of, place, layout, sort,
-                    clip_of, draw_elem, label, draw_input, draw_shapes, draw_gl, draw_tabs, tab_at, menu_geom,
-                    draw_menu_list, frame, hit, events, edit, splice, loop):
-        routine(c)
+    routines = (scaling, init, depth_range, new, elem, find, set_text, add_item, item_handler, depth_moves,
+                shapes, small_ones, open_window, measure, sub, lines, fit, flow_of, place, layout, sort,
+                clip_of, draw_elem, label, draw_input, draw_shapes, draw_gl, draw_tabs, tab_at, menu_geom,
+                draw_menu_list, frame, hit, events, edit, splice, loop)
+    a.piece(lambda a: [routine(c) for routine in routines], split=True)    # each left out when unused (Asm.prune)
 
 
 # ---- scaling: logical px -> real px ----
