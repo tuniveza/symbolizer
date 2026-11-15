@@ -112,6 +112,8 @@ Every word is coloured by what brick reads it as. Under it, a panel shows brick'
 | **Alt + C** | check it, and fix missing or misread steps |
 | **Alt + P** | keys to the panel and back |
 | **Alt + N** | next panel: Bricks · Words · Decisions · Imagination · Neurons · Learning |
+| **AltGr + D** | learning from your diary on / off |
+| **AltGr + V** | the brains' voices on / off |
 | **F12** | learning on / off, in any Symbolizer mode |
 
 The **Bricks** panel shows every brick in use, live as you type, and what the brain thinks of each line.

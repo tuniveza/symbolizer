@@ -588,7 +588,11 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			return m.brickLearningSwitch() // brick learning on/off, in every mode (brick_learning.go)
 		}
 		if m.inBrick() && !m.help && m.prompt == pNone && m.picker == nil && !(m.treeFocus && m.showTree && m.tree != nil) {
-			if cmd, done := m.brickKey(keyName(msg.Key()), msg.Key().Text); done {
+			name := keyName(msg.Key())
+			if k := msg.Key(); m.altGr.down && k.Mod == 0 && (k.Code == 'd' || k.Code == 'v') {
+				name = "altgr+" + string(k.Code) // AltGr+D: diary learning, AltGr+V: voices (brick_mode.go)
+			}
+			if cmd, done := m.brickKey(name, msg.Key().Text); done {
 				return cmd
 			}
 		}

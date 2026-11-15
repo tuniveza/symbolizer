@@ -94,7 +94,7 @@ func (m *Model) enterBrick() tea.Cmd {
 	s := m.br()
 	m.hl.brick = m.brickFile()
 	m.hl.done = -1 // colour it brick's way now
-	cmds := []tea.Cmd{m.brickAsk("decisions", nil), m.brickAsk("daemon", nil), m.brickColour()}
+	cmds := []tea.Cmd{m.brickAsk("decisions", nil), m.brickAsk("daemon", nil), m.brickAsk("narrator", nil), m.brickColour()}
 	if s.archetypes == nil {
 		cmds = append(cmds, m.brickAsk("archetypes", nil))
 	}
@@ -320,6 +320,10 @@ func (m *Model) brickKey(k string, text string) (tea.Cmd, bool) {
 			m.say("The text has the keys again.")
 		}
 		return m.brickTabOpened(), true
+	case "altgr+d", "ð":
+		return m.brickDiarySwitch(), true // brick learns from your diary too, or stops
+	case "altgr+v", "“":
+		return m.brickVoicesSwitch(), true
 	case "alt+n":
 		s.tab = (s.tab + 1) % len(brTabs)
 		s.sel, s.pick = 0, 0
@@ -386,15 +390,7 @@ func (m *Model) brickKey(k string, text string) (tea.Cmd, bool) {
 		return m.brickDiarySwitch(), true
 	}
 	if brTabs[s.tab] == "Learning" && k == "v" {
-		s.voices = !s.voices
-		what := "off"
-		if s.voices {
-			what = "on"
-			m.say("The brains' voices: on. Each archetype says what it's learning, in its own voice, now and then.")
-		} else {
-			m.say("The brains' voices: off.")
-		}
-		return m.brickAsk("narrator", map[string]any{"what": what}), true
+		return m.brickVoicesSwitch(), true
 	}
 	return nil, true
 }
@@ -458,7 +454,7 @@ var brTabHelp = map[string]string{
 	"Decisions":   "Decisions: readings brick couldn't settle. Alt+P, Up/Down choose, Left/Right pick, Enter keeps it.",
 	"Imagination": "Imagination: pictures brick imagined while learning, and what its eye saw. Alt+P, then Up/Down.",
 	"Neurons":     "Neurons: how the brain reads the cursor's line. Alt+P, Left/Right pick a brain, Enter reads.",
-	"Learning":    "Learning: brick learning in the background. Alt+P, Enter turns it on/off, d for your diary, v for the brains' voices.",
+	"Learning":    "Learning: brick learning in the background. AltGr+D: your diary on/off · AltGr+V: the brains' voices on/off.",
 }
 
 var brFocusKeys = map[string]string{
@@ -566,13 +562,27 @@ func (m *Model) brickLearningSwitch() tea.Cmd {
 	return m.brickAsk("daemon", map[string]any{"what": what})
 }
 
+// brickVoicesSwitch turns the brains' voices on or off (AltGr+V in brick mode; V in the Learning panel).
+func (m *Model) brickVoicesSwitch() tea.Cmd {
+	s := m.br()
+	s.voices = !s.voices
+	what := "off"
+	if s.voices {
+		what = "on"
+		m.say("The brains' voices: on. Each archetype says what it's learning, in its own voice, now and then. AltGr+V turns them off.")
+	} else {
+		m.say("The brains' voices: off. AltGr+V turns them on.")
+	}
+	return m.brickAsk("narrator", map[string]any{"what": what})
+}
+
 func (m *Model) brickDiarySwitch() tea.Cmd {
 	on := !brickDiaryOn()
 	setBrickDiary(on)
 	if on {
-		m.say("brick learns from your diary too now (it never leaves your PC).")
+		m.say("brick learns from your diary too now (it never leaves your PC). AltGr+D turns it off.")
 	} else {
-		m.say("brick no longer reads your diary.")
+		m.say("brick no longer reads your diary. AltGr+D turns it on.")
 	}
 	return nil
 }
@@ -748,8 +758,8 @@ func (m *Model) brickPanel(w int) []string {
 		}
 		out := []string{
 			text.Render("  Learning: ") + hot.Render(state) + dim.Render("   Enter (or F12 anywhere) turns it on/off"),
-			text.Render("  Your diary: ") + hot.Render(diary) + dim.Render("   d turns it on/off (all writing stays on your PC)"),
-			text.Render("  Voices: ") + hot.Render(map[bool]string{true: "on", false: "off"}[s.voices]) + dim.Render("   v turns them on/off (the brains say what they learn, each archetype in its own voice)"),
+			text.Render("  Your diary: ") + hot.Render(diary) + dim.Render("   AltGr+D turns it on/off (all writing stays on your PC)"),
+			text.Render("  Voices: ") + hot.Render(map[bool]string{true: "on", false: "off"}[s.voices]) + dim.Render("   AltGr+V turns them on/off (the brains say what they learn, each archetype in its own voice)"),
 		}
 		if d != nil && num(d, "rounds") > 0 {
 			out = append(out, text.Render(fmt.Sprintf("  %d rounds · %d neurons (%d phrases) · %d lines, %d proved · Ni guesses %d%% of next words, %d%% of brick's output",

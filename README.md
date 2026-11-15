@@ -105,7 +105,8 @@ Messy lines are read one direction at a time. A word brick has no action for get
 When the brain finds a fix (precise, or its best pick from the line's meaning), **Alt + R** writes it in before building. **Ctrl + Z** takes it back.
 The language model teaches the brain: what it reads right is learned, so the brain reads it by itself next time.
 Programs carry only the routines they use: `write hello` is 335 bytes.
-In the **Learning** panel, **V** turns on the brains' voices: each archetype says what it learns, in its own voice.
+**AltGr + V** turns the brains' voices on and off: each archetype says what it learns, in its own voice.
+**AltGr + D** turns brick's learning from your diary on and off.
 The **Bricks** panel shows every brick in use, live, coloured by kind.
 An empty file shows lines to start with. **F1** has the rest.
 
