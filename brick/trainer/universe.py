@@ -237,6 +237,8 @@ def filler_right(tokens):
             starts = before is None or before.word in ENDS or "end" in before.ideas
             if not placed and after.ideas & {"action", "other action"} and not after.ideas & {"place"}:
                 continue
+            if starts and after.word.lower() in ("left", "top", "bottom", "middle"):
+                continue                      # 'right left side console', 'right TOP crimson ...': the second is the place
             if starts:
                 rest = []
                 for x in tokens[k + 1:]:
@@ -291,6 +293,8 @@ def by_slots(tokens):
             slot in filled and slot not in ("words", "skip", "text", "action") or
             slot == "text" and kind == "clear" and "text" in filled or
             slot == "text" and kind == "colour" and "text" in filled and "look" in filled or   # 'turn text red text that says hi'
+            slot == "text" and "words" in filled and end < len(tokens) and look_at(tokens, end) and \
+            end + (look_at(tokens, end)[0] - end) >= len(tokens) or        # '... see you soon at the bottom text purple'
         # 'clear screen  text that says hi'
             slot == "action" and "action" in filled and not saying_since_verb(current) or
             slot == "words" and "words" in filled and last != "words" or

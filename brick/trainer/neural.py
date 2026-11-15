@@ -211,13 +211,28 @@ def readings(line, before=""):
         return []
     key = f"{settings()['model']}|{VERSION}|{before.strip()[-200:]}|{line}"
     if key in cache():
-        return cache()[key]
+        return [tidy(r, line) for r in cache()[key]]
     if not is_patient():
         if key not in _asking and not off():
             _asking.add(key)
             threading.Thread(target=ask, args=(line, before, key), daemon=True).start()
         return []
-    return ask(line, before, key)
+    return [tidy(r, line) for r in ask(line, before, key)]
+
+
+def tidy(reading, line):
+    """Put right what small models get wrong however they're told: 'in teal try again' read as 'set the colour to
+    teal then write try again' is 'write try again in teal' (unless the line was about the text's colour)."""
+    got = re.fullmatch(r"set the colou?r to ([a-z ]+?) then (write|say) (.+)", reading.strip(), re.IGNORECASE)
+    if got and not re.search(r"\b(text|writing|font|letters)\b", line, re.IGNORECASE) and " then " not in got.group(3):
+        words, colour = got.group(3), got.group(1)
+        place = re.search(r"\s((?:at|on) the \S+|\d+ times)$", words)
+        rest = words[:place.start()] if place else words
+        return f"write {rest} in {colour}" + (place.group(0) if place else "")
+    got = re.fullmatch(r"(set the colou?r to [a-z ]+?) then write", reading.strip(), re.IGNORECASE)
+    if got:
+        return got.group(1)                               # 'in navy color type': nothing to write
+    return reading
 
 
 def read_pieces(line):
@@ -225,7 +240,8 @@ def read_pieces(line):
     model reads each piece on its own. Small models read one direction far better than a paragraph (they stop after
     the first direction), and shown the lines before they repeat them, so no context. -> 'a then b ...' or None."""
     from trainer import universe
-    pieces = [" ".join(t.text for t in p) for p in universe.analyse(line)]
+    pieces = [" ".join(t.spelled[0] if t.spelled and len(t.spelled) == 1 and not t.real and not t.quoted else t.text
+                       for t in p) for p in universe.analyse(line)]   # the model reads the slips spelled right
     if len(pieces) < 2:
         found = readings(line)
         return found[0] if found else None
