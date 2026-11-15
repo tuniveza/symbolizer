@@ -120,13 +120,11 @@ Every word is coloured by what brick reads it as. Under it, a panel shows brick'
 
 No C, no Python in between. Straight from words to machine code.
 
-```mermaid
-flowchart LR
-    A["📝 English"] --> B["Read"] --> C["Split into actions"] --> D["x86-64 code"] --> E["ELF file"] --> F["⚡ ./game"]
-    C -. "unsure?" .-> U["dictionary · WordNet<br>ConceptNet · neurons"]
-    U -. "checked by building" .-> C
+```text
+English  →  read  →  split into actions  →  x86-64 code  →  ELF file  →  ./game
 ```
 
+Unsure of a word? The dictionary, WordNet, ConceptNet and the neurons help.
 Every guess is built and checked before it's used.
 When brick guessed, it tells you how it read the line.
 
