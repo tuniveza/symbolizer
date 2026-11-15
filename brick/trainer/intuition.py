@@ -41,8 +41,8 @@ BRICKS = os.path.join(FOLDER, "new-bricks.txt")          # suggested new words: 
 WAREHOUSE = os.path.join(HERE, "wa")
 CAP = 1500                                               # words it keeps neurons for (the most used ones)
 PENDING = os.path.join(FOLDER, "pending.json")          # the last verdicts, applied at the start of the next round
-BATCH = int(os.environ.get("BRICK_NEURONS_BATCH", "20"))                                                # sentences Ni and Ne read per training moment
-STEPS = int(os.environ.get("BRICK_NEURONS_STEPS", "1200"))                                              # one round: 60 s of simulated time
+BATCH = int(os.environ.get("BRICK_NEURONS_BATCH", "80"))                                                # sentences Ni and Ne read per training moment
+STEPS = int(os.environ.get("BRICK_NEURONS_STEPS", "300"))   # one round: 15 s of physics; Ni and Ne read 80 sentences per moment (step 3: precision held, 3 rounds 760 s -> 613 s)
 UNKNOWN = {None, "words"}                                # roles that mean brick doesn't know the word
 
 
