@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 260" width="900" height="260" role="img" aria-label="Symbolizer: a text editor for the terminal, in the Emberistal theme">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 260" width="900" height="260" role="img" aria-label="Symbolizer: your whole workspace, in the terminal">
   <defs>
     <radialGradient id="glow" cx="50%" cy="58%" r="60%">
       <stop offset="0" stop-color="#5a2214" stop-opacity="0.95"/>
@@ -67,6 +67,6 @@
         letter-spacing="14" fill="url(#title)">SYMBOLIZER</text>
 
   <rect x="220" y="150" width="460" height="2" fill="url(#rule)"/>
-  <text x="450" y="185" text-anchor="middle" class="t" font-size="19" fill="#ffc14d">a text editor for the terminal</text>
+  <text x="450" y="185" text-anchor="middle" class="t" font-size="19" fill="#ffc14d">your whole workspace, in the terminal</text>
   <text x="450" y="214" text-anchor="middle" class="t" font-size="15" fill="#d86a3a">embers on charcoal · saves by itself · made for the keyboard</text>
 </svg>
