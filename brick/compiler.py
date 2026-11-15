@@ -243,10 +243,11 @@ class Compiler(Actions, Window, BitWords):
                                                        self.recut(lines[number - 1].strip(), check, refused=True))
             finally:
                 check.done()
+        told = self.brain_retells(text, stuck) if READING[0] == 1 else None   # the brain's whole reading first
         words = universe.trial_words(self.words_file)
         try:
-            told = universe.retell(text, stuck, lambda attempt: failing_lines(attempt, words),
-                                   {n: way for n, way in first.items() if way})
+            told = told or universe.retell(text, stuck, lambda attempt: failing_lines(attempt, words),
+                                           {n: way for n, way in first.items() if way})
         finally:
             shutil.rmtree(os.path.dirname(words), ignore_errors=True)
         if not told and not (stuck.startswith("Line ") and stuck.endswith(": ")) and READING[0] == 1:
@@ -267,6 +268,34 @@ class Compiler(Actions, Window, BitWords):
             return self.compile_text(retold)
         finally:
             self.notes[:0] = notes
+
+    def brain_reads(self, line):
+        """The brain's whole reading of a line (trainer/details.py: the cutter cuts it, the picker picks each
+        direction's brick, each word's role is read, and it's said again in brick's words), or None."""
+        from trainer import details, picker
+        if picker.off() or not line.strip() or self.uses_definition(line):
+            return None
+        try:
+            return details.read(line)
+        except Exception:
+            return None
+
+    def brain_retells(self, text, stuck):
+        """Lines brick refused: the brain's whole reading of each -> (the text with them said again, notes), when
+        it reads every one of them and the text then builds; else None."""
+        lines = text.split("\n")
+        numbers = {int(n) for n in re.findall(r"^Line (\d+): ", stuck, re.MULTILINE)}
+        if not numbers or not all(0 < n <= len(lines) for n in numbers):
+            return None
+        notes = []
+        for n in sorted(numbers):
+            way = self.brain_reads(lines[n - 1].strip())
+            if not way:
+                return None
+            lines[n - 1] = lines[n - 1][:len(lines[n - 1]) - len(lines[n - 1].lstrip())] + way
+            notes.append(f"Note: line {n} read as: {way}")
+        retold = "\n".join(lines)
+        return (retold, notes) if not failing_lines(retold, self.words_file) else None
 
     def brain_way(self, line, check, recut):
         """A line brick refused, and brick's own new reading of it (recut, or None). The brain says which bricks it
@@ -398,6 +427,10 @@ class Compiler(Actions, Window, BitWords):
                     continue                  # window words are brick's own reading
                 if self.uses_definition(line):
                     continue                  # a word you taught ('to splash something in a word means ...'): yours
+                way = self.brain_reads(line) if READING[0] == 1 else None   # the brain's whole reading leads:
+                if way and way.lower() != line.lower() and check.differs(number, way):   # bricks and details
+                    found[number] = way
+                    continue
                 way = self.brain_bricks(line, number, check)    # the brain says which bricks it should be
                 if way:
                     found[number] = way

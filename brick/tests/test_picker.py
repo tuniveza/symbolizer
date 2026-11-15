@@ -34,6 +34,28 @@ def test_the_brain_has_the_last_word_on_a_misspelled_line():
     assert ok and got == ["window write in window"], got
 
 
+def test_the_brain_says_the_details():
+    """The brain's whole reading: the bricks and every detail (words, colour, place, count, time)."""
+    if picker.off():
+        return
+    from trainer import details
+    assert details.read("ok so TOP of screen hello there in red;bg blue   then 2 secs wait lol") == \
+        "write hello there in red at the top then set the background colour to blue then wait 2 seconds"
+    assert details.read('"ready" in teal colour type 5 times at bottom side of screen rn then put the console at '
+                        'left side screen !!') == \
+        "write ready in teal at the bottom 5 times then put the console on the left side of the screen"
+
+
+def test_the_brain_holds_back_when_unsure():
+    """Roles that don't hang together, or a word with no role: the brain says nothing, brick reads it."""
+    if picker.off():
+        return
+    from trainer import details
+    for line in ("write she was saying hi", "write hello in blue at the x 20 and y 20", "state hello in red",
+                 "hi in zorp", "Hide the message after 4 seconds", "pause moment"):
+        assert details.read(line) is None, (line, details.read(line))
+
+
 if __name__ == "__main__":
     tests = [value for name, value in list(globals().items()) if name.startswith("test_")]
     failed = 0
