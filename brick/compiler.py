@@ -71,6 +71,7 @@ def built(text, words_file):
 
 
 _runtime_words = None
+READING = [0]          # builds of a whole text going on, one inside another (the brain's last word is the outermost's)
 
 
 class Checking:
@@ -181,6 +182,8 @@ class Compiler(Actions, Window, BitWords):
         self.last_timer = None
         self.coloured = False          # put colours back to normal at the end?
         self.uses_window = False       # does it move its own window? Then it needs one of its own.
+        self.bricks_on = {}            # line number -> the bricks its directions became, in order
+        self.brain_wants = {}          # line number -> the bricks the brain says it should be (when brick built others)
         self.erases = False            # does it make text disappear? Then text put on the screen is remembered.
         self.written = False           # has anything been shown yet? Until then a background colours the whole screen
         self.uses_brain = False        # does it link symbols? Then it carries the brain's routines too
@@ -212,6 +215,13 @@ class Compiler(Actions, Window, BitWords):
             self.notes[:0] = said
 
     def compile_reading(self, text):
+        READING[0] += 1                        # how deep: re-reading a piece builds it again, inside this
+        try:
+            return self.compile_reading_once(text)
+        finally:
+            READING[0] -= 1
+
+    def compile_reading_once(self, text):
         """Return the program's bytes. Raises Problem listing every line that needs fixing.
         Lines brick can't read go to the universe, which may say them again in brick's words; so do lines
         brick read but plainly got wrong (it would show 'a blue text that says hi' word for word)."""
@@ -229,7 +239,8 @@ class Compiler(Actions, Window, BitWords):
                 for number in {int(n) for n in re.findall(r"^Line (\d+): ", stuck, re.MULTILINE)}:
                     lines = text.split("\n")
                     if 0 < number <= len(lines):
-                        first[number] = self.recut(lines[number - 1].strip(), check, refused=True)
+                        first[number] = self.brain_way(lines[number - 1].strip(), check,
+                                                       self.recut(lines[number - 1].strip(), check, refused=True))
             finally:
                 check.done()
         words = universe.trial_words(self.words_file)
@@ -238,11 +249,17 @@ class Compiler(Actions, Window, BitWords):
                                    {n: way for n, way in first.items() if way})
         finally:
             shutil.rmtree(os.path.dirname(words), ignore_errors=True)
+        if not told and not (stuck.startswith("Line ") and stuck.endswith(": ")) and READING[0] == 1:
+            way = self.brain_last(text, stuck)                          # the brain's own reading, last of all
+            if way and not failing_lines(way, self.words_file):
+                told = (way, [])
         if not told:
             if stuck.startswith("Line ") and stuck.endswith(": "):     # only misread, and no better reading
                 return program
             raise Problem(stuck)
         retold, notes = told
+        if READING[0] == 1:                                              # the brain has the last word on the bricks
+            retold = self.brain_over(text, retold, stuck)
         words_file, ask_user = self.words_file, self.ask_user            # start again, with those lines said again:
         self.__dict__.clear()                                            # nothing kept from the first try
         type(self).__init__(self, words_file, ask_user)
@@ -250,6 +267,113 @@ class Compiler(Actions, Window, BitWords):
             return self.compile_text(retold)
         finally:
             self.notes[:0] = notes
+
+    def brain_way(self, line, check, recut):
+        """A line brick refused, and brick's own new reading of it (recut, or None). The brain says which bricks it
+        should be: brick's reading stays when it builds those bricks (or the brain isn't sure); when it builds
+        others, it's dropped (None), so the universe reads the line again."""
+        from trainer import picker
+        want = picker.line_bricks(line)
+        if not want or not recut:
+            return recut
+        got = picker.bricks_of(recut, check.scratch())
+        if picker.same(got, want) or picker.same(got, [picker.whole_pick(line, 0.9)]):
+            return recut
+        return None
+
+    def brain_over(self, text, retold, stuck):
+        """Lines brick refused and the universe (or the language model) said again: when that reading builds other
+        bricks than the brain is sure the line is, the brain's own reading instead, if it builds them -> the text."""
+        from trainer import picker
+        lines, said = text.split("\n"), retold.split("\n")
+        if len(lines) != len(said):
+            return retold
+        check = Checking(self.words_file, text)
+        try:
+            for number in {int(n) for n in re.findall(r"^Line (\d+): ", stuck, re.MULTILINE)}:
+                if not 0 < number <= len(lines):
+                    continue
+                line = lines[number - 1].strip()
+                want = picker.line_bricks(line)
+                if not want or picker.same(picker.bricks_of(said[number - 1].strip(), check.scratch()), want):
+                    continue
+                one = picker.whole_pick(line, 0.9)
+                way = None
+                if len(want) > 1 and one and one not in ("wait", "none"):
+                    way = picker.resay(line, [one], check.scratch(), whole=True)
+                way = way or picker.resay(line, want, check.scratch())
+                if way:
+                    said[number - 1] = way
+        finally:
+            check.done()
+        return "\n".join(said)
+
+    def brain_last(self, text, stuck):
+        """Nothing else could read these lines: the brain's own reading of each it's sure of (each direction said
+        again with a word for the brick it picked, built to check) -> the text with those lines said again, or
+        None."""
+        from trainer import picker
+        lines, changed = text.split("\n"), False
+        check = Checking(self.words_file, text)
+        try:
+            for number in {int(n) for n in re.findall(r"^Line (\d+): ", stuck, re.MULTILINE)}:
+                if not 0 < number <= len(lines):
+                    continue
+                line = lines[number - 1].strip()
+                want = picker.line_bricks(line)
+                if not want:
+                    continue
+                one = picker.whole_pick(line, 0.9)
+                way = None
+                if len(want) > 1 and one and one not in ("wait", "none"):   # cut in several, but read whole it's one
+                    way = picker.resay(line, [one], check.scratch(), whole=True)
+                way = way or picker.resay(line, want, check.scratch())
+                if way and way.lower() != line.lower():
+                    lines[number - 1], changed = way, True
+        finally:
+            check.done()
+        return "\n".join(lines) if changed else None
+
+    def brain_bricks(self, line, number, check):
+        """The brain picks the bricks (trainer/picker.py): when it's sure which bricks this line should be and
+        brick built others, a reading that builds the brain's bricks -> that reading. With none, brick's build
+        stays and a note says what the brain read instead."""
+        from trainer import picker
+        want = picker.line_bricks(line)
+        have = [b for b in self.bricks_on.get(number, []) if b != "wait"]
+        if not want or picker.same(want, have) or len(have) == 1 and picker.same([picker.whole_pick(line)], have):
+            return None                                   # (read whole, uncut, the brain agrees with brick)
+        ways = []
+        try:
+            ways.append(universe.sure(line))
+        except Exception:
+            pass
+        try:
+            ways.append(self.recut(line, check))
+        except Exception:
+            pass
+        for way in ways:
+            if way and way.lower() != line.lower() and picker.same(picker.bricks_of(way, check.scratch()), want):
+                return way
+        self.brain_wants[number] = want           # nothing else reads it the brain's way: the brain's own
+        return None                               # reading, last (misread, after every other opinion)
+
+    def brain_own(self, line, number, check):
+        """Last of all the misread checks: the brain's own reading of a line built as other bricks (only for the
+        whole text, never a piece re-read inside it), else a note."""
+        from trainer import picker
+        want = self.brain_wants.pop(number, None)
+        if not want:
+            return None
+        have = [b for b in self.bricks_on.get(number, []) if b != "wait"]
+        way = picker.resay(line, want, check.scratch()) if READING[0] == 1 else None
+        if way and way.lower() != line.lower():
+            return way
+        note = (f"Note: line {number}: the brain reads it as {' then '.join(want)}, "
+                f"but brick built {' then '.join(have) or 'nothing'}.")
+        if note not in self.notes:
+            self.notes.append(note)
+        return None
 
     def uses_definition(self, line):
         """Does this line use one of the words taught (in mywords.txt or earlier in the program)?"""
@@ -274,6 +398,10 @@ class Compiler(Actions, Window, BitWords):
                     continue                  # window words are brick's own reading
                 if self.uses_definition(line):
                     continue                  # a word you taught ('to splash something in a word means ...'): yours
+                way = self.brain_bricks(line, number, check)    # the brain says which bricks it should be
+                if way:
+                    found[number] = way
+                    continue
                 if self.shows_describing(line, shown) or self.drops_words(line, shown, lines, number):
                     found[number] = None
                     continue
@@ -295,6 +423,10 @@ class Compiler(Actions, Window, BitWords):
                 recut = self.recut(line, check)
                 if recut and check.differs(number, recut):
                     found[number] = recut
+                    continue
+                way = self.brain_own(line, number, check)
+                if way:
+                    found[number] = way
         finally:
             check.done()
         return found
@@ -1329,36 +1461,38 @@ class Compiler(Actions, Window, BitWords):
         self.actions_on[self.line_number] = self.actions_on.get(self.line_number, 0) + 1
         delay = self.delay_at_start(words)
         if delay:
-            self.do_wait(delay[0])
+            self.brick("wait", lambda: self.do_wait(delay[0]))
             return self.compile_action(delay[1]) if delay[1] else None
         delay = self.delay_at_end(words)
         if delay:                               # "make it disappear after 5 seconds"
-            self.do_wait(delay[0])
+            self.brick("wait", lambda: self.do_wait(delay[0]))
             return self.compile_action(delay[1])
         words = self.drop_filler(words)
         if self.vanishes(words):
-            return self.make_disappear()
+            return self.brick("disappear", self.make_disappear)
         words = self.same_as(words)
         for definition in reversed(self.definitions):
             filled = teach.match(definition, words)
             if filled is not None:
-                return self.use_word(definition, filled)
+                return self.brick("your word", lambda: self.use_word(definition, filled))
         plan = self.gui_read(words)              # brick's own window: buttons, canvases, menus ...
         if plan:
-            return plan()
+            maker = plan.__qualname__.split(".<locals>")[0].split(".")[-1]
+            return self.brick("window " + maker.replace("read_", "").replace("gui_", "").replace("_", " "), plan)
         verb = words[0].word
         handler = self.handler_for(words)
         if handler is None:
             for i in range(1, min(len(words) - 1, 4)):
                 joiner = [w.word for w in words[i:i + 2]]
                 if joiner[0] in ("=", "becomes") or joiner == ["is", "now"]:
-                    return self.assign(plain_name(words[:i]), words[i + (2 if joiner[0] == "is" else 1):])
+                    return self.brick("set", lambda: self.assign(plain_name(words[:i]),
+                                                                 words[i + (2 if joiner[0] == "is" else 1):]))
             try:
                 node = read_value(words, self.kind_of)
             except Problem:
                 node = None
             if node and node[0] not in ("number", "decimal", "text"):
-                return self.do_write([Word("write")] + words)       # "how many in names" shows it
+                return self.brick("write", lambda: self.do_write([Word("write")] + words))  # "how many in names"
         if handler is None:
             yours = [d for d in self.definitions if d.first_word() == verb]
             if yours:
@@ -1381,10 +1515,23 @@ class Compiler(Actions, Window, BitWords):
                           "Actions start with a word like write, ask, set, add, wait, if or for each."
                           + self.more_help(words, None))
         try:
-            handler(words)
+            self.brick(handler.__name__[3:], lambda: handler(words))
         except Problem as problem:
             extra = "" if str(problem).startswith("What should the") else self.more_help(words, verb)
             raise Problem(str(problem) + (extra if extra.strip() not in str(problem) else ""))
+
+    def brick(self, name, build):
+        """Build one brick (the action a direction became: write, wait, set, a window phrase, your word ...) and
+        note it for the line, for the brain's check of which bricks a line should be (trainer/picker.py). A brick
+        built inside another (a write inside a make) is part of that one."""
+        if getattr(self, "in_brick", False):
+            return build()
+        self.bricks_on.setdefault(self.line_number, []).append(name)
+        self.in_brick = True
+        try:
+            return build()
+        finally:
+            self.in_brick = False
 
     def more_help(self, words, verb):
         """Extra lines for a problem: how to talk about the window, or examples for this verb."""

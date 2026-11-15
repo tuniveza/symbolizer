@@ -140,6 +140,10 @@ When brick guessed, it tells you how it read the line.
 
 brick keeps learning from what you write, by itself.
 
+- **The brain picks the bricks.** For each direction it decides which action (brick) it is: write, wait, set,
+  a window phrase ... It learned that from its own mistakes on 5,600 built sentences (`python3 -m trainer.picker`).
+  When brick builds a line as other bricks than the brain is sure of, brick has to read it the brain's way.
+  On lines it never saw: 98% right tidy, 97% right messy.
 - **Imagination neurons** predict the next word and propose new links. The compiler approves or rejects each one.
 - **New bricks** are made from what it finds, only when they build exactly right.
 - **A daemon** keeps learning in the background, at the lowest priority.
