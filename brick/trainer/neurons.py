@@ -185,6 +185,18 @@ def read_line(line, brain=None, long=False):
         if not found:
             return {"error": f"There's no archetype called \"{brain}\". See them all with: brick trainer neurons --archetypes"}
         brain = found
+    from trainer import intuition
+    # the learned network, read in one run: on with BRICK_NEURONS_READ=learned (default once the Go engine lands:
+    # in JavaScript it is 6.7 s against 1.3 s for the small fresh network)
+    if os.environ.get("BRICK_NEURONS_READ") == "learned" and os.path.isfile(intuition.STATE) and not long:
+        asked = [w for w in dict.fromkeys(words_of(line)) if w not in SMALL]
+        if len(asked) < 2:
+            return {"error": "Give it a line with at least two words that aren't small joining words."}
+        try:
+            out = run_node({"task": "readline", "state": intuition.STATE, "words": asked, "brain": brain})
+        except (RuntimeError, subprocess.TimeoutExpired, ValueError) as error:
+            return {"error": f"The neurons stopped with an error: {error}"}
+        return _rows(line, brain, out, set(), 0, 0, 0)
     data, questions, asked, groups, practised, unseen = build(line)
     if len(asked) < 2:
         return {"error": "Give it a line with at least two words that aren't small joining words."}
@@ -193,6 +205,12 @@ def read_line(line, brain=None, long=False):
         out = run_node(job)
     except (RuntimeError, subprocess.TimeoutExpired, ValueError) as error:
         return {"error": f"The neurons stopped with an error: {error}"}
+    if out.get("error"):
+        return {"error": out["error"]}
+    return _rows(line, brain, out, unseen, practised, len(groups), 300 if long else 150)
+
+
+def _rows(line, brain, out, unseen, practised, groups, seconds):
     if out.get("error"):
         return {"error": out["error"]}
     rows = []
@@ -212,7 +230,7 @@ def read_line(line, brain=None, long=False):
             else f"1 sense (near {', '.join(a['senses'][0]['near'])})" if a["senses"][0]["near"] else "1 sense (no lines yet)"
         rows.append({"word": w, "meaning": str(meaning), "sure": sure, "senses": senses,
                      "verdict": a["verdict"] if a["clear"] or a["verdict"] != "accurate" else "tie"})
-    return {"line": line, "brain": brain, "seconds": 300 if long else 150, "practised": practised, "groups": len(groups),
+    return {"line": line, "brain": brain, "seconds": seconds, "practised": practised, "groups": groups, "learned": bool(out.get("learned")),
             "neurons": out["neurons"], "links": out["links"], "archetype": out.get("archetype"), "rows": rows,
             "split": out["split"], "small": [w for w in dict.fromkeys(words_of(line)) if w in SMALL]}
 

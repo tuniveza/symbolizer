@@ -24,7 +24,10 @@ process.stdin.on("end", () => {
   function network(withState) {
     const saved = withState && job.state && fs.existsSync(job.state) ? JSON.parse(fs.readFileSync(job.state, "utf8")) : null;
     const spec = S.dataSpec(job.data || "", "raw", seed);
+    const enc = job.omegas || {};                         // the encoder's starting frequencies (trainer/encoder.py)
+    for (const n of spec.neurons) if (enc[n.label] != null && !n.fixed) n.omega = enc[n.label];
     const net = new S.Network(saved ? { neurons: [] } : spec, seed, null, brain, { intuition: true });
+    net.encoded = enc;
     if (saved) net.load(saved);
     net.sentences = spec.sentences;
     net.addWords([...new Set(spec.sentences.flat())]);
@@ -59,6 +62,20 @@ process.stdin.on("end", () => {
     return;
   }
 
+  // Read a whole line with the saved, learned network (no training first): one run for the line.
+  if (job.task === "readline") {
+    const net = new S.Network({ neurons: [] }, seed, null, brain, { intuition: true }).load(JSON.parse(fs.readFileSync(job.state, "utf8")));
+    const answers = net.readLine(job.words || []).map(({ word, result: r }) => {
+      if (!r) return { word, found: false };
+      const best = r.ranked[0], role = net.roleOf(best.s);
+      return { word, found: true, verdict: r.verdict, clear: r.clear, meaning: r.meaning, sense: best.s.label, matched: best.matched,
+               carried: r.carried, role: role && role.role, senses: r.ranked.map(x => ({ label: x.s.label, matched: x.matched, near: net.neighbours(x.s).slice(0, 3) })) };
+    });
+    const missing = (job.words || []).filter(w => !answers.some(a => a.word === w)).map(word => ({ word, found: false }));
+    process.stdout.write(JSON.stringify({ answers: answers.concat(missing), split: [], neurons: net.N.length, links: net.links.size, learned: true }));
+    return;
+  }
+
   // How precise is what it learned? groups: {name: [words]} (brick's own word groups, used only to score).
   if (job.task === "score") {
     const saved = JSON.parse(fs.readFileSync(job.state, "utf8"));
@@ -70,12 +87,16 @@ process.stdin.on("end", () => {
     for (let i = 0; i < gold.length; i++) for (let j = i + 1; j < gold.length; j++) if (gold[i].word !== gold[j].word) pairs.push([net.alike(gold[i], gold[j], pred), gold[i].word, gold[j].word]);
     pairs.sort((x, y) => y[0] - x[0]);
     const at = k => { const top = pairs.slice(0, k); return top.length ? Math.round(100 * top.filter(p => share(p[1], p[2])).length / top.length) : null; };
-    let placed = 0;
+    let placed = 0, alikePlaced = 0;
+    for (const n of gold) { const vote = new Map(); for (const l of net.linksOf(n)) { if (l.tent != null || !(l.ne || l.proved)) continue; const o = net.get(l.a === n.id ? l.b : l.a);
+      if (!o || o.word === n.word || !groupsOf.has(o.word)) continue; for (const g of groupsOf.get(o.word)) vote.set(g, (vote.get(g) || 0) + l.w); }
+      const best = [...vote].sort((x, y) => y[1] - x[1])[0]; if (best && groupsOf.get(n.word).has(best[0])) alikePlaced++; }
     for (const n of gold) { const vote = new Map(); for (const l of net.linksOf(n)) { if (l.tent != null) continue; const o = net.get(l.a === n.id ? l.b : l.a);
       if (!o || o.word === n.word || !groupsOf.has(o.word)) continue; for (const g of groupsOf.get(o.word)) vote.set(g, (vote.get(g) || 0) + l.w); }
       const best = [...vote].sort((x, y) => y[1] - x[1])[0]; if (best && groupsOf.get(n.word).has(best[0])) placed++; }
     let chance = 0, cn = 0; for (let k = 0; k < Math.min(pairs.length, 4000); k++) { const p = pairs[Math.floor(Math.random() * pairs.length)]; cn++; if (share(p[1], p[2])) chance++; }
     process.stdout.write(JSON.stringify({ gold: gold.length, p20: at(20), p100: at(100), placed: Math.round(100 * placed / Math.max(1, gold.length)),
+      placedAlike: Math.round(100 * alikePlaced / Math.max(1, gold.length)),
       chance: Math.round(100 * chance / Math.max(1, cn)), ni: (saved.stats || {}).ni || 0, top: pairs.slice(0, 12).map(p => p[1] + "~" + p[2]) }));
     return;
   }

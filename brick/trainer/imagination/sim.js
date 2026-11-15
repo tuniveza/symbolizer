@@ -830,6 +830,11 @@
           }
         }
       }
+      return this.verdictFrom(senses, sums, keys);
+    }
+
+    // The 16-percentage verdict from what each neuron took in from the context (read and readLine share it).
+    verdictFrom(senses, sums, keys) {
       const alive = senses.filter(x => this.N.includes(x));
       if (!alive.length) return null;
       const profile = new Map(alive.map(x => [x.id, {}])), matched = new Map(alive.map(x => [x.id, 0]));
@@ -856,6 +861,74 @@
       const clear = ranked.length < 2 || best.matched > ranked[1].matched;
       return { winner: best.s, senses: ranked.length, ranked, carried, verdict, clear,
                meaning: verdict === "accurate" && clear ? this.meaningOf(best.s) : null };
+    }
+
+    // Every word of a line read in one run: the whole line is felt together, and each word's senses are judged
+    // only by what reached them from the other words (its context), with the same 16 energies and the same
+    // verdict as read(). One simulation for the line instead of one per word.
+    readLine(words, steps = 40) {
+      words = [...new Set(words)].filter(w => this.N.some(n => n.word === w));
+      const keys = Object.keys(PROOF), W = words.length, wordOf = new Map(words.map((w, i) => [w, i])), dt = C.dt;
+      const sumsW = words.map(() => new Map());
+      const add = (m, id, k, v) => { if (!(v > 0)) return; let t = m.get(id); if (!t) m.set(id, t = {}); t[k] = (t[k] || 0) + v; };
+      const PAIR = ["rest", "magnetic", "gravity", "elastic", "nuclear", "electric", "oscillation"];
+      for (let step = 0; step < steps; step++) {
+        if (step % 8 === 0) this.stimulate(words, 1.0);
+        this.step();
+        const cx = this.N.filter(n => wordOf.has(n.word));
+        if (W < 2 || !cx.length) continue;
+        const cxWord = cx.map(n => wordOf.get(n.word)), idWord = new Map(cx.map((n, i) => [n.id, cxWord[i]]));
+        const pool = this.N.filter(r => !wordOf.has(r.word) && (this.N.length <= 120 || r.stepIn.size || r.stepLit.size ||
+          cx.some(o => Math.abs(o.omega - r.omega) < 1.8 * C.SIGMA || this.link(r, o))));
+        const all = pool.concat(cx), A = all.length, P = pool.length;
+        const fs = (a, b) => Math.exp(-(((a.omega - b.omega) / C.SIGMA) ** 2));
+        // closeness to everything outside the line: only neurons within 5.3 sigma count (further ones add < 1e-12)
+        const sorted = pool.map((n, j) => [n.omega, j]).sort((a, b) => a[0] - b[0]), reach = 5.3 * C.SIGMA;
+        const sortedOm = sorted.map(x => x[0]);
+        const lower = x => { let lo = 0, hi = sortedOm.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (sortedOm[mid] < x) lo = mid + 1; else hi = mid; } return lo; };
+        // per neuron: what came from each word, kept apart so any one word can be left out
+        const per = all.map((r, ri) => {
+          const byWord = (m, scale = 1) => { const v = new Float64Array(W); for (const [id, a] of m) { const i = idWord.get(id); if (i !== undefined) v[i] += a * scale; } return v; };
+          const pair = PAIR.map(() => new Float64Array(W)), fsimO = new Float64Array(cx.length);
+          cx.forEach((o, oi) => {
+            if (o === r) return;
+            const sy = this.sync(r, o), l = this.link(r, o), i = cxWord[oi];
+            fsimO[oi] = sy.fsim;
+            pair[0][i] += sy.s * dt; pair[1][i] += sy.fsim * dt; pair[2][i] += (l ? l.w : 0) * dt; pair[3][i] += (l ? l.w0 : 0) * dt;
+            pair[4][i] += (r.co.get(o.id) || 0) * dt; pair[5][i] += r.E * sy.s * dt; pair[6][i] += sy.s * Math.min(r.amp, o.amp) * dt;
+          });
+          let base = 0;                                                  // closeness to every neuron outside the line
+          for (let q = lower(r.omega - reach); q < P && sortedOm[q] <= r.omega + reach; q++) { const j = sorted[q][1]; if (j !== ri) base += fs(r, pool[j]); }
+          const tot = v => { let t = 0; for (let i = 0; i < W; i++) t += v[i]; return t; };
+          const imp = byWord(r.stepIn), heat = byWord(r.stepHeat), thermal = byWord(r.stepThermal), lit = byWord(r.stepLit), work = byWord(r.inbox, dt);
+          return { imp, heat, thermal, lit, work, allIn: [...r.stepIn.values()].reduce((t, v) => t + v, 0), pair, fsimO, base,
+                   T: { imp: tot(imp), heat: tot(heat), thermal: tot(thermal), lit: tot(lit), work: tot(work), pair: pair.map(tot) } };
+        });
+        const but = (t, v, w) => Math.max(0, t - v[w]);                 // everything but this word's own share
+        const lineIdx = new Map(cx.map((n, i) => [n.id, i]));
+        for (let w = 0; w < W; w++) {
+          const ctxN = cx.filter((n, i) => cxWord[i] !== w);
+          if (!ctxN.length) continue;
+          const mean0 = ctxN.reduce((t, n) => t + n.omega0, 0) / ctxN.length, own = cx.filter((n, i) => cxWord[i] === w);
+          for (let ri = 0; ri < A; ri++) {
+            const r = all[ri];
+            if (ri >= P && cxWord[ri - P] !== w) continue;               // judged: outside the line, or this word's own senses
+            const p = per[ri], m = sumsW[w], imp = but(p.T.imp, p.imp, w);
+            add(m, r.id, "kinetic", imp); add(m, r.id, "mechanical", imp * C.ABSORB);
+            add(m, r.id, "heat", but(p.T.heat, p.heat, w)); add(m, r.id, "thermal", but(p.T.thermal, p.thermal, w)); add(m, r.id, "radiant", but(p.T.lit, p.lit, w));
+            add(m, r.id, "potential", p.allIn > 0 ? r.E * imp / p.allIn * dt : 0);
+            add(m, r.id, "work", but(p.T.work, p.work, w));
+            add(m, r.id, "chemical", Math.exp(-(((r.omega0 - mean0) / C.SIGMA) ** 2)) * dt);
+            for (let ki = 0; ki < PAIR.length; ki++) add(m, r.id, PAIR[ki], but(p.T.pair[ki], p.pair[ki], w));
+            let fsAll = p.base;                                          // this word's own senses count as outside too
+            for (const s of own) if (s !== r) fsAll += fs(r, s);
+            let ion = 0;
+            cx.forEach((o, oi) => { if (cxWord[oi] !== w && o !== r) ion += p.fsimO[oi] / (p.fsimO[oi] + fsAll + 1e-9) * dt; });
+            add(m, r.id, "ionization", ion);
+          }
+        }
+      }
+      return words.map((w, i) => ({ word: w, result: this.verdictFrom(this.N.filter(x => x.word === w), sumsW[i], keys) }));
     }
 
     fromContext(s, ctx) { let t = 0; for (const [id, v] of (s.stepIn || new Map())) { const src = this.get(id); if (src && (ctx.has(src.word) || this.isNear(src, ctx))) t += v; } return t; }
