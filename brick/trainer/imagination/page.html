@@ -1,0 +1,518 @@
+<title>Imagination Neurons</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one working instrument at the top (the live network + its controls), the written design and findings below in a single readable column. */
+:root {
+  --bg: #f6f1ec; --panel: #fffaf6; --ink: #2a1d17; --dim: #7a645a; --line: #e4d6cc;
+  --ember: #d9481c; --glow: #f29a3a; --cold: #5b7c99; --lit: #f3d36b; --good: #2f8a5b;
+  --canvas: #fbf5f0;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15100d; --panel: #1e1612; --ink: #f3e7df; --dim: #ad968a; --line: #3a2b23;
+  --ember: #ff6a2b; --glow: #ffae4d; --cold: #7ea3c4; --lit: #ffe08a; --good: #5cc48a; --canvas: #100c0a; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #15100d; --panel: #1e1612; --ink: #f3e7df; --dim: #ad968a; --line: #3a2b23;
+  --ember: #ff6a2b; --glow: #ffae4d; --cold: #7ea3c4; --lit: #ffe08a; --good: #5cc48a; --canvas: #100c0a; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--body); margin: 0; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 22px 60px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 700; }
+h2 { font-size: 24px; font-weight: 700; margin-bottom: 10px; }
+h3 { font-size: 16px; font-weight: 700; }
+p { margin: 0; max-width: 68ch; }
+.lead { color: var(--dim); margin-top: 6px; }
+.lead b { color: var(--ink); font-weight: 600; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.lab { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; margin-top: 18px; align-items: start; }
+@media (max-width: 860px) { .lab { grid-template-columns: minmax(0, 1fr); } }
+.stage { background: var(--canvas); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+canvas { width: 100%; height: min(62vh, 560px); min-height: 340px; display: block; touch-action: none; }
+.readout { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 14px; border-top: 1px solid var(--line); font: 13px var(--mono); color: var(--dim); }
+.readout b { color: var(--ink); font-weight: 500; }
+.side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; }
+.box h3 { display: flex; justify-content: space-between; align-items: baseline; }
+.box h3 small { font: 12px var(--body); color: var(--dim); font-weight: 400; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+button, select { font: 500 13px var(--body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+button:hover { border-color: var(--glow); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
+button.main { background: var(--ember); color: #fff; border-color: transparent; }
+button.on { background: color-mix(in srgb, var(--glow) 22%, var(--bg)); border-color: var(--glow); }
+.answer { font: 13px/1.45 var(--body); padding: 8px 10px; border-radius: 8px; background: var(--bg); border: 1px dashed var(--line); min-height: 38px; }
+.answer b { color: var(--ember); }
+.profile { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
+.pkey { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12px; color: var(--dim); margin-bottom: 3px; }
+.pkey small { flex-basis: 100%; font-size: 11px; }
+.pkey .k1, .pkey .k2 { width: 10px; height: 6px; border-radius: 3px; background: var(--ember); display: inline-block; }
+.pkey .k2 { background: var(--cold); }
+.prow { display: grid; grid-template-columns: 112px minmax(0, 1fr) 62px; gap: 6px; align-items: center; font-size: 11.5px; }
+.prow em { font: 11px var(--mono); color: var(--dim); font-style: normal; text-align: right; }
+.prow.off { grid-template-columns: 112px minmax(0, 1fr); color: var(--dim); }
+.prow.off em { text-align: left; }
+.pbar { position: relative; height: 9px; display: block; }
+.pbar b, .pbar u { position: absolute; left: 0; height: 4px; border-radius: 2px; }
+.pbar b { top: 0; background: var(--ember); }
+.pbar u { top: 5px; background: var(--cold); text-decoration: none; }
+.log { font: 12.5px/1.45 var(--body); max-height: 190px; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.log div { padding-left: 10px; border-left: 2px solid var(--line); }
+.log div.fission { border-left-color: var(--ember); }
+.log div.radiant { border-left-color: var(--lit); }
+.log span { color: var(--dim); font-family: var(--mono); font-size: 11px; margin-right: 6px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--dim); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+
+.energies { margin-top: 16px; }
+.energies summary { cursor: pointer; font-family: var(--display); font-weight: 700; font-size: 17px; padding: 6px 0; }
+.drives { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin-top: 8px; }
+.drive { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.drive h4 { margin: 0; font: 600 13px var(--body); letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+.energy { display: grid; grid-template-columns: 92px minmax(0, 1fr) 34px; gap: 8px; align-items: center; font-size: 13px; }
+.energy label { font-weight: 600; }
+.energy label small { display: block; font-weight: 400; color: var(--dim); font-size: 11px; }
+.energy output { font: 12px var(--mono); text-align: right; color: var(--dim); }
+input[type=range] { width: 100%; accent-color: var(--ember); }
+
+section.text { margin-top: 44px; display: flex; flex-direction: column; gap: 14px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.card p, .card li { font-size: 14px; }
+.card ul, .card ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
+.cycle { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font: 500 13px var(--body); }
+.cycle span { padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); }
+.cycle span.hot { border-color: var(--ember); color: var(--ember); }
+.cycle span.coldc { border-color: var(--cold); color: var(--cold); }
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 640px; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 12px var(--body); letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+tr:last-child td { border-bottom: 0; }
+td .fn { font: 11px var(--mono); color: var(--ember); margin-left: 4px; }
+.results td:nth-child(2) { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bar { height: 7px; border-radius: 4px; background: var(--line); position: relative; min-width: 90px; margin-top: 6px; }
+.bar i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--ember); }
+.verdict { display: inline-block; font: 600 11px var(--body); letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; }
+.verdict.yes { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+.verdict.no { background: color-mix(in srgb, var(--ember) 16%, transparent); color: var(--ember); }
+.verdict.part { background: color-mix(in srgb, var(--glow) 20%, transparent); color: var(--dim); }
+textarea, input[type=text] { font: 13px/1.5 var(--mono); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; resize: vertical; }
+input[type=text] { font-family: var(--body); width: auto; flex: 1; min-width: 140px; }
+.flabel { font: 700 15px var(--display); }
+.hint { font-size: 12.5px; color: var(--dim); }
+code { font: 12px var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.compare { min-width: 0; }
+.compare th { text-transform: none; letter-spacing: 0; font: 600 13px var(--body); color: var(--ink); min-width: 170px; }
+.compare td:first-child, .compare th:first-child { min-width: 190px; color: var(--dim); }
+.compare td small { display: block; color: var(--dim); font-size: 11.5px; }
+.ok { color: var(--good); font-weight: 600; }
+.bad { color: var(--ember); font-weight: 600; }
+.mid { color: var(--dim); font-weight: 600; }
+.compare .x { float: right; font-size: 11px; padding: 1px 6px; }
+footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  .compare.arch tr.yours td { background: color-mix(in srgb, var(--ember) 9%, transparent); }
+  .compare.arch tr.neutral td { background: color-mix(in srgb, var(--cold) 9%, transparent); }
+  .compare.arch .bar { margin-top: 4px; }
+  .compare.arch th { min-width: 96px; }
+  .compare.arch th small { display: block; font-weight: 400; color: var(--dim); }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Imagination Neurons</h1>
+    <p class="lead">A small working model of your design: <b>19 neurons, 16 energies</b>, running live. The words "crap" and "test" start as one neuron each and have to work out their two meanings by themselves. <b>The frequencies are set by hand</b>, because there is no cortex engine yet.</p>
+  </header>
+
+  <div class="lab">
+    <div class="stage">
+      <canvas id="net" aria-label="The network of imagination neurons, animated"></canvas>
+      <div class="readout" id="readout"></div>
+    </div>
+    <div class="side">
+      <div class="box">
+        <h3>Run it <small id="clock">0 s</small></h3>
+        <div class="row">
+          <button class="main" id="play">Pause</button>
+          <button id="trainBtn" class="on" aria-pressed="true">Feeding sentences</button>
+          <button id="resetBtn">Start again</button>
+        </div>
+        <div class="row">
+          <label for="preset">Network</label>
+          <select id="preset"><option value="words">Word meanings</option><option value="field">Random field (16)</option></select>
+          <label for="speed">Speed</label>
+          <select id="speed"><option value="1">1×</option><option value="3" selected>3×</option><option value="8">8×</option></select>
+        </div>
+        <div class="row">
+          <label for="brain">Archetype</label>
+          <select id="brain" class="brainpick"></select>
+        </div>
+        <p class="hint" id="brainNote"></p>
+      </div>
+      <div class="box" id="askBox">
+        <h3>Ask it <small>16 percentages per sense</small></h3>
+        <div class="row" id="askRow"></div>
+        <div class="answer" id="answer">Pick a word in a context. Each sense gets 16 percentages, one per energy. A meaning counts as accurate when a sense gets more than its fair share on over half of the energies.</div>
+      </div>
+      <div class="box">
+        <h3>Imagination layer <small>what it changed</small></h3>
+        <div class="log" id="log"><div>Nothing yet. Watch for a split around 20–40 seconds in.</div></div>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--cold)"></i>cold: refines itself</span>
+        <span><i style="background:var(--ember)"></i>hot: exchanges</span>
+        <span><i style="background:var(--lit)"></i>lit by radiant</span>
+        <span>bright line: an impact relayed</span>
+      </div>
+    </div>
+  </div>
+
+  <details class="energies" id="energiesBox">
+    <summary>The 16 energies (drag to change them live)</summary>
+    <div class="row" style="margin-top:6px"><button id="energyReset">All back to 1</button><span class="lead" style="margin:0">0 turns an energy off, 2 doubles it.</span></div>
+    <div class="drives" id="drives"></div>
+  </details>
+
+  <section class="text" id="data">
+    <h2>Try your own data</h2>
+    <p>Write sentences for it to practise on, and questions to ask it. <b>Run test</b> trains it from scratch several times with the energies set above, and adds a column below. Change the data or the energies and run again to compare.</p>
+    <div class="cols datacols">
+      <div class="card">
+        <label class="flabel" for="dataText">Sentences and groups</label>
+        <textarea id="dataText" spellcheck="false" rows="14"></textarea>
+        <p class="hint">One sentence per line. <code>group name: word, word</code> makes a meaning group. Lines starting with <code>#</code> are notes.</p>
+      </div>
+      <div class="card">
+        <label class="flabel" for="askText">Questions</label>
+        <textarea id="askText" spellcheck="false" rows="8"></textarea>
+        <p class="hint"><code>crap @ clear = remove</code> reads <i>crap</i> with <i>clear</i> around it, and expects the <i>remove</i> group. You can also expect a word it should be linked to, or <code>not relevant</code>. Leave out <code>= …</code> to just see the answer.</p>
+        <div class="row">
+          <label for="freqMode">Frequencies</label>
+          <select id="freqMode">
+            <option value="groups">From your groups</option>
+            <option value="use">Stand-in encoder (from use only)</option>
+            <option value="random">Random (no encoder)</option>
+            <option value="raw">Nothing given: it learns by itself (Ni + Ne)</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="runs">Runs</label>
+          <select id="runs"><option>1</option><option selected>3</option><option>5</option><option>10</option></select>
+          <label for="steps">Training</label>
+          <select id="steps"><option value="1500">75 s</option><option value="3000" selected>150 s</option><option value="6000">300 s</option></select>
+        </div>
+        <div class="row">
+          <label for="runBrain">Archetype</label>
+          <select id="runBrain" class="brainpick"></select>
+        </div>
+        <div class="row">
+          <label for="runName">Name</label>
+          <input id="runName" type="text" placeholder="optional, e.g. heat off">
+        </div>
+        <div class="row">
+          <button class="main" id="runTest">Run test</button>
+          <button id="loadLive">Load into live view</button>
+          <button id="clearRuns">Clear columns</button>
+          <button id="sampleBtn">Sample data</button>
+        </div>
+        <p class="hint" id="runStatus" role="status"></p>
+      </div>
+    </div>
+    <div class="tablewrap" id="compareWrap" hidden><table class="compare" id="compare"></table></div>
+  </section>
+
+  <section class="text">
+    <h2>Your design, as the model runs it</h2>
+    <div class="cols">
+      <div class="card">
+        <h3>Parts</h3>
+        <ul>
+          <li><b>Neuron impact:</b> a line symbol that is always oscillating. Alone, a neuron oscillates with itself.</li>
+          <li><b>Line of neuron impact:</b> the lines between neurons, carrying oscillating impacts.</li>
+          <li><b>Imagination layer:</b> joined to every neuron. It can redesign any line, whether or not neurons are in sync.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Rules</h3>
+        <ul>
+          <li>An impact relays only between neurons <b>in sync enough</b>. Otherwise a neuron stays self-contained.</li>
+          <li>What a neuron absorbs becomes its <b>temperature</b>.</li>
+          <li><b>Heat flows hot to cold</b>, never the other way.</li>
+          <li><b>Hot neurons exchange</b>. <b>Cold neurons refine their own abstraction.</b></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>The cycle every neuron goes round</h3>
+        <div class="cycle">
+          <span>absorb</span>→<span class="hot">heat up</span>→<span class="hot">exchange</span>→<span class="coldc">cool</span>→<span class="coldc">refine</span>→<span>absorb</span>
+        </div>
+        <p>In the model, splitting a word into two meanings (nuclear fission) only happens while the neuron is cold, as part of refining itself.</p>
+      </div>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Drive</th><th>Internal energy: what it does here</th><th>External energy: what it does here</th></tr></thead>
+        <tbody id="energyTable"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="text" id="archetypes">
+    <h2>The archetypes, compared</h2>
+    <p>Each archetype now drives the network. Its <b>personality</b> sets the 16 energies (its 4 functions lead, the other 4 are weak) and steers heat and order while it runs. Its <b>decisions</b> set the rules: how strict a meaning must be, how soon a word splits, how long unused lines last, how soon hidden neurons join, and how much practice it replays. All 48 were trained on the same word test, 6 runs each.</p>
+    <p class="hint" id="archNote"></p>
+    <div class="tablewrap"><table class="compare arch" id="archTable"></table></div>
+  </section>
+
+  <section class="text">
+    <h2>What it showed</h2>
+    <p>I ran the model many times with different random starts and measured it. "Right" means the word had split, and the sense that won in a context was the correct meaning.</p>
+    <div class="tablewrap results">
+      <table>
+        <thead><tr><th>Test</th><th>Result</th><th>What it means</th></tr></thead>
+        <tbody id="results"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="text">
+    <h2>What it can do, and how far it can go</h2>
+    <div class="cols" id="verdicts"></div>
+  </section>
+
+  <section class="text">
+    <h2>Choices I made to turn your words into rules</h2>
+    <p>Your design says what each part does. To run it, I had to choose how. These are the choices most worth changing.</p>
+    <div class="card"><ul id="choices"></ul></div>
+  </section>
+
+  <footer>Simulation engine and measurements written for this page. Same engine as the live view above; every number on this page came from running it.</footer>
+</div>
+
+<script>
+/*SIM*/
+</script>
+<script>
+(() => {
+  const { Network, wordSpec, fieldSpec, dataSpec, parseQuestions, parseData, SAMPLE_DATA, SAMPLE_QUESTIONS, ENERGIES, C, ARCHETYPES, findArchetype } = window.INeuron;
+  const ARCH = /*ARCH*/null;
+  const $ = s => document.querySelector(s);
+  const RESULTS = /*RESULTS*/null;
+  const MEANING = { remove: "remove things", show: "show it as text", check: "check something", place: "place or window" };
+
+  // ---------- energies UI ----------
+  const energy = {}; ENERGIES.forEach(x => energy[x.key] = 1);
+  const drives = [...new Set(ENERGIES.map(x => x.drive))];
+  $("#drives").innerHTML = drives.map(d => `<div class="drive"><h4>${d}</h4>${ENERGIES.filter(x => x.drive === d).map(x => `
+    <div class="energy" title="${x.does}"><label for="e-${x.key}">${x.name}<small>${x.side}${x.fn ? " · " + x.fn : ""}</small></label>
+    <input type="range" id="e-${x.key}" min="0" max="2" step="0.1" value="1"><output id="o-${x.key}">1.0</output></div>`).join("")}</div>`).join("");
+  for (const x of ENERGIES) $("#e-" + x.key).addEventListener("input", ev => { energy[x.key] = +ev.target.value; $("#o-" + x.key).textContent = (+ev.target.value).toFixed(1); if (net) setEnergy(x.key); });
+  $("#energyReset").addEventListener("click", () => { for (const x of ENERGIES) { energy[x.key] = 1; $("#e-" + x.key).value = 1; $("#o-" + x.key).textContent = "1.0"; } if (net) ENERGIES.forEach(x => setEnergy(x.key)); });
+  function setEnergy(k) { const lean = net.brain ? net.brain.personality.energies[k] : 1; net.e[k] = net.base[k] = lean * energy[k]; }
+  $("#energyTable").innerHTML = drives.map(d => { const [i, e] = ENERGIES.filter(x => x.drive === d);
+    const cell = x => `<b>${x.name}</b>${x.fn ? `<span class="fn">${x.fn}</span>` : ""}<br>${x.does}`;
+    return `<tr><td><b>${d}</b></td><td>${cell(i)}</td><td>${cell(e)}</td></tr>`; }).join("");
+
+  // ---------- network ----------
+  let net, preset = "words", running = true, training = true, speed = 3, seed = 1, lastLog = 0;
+  const yoursFirst = ARCHETYPES.slice().sort((a, b) => b.yours - a.yours);
+  const brainOptions = `<option value="">None (neutral)</option>` + yoursFirst.map(a => `<option value="${esc(a.name)}">${esc(a.name)} · ${a.type}${a.yours ? " · yours" : ""}</option>`).join("");
+  document.querySelectorAll(".brainpick").forEach(el => el.innerHTML = brainOptions);
+  const ruleText = d => `strict ${Math.round(d.strict * 100)}% · splits at ${d.split} · lines last ${d.patience} s · joins hidden at ${d.radiant} · replays ${Math.round(d.replay * 100)}%`;
+  function brainNote() {
+    const a = findArchetype($("#brain").value || "-");
+    $("#brainNote").textContent = a ? `${a.line} Leads with ${a.personality.stack.join(" → ")}. Rules: ${ruleText(a.decisions)}.` : "No archetype: every energy at 1, neutral rules.";
+  }
+  $("#brain").addEventListener("change", () => { brainNote(); build(); });
+  function build() {
+    seed = Math.floor(Math.random() * 1e6);
+    net = new Network(preset === "words" ? wordSpec(1.2) : preset === "data" ? dataSpec(liveData.text, liveData.mode, seed) : fieldSpec(16, seed % 97 + 1), seed, energy, $("#brain").value || null,
+      { intuition: preset === "data" && liveData.mode === "raw" });
+    lastLog = 0; $("#log").innerHTML = "<div>Nothing yet. Watch for a split around 20–40 seconds in.</div>";
+    $("#answer").textContent = preset !== "field" ? "Pick a word in a context. Each sense gets 16 percentages, one per energy. A meaning counts as accurate when a sense gets more than its fair share on over half of the energies." : "Asking works on the Word meanings network.";
+    askButtons();
+  }
+  function askButtons() {
+    const row = $("#askRow");
+    if (preset === "field") { row.innerHTML = ""; return; }
+    const asks = preset === "data" ? parseQuestions(liveData.questions).slice(0, 8).map(q => [q.word, q.context.join(" ")])
+      : [["crap", "clear"], ["crap", "write"], ["test", "check"], ["test", "write"], ["crap", "put"], ["test", "window"]];
+    row.innerHTML = asks.map(([w, c]) => `<button data-w="${esc(w)}" data-c="${esc(c)}">${esc(c)} ${esc(w)}</button>`).join("");
+    row.querySelectorAll("button").forEach(b => b.addEventListener("click", () => ask(b.dataset.w, b.dataset.c)));
+  }
+  function ask(word, ctx) {
+    const senses = net.N.filter(n => n.word === word);
+    const r = net.read(word, ctx.split(" "));
+    if (!r) { $("#answer").textContent = `"${word}" isn't in this network.`; return; }
+    const best = r.ranked[0], other = r.ranked[1];
+    let head;
+    if (senses.length < 2) head = `<b>${word}</b> hasn't split yet, so one neuron holds both meanings. Its 16 energies below show how well that one neuron fits "${ctx}".`;
+    else if (r.meaning) head = `"${ctx} ${word}": <b>${best.s.label}</b>, meaning <b>${esc(MEANING[r.meaning] || r.meaning)}</b>. It matched on <b>${best.matched} of ${r.carried}</b> energies; ${other.s.label} matched on ${other.matched}.`;
+    else if (r.verdict === "not relevant") head = `"${ctx} ${word}": <b>not relevant</b>. No sense of ${word} got a fair share on enough energies (best: ${best.matched} of ${r.carried}).`;
+    else head = `"${ctx} ${word}": <b>${r.verdict === "partly" ? "only partly matched" : "too close to call"}</b>. Best was ${best.s.label} on ${best.matched} of ${r.carried} energies, so it doesn't claim a meaning.`;
+    const rows = ENERGIES.map(x => {
+      const a = best.profile[x.key], b = other ? other.profile[x.key] : undefined;
+      if (a === undefined) return `<div class="prow off"><span>${x.name}</span><em>nothing carried</em></div>`;
+      return `<div class="prow"><span>${x.name}</span><i class="pbar"><b style="width:${Math.min(100, a)}%"></b>${other ? `<u style="width:${Math.min(100, b)}%"></u>` : ""}</i><em>${a.toFixed(0)}%${other ? " · " + b.toFixed(0) + "%" : ""}</em></div>`;
+    }).join("");
+    $("#answer").innerHTML = head + `<div class="profile"><div class="pkey"><span class="k1"></span>${best.s.label}${other ? `<span class="k2"></span>${other.s.label}` : ""}<small>share of the context's energy, per energy</small></div>${rows}</div>`;
+  }
+
+  // ---------- drawing ----------
+  const cv = $("#net"), ctx = cv.getContext("2d");
+  let W = 0, H = 0, DPR = 1;
+  function size() { DPR = Math.min(2, window.devicePixelRatio || 1); const r = cv.getBoundingClientRect(); W = r.width; H = r.height; cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0); }
+  new ResizeObserver(size).observe(cv);
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  function mix(a, b, t) { const p = x => [1, 3, 5].map(i => parseInt(x.slice(i, i + 2), 16)); const A = p(a), B = p(b); return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(",")})`; }
+  function pos(n) { const pad = 46; return [pad + n.x * (W - 2 * pad), pad + n.y * (H - 2 * pad)]; }
+  function draw() {
+    const col = { cold: css("--cold"), ember: css("--ember"), glow: css("--glow"), lit: css("--lit"), ink: css("--ink"), dim: css("--dim"), line: css("--line"), bg: css("--canvas") };
+    ctx.clearRect(0, 0, W, H);
+    const byId = new Map(net.N.map(n => [n.id, n]));
+    for (const l of net.links.values()) {
+      const a = byId.get(l.a), b = byId.get(l.b); if (!a || !b) continue;
+      const [x1, y1] = pos(a), [x2, y2] = pos(b), flow = Math.min(1, l.carried * 6);
+      ctx.strokeStyle = flow > 0.05 ? col.glow : col.line; ctx.globalAlpha = 0.35 + 0.65 * flow;
+      ctx.lineWidth = 0.8 + 3 * l.w * (0.4 + flow); ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    for (const n of net.N) {
+      const [x, y] = pos(n), heat = Math.min(1, n.T / 1.6);
+      const fill = heat < 0.31 ? mix(col.cold, col.glow, heat / 0.31) : mix(col.glow, col.ember, Math.min(1, (heat - 0.31) / 0.5));
+      if (n.lit > 0.05) { ctx.fillStyle = col.lit; ctx.globalAlpha = Math.min(0.7, n.lit); ctx.beginPath(); ctx.arc(x, y, 22 + 10 * n.lit, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+      const r = 9 + 4 * n.amp, wob = 2.5 * Math.sin(n.theta);
+      ctx.strokeStyle = fill; ctx.lineWidth = 2; ctx.globalAlpha = 0.55;
+      ctx.beginPath(); ctx.arc(x, y, r + 5 + wob, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;    // the oscillation, always moving
+      ctx.fillStyle = fill; ctx.beginPath(); ctx.arc(x, y, r + Math.min(6, n.E * 3), 0, 7); ctx.fill();
+      if (n.refined) { ctx.strokeStyle = col.cold; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(x, y, r + 10, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+      ctx.fillStyle = col.ink; ctx.font = `${n.label.includes("·") || n.word === "crap" || n.word === "test" ? "600 " : ""}12px ${css("--body")}`;
+      ctx.textAlign = "center"; ctx.fillText(n.label, x, y - r - 12);
+    }
+  }
+  function readout() {
+    const s = net.stats();
+    $("#readout").innerHTML = `<span>in sync <b>${Math.round(s.order * 100)}%</b></span><span>hot <b>${s.hot}</b></span><span>cold <b>${s.cold}</b></span><span>neurons <b>${s.neurons}</b></span><span>lines <b>${s.links}</b></span><span>lit <b>${s.lit}</b></span>${net.intuition ? `<span>Ni guesses <b>${Math.round(net.niRate() * 100)}%</b></span><span>Ne kept <b>${net.confirmed}</b> of ${net.proposed}</span>` : ""}${net.brain ? `<span>warmth <b>${net.warmth.toFixed(2)}×</b></span><span>order pull <b>${net.orderPull.toFixed(2)}×</b></span>` : ""}`;
+    $("#clock").textContent = Math.round(net.t) + " s";
+    if (net.log.length !== lastLog) {
+      const items = net.log.slice(-14).reverse().map(l => `<div class="${l.text.startsWith("nuclear") ? "fission" : l.text.startsWith("radiant") ? "radiant" : ""}"><span>${Math.round(l.t)}s</span>${l.text}</div>`);
+      $("#log").innerHTML = items.join(""); lastLog = net.log.length;
+    }
+  }
+  let acc = 0, last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    if (running) {
+      acc += dt * speed / C.dt;
+      let k = 0;
+      while (acc >= 1 && k < 60) { if (training && net.steps % C.TRAIN_EVERY === 0) net.train(); net.step(); acc--; k++; }
+    }
+    draw(); readout();
+    requestAnimationFrame(frame);
+  }
+  $("#play").addEventListener("click", () => { running = !running; $("#play").textContent = running ? "Pause" : "Play"; });
+  $("#trainBtn").addEventListener("click", () => { training = !training; const b = $("#trainBtn"); b.classList.toggle("on", training); b.setAttribute("aria-pressed", training); b.textContent = training ? "Feeding sentences" : "Not feeding"; });
+  $("#resetBtn").addEventListener("click", build);
+  $("#preset").addEventListener("change", e => { preset = e.target.value; build(); });
+  $("#speed").addEventListener("change", e => { speed = +e.target.value; });
+
+  // ---------- your data: test and compare ----------
+  function esc(t) { return String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+  const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+  let liveData = { text: SAMPLE_DATA, questions: SAMPLE_QUESTIONS, mode: "groups" };
+  $("#dataText").value = store.get("in-data") || SAMPLE_DATA;
+  $("#askText").value = store.get("in-ask") || SAMPLE_QUESTIONS;
+  $("#dataText").addEventListener("input", e => store.set("in-data", e.target.value));
+  $("#askText").addEventListener("input", e => store.set("in-ask", e.target.value));
+  $("#sampleBtn").addEventListener("click", () => { $("#dataText").value = SAMPLE_DATA; $("#askText").value = SAMPLE_QUESTIONS; store.set("in-data", SAMPLE_DATA); store.set("in-ask", SAMPLE_QUESTIONS); });
+  $("#loadLive").addEventListener("click", () => {
+    const text = $("#dataText").value;
+    if (!parseData(text).sentences.length) { $("#runStatus").textContent = "Add at least one sentence first."; return; }
+    liveData = { text, questions: $("#askText").value, mode: $("#freqMode").value };
+    if (!$("#preset").querySelector('option[value="data"]')) $("#preset").insertAdjacentHTML("beforeend", '<option value="data">Your data</option>');
+    $("#preset").value = preset = "data"; build();
+    $("#runStatus").textContent = "Loaded into the live view at the top of the page.";
+    document.querySelector(".lab").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  const runs = [];
+  const answerOf = r => !r ? "not found" : r.verdict === "accurate" && r.clear ? r.meaning : r.verdict === "accurate" ? "too close" : r.verdict;
+  async function runTest() {
+    const text = $("#dataText").value, qtext = $("#askText").value, qs = parseQuestions(qtext);
+    const parsed = parseData(text);
+    if (!parsed.sentences.length) { $("#runStatus").textContent = "Add at least one sentence first."; return; }
+    if (!qs.length) { $("#runStatus").textContent = 'Add at least one question, like "crap @ clear = remove".'; return; }
+    const mode = $("#freqMode").value, n = +$("#runs").value, steps = +$("#steps").value, e = { ...energy }, brain = $("#runBrain").value || null;
+    const btn = $("#runTest"); btn.disabled = true;
+    const res = { name: $("#runName").value.trim() || (brain ? brain.replace(/^The /, "") : `Test ${runs.length + 1}`), brain, mode, n, steps, changed: ENERGIES.filter(x => e[x.key] !== 1).map(x => `${x.name} ${e[x.key]}`),
+                  words: new Set(parsed.sentences.flat()).size, sentences: parsed.sentences.length, splits: {}, q: qs.map(q => ({ text: q.text, want: q.want, answers: {}, ok: 0, judged: 0, matched: 0 })) };
+    for (let seed = 1; seed <= n; seed++) {
+      $("#runStatus").textContent = `Training run ${seed} of ${n}…`;
+      await new Promise(r => setTimeout(r, 20));
+      const t = new Network(dataSpec(text, mode, seed), seed, e, brain, { intuition: mode === "raw" });
+      for (let k = 0; k < steps; k++) { if (k % C.TRAIN_EVERY === 0) t.train(); t.step(); }
+      for (const w of new Set(t.N.filter(x => x.label.includes("·")).map(x => x.word))) res.splits[w] = (res.splits[w] || 0) + 1;
+      qs.forEach((q, i) => {
+        for (let j = 0; j < 30; j++) { if (t.steps % C.TRAIN_EVERY === 0) t.train(); t.step(); }
+        const r = t.read(q.word, q.context), a = answerOf(r), cell = res.q[i];
+        cell.answers[a] = (cell.answers[a] || 0) + 1;
+        if (r) cell.matched += r.ranked[0].matched / Math.max(1, r.carried);
+        const m = t.matches(r, q.want); if (m !== null) { cell.judged++; if (m) cell.ok++; }
+      });
+    }
+    runs.push(res); if (runs.length > 6) runs.shift();
+    btn.disabled = false;
+    $("#runStatus").textContent = `Done: ${res.name} added to the comparison below.`;
+    renderCompare();
+  }
+  function renderCompare() {
+    $("#compareWrap").hidden = !runs.length;
+    if (!runs.length) return;
+    const qtexts = [...new Set(runs.flatMap(r => r.q.map(q => q.text)))];
+    const head = `<tr><th>Test</th>${runs.map((r, i) => `<th>${esc(r.name)} <button class="x" data-i="${i}" aria-label="Remove ${esc(r.name)}">×</button></th>`).join("")}</tr>`;
+    const modeName = { groups: "from your groups", use: "stand-in encoder", random: "random", raw: "nothing given (learns by itself)" };
+    const settings = `<tr><td>Settings</td>${runs.map(r => `<td>${r.n} run${r.n > 1 ? "s" : ""} · ${r.steps * C.dt} s training<small>frequencies ${modeName[r.mode]} · ${r.sentences} sentences, ${r.words} words</small><small>${r.brain ? "archetype: " + esc(r.brain) : "no archetype"}</small><small>${r.changed.length ? "changed: " + esc(r.changed.join(", ")) : "all energies at 1"}</small></td>`).join("")}</tr>`;
+    const overall = `<tr><td>As expected</td>${runs.map(r => { const ok = r.q.reduce((t, q) => t + q.ok, 0), j = r.q.reduce((t, q) => t + q.judged, 0);
+      return `<td>${j ? `<b>${Math.round(100 * ok / j)}%</b> (${ok} of ${j})` : "no expectations given"}</td>`; }).join("")}</tr>`;
+    const splits = `<tr><td>Words that split</td>${runs.map(r => `<td>${Object.keys(r.splits).length ? Object.entries(r.splits).map(([w, k]) => `${esc(w)} ${k}/${r.n}`).join(", ") : "none"}</td>`).join("")}</tr>`;
+    const rows = qtexts.map(qt => `<tr><td>${esc(qt)}</td>${runs.map(r => {
+      const q = r.q.find(x => x.text === qt);
+      if (!q) return "<td>—</td>";
+      const [top, k] = Object.entries(q.answers).sort((a, b) => b[1] - a[1])[0];
+      const verdict = q.judged ? `<span class="${q.ok === q.judged ? "ok" : q.ok ? "mid" : "bad"}">${q.ok === q.judged ? "✓ " : q.ok ? "" : "✗ "}${q.ok} of ${q.judged} as expected</span>` : "";
+      return `<td>${esc(top)}<small>${verdict}</small><small>${Math.round(100 * k / r.n)}% of runs agree · matched ${Math.round(100 * q.matched / r.n)}% of energies</small></td>`; }).join("")}</tr>`).join("");
+    $("#compare").innerHTML = `<thead>${head}</thead><tbody>${settings}${overall}${splits}${rows}</tbody>`;
+    $("#compare").querySelectorAll("button.x").forEach(b => b.addEventListener("click", () => { runs.splice(+b.dataset.i, 1); renderCompare(); }));
+  }
+  $("#runTest").addEventListener("click", runTest);
+  $("#clearRuns").addEventListener("click", () => { runs.length = 0; renderCompare(); $("#runStatus").textContent = ""; });
+
+  // ---------- written findings ----------
+  if (RESULTS) {
+    $("#results").innerHTML = RESULTS.rows.map(r => `<tr><td>${r.test}</td><td>${r.value}${r.pct != null ? `<div class="bar"><i style="width:${r.pct}%"></i></div>` : ""}</td><td>${r.means}</td></tr>`).join("");
+    $("#verdicts").innerHTML = RESULTS.verdicts.map(v => `<div class="card"><span class="verdict ${v.kind}">${v.label}</span><h3>${v.title}</h3><p>${v.text}</p></div>`).join("");
+    $("#choices").innerHTML = RESULTS.choices.map(c => `<li>${c}</li>`).join("");
+  }
+  // ---------- archetypes compared ----------
+  if (ARCH) {
+    const n0 = ARCH["(neutral)"];
+    const rows = Object.entries(ARCH).map(([name, v]) => ({ name, v, a: findArchetype(name) || null })).sort((x, y) => y.v.right - x.v.right || x.v.wrong - y.v.wrong);
+    const cell = (v, base, unit = "%", better = 1) => { const d = v - base; const cls = !d ? "" : (d * better > 0 ? "ok" : "bad"); return `<span class="${cls}">${v}${unit}</span>`; };
+    $("#archTable").innerHTML = `<thead><tr><th>Archetype</th><th>Right meaning<small>wrong · held back</small></th><th>Words split</th><th>Rare meaning kept</th><th>Unseen contexts</th><th>Lines last, no practice</th></tr></thead><tbody>` +
+      rows.map(({ name, v, a }) => `<tr class="${a && a.yours ? "yours" : !a ? "neutral" : ""}"><td><b>${esc(name)}</b><small>${a ? `${a.type} · ${a.bias}${a.yours ? " · yours" : ""}` : "no archetype, the baseline"}</small></td>
+        <td>${cell(v.right, n0.right)}<div class="bar"><i style="width:${v.right}%"></i></div><small>${v.wrong}% wrong · ${v.held}% held back</small></td>
+        <td>${cell(v.split, n0.split)}</td><td>${cell(v.rare, n0.rare)}</td><td>${cell(v.unseen, n0.unseen)}</td><td>${cell(v.forget, n0.forget, " s")}${v.forget >= 300 ? "<small>300 s = never in the test</small>" : ""}</td></tr>`).join("") + "</tbody>";
+    const weakTi = rows.filter(r => r.a && r.a.personality.energies.nuclear < 1);
+    const splitWeak = Math.round(weakTi.reduce((t, r) => t + r.v.split, 0) / weakTi.length), splitStrong = Math.round(rows.filter(r => r.a && r.a.personality.energies.nuclear >= 1).reduce((t, r) => t + r.v.split, 0) / (rows.length - 1 - weakTi.length));
+    $("#archNote").innerHTML = `Green beats the neutral network, red is worse. <b>Why some barely learn:</b> splitting needs Nuclear (Ti). Archetypes with Ti outside their top 4 functions split ${splitWeak}% of the time, against ${splitStrong}% for the rest, so they hold back most meanings. Strict ones hold back more but are never wrong. This comes from my proposed function pairings, which you haven't confirmed.`;
+  }
+  brainNote(); size(); build(); requestAnimationFrame(frame);
+})();
+</script>

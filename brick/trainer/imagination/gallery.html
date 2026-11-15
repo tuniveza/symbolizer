@@ -1,0 +1,279 @@
+<title>Imagination Archetypes</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a gallery wall of portraits (each drawn live from its energies), filters on top, a full view that opens over the wall. Dark first: the portraits are lit things on a dark wall. */
+:root {
+  --bg: #0f0b0a; --wall: #17110f; --card: #1d1613; --ink: #f4e9e1; --dim: #a8958a; --line: #33261f;
+  --ember: #ff6a2b; --glow: #ffb057; --chip: #261c18;
+  --display: "Syne", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
+  --bg: #f4eee9; --wall: #ece3dc; --card: #fffaf6; --ink: #24170f; --dim: #74625a; --line: #ddcfc5;
+  --ember: #cf4316; --glow: #c9731f; --chip: #f3e9e2; color-scheme: light; } }
+:root[data-theme="light"] {
+  --bg: #f4eee9; --wall: #ece3dc; --card: #fffaf6; --ink: #24170f; --dim: #74625a; --line: #ddcfc5;
+  --ember: #cf4316; --glow: #c9731f; --chip: #f3e9e2; color-scheme: light; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--body); margin: 0; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 26px 70px; }
+h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(32px, 5vw, 54px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.02; }
+.lead { color: var(--dim); max-width: 70ch; margin: 10px 0 0; }
+.lead b { color: var(--ink); font-weight: 600; }
+.chain { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; font: 500 13px var(--body); }
+.chain span { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); }
+.chain span.hot { border-color: var(--ember); color: var(--ember); }
+.chain i { color: var(--dim); font-style: normal; }
+
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 24px 0 14px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; padding: 10px 0; background: var(--bg); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.filters input { font: 14px var(--body); color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; min-width: 0; flex: 1 1 200px; max-width: 320px; }
+.filters button { font: 500 13px var(--body); color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+.filters button.on { border-color: var(--ember); color: var(--ember); background: color-mix(in srgb, var(--ember) 12%, var(--card)); }
+.filters .count { color: var(--dim); font: 12px var(--mono); margin-left: auto; }
+button:focus-visible, input:focus-visible, .card:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 16px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; cursor: pointer; text-align: left; padding: 0; color: inherit; font: inherit; transition: transform .2s ease, border-color .2s ease; }
+.card:hover { transform: translateY(-2px); border-color: var(--glow); }
+.card canvas { width: 100%; aspect-ratio: 1; display: block; background: #0a0706; max-width: 100%; }
+.card .info { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.card h3 { font-size: 18px; font-weight: 700; line-height: 1.15; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font: 12px var(--mono); color: var(--dim); }
+.type { font: 600 12px var(--mono); padding: 2px 8px; border-radius: 6px; color: #fff; }
+.yours { font: 600 10.5px var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--glow); }
+.card p { margin: 0; font-size: 13.5px; color: var(--dim); }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { font-size: 11.5px; padding: 2px 8px; border-radius: 999px; background: var(--chip); border: 1px solid var(--line); color: var(--ink); }
+
+.view { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(6px); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); overflow: auto; }
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: 20px; max-width: 980px; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); overflow: hidden; }
+@media (max-width: 760px) { .panel { grid-template-columns: minmax(0, 1fr); } }
+.panel canvas { width: 100%; aspect-ratio: 1; display: block; background: #0a0706; }
+.detail { padding: 20px 22px; display: flex; flex-direction: column; gap: 12px; min-width: 0; max-height: min(86vh, 980px); overflow: auto; }
+.detail h2 { font-size: 28px; font-weight: 800; line-height: 1.1; }
+.detail .close { align-self: flex-end; font: 500 13px var(--body); color: var(--ink); background: var(--chip); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+.stack { display: flex; gap: 6px; flex-wrap: wrap; }
+.stack span { font: 600 12px var(--mono); padding: 4px 9px; border-radius: 8px; border: 1px solid var(--line); }
+.sub { font: 600 11.5px var(--body); letter-spacing: .07em; text-transform: uppercase; color: var(--dim); }
+.bars { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; }
+@media (max-width: 420px) { .bars { grid-template-columns: 1fr; } }
+.bar { display: grid; grid-template-columns: 112px minmax(0, 1fr) 30px; align-items: center; gap: 6px; font-size: 12px; }
+.bar i { height: 6px; border-radius: 3px; background: var(--line); position: relative; display: block; }
+.bar i b { position: absolute; inset: 0 auto 0 0; border-radius: 3px; }
+.bar em { font: 11px var(--mono); color: var(--dim); font-style: normal; text-align: right; }
+.rules { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+.note { font-size: 12.5px; color: var(--dim); }
+footer { margin-top: 40px; color: var(--dim); font-size: 13px; max-width: 75ch; }
+.view[hidden], .card[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { .card { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Imagination Archetypes</h1>
+    <p class="lead"><b>48 archetypes</b> for the imagination neuron brain, two of them yours. Each portrait is drawn from the archetype's own energies: its rings are its four functions, its lines are its impacts, its light is radiant, its symmetry is order. <b>Hover a portrait to see it move.</b> Click one for its full make-up.</p>
+    <div class="chain"><span>movement of biology</span><i>→</i><span class="hot">archetype</span><i>→</i><span>personality (MBTI)</span><i>→</i><span>16 energies</span><i>→</i><span>imagination network</span></div>
+  </header>
+
+  <div class="filters" role="search">
+    <input id="q" type="search" placeholder="Search names, types, words…" aria-label="Search archetypes">
+    <button data-f="all" class="on">All</button>
+    <button data-f="yours">Yours</button>
+    <button data-f="NT">NT</button>
+    <button data-f="NF">NF</button>
+    <button data-f="SJ">SJ</button>
+    <button data-f="SP">SP</button>
+    <span class="count" id="count"></span>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <footer>Which MBTI type each archetype picks is a choice of character from popular psychology, not tested science. The function-to-energy pairs use your five links (Ni mechanical, Fe heat, Ti nuclear, Te kinetic, Se thermal) and my proposal for the rest, still to confirm.</footer>
+</div>
+
+<div class="view" id="view" hidden>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="dName">
+    <canvas id="big" aria-label="Moving portrait"></canvas>
+    <div class="detail" id="detail"></div>
+  </div>
+</div>
+
+<script>
+/*SIM*/
+</script>
+<script>
+(() => {
+  const { ARCHETYPES, FUNCTIONS, ENERGIES } = window.INeuron;
+  const ARCH = /*ARCH*/null;
+  const $ = s => document.querySelector(s);
+  const FN_COLOUR = { Ni: "#8b6cff", Ne: "#ffc94a", Ti: "#4fb3d9", Te: "#cfe8ff", Fi: "#ff5f9e", Fe: "#ff7a2b", Si: "#8fbf6a", Se: "#ff3b2f" };
+  const GROUP = t => t[1] === "N" ? (t[2] === "T" ? "NT" : "NF") : (t[3] === "J" ? "SJ" : "SP");
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  function seedOf(name) { let h = 2166136261; for (const c of name) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; }
+  function rng(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+  const hex2 = (h, a) => { const n = parseInt(h.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+
+  // The portrait: the archetype's energies, drawn. t = time in seconds (0 for the still frame).
+  function paint(cv, A, t) {
+    const ctx = cv.getContext("2d"), W = cv.width, H = cv.height, cx = W / 2, cy = H / 2, R = W * 0.42;
+    const e = A.personality.energies, st = A.personality.stack, d = A.decisions, r = rng(seedOf(A.name));
+    const lead = FN_COLOUR[st[0]], second = FN_COLOUR[st[1]], bias = A.bias, spin = r() * Math.PI * 2, extra = Math.floor(r() * 3);
+    const bg = ctx.createRadialGradient(cx, cy * 0.9, 0, cx, cy, W * 0.75);
+    bg.addColorStop(0, hex2(lead, 0.28)); bg.addColorStop(0.55, hex2(second, 0.08)); bg.addColorStop(1, "#070504");
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    // radiant: light dust, more for higher radiant
+    const dust = Math.round((40 + 120 * e.radiant) * (bias === "explore" ? 2.4 : 1));
+    for (let i = 0; i < dust; i++) {
+      const a = r() * Math.PI * 2, rad = Math.sqrt(r()) * W * 0.62, tw = 0.5 + 0.5 * Math.sin(t * (0.6 + r() * 2) + i);
+      ctx.fillStyle = hex2(i % 3 ? FN_COLOUR.Ne : lead, (0.15 + 0.5 * r()) * (0.4 + 0.6 * tw));
+      ctx.beginPath(); ctx.arc(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad, (0.4 + r() * 1.6) * W / 300, 0, 7); ctx.fill();
+    }
+    // order: symmetry count from gravity + ionization; lines of impact from kinetic, curved by magnetic
+    const sym = Math.max(3, Math.round(3 + 4 * (e.gravity + e.ionization) / 2 + (A.type[3] === "J" ? 2 : 0) + (bias === "order" ? 3 : 0) + extra));
+    const filaments = Math.round(sym * (1 + e.kinetic));
+    const tips = [];
+    for (let i = 0; i < filaments; i++) {
+      const base = spin + (i / filaments) * Math.PI * 2 + t * (bias === "swift" ? 0.35 : 0.05 * (e.kinetic - 0.4));
+      const len = R * (0.55 + 0.45 * e.kinetic / 1.6) * (0.75 + 0.25 * Math.sin(t * 1.3 + i)) * (bias === "explore" ? 1.35 : 1);
+      const bend = bias === "swift" ? 1.6 : 0.9 * e.magnetic * (i % 2 ? 1 : -1);
+      ctx.strokeStyle = hex2(FN_COLOUR[st[i % 4]], 0.35); ctx.lineWidth = W / 380 * (1 + e.kinetic);
+      ctx.beginPath(); ctx.moveTo(cx, cy);
+      ctx.quadraticCurveTo(cx + Math.cos(base + bend) * len * 0.6, cy + Math.sin(base + bend) * len * 0.6, cx + Math.cos(base) * len, cy + Math.sin(base) * len);
+      ctx.stroke();
+      ctx.fillStyle = hex2(FN_COLOUR[st[i % 4]], 0.8); ctx.beginPath(); ctx.arc(cx + Math.cos(base) * len, cy + Math.sin(base) * len, W / 160, 0, 7); ctx.fill();
+      tips.push([cx + Math.cos(base) * len, cy + Math.sin(base) * len]);
+    }
+    if (bias === "order") {                                            // order: a lattice joining every impact
+      ctx.strokeStyle = hex2(second, 0.28); ctx.lineWidth = W / 500;
+      ctx.beginPath(); tips.forEach(([x, y], i) => { const [x2, y2] = tips[(i + 2) % tips.length]; ctx.moveTo(x, y); ctx.lineTo(x2, y2); }); ctx.stroke();
+    }
+    // the four functions: oscillating rings, the dominant one outermost and strongest
+    st.forEach((fn, k) => {
+      const [ea, eb] = FUNCTIONS[fn], w = (e[ea] + e[eb]) / 2, radius = R * (0.92 - k * 0.19);
+      const waves = sym + k * 2 + extra, amp = W * 0.012 * (0.5 + e.oscillation + e.mechanical * 0.5) * (1 - k * 0.15) * (bias === "strict" ? 0.35 : 1);
+      const passes = bias === "keep" ? [[0, 1], [-0.035, 0.35], [-0.07, 0.15]] : bias === "split" ? [[-0.025, 0.85], [0.025, 0.85]] : [[0, 1]];
+      for (const [off, alpha] of passes) {
+        ctx.strokeStyle = hex2(FN_COLOUR[fn], (0.35 + 0.4 * w / 1.6) * alpha); ctx.lineWidth = W / 220 * (0.6 + w) * (bias === "strict" ? 0.6 : 1);
+        ctx.shadowColor = FN_COLOUR[fn]; ctx.shadowBlur = W / 40 * w * alpha * (bias === "strict" ? 0.3 : 1);
+        ctx.beginPath();
+        for (let s = 0; s <= 240; s++) {
+          const a = (s / 240) * Math.PI * 2, ph = off * 40 + t * (0.8 + k * 0.35) * (k % 2 ? -1 : 1) * (bias === "keep" && off ? 0.7 : 1);
+          const wob = Math.sin(a * waves + spin + ph) * amp, rr = radius * (1 + off) + wob;
+          const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+          s ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        }
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+    });
+    // heat: the core glow; rest: how steady it is
+    const pulse = 1 + 0.08 * Math.sin(t * (2.4 - e.rest)) * (1.4 - e.rest / 2);
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 0.3 * pulse);
+    core.addColorStop(0, "rgba(255,245,230,0.95)"); core.addColorStop(0.25, hex2(FN_COLOUR.Fe, 0.55 + 0.25 * e.heat / 1.6)); core.addColorStop(1, hex2(lead, 0));
+    ctx.fillStyle = core; ctx.beginPath(); ctx.arc(cx, cy, R * 0.32 * pulse, 0, 7); ctx.fill();
+    // individuality: electric sparks around the core
+    const sparks = Math.round(4 + 10 * e.electric);
+    for (let i = 0; i < sparks; i++) {
+      const a = r() * Math.PI * 2 + t * 0.4, rad = R * (0.16 + 0.1 * r());
+      ctx.fillStyle = hex2(FN_COLOUR.Fi, 0.6); ctx.beginPath(); ctx.arc(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad, W / 260, 0, 7); ctx.fill();
+    }
+  }
+
+  function decisionText(d) {
+    return [
+      `Proves a meaning only when it wins over <b>${Math.round(d.strict * 100)}%</b> of the energies.`,
+      `Splits a word into meanings <b>${d.split < 0.3 ? "very soon" : d.split < 0.38 ? "soon" : d.split < 0.45 ? "when it's sure" : "reluctantly"}</b>.`,
+      `Lets an unused line fade after <b>${d.patience} s</b>.`,
+      `Spends <b>${Math.round(d.replay * 100)}%</b> of practice replaying words that are fading.`,
+      `Joins hidden neurons it lights up <b>${d.radiant < 0.3 ? "eagerly" : d.radiant < 0.4 ? "readily" : "carefully"}</b>.`,
+      `Reacts to the network's state <b>${d.react > 0.06 ? "fast" : d.react < 0.04 ? "slowly and steadily" : "at a steady pace"}</b>.`,
+    ];
+  }
+  const chipsOf = d => [`wins ${Math.round(d.strict * 100)}%`, d.split < 0.38 ? "splits early" : "splits late", `fades ${d.patience} s`, `replays ${Math.round(d.replay * 100)}%`];
+
+  // ---------- the wall ----------
+  const grid = $("#grid"), DPR = Math.min(2, window.devicePixelRatio || 1);
+  const cards = ARCHETYPES.map((A, i) => {
+    const el = document.createElement("div");
+    el.className = "card"; el.dataset.i = i; el.tabIndex = 0; el.setAttribute("role", "button");
+    el.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); open(i); } });
+    el.setAttribute("aria-label", `${A.name}, ${A.type}. Open full view`);
+    el.innerHTML = `<canvas width="${Math.round(260 * DPR)}" height="${Math.round(260 * DPR)}" aria-hidden="true"></canvas>
+      <div class="info"><h3>${esc(A.name)}</h3>
+      <div class="meta"><span class="type" style="background:${FN_COLOUR[A.personality.stack[0]]};color:#0b0807">${A.type}</span>${A.personality.stack.join(" · ")}${A.yours ? ' <span class="yours">yours</span>' : ""}</div>
+      <p>${esc(A.line)}</p><div class="chips">${chipsOf(A.decisions).map(c => `<span class="chip">${c}</span>`).join("")}</div></div>`;
+    grid.appendChild(el);
+    const cv = el.querySelector("canvas");
+    paint(cv, A, 0);
+    let raf = 0, t0 = 0;
+    const loop = now => { paint(cv, A, (now - t0) / 1000); raf = requestAnimationFrame(loop); };
+    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      el.addEventListener("pointerenter", () => { t0 = performance.now(); raf = requestAnimationFrame(loop); });
+      el.addEventListener("pointerleave", () => { cancelAnimationFrame(raf); paint(cv, A, 0); });
+    }
+    el.addEventListener("click", () => open(i));
+    return { el, A };
+  });
+
+  let filter = "all";
+  function apply() {
+    const q = $("#q").value.trim().toLowerCase(); let n = 0;
+    for (const { el, A } of cards) {
+      const hay = `${A.name} ${A.type} ${A.line} ${A.personality.stack.join(" ")} ${A.bias}`.toLowerCase();
+      const show = (!q || hay.includes(q)) && (filter === "all" || (filter === "yours" ? A.yours : GROUP(A.type) === filter));
+      el.hidden = !show; if (show) n++;
+    }
+    $("#count").textContent = `${n} of ${cards.length}`;
+  }
+  $("#q").addEventListener("input", apply);
+  document.querySelectorAll(".filters button").forEach(b => b.addEventListener("click", () => {
+    filter = b.dataset.f; document.querySelectorAll(".filters button").forEach(x => x.classList.toggle("on", x === b)); apply();
+  }));
+  apply();
+
+  // ---------- full view ----------
+  let bigRaf = 0, lastFocus = null;
+  function open(i) {
+    const A = ARCHETYPES[i], d = A.decisions, e = A.personality.energies;
+    lastFocus = document.activeElement;
+    const big = $("#big"), size = Math.round(Math.min(560, innerWidth - 32) * DPR);
+    big.width = big.height = size;
+    const byFn = Object.entries(FUNCTIONS);
+    $("#detail").innerHTML = `<button class="close" id="close">Close</button>
+      <h2 id="dName">${esc(A.name)}</h2>
+      <div class="meta"><span class="type" style="background:${FN_COLOUR[A.personality.stack[0]]};color:#0b0807">${A.type}</span>${A.yours ? '<span class="yours">yours</span>' : ""}<span>${GROUP(A.type)}</span></div>
+      <p>${esc(A.line)}</p>
+      <div class="sub">Personality: function order</div>
+      <div class="stack">${A.personality.stack.map((f, k) => `<span style="border-color:${FN_COLOUR[f]};color:${FN_COLOUR[f]}">${k + 1}. ${f}</span>`).join("")}</div>
+      <div class="sub">The 16 energies it leans toward</div>
+      <div class="bars">${byFn.flatMap(([fn, keys]) => keys.map(k => { const x = ENERGIES.find(z => z.key === k);
+        return `<div class="bar" title="${esc(x.does)}"><span>${x.name}</span><i><b style="width:${Math.round(e[k] / 1.6 * 100)}%;background:${FN_COLOUR[fn]}"></b></i><em>${e[k].toFixed(1)}</em></div>`; })).join("")}</div>
+      <div class="sub">How it decides (determination)</div>
+      <ul class="rules">${decisionText(d).map(t => `<li>${t}</li>`).join("")}</ul>
+      <p class="note">Steers the network toward a ${A.personality.target.heat >= 1 ? "warm, lively" : "cool, steady"} and ${A.personality.target.order > 0.8 ? "tightly ordered" : "looser"} state.</p>
+      ${ARCH && ARCH[A.name] ? measured(ARCH[A.name], ARCH["(neutral)"]) : ""}`;
+    $("#view").hidden = false;
+    $("#close").addEventListener("click", close);
+    $("#close").focus();
+    const t0 = performance.now(), still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const loop = now => { paint(big, A, still ? 0 : (now - t0) / 1000); if (!still) bigRaf = requestAnimationFrame(loop); };
+    bigRaf = requestAnimationFrame(loop);
+  }
+  // What it actually did on the word test (6 runs), next to the neutral network.
+  function measured(v, n) {
+    const row = (label, a, b, unit = "%") => `<li><b>${label}:</b> ${a}${unit} <span class="note">(neutral ${b}${unit})</span></li>`;
+    return `<div class="sub">Measured on the word test</div><ul class="rules">
+      ${row("Right meaning", v.right, n.right)}${row("Wrong", v.wrong, n.wrong)}${row("Words split", v.split, n.split)}
+      ${row("Rare meaning kept", v.rare, n.rare)}${row("Lines last with no practice", v.forget, n.forget, " s")}</ul>`;
+  }
+  function close() { cancelAnimationFrame(bigRaf); $("#view").hidden = true; if (lastFocus) lastFocus.focus(); }
+  $("#view").addEventListener("click", ev => { if (ev.target.id === "view") close(); });
+  addEventListener("keydown", ev => { if (ev.key === "Escape" && !$("#view").hidden) close(); });
+})();
+</script>

@@ -1,0 +1,13 @@
+# The console: the terminal this program writes in, moved around the screen
+set the title of the console to Brick Console Demo
+put the console on the left side of the screen
+clear the screen
+write in green ten in the middle of the screen
+wait 2 seconds
+put the console on the right side of the screen
+clear the screen
+write "now on the right" in yellow in the middle of the screen
+wait 2 seconds
+make the console smaller, centre the console
+clear the screen
+write "smaller, in the middle; the console is" the width of the console "columns wide" at the top

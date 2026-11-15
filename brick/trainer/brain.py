@@ -1,0 +1,805 @@
+"""brick's brain: symbols linked by weighted associations, and how alike two symbols are.
+
+Everything is a symbol, with a pattern of its own, compared like any other:
+  words        'red', 'zorp', and the little words too ('a', 'in', 'hi'): they reach more things
+  contexts     the context is a symbol of itself: the word before ('before:in'), the word after
+               ('after:at'), the whole slot a word fills ('in _ at' for red in 'hi in red at the top'), the
+               ideas around it ('before:[toward]'), a word's own ideas ('[colour]'), a facet of a symbol's
+               universe ('shape:round'). A context's pattern is what fills it and what it appears with
+  letters      the level below words, with a universe of its own: 'letter:e' and the letters around it
+               ('before:letter:r') and its place in a word ('at:end'); a word links to its letters and its
+               shape ('starts:wr', 'ends:te'). Worked out from the words the brain has seen, not kept
+
+The brain links symbols by itself, with nobody telling it, from:
+  every direction the trainer proves by building it (the words, how they're used, the idea each was read as)
+  your saved .brick files and the sentence pool (trainer/data/sentences.txt): how each word is used
+  trainer/data/universe.txt (word -> idea, idea -> wider idea) and the dictionary (word -> what it means)
+  ConceptNet (trainer/data/sources/conceptnet.tsv): words that belong together
+  trainer/data/universes/*.txt, if there are any: one file per symbol, lines like 'shape: round, sphere'
+
+How alike two symbols are (0.0 to 1.0) is the weighted overlap of their patterns:
+  breadth(f) = how many different symbols have f (a broad link is weak evidence, a rare one strong)
+  p(f)       = weight(f) / breadth(f), then as shares of the whole pattern
+  score      = sum of min(pa, pb) / sum of max(pa, pb), over everything either has,
+leaving out the two symbols themselves (that 'a is linked to b' is not a reason for them to be alike).
+The same symbol is 1.0; a symbol with no links is 0.0 to everything. A word has two separate scores: how
+it's used (the words and slots around it, what it's linked to) and how it's built (letters and shape).
+
+The universe asks it about a word nothing else knows (not the universe, the dictionary, spelling, WordNet
+or ConceptNet): which word brick knows is used most like it? If that reaches the threshold, the unknown
+word borrows that word's ideas ('vermilion' used like 'red' is a colour), and that reading is built and
+checked like every other.
+
+What it learns is kept in trainer/data/brain.txt, plain text: one link per line, which you can read,
+change or delete (delete the file to start again). Old links fade: when the weights add up to FADE_AT,
+every weight halves and the weakest go. Settings (on or off, the threshold) are in
+trainer/data/brain-settings.txt. The trainer teaches it, only while brick runs.
+
+    python3 trainer/brain.py                 status
+    python3 trainer/brain.py like WORD       the words used most like WORD (or letter:q, or a slot: in _ at)
+    python3 trainer/brain.py links WORD      WORD's strongest links (or letter:e, before:in ...)
+    python3 trainer/brain.py measure         how well the threshold tells words apart
+    python3 trainer/brain.py learn           learn from everything now
+"""
+import glob
+import math
+import os
+import re
+import sys
+import time
+
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PATH = os.path.join(HERE, "trainer", "data", "brain.txt")
+SETTINGS = os.path.join(HERE, "trainer", "data", "brain-settings.txt")
+UNIVERSES = os.path.join(HERE, "trainer", "data", "universes")
+POOL = os.path.join(HERE, "trainer", "data", "sentences.txt")
+THRESHOLD = 0.6              # how alike a word must be used to stand for another: measured with measure() (brick trainer brain measure)
+FORM_THRESHOLD = 0.25        # how alike two words must be built (letters, shape) for that to choose between
+                             # words used about as alike. Checked by hand: bluish~blue 0.36, greenish~green
+                             # 0.40, reddish~red 0.34, against about 0.05 for teal; the best must still stand out
+CLOSE = 0.1                  # a runner-up meaning something else this close to the best: too close to call.
+# How a word is used says what kind of thing it is (a colour) far better than which one (fawn is used much
+# like aquamarine, chartreuse and cerulean, 0.78 to 0.74): only a word that stands out is taken.
+FADE_AT = 4_000_000          # when the weights add up to this, every weight halves
+LEND = {"colour", "place", "window", "background", "screen", "size", "style", "time unit"}
+# what a word used like another may borrow: what a thing is (a colour, a place ...), never an action, so
+# an unknown verb is never quietly read as 'write' or 'clear'
+IDEA_WEIGHT = 3.0            # word -> its idea, from universe.txt: one line there is worth a few sightings
+MEANS_WEIGHT = 2.0           # dictionary: word <-> what it means
+
+
+BREADTH = "log"              # how a link's breadth b' weighs it: none, inverse (1/b'), isqrt (1/isqrt(b')),
+                             # log (1/(1 + floor(log2 b'))). Measured on the same brain, the best wrong match
+                             # (choices~seconds) against the best ordinary right one (moment~minute):
+                             # none 0.63/0.81, inverse 0.48/0.42 (wrong above right), isqrt 0.56/0.63,
+                             # log 0.56/0.64. log keeps 'broad counts less' and separates nearly as well as none
+
+
+def spread(b):
+    """What a link's weight is divided by, for its breadth b' (1 + the symbols other than the two being
+    compared that have it). Whole-number maths only, as compiled brick programs do it."""
+    if BREADTH == "none":
+        return 1
+    if BREADTH == "isqrt":
+        return math.isqrt(b)
+    if BREADTH == "log":
+        return b.bit_length()               # 1 + floor(log2 b), for b >= 1
+    return b
+
+
+def overlap(pa, pb):
+    """The weighted overlap of two patterns ({symbol: weight}): sum of min / sum of max, 0.0 to 1.0."""
+    keys = set(pa) | set(pb)
+    most = sum(max(pa.get(k, 0.0), pb.get(k, 0.0)) for k in keys)
+    return sum(min(pa.get(k, 0.0), pb.get(k, 0.0)) for k in keys) / most if most else 0.0
+
+
+def shares(pattern):
+    total = sum(pattern.values())
+    return {k: w / total for k, w in pattern.items()} if total else {}
+
+
+def kind(symbol):
+    """'letter' (letter:a), 'context' (before:in, after:at, in _ at, [colour], starts:wr, shape:round ...),
+    or 'word'. Every one is a symbol with a pattern of its own; little words are words like any other."""
+    if symbol.startswith("letter:"):
+        return "letter"
+    if symbol.startswith(("[", "(")) or " _ " in symbol or ":" in symbol:
+        return "context"
+    return "word"
+
+
+def family(symbol):
+    """What a symbol is compared with: words with words, letters with letters, slots ('in _ at') with slots,
+    ideas with ideas, and other contexts with their own sort ('before:in' with 'before:on')."""
+    sort = kind(symbol)
+    if sort != "context":
+        return sort
+    if " _ " in symbol:
+        return "slot"
+    if symbol.startswith("["):
+        return "idea"
+    return symbol.split(":", 1)[0]
+
+
+def fits(link, route):
+    """Is a word's link part of this route: 'usage' (how it's used: the words and slots around it, what
+    it's linked to), 'form' (its letters and shape) or 'all'? Its own ideas ('[colour]') are in 'all' only."""
+    if route == "all":
+        return True
+    built = link.startswith(("letter:", "starts:", "ends:"))
+    return built if route == "form" else not built and not link.startswith("[")
+
+
+def form_of(word):
+    """How a word is built: its letters, and its shape ('starts:wr', 'ends:te')."""
+    found = {f"starts:{word[:2]}": 1.0, f"ends:{word[-2:]}": 1.0}
+    for c in word:
+        found[f"letter:{c}"] = found.get(f"letter:{c}", 0.0) + 1.0
+    return found
+
+
+def words_of(line):
+    """A line as the brain reads it: words, numbers as '(number)', quoted text as '(quotes)', and
+    punctuation that ends a direction as '(stop)'."""
+    found = []
+    for w in re.findall(r'"[^"]*"|[A-Za-z]+(?:\'[A-Za-z]+)?|\d+(?:\.\d+)?|[,;.!?]', line):
+        found.append("(quotes)" if w.startswith('"') else "(number)" if w[0].isdigit() else
+                     "(stop)" if w in ",;.!?" else w.lower())
+    return found
+
+
+class Brain:
+    def __init__(self, path=None):
+        self.path = PATH if path is None else path
+        self.links = {}          # symbol -> {symbol it's linked to: weight}
+        self.learned = {}        # what it has learned from already: source -> marker (a time, a line count)
+        self.total = 0.0
+        self.changed = False
+        self.saved_at = time.time()
+        self.forget_worked_out()
+        if self.path and os.path.isfile(self.path):
+            with open(self.path, encoding="utf-8") as f:
+                for line in f:
+                    parts = line.rstrip("\n").split("\t")
+                    if parts[0] == "link" and len(parts) == 4:
+                        try:
+                            weight = float(parts[3])
+                        except ValueError:
+                            continue
+                        self.links.setdefault(parts[1], {})[parts[2]] = weight
+                        self.total += weight
+                    elif parts[0] == "learned" and len(parts) == 3:
+                        self.learned[parts[1]] = parts[2]
+
+    # ---------------- linking ----------------
+
+    def associate(self, a, b, weight=1.0, both_ways=False):
+        """Link a to b (and b to a). Linking again makes the link stronger."""
+        if not a or not b or a == b or weight <= 0:
+            return
+        for x, y in ((a, b), (b, a)) if both_ways else ((a, b),):
+            self.links.setdefault(x, {})[y] = self.links.get(x, {}).get(y, 0.0) + weight
+            self.total += weight
+        self.changed = True
+        if self._incoming is not None:
+            self.forget_worked_out()
+        if self.total > FADE_AT:
+            self.fade()
+
+    def fade(self):
+        """Every weight halves; links weaker than 1 before that go (what was said long ago counts less)."""
+        kept = {}
+        for a, linked in self.links.items():
+            left = {b: w / 2 for b, w in linked.items() if w >= 1}
+            if left:
+                kept[a] = left
+        self.links = kept
+        self.total = sum(w for linked in kept.values() for w in linked.values())
+        self.changed = True
+        self.forget_worked_out()
+
+    def learn_line(self, line, world=None):
+        """How each word in a line is used: the words on either side of it, and the ideas around it."""
+        if world is None:
+            from trainer import universe
+            world = universe.universe()
+        words = words_of(line)
+        for k, word in enumerate(words):
+            if word.startswith("("):
+                continue
+            before = words[k - 1] if k else "(start)"
+            after = words[k + 1] if k + 1 < len(words) else "(end)"
+            self.associate(word, f"before:{before}")
+            self.associate(word, f"after:{after}")
+            self.associate(word, f"{before} _ {after}")      # the whole slot it fills: 'in _ at'
+            for idea in sorted(world.words.get(before, ())):
+                self.associate(word, f"before:[{idea}]")
+            for idea in sorted(world.words.get(after, ())):
+                self.associate(word, f"after:[{idea}]")
+
+    def learn_proved(self, line, roles, world=None):
+        """A direction the trainer proved by building it: how its words are used, and the idea each was read as."""
+        self.learn_line(line, world)
+        for word, idea, _ in roles:
+            if idea != "words" and re.fullmatch(r"[a-z]+", word or ""):
+                self.associate(word, f"[{idea}]")
+
+    def learn_ideas(self, world=None):
+        """trainer/data/universe.txt (with brick's colours and the dictionary's places and times): word -> idea,
+        idea -> wider idea."""
+        if world is None:
+            from trainer import universe
+            world = universe.universe()
+        for word, ideas in world.words.items():
+            if re.fullmatch(r"[a-z]+", word):
+                for idea in ideas:
+                    self.associate(word, f"[{idea}]", IDEA_WEIGHT)
+        for idea, wider in world.wider.items():
+            for w in wider:
+                self.associate(f"[{idea}]", f"[{w}]", IDEA_WEIGHT)
+
+    def learn_dictionary(self):
+        """The dictionary: a word and what it means are linked ('scribble' <-> 'write'), and the word to its
+        kind ('[colour]')."""
+        import dictionary
+        for entry in dictionary.entries():
+            key, meaning = entry.key.lower(), entry.meaning.lower()
+            if not re.fullmatch(r"[a-z]+", key):
+                continue
+            if re.fullmatch(r"[a-z]+", meaning):
+                self.associate(key, meaning, MEANS_WEIGHT, both_ways=True)
+            if entry.kind:
+                self.associate(key, f"[{entry.kind}]", MEANS_WEIGHT)
+
+    def learn_conceptnet(self, path=None, world=None):
+        """ConceptNet links between single words where one of them is a word brick knows."""
+        from trainer import conceptnet
+        import dictionary
+        if world is None:
+            from trainer import universe
+            world = universe.universe()
+        path = conceptnet.PATH if path is None else path
+        if not os.path.isfile(path):
+            return 0
+        known = {w for w in world.words if re.fullmatch(r"[a-z]+", w)} | \
+            {e.key.lower() for e in dictionary.entries() if re.fullmatch(r"[a-z]+", e.key.lower())}
+        count = 0
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.startswith("#"):
+                    continue
+                parts = line.rstrip("\n").split("\t")
+                if len(parts) != 4 or parts[1] not in conceptnet.KEPT:
+                    continue
+                a, _, b, weight = parts
+                if not (a.isalpha() and b.isalpha()) or a not in known and b not in known:
+                    continue
+                try:
+                    self.associate(a.lower(), b.lower(), float(weight), both_ways=True)
+                    count += 1
+                except ValueError:
+                    continue
+        return count
+
+    def learn_universe(self, name, links):
+        """A symbol's own universe: links = [(symbol, facet, weight)], e.g. ('round', 'shape', 1.0).
+        name <-> symbol are linked, and name gets the facet as a feature ('shape:round'), so two symbols
+        with alike universes come out alike."""
+        name = name.strip().lower()
+        for symbol, facet, weight in links:
+            symbol, facet = str(symbol).strip().lower(), str(facet).strip().lower()
+            if not symbol:
+                continue
+            self.associate(name, symbol, float(weight), both_ways=True)
+            if facet:
+                self.associate(name, f"{facet}:{symbol}", float(weight))
+
+    def learn_universe_file(self, path):
+        """trainer/data/universes/<symbol>.txt: lines like 'shape: round, sphere'; '#' lines are notes."""
+        links = []
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or ":" not in line:
+                    continue
+                facet, words = line.split(":", 1)
+                links += [(w.strip(), facet.strip(), 1.0) for w in words.split(",") if w.strip()]
+        self.learn_universe(os.path.splitext(os.path.basename(path))[0], links)
+        return len(links)
+
+    def catch_up(self, folders=()):
+        """Learn from whatever is new or changed since last time: universe.txt, the dictionary, ConceptNet,
+        trainer/data/universes, new lines in the sentence pool, and new or changed .brick files in these folders.
+        -> {what: how many things learned from it}."""
+        from trainer import conceptnet
+        import dictionary
+        from trainer import universe
+        world = universe.universe()
+        done = {}
+
+        def changed(source, path):
+            when = f"{os.path.getmtime(path):.0f}" if os.path.isfile(path) else None
+            if when is None or self.learned.get(source) == when:
+                return False
+            self.learned[source] = when
+            self.changed = True
+            return True
+
+        if changed("universe.txt", universe.PATH):
+            self.learn_ideas(world)
+            done["universe.txt"] = 1
+        if changed("dictionary.txt", dictionary.PATH):
+            self.learn_dictionary()
+            done["dictionary.txt"] = 1
+        if changed("conceptnet.tsv", conceptnet.PATH):
+            done["conceptnet.tsv"] = self.learn_conceptnet(world=world)
+        for path in sorted(glob.glob(os.path.join(UNIVERSES, "*.txt"))):
+            if changed("universes/" + os.path.basename(path), path):
+                done["universes/" + os.path.basename(path)] = self.learn_universe_file(path)
+        if os.path.isfile(POOL):
+            start = int(self.learned.get("sentences.txt", "0") or 0)
+            with open(POOL, encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
+            if len(lines) < start:              # the pool was started again
+                start = 0
+            for line in lines[start:]:
+                if line.strip() and not line.startswith("#"):
+                    self.learn_line(line.strip(), world)
+            if len(lines) != start:
+                done["sentences.txt"] = len(lines) - start
+                self.learned["sentences.txt"] = str(len(lines))
+                self.changed = True
+        for folder in dict.fromkeys(folders):
+            for path in sorted(glob.glob(os.path.join(folder, "*.brick"))):
+                if changed("brick:" + os.path.abspath(path), path):
+                    from trainer import core as trainer
+                    lines = [line.strip() for line in trainer.source_of(path).splitlines()]
+                    for line in lines:
+                        if line and not line.startswith("#"):
+                            self.learn_line(line, world)
+                    done[os.path.basename(path)] = len(lines)
+        return done
+
+    # ---------------- what's worked out from the links (not kept in the file) ----------------
+
+    def forget_worked_out(self):
+        self._incoming = self._derived = self._raw = self._breadth = None
+        self._letters = False
+
+    def worked_out(self, letters=False):
+        """Work out, from the links, what the file doesn't need to keep:
+          frames      'in _ at' appears with 'before:in' and 'after:at'
+          incoming    who links to each symbol: a context's fillers ('before:in' <- red, blue ...), and its
+                      breadth (how many symbols have it)
+          letters     (only when asked) each word to its letters and its shape ('starts:wr', 'ends:te'), and
+                      each letter to the letters around it and its place in the word: the level below words,
+                      with a universe of its own"""
+        if self._incoming is not None and (self._letters or not letters):
+            return
+        if self._derived is None or letters and not self._letters:
+            derived = {}
+            for linked in self.links.values():
+                for b in linked:
+                    if " _ " in b and b not in derived:
+                        left, _, right = b.partition(" _ ")
+                        derived[b] = {f"before:{left}": 1.0, f"after:{right}": 1.0}
+            if letters:
+                for word in self.links:
+                    if kind(word) == "word" and self.used_or_known(word):
+                        derived[word] = form_of(word)
+                        for k, c in enumerate(word):
+                            mine = derived.setdefault(f"letter:{c}", {})
+                            for f in (f"before:letter:{word[k - 1] if k else '(start)'}",
+                                      f"after:letter:{word[k + 1] if k + 1 < len(word) else '(end)'}",
+                                      "at:" + ("start" if k == 0 else "end" if k == len(word) - 1 else "middle")):
+                                mine[f] = mine.get(f, 0.0) + 1.0
+            self._derived, self._letters = derived, letters
+        incoming = {}
+        for source in (self.links, self._derived):
+            for a, linked in source.items():
+                for b, w in linked.items():
+                    mine = incoming.setdefault(b, {})
+                    mine[a] = mine.get(a, 0.0) + w
+        self._incoming, self._raw, self._breadth = incoming, {}, {}
+
+    def used_or_known(self, word):
+        """Has the word been seen in use, or does it have an idea of its own (not only a ConceptNet neighbour)?"""
+        return any(k.startswith(("before:", "[")) for k in self.links.get(word, ()))
+
+    def outgoing(self, symbol):
+        found = dict(self.links.get(symbol, {}))
+        for k, w in (self._derived or {}).get(symbol, {}).items():
+            found[k] = found.get(k, 0.0) + w
+        return found
+
+    def breadth(self, symbol):
+        """How many different symbols have this one in their pattern (link to it, or, for a context, are
+        linked from it): the broader it is, the weaker it is as evidence that two symbols are alike."""
+        self.worked_out(symbol.startswith(("letter:", "starts:", "ends:")))
+        if symbol not in self._breadth:
+            holders = set(self._incoming.get(symbol, ()))
+            holders.update(c for c in self.outgoing(symbol) if kind(c) == "context")
+            self._breadth[symbol] = len(holders)
+        return self._breadth[symbol]
+
+    def full(self, symbol):
+        """The symbol's links as kept and worked out: a context's are also what fills it ('before:in' <- red)."""
+        self.worked_out(kind(symbol) == "letter")
+        key = (symbol, "full")
+        if key not in self._raw:
+            found = self.outgoing(symbol)
+            if kind(symbol) == "context":
+                for k, w in self._incoming.get(symbol, {}).items():
+                    found[k] = found.get(k, 0.0) + w
+            found.pop(symbol, None)
+            self._raw[key] = found
+        return self._raw[key]
+
+    def raw(self, symbol, route="all"):
+        """The symbol's links on one route: 'usage', 'form' or 'all' (only words have routes)."""
+        self.worked_out(route == "form" or kind(symbol) == "letter")
+        key = (symbol, route)
+        if key not in self._raw:
+            found = self.full(symbol)
+            self._raw[key] = {k: w for k, w in found.items() if fits(k, route)} if kind(symbol) == "word" else found
+        return self._raw[key]
+
+    def known(self, symbol):
+        self.worked_out(kind(symbol) == "letter" or symbol.startswith(("starts:", "ends:")))
+        return symbol in self.links or symbol in self._incoming or symbol in self._derived
+
+    # ---------------- comparing ----------------
+
+    def pattern(self, symbol, route="all", leave_out=(), extra=None, other=None):
+        """The symbol's pattern, compared with other: each link weighed by how specific it is,
+        weight / (1 + how many symbols other than these two have it), then as shares of the whole (leaving
+        out these symbols). extra: more links, just for this question (they are the symbol's, not kept)."""
+        found = dict(self.raw(symbol, route))
+        for k, w in (extra or {}).items():
+            found[k] = found.get(k, 0.0) + w
+        pair = {symbol, other} - {None}
+        weighed = {k: w / spread(1 + self.breadth(k) - sum(k in self.full(x) for x in pair))
+                   for k, w in found.items() if k not in leave_out}
+        return shares(weighed)
+
+    def similarity(self, a, b, route="all", extra=None):
+        """0.0 to 1.0: how alike the patterns of a and b are (the weighted overlap, leaving out a and b).
+        route: 'usage' (how a word is used), 'form' (how it's built from letters) or 'all'."""
+        if a == b:
+            return 1.0
+        return overlap(self.pattern(a, route, {a, b}, extra, b), self.pattern(b, route, {a, b}, None, a))
+
+    def like(self, symbol, top=8, among=None, route="all", extra=None):
+        """The symbols of the same family (words, letters, slots ...) most like this one -> [(symbol, score)],
+        best first, scores above 0. The same scores as similarity(), worked out faster."""
+        mine = dict(self.raw(symbol, route))
+        for k, w in (extra or {}).items():
+            mine[k] = mine.get(k, 0.0) + w
+        mine.pop(symbol, None)
+        if among is None:
+            found, sort = set(), family(symbol)
+            for k in mine:
+                found.update(self._incoming.get(k, ()))
+                found.update(self.outgoing(k))
+            among = [s for s in found if family(s) == sort]
+        own = self.full(symbol)
+        # Each link of mine weighed as if only the symbol itself might have it besides others: 1 + breadth,
+        # less 1 if the symbol has it. Against a given other, links the other has too weigh a little more
+        # (one fewer to share with), and the other itself is left out: both put right below, on shared links.
+        weigh = {k: 1 + self.breadth(k) - (k in own) for k in mine}
+        mine_base = sum(w / spread(weigh[k]) for k, w in mine.items())
+        scores = []
+        for other in among:
+            if other == symbol:
+                continue
+            theirs, their_own = self.raw(other, route), self.full(other)
+            mine_total = mine_base - (mine[other] / spread(weigh[other]) if other in mine else 0.0)
+            their_total, shared = self.base(other, route), []
+            if symbol in theirs:
+                their_total -= theirs[symbol] / spread(self.breadth(symbol))
+            small, big = (mine, their_own) if len(mine) < len(their_own) else (their_own, mine)
+            for k in small:
+                if k in big and k != other and k != symbol:
+                    d = weigh[k] - 1                                 # the other has it too
+                    mine_total += mine[k] / spread(d) - mine[k] / spread(weigh[k])
+                    if k in theirs:
+                        if k in own:
+                            their_total += theirs[k] / spread(d) - theirs[k] / spread(d + 1)
+                        shared.append((k, d))
+            if mine_total <= 0 or their_total <= 0:
+                continue
+            # with both patterns as shares (each adding up to 1), sum of max = 2 - sum of min: m / (2 - m)
+            m = sum(min(mine[k] / spread(d) / mine_total, theirs[k] / spread(d) / their_total) for k, d in shared)
+            score = m / (2 - m) if m < 2 else 1.0
+            if score > 1e-12:
+                scores.append((other, score))
+        scores.sort(key=lambda x: (-x[1], x[0]))
+        return scores[:top]
+
+    def base(self, symbol, route):
+        """The sum of a symbol's links, each over 1 + its breadth less the symbol itself (cached)."""
+        key = (symbol, route, "base")
+        if key not in self._raw:
+            own = self.full(symbol)
+            self._raw[key] = sum(w / spread(1 + self.breadth(k) - (k in own)) for k, w in self.raw(symbol, route).items())
+        return self._raw[key]
+
+    def understand(self, word, before=None, after=None, world=None, threshold=None):
+        """A word brick doesn't know -> (the known word it's used most like, score, how), or None.
+        How it's used decides: the best must reach the threshold and stand out (pick). Only when a few words
+        of the same kind (all colours) are used about as much alike does how it's built from letters choose
+        between them ('bluish': blue), and then it too must stand out: letters never pick what kind of thing
+        a word is, and never overrule how it's used. how: 'use', or 'use and letters'.
+        before, after: the words on either side of it in the line being read."""
+        if world is None:
+            from trainer import universe
+            world = universe.universe()
+        threshold = settings()["threshold"] if threshold is None else threshold
+        sides = []
+        for side, other in (("before", before), ("after", after)):
+            other = (words_of(other) or [None])[0] if other else None
+            sides.append(other or ("(start)" if side == "before" else "(end)"))
+        extra = {f"before:{sides[0]}": 1.0, f"after:{sides[1]}": 1.0, f"{sides[0]} _ {sides[1]}": 1.0}
+        for side, other in zip(("before", "after"), sides):
+            for idea in world.words.get(other, ()):
+                extra[f"{side}:[{idea}]"] = 1.0
+        known = [w for w, ideas in world.words.items() if ideas & LEND and re.fullmatch(r"[a-z]+", w)
+                 and w != word and w in self.links]
+        found = self.like(word, top=len(known), among=known, route="usage", extra=extra)
+        picked = pick(found, world, threshold)
+        if picked:
+            return picked + ("use",)
+        close = [w for w, s in found if s >= threshold and s >= found[0][1] - CLOSE]
+        if len(close) < 2 or len({frozenset(world.words[w] & LEND) for w in close}) > 1:
+            return None
+        self.worked_out(letters=True)
+        built = self.like(word, top=len(close), among=close, route="form",
+                          extra=None if word in self._derived else form_of(word))
+        chosen = pick(built, world, FORM_THRESHOLD)
+        if not chosen:
+            return None
+        return chosen[0], dict(found)[chosen[0]], "use and letters"
+
+    def strongest(self, symbol, top=12):
+        """Its strongest links, as kept (and for a context, what fills it)."""
+        self.worked_out(kind(symbol) == "letter" or symbol.startswith(("starts:", "ends:")))
+        found = self.outgoing(symbol)
+        if kind(symbol) == "context":
+            for k, w in self._incoming.get(symbol, {}).items():
+                found[k] = found.get(k, 0.0) + w
+        return sorted(found.items(), key=lambda x: (-x[1], x[0]))[:top]
+
+    # ---------------- saving ----------------
+
+    def save(self, every=None):
+        """Write it out (if anything changed). every: only if that many seconds have gone by since the last save."""
+        if not self.changed or not self.path or every and time.time() - self.saved_at < every:
+            return
+        os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+        lines = ["# brick's brain: which symbols are linked, and how strongly. Learned by itself from what the",
+                 "# trainer proves, your .brick files, the sentence pool, universe.txt, the dictionary and ConceptNet.",
+                 "# One link per line: link, a symbol, what it's linked to, how strongly. [colour] is an idea;",
+                 "# before:in means 'comes after the word in'. Change or delete lines freely; delete the file to",
+                 "# start again. Old links fade."]
+        lines += [f"learned\t{k}\t{v}" for k, v in sorted(self.learned.items())]
+        lines += [f"link\t{a}\t{b}\t{w:g}" for a in sorted(self.links) for b, w in sorted(self.links[a].items())]
+        with open(self.path + ".new", "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        os.replace(self.path + ".new", self.path)
+        self.changed, self.saved_at = False, time.time()
+
+
+def pick(found, world, threshold):
+    """From [(known word, score)], best first: the best, if it reaches the threshold and no word meaning
+    something else comes within CLOSE of it -> (word, score), or None."""
+    if not found or found[0][1] < threshold:
+        return None
+    best, score = found[0]
+    if any(s >= score - CLOSE and not same_thing(best, other, world) for other, s in found[1:]):
+        return None                             # used about as much like another word: too close to call
+    return best, score
+
+
+def same_thing(a, b, world):
+    """Do two words brick knows mean the same here: the same colour ('grey', 'gray'), or one means the other
+    in the dictionary ('centre', 'center')?"""
+    if world.words.get(a, set()) & LEND != world.words.get(b, set()) & LEND:
+        return False
+    import dictionary
+    from actions import COLOURS
+    table = dictionary.colour_table()
+    codes = [COLOURS.get(w) or table.get(w, (None,))[0] for w in (a, b)]
+    if codes[0] and codes[0] == codes[1]:
+        return True
+    means = {e.key.lower(): e.meaning.lower() for e in dictionary.entries()}
+    return means.get(a, a) == means.get(b, b)
+
+
+# ---------------- on or off, and the brain brick uses ----------------
+
+def settings():
+    """{'on': bool, 'threshold': float} from trainer/data/brain-settings.txt (plain text)."""
+    found = {"on": True, "threshold": THRESHOLD}
+    try:
+        with open(SETTINGS, encoding="utf-8") as f:
+            for line in f:
+                key, _, value = line.split("#", 1)[0].partition(":")
+                key, value = key.strip().lower(), value.strip().lower()
+                if key == "on":
+                    found["on"] = value not in ("no", "off", "false", "0")
+                elif key == "threshold":
+                    try:
+                        found["threshold"] = min(1.0, max(0.0, float(value)))
+                    except ValueError:
+                        pass
+    except OSError:
+        pass
+    if os.environ.get("BRICK_BRAIN_THRESHOLD"):
+        found["threshold"] = float(os.environ["BRICK_BRAIN_THRESHOLD"])
+    return found
+
+
+def save_settings(**changes):
+    found = {**settings(), **changes}
+    os.makedirs(os.path.dirname(SETTINGS), exist_ok=True)
+    with open(SETTINGS, "w", encoding="utf-8") as f:
+        f.write("# brick's brain. on: yes or no. threshold: how alike (0 to 1) an unknown word must be used to a\n"
+                "# word brick knows before it's read as that word.\n"
+                f"on: {'yes' if found['on'] else 'no'}\nthreshold: {found['threshold']:g}\n")
+
+
+def path():
+    chosen = os.environ.get("BRICK_BRAIN")
+    return chosen if chosen and chosen != "off" else PATH
+
+
+def off():
+    """Not used: in the tests (BRICK_MEMORY=off, unless BRICK_BRAIN names a brain file), with
+    BRICK_BRAIN=off, or when switched off (brick trainer brain off)."""
+    chosen = os.environ.get("BRICK_BRAIN")
+    if chosen == "off":
+        return True
+    if chosen:
+        return False                    # a brain file named on purpose: on
+    return os.environ.get("BRICK_MEMORY") == "off" or not settings()["on"]
+
+
+_brain, _read_when = None, None
+
+
+def brain():
+    """The brain as saved (read again when the file changes)."""
+    global _brain, _read_when
+    where = path()
+    when = (where, os.path.getmtime(where) if os.path.isfile(where) else None)
+    if _brain is None or when != _read_when:
+        _brain, _read_when = Brain(where), when
+    return _brain
+
+
+def stamp():
+    """What the brain's answers depend on, for the universe to know when to read a line again."""
+    if off():
+        return None
+    where = path()
+    return where, os.path.getmtime(where) if os.path.isfile(where) else None, settings()["threshold"]
+
+
+# ---------------- how good is the threshold? ----------------
+
+def measure(mind=None):
+    """Two checks of the threshold, on what the brain has learned -> lines of plain English.
+    1. Each word brick knows (a colour, a place ...) is taken as unknown: the word the brain finds used most
+       like it (how it's used only, not its ideas) should carry the same ideas.
+    2. Ordinary words (no ideas, seen in use 5+ times): how many would pass for a word brick knows?"""
+    from trainer import universe
+    mind = brain() if mind is None else mind
+    world = universe.universe()
+    known = [w for w, ideas in world.words.items() if ideas & LEND and re.fullmatch(r"[a-z]+", w) and w in mind.links]
+
+    def best(word, among):
+        return pick(mind.like(word, top=len(among), among=among, route="usage"), world, 0.0)
+
+    held = [(w, best(w, [k for k in known if k != w])) for w in known]
+    held = [(w, b[0], b[1]) for w, b in held if b]
+    plain = [w for w in mind.links if re.fullmatch(r"[a-z]+", w) and w not in world.words and
+             sum(v for k, v in mind.links[w].items() if ":" in k and fits(k, "usage")) >= 5]
+    passing = [(w, b[0], b[1]) for w, b in ((w, best(w, known)) for w in plain) if b]
+    lines = [f"{len(known)} words brick knows, each taken as unknown; {len(plain)} ordinary words seen in use."]
+    for t in (0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7):
+        above = [h for h in held if h[2] >= t]
+        right = sum(world.words[w] & LEND == world.words[o] & LEND for w, o, _ in above)
+        through = [p for p in passing if p[2] >= t]
+        lines.append(f"  threshold {t:.2f}: known words matched {len(above)}, right {right}; "
+                     f"ordinary words passing {len(through)}: " +
+                     ", ".join(f"{w}~{o} {sc:.2f}" for w, o, sc in sorted(through, key=lambda p: p[2])[:4]))
+    return lines
+
+
+# ---------------- brick trainer brain ----------------
+
+def command(args):
+    if args[:1] in (["off"], ["on"]):
+        save_settings(on=args[0] == "on")
+        print(f"The brain is {args[0]}." + (" brick won't use it to read words it doesn't know, and the trainer "
+                                            "won't teach it." if args[0] == "off" else ""))
+        return
+    if args[:1] == ["threshold"] and len(args) == 2:
+        try:
+            save_settings(threshold=min(1.0, max(0.0, float(args[1]))))
+        except ValueError:
+            print("The threshold is a number from 0 to 1, like 0.6.")
+            return
+        print(f"The brain's threshold is now {settings()['threshold']:g}.")
+        return
+    if args[:1] == ["measure"]:
+        print("\n".join(measure()))
+        return
+    if args[:1] == ["learn"]:
+        from trainer import core as trainer
+        if trainer.running():
+            print("(The trainer is running alongside brick, and teaches the brain too.)")
+        mind = Brain(path())
+        print("Learning from everything...", flush=True)
+        started = time.time()
+        done = mind.catch_up([HERE, trainer.EXAMPLES, os.getcwd()])
+        mind.save()
+        if done:
+            for what, count in done.items():
+                print(f"  {what}: {count:,}")
+        else:
+            print("  nothing new since last time")
+        print(f"Done in {time.time() - started:.1f}s. {len(mind.links):,} symbols, "
+              f"{sum(len(v) for v in mind.links.values()):,} links, in {mind.path}")
+        return
+    if args[:1] in (["like"], ["links"]) and len(args) >= 2:
+        mind, word = brain(), " ".join(args[1:]).lower()          # a slot can be several words: in _ at
+        if not mind.known(word):
+            print(f"The brain hasn't seen '{word}' yet.")
+            return
+        if args[0] == "links":
+            print(f"'{word}' is most strongly linked to" + (" (and filled by)" if kind(word) == "context" else "") + ":")
+            for other, weight in mind.strongest(word):
+                print(f"  {other:<28} {weight:g}  (breadth {mind.breadth(other):,})")
+            return
+        from trainer import universe
+        world = universe.universe()
+        sort = kind(word)
+        if sort == "word":
+            print(f"Words used most like '{word}' (threshold {settings()['threshold']:g}):")
+            for other, score in mind.like(word, route="usage"):     # how they are used: what brick compares
+                ideas = ", ".join(sorted(world.words.get(other, set()) & LEND))
+                print(f"  {other:<20} {score:.2f}" + (f"   ({ideas})" if ideas else ""))
+            print(f"Words built most like '{word}' (letters and shape):")
+            mind.worked_out(letters=True)
+            built = mind.like(word, route="form", extra=None if word in mind._derived else form_of(word), top=5)
+            print("  " + ", ".join(f"{other} {score:.2f}" for other, score in built))
+        else:
+            print(f"{'Letters' if sort == 'letter' else 'Contexts'} most like '{word}':")
+            for other, score in mind.like(word):
+                print(f"  {other:<28} {score:.2f}")
+        return
+    if args:
+        print("brick trainer brain           is it on, and how much it knows\n"
+              "brick trainer brain like red  the words used most like red (and built most like it)\n"
+              "brick trainer brain like letter:q  the letters most like q; brick trainer brain like in _ at: slots like it\n"
+              "brick trainer brain links red red's strongest links (links letter:e, links before:in work too)\n"
+              "brick trainer brain learn     learn from everything now\n"
+              "brick trainer brain off / on  stop using it, or start again\n"
+              "brick trainer brain measure   how well the threshold tells words apart, on what it has learned\n"
+              "brick trainer brain threshold 0.6   how alike a word must be used to stand for another")
+        return
+    found = settings()
+    mind = brain()
+    print(f"The brain is {'on' if found['on'] else 'off'}" +
+          (" (but not used now: BRICK_MEMORY=off or BRICK_BRAIN=off)." if found["on"] and off() else "."))
+    print(f"It knows {len(mind.links):,} symbols and {sum(len(v) for v in mind.links.values()):,} links, "
+          f"in {mind.path}" + ("" if os.path.isfile(mind.path) else " (not made yet: brick trainer brain learn)"))
+    print(f"Threshold: {found['threshold']:g}. A word brick doesn't know is read as a word it does when it's "
+          "used at least that much alike.")
+
+
+if __name__ == "__main__":
+    sys.path.insert(0, HERE)
+    command(sys.argv[1:])
