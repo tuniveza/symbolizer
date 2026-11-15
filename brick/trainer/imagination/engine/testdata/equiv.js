@@ -19,8 +19,14 @@ process.stdin.on("end", () => {
     net.addWords([...new Set(spec.sentences.flat())]);
   }
   if (c.batch) net.batch = c.batch;
-  const tick = () => { if (net.steps % S.C.TRAIN_EVERY === 0) net.train(); net.step(); };
+  var tick = () => { if (net.steps % S.C.TRAIN_EVERY === 0) net.train(); net.step(); };
   for (let k = 0; k < (c.ticks || 0); k++) tick();
+  if (c.reload) {                                    // save, load into a new network, keep going
+    const back = new S.Network({ neurons: [] }, seed + 1, null, c.brain || null, { intuition: true }).load(JSON.parse(JSON.stringify(net.save())));
+    back.sentences = net.sentences; if (c.batch) back.batch = c.batch;
+    net = back;
+    for (let k = 0; k < c.reload; k++) tick();
+  }
   const answers = S.parseQuestions(c.questions || "").map(q => {
     for (let j = 0; j < 30; j++) tick();
     const r = net.read(q.word, q.context);

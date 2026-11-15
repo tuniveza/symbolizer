@@ -151,8 +151,9 @@ func (net *Network) Save() []byte {
 		w.num(toFixedNum(l.W, 4))
 		w.raw(",")
 		w.num(toFixedNum(l.W0, 4))
-		if l.HasTent {
-			w.raw(",0")
+		if l.HasTent { // the time it was proposed, so its age survives a save
+			w.raw(",")
+			w.num(l.Tent)
 		} else {
 			w.raw(",null")
 		}
@@ -241,6 +242,10 @@ func (net *Network) Load(state *JV) *Network {
 		}
 		x.Fixed = v.Get("fixed").Truthy()
 	}
+	net.T = 0 // before the lines: their ages count from it
+	if t := state.Get("t"); t.Truthy() {
+		net.T = t.Num()
+	}
 	if links := state.Get("links"); links != nil && links.Kind == JArr {
 		for _, row := range links.A {
 			at := func(i int) *JV {
@@ -250,7 +255,7 @@ func (net *Network) Load(state *JV) *Network {
 				return nil
 			}
 			A, B := byLabel[at(0).String()], byLabel[at(1).String()]
-			if A == nil || B == nil || at(0) == nil || at(1) == nil {
+			if A == nil || B == nil || at(0) == nil || at(1) == nil || A == B { // a line to itself is skipped
 				continue
 			}
 			w0 := 0.5
@@ -263,8 +268,13 @@ func (net *Network) Load(state *JV) *Network {
 				continue
 			}
 			l.W = at(2).Num()
-			if !at(4).IsNullish() {
-				l.Tent, l.HasTent = net.T, true
+			if tv := at(4); !tv.IsNullish() { // files from before kept 0: count those as made at the saved time
+				if tv.Num() > 0 {
+					l.Tent = tv.Num()
+				} else {
+					l.Tent = net.T
+				}
+				l.HasTent = true
 			}
 			if at(5).Truthy() {
 				l.Ne = true

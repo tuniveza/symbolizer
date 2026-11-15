@@ -306,6 +306,7 @@ func (net *Network) push(n *Neuron) {
 	net.byID[n.id] = n
 	net.wordIdx[n.Word] = append(net.wordIdx[n.Word], n)
 	net.structVer++
+	net.dropCaches() // a new neuron: the cached tables are out of date
 }
 
 // addSpec is add(n) for a neuron described in Go.
@@ -1481,6 +1482,9 @@ func (net *Network) ApplyVerdicts(verdicts *JV) {
 	if verdicts != nil && verdicts.Kind == JArr {
 		for _, v := range verdicts.A {
 			va, vb := v.Get("a"), v.Get("b")
+			if strictEqual(va, vb) { // a word and itself: nothing to check
+				continue
+			}
 			key := pairKey(va.String(), vb.String())
 			net.checked.Add(key)
 			ok := v.Get("ok")
@@ -1635,6 +1639,7 @@ func (net *Network) fission(a *Neuron, sp *ctxResult) {
 	}
 	c1 := mk(sp.lo, sp.loMean, -1)
 	c2 := mk(sp.hi, sp.hiMean, 1)
+	net.dropCaches() // the children took over the parent's next maps
 	for _, l := range append([]*Link(nil), a.adj...) {
 		other := net.Get(l.other(a.id))
 		if net.link(c1, other) != nil || net.link(c2, other) != nil {
@@ -1704,6 +1709,13 @@ func (net *Network) remove(a *Neuron) {
 		x.co.Delete(a.id)
 		x.next.Delete(a.id)
 	}
+	net.dropCaches() // gone, and every next map changed
+}
+
+// dropCaches forgets predIndex()'s and rarityOf()'s tables (sim.js: this.predCache = null; this.rarity = null).
+func (net *Network) dropCaches() {
+	net.predCache = nil
+	net.rarityOK = false
 }
 
 // Train is train(): one training moment.
@@ -2147,3 +2159,24 @@ func (net *Network) Proposed() float64              { return net.proposed }
 func (net *Network) Confirmed() float64             { return net.confirmed }
 func (net *Network) Rejected() float64              { return net.rejected }
 func (net *Network) PredAlike(a, b *Neuron) float64 { return net.alike(a, b, net.predIndex()) }
+
+// strictEqual is `a === b` for the simple JSON kinds (undefined, null, booleans, numbers, strings).
+func strictEqual(a, b *JV) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	if a.Kind != b.Kind {
+		return false
+	}
+	switch a.Kind {
+	case JNull:
+		return true
+	case JBool:
+		return a.B == b.B
+	case JNum:
+		return a.N == b.N
+	case JStr:
+		return a.S == b.S
+	}
+	return a == b
+}

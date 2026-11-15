@@ -12,10 +12,9 @@ import (
 )
 
 // The drop-in check: run.js (node) and RunJob (Go) get the same jobs and must answer the same, byte for byte,
-// and leave byte-identical network.json files. Only the fields run.js fills from the clock ("ms") or from
-// Math.random() (score's "chance") are left out of the comparison.
+// and leave byte-identical network.json files. Only the field run.js fills from the clock ("ms") is left out.
 
-var volatile = regexp.MustCompile(`,"(ms|chance)":-?[0-9.e+-]+`)
+var volatile = regexp.MustCompile(`,"ms":-?[0-9.e+-]+`)
 
 func runBoth(t *testing.T, name string, job map[string]any, stateJS, stateGo string) {
 	node := needNode(t)
@@ -77,11 +76,22 @@ func TestCLIEquivalence(t *testing.T) {
 	runBoth(t, "learn (fresh)", learn, sjs, sgo)
 	learn2 := map[string]any{"task": "learn", "data": string(data), "roles": roles, "steps": steps, "candidates": 24, "batch": 3, "seed": 3,
 		"verdicts": []map[string]any{{"a": "display", "b": "write", "ok": true, "level": "meaning", "why": "same brick"},
-			{"a": "ruby", "b": "score", "ok": false}, {"a": "add", "b": "echo", "ok": nil}}}
+			{"a": "ruby", "b": "score", "ok": false}, {"a": "add", "b": "echo", "ok": nil},
+			{"a": "display", "b": "display", "ok": true}, {"a": "score", "b": "score", "ok": false}}} // a word and itself: skipped (crashed node before)
 	runBoth(t, "learn (saved, verdicts)", learn2, sjs, sgo)
 	more := string(data) + "\nquibblefrost and zentangle wobble\n"
 	runBoth(t, "learn (saved, new words with omegas)", map[string]any{"task": "learn", "data": more, "steps": steps / 3, "seed": 6,
 		"omegas": map[string]float64{"quibblefrost": 5.5, "zentangle": 0.25}}, sjs, sgo)
+	// a saved line from a neuron to itself (crashed node's load before): skipped
+	if b, err := os.ReadFile(sjs); err == nil {
+		st := map[string]any{}
+		json.Unmarshal(b, &st)
+		st["links"] = append(st["links"].([]any), []any{"display", "display", 0.5, 0.5, nil, 0, 0})
+		nb, _ := json.Marshal(st)
+		os.WriteFile(sjs, nb, 0o644)
+		os.WriteFile(sgo, nb, 0o644)
+		runBoth(t, "learn (saved line to itself)", map[string]any{"task": "learn", "data": string(data), "steps": steps / 3, "seed": 7}, sjs, sgo)
+	}
 	runBoth(t, "readline", map[string]any{"task": "readline", "words": []string{"display", "the", "score", "colour", "ruby", "zzz", "display"}}, sjs, sgo)
 	runBoth(t, "readline (archetype)", map[string]any{"task": "readline", "brain": "Stone Keeper", "words": []string{"add", "score", "times", "1"}}, sjs, sgo)
 	runBoth(t, "learn (archetype)", map[string]any{"task": "learn", "data": string(data), "steps": steps / 2, "brain": "Mirror Oracle", "seed": 4}, sjs, sgo)

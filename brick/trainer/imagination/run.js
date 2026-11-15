@@ -93,7 +93,8 @@ function handle(job, write) {
     for (const n of gold) { const vote = new Map(); for (const l of net.linksOf(n)) { if (l.tent != null) continue; const o = net.get(l.a === n.id ? l.b : l.a);
       if (!o || o.word === n.word || !groupsOf.has(o.word)) continue; for (const g of groupsOf.get(o.word)) vote.set(g, (vote.get(g) || 0) + l.w); }
       const best = [...vote].sort((x, y) => y[1] - x[1])[0]; if (best && groupsOf.get(n.word).has(best[0])) placed++; }
-    let chance = 0, cn = 0; for (let k = 0; k < Math.min(pairs.length, 4000); k++) { const p = pairs[Math.floor(Math.random() * pairs.length)]; cn++; if (share(p[1], p[2])) chance++; }
+    const rand = S.rng(seed);                                         // seeded: the same answer every time
+    let chance = 0, cn = 0; for (let k = 0; k < Math.min(pairs.length, 4000); k++) { const p = pairs[Math.floor(rand() * pairs.length)]; cn++; if (share(p[1], p[2])) chance++; }
     write(JSON.stringify({ gold: gold.length, p20: at(20), p100: at(100), placed: Math.round(100 * placed / Math.max(1, gold.length)),
       placedAlike: Math.round(100 * alikePlaced / Math.max(1, gold.length)),
       chance: Math.round(100 * chance / Math.max(1, cn)), ni: (saved.stats || {}).ni || 0, top: pairs.slice(0, 12).map(p => p[1] + "~" + p[2]) }));

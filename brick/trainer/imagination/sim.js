@@ -106,6 +106,7 @@
         inbox: new Map(), co: new Map(), next: new Map(), out: new Map(), fixed: !!n.fixed, truth: n.truth || null, seen: n.seen || 0, stepIn: new Map(), stepHeat: new Map(), stepThermal: new Map(), stepLit: new Map(), litBy: null, refined: 0, x: n.x ?? r(), y: n.y ?? r(), relayed: 0, hidden: !!n.hidden,
       };
       this.N.push(neuron);
+      this.predCache = null; this.rarity = null;                        // a new neuron: the cached tables are out of date
       return neuron;
     }
 
@@ -618,7 +619,7 @@
       return { version: 1, t: this.t, steps: this.steps, senseCount: this.senseCount || {}, intuition: this.intuition,
         neurons: this.N.map(n => ({ label: n.label, word: n.word, group: n.group, truth: n.truth, omega: +n.omega.toFixed(4), omega0: +n.omega0.toFixed(4),
           T: +n.T.toFixed(3), amp: +n.amp.toFixed(3), seen: n.seen, role: n.role || null, x: +n.x.toFixed(3), y: +n.y.toFixed(3), next: map(n.next), co: map(n.co), out: map(n.out), fixed: n.fixed || undefined })),
-        links: [...this.links.values()].map(l => [lab(l.a), lab(l.b), +l.w.toFixed(4), +l.w0.toFixed(4), l.tent == null ? null : 0, l.ne ? 1 : 0, l.proved || 0]),
+        links: [...this.links.values()].map(l => [lab(l.a), lab(l.b), +l.w.toFixed(4), +l.w0.toFixed(4), l.tent == null ? null : l.tent, l.ne ? 1 : 0, l.proved || 0]),
         banned: [...(this.banned || [])], checked: [...(this.checked || [])], phrases: [...(this.phrases || [])],
         stats: { proposed: this.proposed, confirmed: this.confirmed, rejected: this.rejected, ni: +this.niRate().toFixed(3), bits: +this.bitRate().toFixed(3) } };
     }
@@ -631,7 +632,10 @@
         for (const [l, v] of Object.entries(n.co || {})) if (byLabel.has(l)) x.co.set(byLabel.get(l).id, v);
         for (const [l, v] of Object.entries(n.out || {})) if (byLabel.has(l)) x.out.set(byLabel.get(l).id, v);
         x.fixed = !!n.fixed; });
-      for (const [a, b, w, w0, tent, ne, proved] of state.links) { const A = byLabel.get(a), B = byLabel.get(b); if (!A || !B) continue; this.connect(A, B, w0); const l = this.link(A, B); l.w = w; if (tent != null) l.tent = this.t; if (ne) l.ne = true; if (proved) l.proved = proved === 1 ? "role" : proved; }
+      this.t = state.t || 0;                                             // before the lines: their ages count from it
+      // a tentative line keeps the time it was proposed (files from before kept 0: count those as made at the saved
+      // time, not at time 0). A line from a neuron to itself is skipped.
+      for (const [a, b, w, w0, tent, ne, proved] of state.links) { const A = byLabel.get(a), B = byLabel.get(b); if (!A || !B || A === B) continue; this.connect(A, B, w0); const l = this.link(A, B); l.w = w; if (tent != null) l.tent = tent > 0 ? tent : this.t; if (ne) l.ne = true; if (proved) l.proved = proved === 1 ? "role" : proved; }
       this.banned = new Set(state.banned || []); this.checked = new Set(state.checked || []); this.phrases = new Set(state.phrases || []);
       for (const n of this.N) if (this.phrases.has(n.word)) { n.phrase = true; n.parts = n.word.split(" "); }
       this.senseCount = state.senseCount || {}; this.t = state.t || 0; this.steps = state.steps || 0;
@@ -666,6 +670,7 @@
     applyVerdicts(verdicts) {
       this.checked = this.checked || new Set(); this.banned = this.banned || new Set();
       for (const v of verdicts || []) {
+        if (v.a === v.b) continue;                                       // a word and itself: nothing to check
         const key = pairKey(v.a, v.b);
         this.checked.add(key);
         if (v.ok == null) continue;
@@ -714,6 +719,7 @@
         return child;
       };
       const c1 = mk(sp.lo, sp.loMean, -1), c2 = mk(sp.hi, sp.hiMean, 1);
+      this.predCache = null; this.rarity = null;                        // the children took over the parent's next maps
       // keep any other links of the parent on the closer child
       for (const l of this.linksOf(a)) {
         const other = this.get(l.a === a.id ? l.b : l.a);
@@ -737,6 +743,7 @@
       for (const [k, l] of this.links) if (l.a === a.id || l.b === a.id) this.links.delete(k);
       this.N = this.N.filter(x => x !== a); this.byIdStale = true;
       for (const x of this.N) { x.inbox.delete(a.id); x.co.delete(a.id); x.next.delete(a.id); }
+      this.predCache = null; this.rarity = null;                        // gone, and every next map changed
     }
 
     // One training moment: a random sentence from the spec, felt as impacts on its words.

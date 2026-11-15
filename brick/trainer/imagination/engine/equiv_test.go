@@ -28,6 +28,7 @@ type equivCase struct {
 	Candidates float64            `json:"candidates,omitempty"`
 	Bricks     []string           `json:"bricks,omitempty"`
 	Readline   []string           `json:"readline,omitempty"`
+	Reload     int                `json:"reload,omitempty"`
 	Omegas     map[string]float64 `json:"omegas,omitempty"`
 }
 
@@ -74,6 +75,18 @@ func runCase(t testing.TB, c equivCase) []byte {
 	}
 	for k := 0; k < c.Ticks; k++ {
 		net.Tick()
+	}
+	if c.Reload > 0 { // save, load into a new network, keep going
+		st, err := ParseJSON(net.Save())
+		if err != nil {
+			t.Fatal(err)
+		}
+		back := NewNetwork(&Spec{}, seed+1, nil, brain, true).Load(st)
+		back.Sentences, back.Batch = net.Sentences, net.Batch
+		net = back
+		for k := 0; k < c.Reload; k++ {
+			net.Tick()
+		}
 	}
 	w := &jw{}
 	w.raw("[")
@@ -434,4 +447,59 @@ func TestEquivSavedReadLine(t *testing.T) {
 	equiv(t, "saved readLine + omegas", equivCase{Kind: "load", State: path, Data: data, Seed: 1, Batch: 3, Ticks: ticks(60),
 		Omegas:   map[string]float64{"zorbleword": 7.25, "flimflam": 3.5, "window": 99},
 		Readline: strings.Fields("put window left side screen place text brown top right")})
+}
+
+// Fixes of 15 Nov: a tentative line keeps its age through save and load, and the caches are dropped when neurons
+// come and go. A save/load in the middle of learning must give the same in both engines.
+func TestEquivReload(t *testing.T) {
+	equiv(t, "reload raw", equivCase{Kind: "data", Data: SampleData, Mode: "raw", Seed: 1, Intuition: true, Batch: 5, Ticks: ticks(1500), Reload: ticks(1500), Candidates: 10})
+	equiv(t, "reload big", equivCase{Kind: "data", Data: genData(260, 500, 7), Mode: "raw", Seed: 3, Intuition: true, Batch: 3, Ticks: ticks(600), Reload: ticks(600), Candidates: 10})
+}
+
+// A tentative line's proposal time is saved and comes back; an old file's 0 means "made at the saved time".
+func TestTentativeAgeSurvives(t *testing.T) {
+	net := NewNetwork(DataSpec(SampleData, "raw", 1), 1, nil, nil, true)
+	net.Batch = 5
+	for k := 0; k < 1500; k++ {
+		net.Tick()
+	}
+	want := map[uint64]float64{}
+	for _, l := range net.Links() {
+		if l.HasTent {
+			want[pkey(l.A, l.B)] = l.Tent
+		}
+	}
+	if len(want) == 0 {
+		t.Skip("no tentative line at this point of the run")
+	}
+	st, _ := ParseJSON(net.Save())
+	back := NewNetwork(&Spec{}, 1, nil, nil, true).Load(st)
+	for _, l := range back.Links() {
+		if l.HasTent && l.Tent != want[pkey(l.A, l.B)] {
+			t.Fatalf("tentative line %d-%d: proposed at %v, back as %v", l.A, l.B, want[pkey(l.A, l.B)], l.Tent)
+		}
+	}
+	old := []byte(`{"t":700,"neurons":[{"label":"a","omega":2},{"label":"b","omega":3}],"links":[["a","b",0.2,0.2,0,0,0],["a","a",0.5,0.5,null,0,0]]}`)
+	st, _ = ParseJSON(old)
+	back = NewNetwork(&Spec{}, 1, nil, nil, true).Load(st)
+	if ls := back.Links(); len(ls) != 1 || ls[0].Tent != 700 {
+		t.Fatalf("an old file's tentative line should count as made at t=700 and the self-line be skipped: %+v", ls)
+	}
+}
+
+// New or removed neurons drop the cached predecessor and rarity tables.
+func TestCachesDropped(t *testing.T) {
+	net := NewNetwork(DataSpec(SampleData, "raw", 1), 1, nil, nil, true)
+	net.predIndex()
+	net.rarityOf()
+	net.AddWords([]string{"brandnew"})
+	if net.predCache != nil || net.rarityOK {
+		t.Fatal("adding a neuron must drop the caches")
+	}
+	net.predIndex()
+	net.rarityOf()
+	net.remove(net.N[0])
+	if net.predCache != nil || net.rarityOK {
+		t.Fatal("removing a neuron must drop the caches")
+	}
 }

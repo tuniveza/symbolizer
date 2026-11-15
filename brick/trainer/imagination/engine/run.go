@@ -5,7 +5,6 @@ package engine
 import (
 	"errors"
 	"math"
-	"math/rand/v2"
 	"os"
 	"sort"
 	"time"
@@ -13,9 +12,6 @@ import (
 
 // Clock lets tests pin the timing fields ("ms") that run.js fills from Date.now().
 var Clock = func() time.Time { return time.Now() }
-
-// Random stands in for Math.random() (only the "score" task's chance estimate uses it, as in run.js).
-var Random = func() float64 { return rand.Float64() }
 
 type jobRunner struct {
 	job   *JV
@@ -516,8 +512,9 @@ func RunJob(input []byte) ([]byte, error) {
 			}
 		}
 		chance, cn := 0, 0
+		rand := NewRng(j.seed) // seeded: the same answer every time
 		for k := 0; k < len(pairs) && k < 4000; k++ {
-			p := pairs[int(math.Floor(Random()*float64(len(pairs))))]
+			p := pairs[int(math.Floor(rand.Next()*float64(len(pairs))))]
 			cn++
 			if share(p.a, p.b) {
 				chance++
