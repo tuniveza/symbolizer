@@ -178,7 +178,7 @@ The names come from `~/an/ca/sy/manager/names.tsv`. **◆** is a project: a `mak
 
 **Alt + A** lists what the manager program (`~/an/ca/sy/manager/bin/manager`) can do.
 For the chosen row: **Run**, **Build**, **Clean**, **Watch**, **Open in its editor** (or **Adopt** a folder with no `make.sh`).
-For all of `~/an`: **New project** (pick a language, type a name; it goes in the chosen category), **Find folders without make.sh**, **Adopt them all**, **Check all builds**, **Tidy** (shows the list first, then asks), **Find duplicates** (only lists), **Set up / repair tools**, **Status**, **Libraries**, **Refresh pictures**, **Card window**.
+For all of `~/an`: **New project** (pick its category, then a language, then type a name), **Find folders without make.sh**, **Adopt them all**, **Check all builds**, **Tidy** (shows the list first, then asks), **Find duplicates** (only lists), **Set up / repair tools**, **Status**, **Libraries**, **Refresh pictures**, **Card window**.
 **↑↓** choose, **Enter** does it, **Esc** closes. A letter jumps to the line that starts with it.
 It runs in the terminal, so you see what it prints. Then any key comes back to sy.
 After **New project**, **Adopt** and **Tidy**, the Manager looks at the folders again.

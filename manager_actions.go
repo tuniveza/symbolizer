@@ -36,10 +36,11 @@ type mgAction struct {
 
 // the steps of the list
 const (
-	mgStepList = iota
-	mgStepLang // New project: which language
-	mgStepName // New project: its name
-	mgStepTidy // Tidy: do it for real?
+	mgStepList  = iota
+	mgStepLang  // New project: which language
+	mgStepName  // New project: its name
+	mgStepTidy  // Tidy: do it for real?
+	mgStepWhere // New project: which category it goes in
 )
 
 type mgMenu struct {
@@ -132,17 +133,13 @@ func (m *Model) mgActions() (items []mgAction, title, about string) {
 		}
 		items = append(items, mgAction{label: "Open in its editor", args: []string{"open", p}, dir: dir})
 	}
-	catDir, catName := root, ""
+	catDir := root
 	if s.data != nil && s.query == "" && s.cat < len(s.data.Cats) {
-		catDir, catName = mgCatDir(root, s.data.Cats[s.cat].Key), s.data.Cats[s.cat].Name
-	}
-	newLabel := "New project…"
-	if catName != "" {
-		newLabel = "New project in " + catName + "…"
+		catDir = mgCatDir(root, s.data.Cats[s.cat].Key)
 	}
 	items = append(items,
 		mgAction{label: "For all of " + shortPath(root), head: true},
-		mgAction{label: newLabel, dir: catDir, next: mgStepLang},
+		mgAction{label: "New project…", dir: catDir, next: mgStepWhere},
 		mgAction{label: "Find folders without make.sh", args: []string{"scan"}, dir: root},
 		mgAction{label: "Adopt them all (give each a make.sh)", args: []string{"adopt"}, dir: root, rescan: true},
 		mgAction{label: "Check all builds", args: []string{"check"}, dir: root},
@@ -233,8 +230,10 @@ func (m *Model) mgMenuKey(k tea.Key) tea.Cmd {
 	switch name {
 	case "esc", "alt+a":
 		switch mn.step {
-		case mgStepLang:
+		case mgStepWhere:
 			m.mgOpenMenu()
+		case mgStepLang:
+			m.mgOpenWhere(mn.catDir)
 		case mgStepName:
 			mn.step, mn.name = mgStepLang, ""
 		default:
@@ -306,7 +305,10 @@ func (m *Model) mgMenuChoose() tea.Cmd {
 	case mn.step == mgStepLang:
 		mn.lang, mn.step, mn.name = a.label, mgStepName, ""
 		return nil
-	case a.next == mgStepLang:
+	case a.next == mgStepWhere:
+		m.mgOpenWhere(a.dir)
+		return nil
+	case mn.step == mgStepWhere:
 		langs := mgLangs()
 		if len(langs) == 0 {
 			m.sayErr("No languages: " + shortPath(mgManagerBin()) + " langs gave none.")
@@ -324,6 +326,35 @@ func (m *Model) mgMenuChoose() tea.Cmd {
 	}
 	s.menu = nil
 	return m.mgRun(a)
+}
+
+// mgOpenWhere asks which category a new project goes in: every category
+// that is a real folder of your own, on the one that holds dir (the chosen
+// category), or on the first one when dir is none of them (a search was on).
+func (m *Model) mgOpenWhere(dir string) {
+	s := m.mgr
+	root := mgRoot()
+	var items []mgAction
+	sel := 0
+	if s.data != nil {
+		for _, c := range s.data.Cats {
+			if c.Key == "" || c.Key == "?" || c.Key == "!" || mgOutsideKey(c.Key) {
+				continue
+			}
+			d := mgCatDir(root, c.Key)
+			if d == root { // not a folder
+				continue
+			}
+			if d == dir {
+				sel = len(items)
+			}
+			items = append(items, mgAction{label: c.Name + "  (" + shortPath(d) + ")", dir: d})
+		}
+	}
+	if len(items) == 0 {
+		items = append(items, mgAction{label: shortPath(root), dir: root})
+	}
+	s.menu = &mgMenu{step: mgStepWhere, items: items, sel: sel, title: "New project", about: "choose where it goes"}
 }
 
 // mgRowAction is F6 / F7: run or build the chosen row's project at once.
@@ -443,6 +474,9 @@ func (m *Model) mgMenuLines(h int) []string {
 	out = append(out, mgPad("", w, bg))
 	hint := "↑↓ choose · Enter do it · Esc close"
 	switch mn.step {
+	case mgStepWhere:
+		line(seg{text: "Which category does it go in?", fg: cStatusText, bg: bg, w: in})
+		hint = "↑↓ choose · Enter next · Esc back"
 	case mgStepLang:
 		line(seg{text: "Which language?", fg: cStatusText, bg: bg, w: in})
 		hint = "↑↓ choose · Enter next · Esc back"

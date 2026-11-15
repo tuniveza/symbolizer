@@ -85,7 +85,7 @@ func TestManagerMenuOpensAndCloses(t *testing.T) {
 	}
 	labels := mgLabels(mn)
 	for _, l := range []string{"Run", "Build", "Clean (remove what the build made)", "Watch (build and run on every save)", "Open in its editor",
-		"New project in Code…", "Find folders without make.sh", "Adopt them all (give each a make.sh)", "Check all builds",
+		"New project…", "Find folders without make.sh", "Adopt them all (give each a make.sh)", "Check all builds",
 		"Tidy (shows the list first)", "Find duplicates (only lists them)", "Set up / repair tools", "Status", "Libraries", "Refresh pictures", "Card window"} {
 		if !slices.Contains(labels, l) {
 			t.Errorf("no %q in %q", l, labels)
@@ -193,7 +193,19 @@ func TestManagerMenuNewProject(t *testing.T) {
 	press(m, "alt+a")
 	typeStr(m, "n")
 	press(m, "enter")
+	// first: which category, on the chosen one (Code)
 	mn := m.mgr.menu
+	if mn == nil || mn.step != mgStepWhere || mn.items[mn.sel].dir != filepath.Join(root, "co") {
+		t.Fatalf("where = %+v", mn)
+	}
+	press(m, "esc") // back to the actions list
+	if m.mgr.menu == nil || m.mgr.menu.step != mgStepList {
+		t.Fatal("Esc from where did not go back to the list")
+	}
+	typeStr(m, "n")
+	press(m, "enter")
+	press(m, "enter")
+	mn = m.mgr.menu
 	if mn == nil || mn.step != mgStepLang || !slices.Equal(mgLabels(mn), []string{"c", "py", "godot"}) {
 		t.Fatalf("languages = %+v", mn)
 	}
@@ -217,6 +229,13 @@ func TestManagerMenuNewProject(t *testing.T) {
 	if mn.step != mgStepLang {
 		t.Fatalf("Esc from the name: step %d", mn.step)
 	}
+	press(m, "esc") // and back to where, still on Code
+	if w := m.mgr.menu; w.step != mgStepWhere || w.items[w.sel].dir != filepath.Join(root, "co") {
+		t.Fatalf("Esc from the languages: %+v", w)
+	}
+	press(m, "enter")
+	mn = m.mgr.menu
+	press(m, "down")
 	press(m, "enter")
 	typeStr(m, "my game")
 	press(m, "enter")
@@ -230,6 +249,7 @@ func TestManagerMenuNewProject(t *testing.T) {
 	// a name that is taken is refused
 	press(m, "alt+a")
 	typeStr(m, "n")
+	press(m, "enter")
 	press(m, "enter")
 	press(m, "enter")
 	typeStr(m, "c")
@@ -304,5 +324,24 @@ func TestManagerActionCommand(t *testing.T) {
 	t.Setenv("AN_MANAGER", "/opt/manager")
 	if mgManagerBin() != "/opt/manager/bin/manager" {
 		t.Fatalf("bin = %s", mgManagerBin())
+	}
+}
+
+// With a search on there is no chosen category: New project still asks where.
+func TestManagerMenuNewProjectWhileSearching(t *testing.T) {
+	m, root, _ := mgActionsTest(t)
+	m.mgr.query = "game"
+	m.mgOpenWhere(root)
+	mn := m.mgr.menu
+	if mn == nil || mn.step != mgStepWhere || len(mn.items) == 0 {
+		t.Fatalf("where = %+v", mn)
+	}
+	for _, a := range mn.items {
+		if a.dir == root {
+			t.Fatalf("offers ~/an itself: %+v", mn.items)
+		}
+	}
+	if mn.sel != 0 {
+		t.Fatalf("starts on %d, not the first category", mn.sel)
 	}
 }
