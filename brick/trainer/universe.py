@@ -152,6 +152,8 @@ def read_directions(line):
         if bare in ("...", "..", "-", "--", "–", "—") or not bare.strip(".!?-"):
             words.append(";")                                  # '...' or '-' on its own: a new direction
             continue
+        if bare.lower() == "let" and words and words[-1].lower() in ("at", "the", "to", "on"):
+            bare = "left"                                      # 'at let of screen': a slip for left, never 'let'
         words.append("and" if bare == "&" else bare)
         if w != bare and re.search(r"[.!?]$", w) and not re.fullmatch(r"\d+\.\d+", w):
             words.append(";")                                  # 'yellow.' 'screen!': that direction ends here
@@ -196,8 +198,11 @@ def read_directions(line):
             if t.spelled and not t.real and not (merged[-1].spelled and not merged[-1].real):
                 merged[-1] = t
             continue
+        if merged and not t.quoted and not merged[-1].quoted and t.word.startswith(merged[-1].word + " "):
+            merged[-1] = t                    # 'hold hold on 5 seconds': the phrase keeps the doubled word
+            continue
         merged.append(t)
-    tokens = merged
+    tokens = filler_right(merged)
     directions, current = [], []
     for k, token in enumerate(tokens):
         after = tokens[k + 1] if k + 1 < len(tokens) else None
@@ -216,6 +221,33 @@ def read_directions(line):
         if d:
             found.append(d)
     return found
+
+
+def filler_right(tokens):
+    """'right' said as a filler ('right, put the console left'), not the place: dropped where it can't be a place:
+    straight before an action ('right put ...', 'right display ...') when no 'at', 'on', 'to', 'the' comes before
+    it, or first in a direction ('right with navy color ... at left side') when that direction has another place."""
+    out = []
+    for k, t in enumerate(tokens):
+        if t.word.lower() == "right" and not t.quoted and k + 1 < len(tokens):
+            before = tokens[k - 1] if k else None
+            after = tokens[k + 1]
+            placed = before is not None and (before.ideas & {"toward", "glue"} or before.word.lower() in
+                                             ("at", "on", "to", "the", "of", "side", "move", "put", "console"))
+            starts = before is None or before.word in ENDS or "end" in before.ideas
+            if not placed and after.ideas & {"action", "other action"} and not after.ideas & {"place"}:
+                continue
+            if starts:
+                rest = []
+                for x in tokens[k + 1:]:
+                    if x.word in ENDS or "end" in x.ideas:
+                        break
+                    rest.append(x)
+                if any(x.ideas & {"place"} for x in rest) and not after.ideas & {"place"} and \
+                        after.word.lower() not in ("side", "of"):
+                    continue
+        out.append(t)
+    return out
 
 
 def by_slots(tokens):
@@ -257,6 +289,9 @@ def by_slots(tokens):
             not (kind == "wait" and "time" not in filled and slot == "words") or         # a wait has no words
                                                                                           # (but '2 secnds' may be its time)
             slot in filled and slot not in ("words", "skip", "text", "action") or
+            slot == "text" and kind == "clear" and "text" in filled or
+            slot == "text" and kind == "colour" and "text" in filled and "look" in filled or   # 'turn text red text that says hi'
+        # 'clear screen  text that says hi'
             slot == "action" and "action" in filled and not saying_since_verb(current) or
             slot == "words" and "words" in filled and last != "words" or
             slot == "thing" and "words" in filled or
@@ -277,9 +312,18 @@ def by_slots(tokens):
             continue
         if cut:
             carried = []                      # 'make bg navy x3 display hi': x3 goes with hi
-            while slot == "action" and current and current[-1].ideas & {"count"} or \
+            while slot == "action" and current and current[-1].ideas & {"count"} and \
+                    not tokens[i].ideas & {"clear", "wait"} or \
                     slot == "look" and current and current[-1].ideas & {"text"}:     # 'text crimson'
                 carried.insert(0, current.pop())
+            if slot == "action" and tokens[i].ideas & {"clear"} and current and current[-1].ideas & {"screen"} \
+                    and len(current) > 1:
+                carried = [current.pop()] + carried        # 'make writing blue  screen clear': screen is the clear's
+            if slot == "action" and tokens[i].ideas & {"wait"} and last == "time" and len(current) >= 2 and \
+                    current[-1].ideas & {"time unit"} and current[-2].ideas & {"number"} and \
+                    not (len(current) >= 3 and current[-3].ideas & {"later"}):
+                carried = current[-2:] + carried            # 'try again 1 secs wait': '1 secs' is the wait's
+                current = current[:-2]
             if slot == "thing" and kind not in ("window", None) and "where" in filled:
                 k = len(current)                   # 'text red left side window': 'left side' is the window's
                 while k and (current[k - 1].ideas & {"place", "toward"} or current[k - 1].word in ("the", "of")):
@@ -435,8 +479,10 @@ def piece(tokens, i):
 def stops_words(tokens, k):
     """Do the words to show (after 'saying') stop here, at a look, a place, a time, a count, a verb or quotes?"""
     t = tokens[k]
+    nxt = tokens[k + 1] if k + 1 < len(tokens) else None
     if number_and_unit(tokens, k) or t.ideas & {"wait", "clear"} and (k + 1 == len(tokens) or
-                                                                      number_and_unit(tokens, k + 1)):
+                                                                      number_and_unit(tokens, k + 1) or
+                                                                      nxt.ideas & {"screen"} or nxt.word == "the"):
         return True                           # '... welcome back pause 2 seconds': the words end at pause
     return bool(look_at(tokens, k) or where_at(tokens, k) and (t.ideas & {"toward"} or t.word in SIDES) or
                 t.quoted or "count" in t.ideas or
@@ -468,8 +514,11 @@ def certain(tokens):
             from actions import STARTERS
             found = [w for w in candidates if w in STARTERS and not world.words.get(w)]
         same = len({frozenset(world.words.get(w, ())) for w in found}) == 1    # color / colour: one meaning
+        verbish = {"show", "placing", "make", "clear", "wait", "action", "other action"}
+        at_end_verb = (k == 0 or k == len(tokens) - 1) and any(world.words.get(w, set()) & verbish for w in found)
         if found and same and (not t.real or wanted - {"show", "placing", "make", "clear", "wait"}
-                               or k == 0 or k == len(tokens) - 1):
+                               or at_end_verb):   # a real word first or last only becomes a verb there
+                                                  # ('... welcome back': back stays back, never black)
             t.spelled, t.real = found[:1], False
 
 
