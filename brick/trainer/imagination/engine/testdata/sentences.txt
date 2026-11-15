@@ -1,0 +1,400 @@
+Ask for their name and greet them
+First, add the bunk is loaded to the inventory. Now, iterate 1 times: display "future will". Finally, change the colour to ruby.
+First, echo this 11 times. Straight after, stash away the score in todo.txt. Now, tally score and guess and demo the result. Finally, pick a random number from 1 to 80 and write it. || =write =wait
+First, typewrite press enter on the right side in crimson. Straight after, if points outstrips 5 then demonstrate "bridge". Finally, turn the text canary.
+First, sort the listing and echo it. Once that is done, if age outmatches 2 then exhibit "the third is furious". Finally, hold back 1 second. || =colour
+Every 1 second, add 1 to answer and announce guess! || =write =wait
+When guess reaches 1, quit the program
+Scan the number from results.txt and typewrite it in solferino
+Wait a minute || =write =wait
+First, pen a large greeting near the top-right corner. Next, preserve the score in notes.txt. Then, write desperate decline chop-chop and then wait 8 seconds. Straight after, demo earth one letter at a time, slowly. Finally, add influence to the listing. || =colour
+Pen smooth regard on the left side of the display.
+Every 1 second, add 1 to lives and demonstrate score. || =write =wait
+Inquire the user for a number and call it answer!
+Change the colour to violet.
+First, demo a menu with 2 choices. Now, pick a random number from 1 to 90 and echo it. Finally, let the user guess the number, and display "too big" or "too small". || =write =wait
+Write "the fog is neutral"!
+Add loaded agreement to the stock list.
+Restate this 14 times || =write =wait
+Sum up answer and steps and present the result.
+Append 3 to age. || =colour
+Turn the text tangerine. || =write =wait
+When level reaches 11, terminate the application.
+First, print "the powder is bright" on the left side of the display. Next, wipe the display. Now, demonstrate gone supply in the middle of the screen. Straight after, clear the display and demonstrate "earthy level" in white. Then, when level reaches 6, cease the program. Finally, append 3 to count.
+First, change the colour to umber. Now, when steps reaches 3, cease the application. Finally, echo 13 times: demo "the english is true". || =write =wait
+Let the user guess the number, and print "too large" or "too little"! || =colour
+First, take away the last line of notes.txt. Now, type "goodbye" on the left side of the monitor. Finally, scan every line of shopping.txt and type it tardily.
+Wipe out the last line of shopping.txt. || =write =wait
+First, demonstrate "the strand is acute" at the bottom of the screen. Then, pen "tooth" chop-chop and then linger half a second. Straight after, clear the monitor. Now, let the user guess the number, and display "too large" or "too little". Next, print "press enter" apace and then linger a minute. Finally, exhibit a big message at the bottom.
+First, type "rough change" at the bottom-right of the screen. After that, ask for their name and welcome them. Straight after, inquire for their name and greet them. Finally, echo involved prayer at the top in chestnut.
+Sum level and steps and echo the result. || =write =wait
+Commence a timer and print it every second!
+Take away the last line of names.txt
+Wipe the screen || =write =wait
+Turn the text salmon.
+First, present plane in wine-colored. Straight after, begin a timer and echo it every second. After that, cease when the user types exit. Finally, exhibit "majority" at the top of the screen. || =colour
+First, count the terms in names.txt. Once that is done, type a menu with 5 choices. Now, hold off a minute and then exhibit "scale". After that, pick a random number from 1 to 45 and typewrite it. Finally, typewrite "try again" on the left side in lemon. || =write =wait
+First, save study to notes.txt. Now, append "the chapter is sublime" to the inventory. Once that is done, ask for their name and welcome them. Then, record the score in diary.txt. Finally, display imitation at the top in mauve.
+Carefully take away results.txt and type upset fact.
+If answer outstrips 14 then demonstrate "omission"! || =write =wait
+Let the user guess the number, and write "too large" or "too small"! || =colour
+Add 3 to age.
+First, demonstrate rating. Once that is done, preserve mechanism to save.txt. Now, present a large message in the centre. After that, reiterate this 6 times. Straight after, wipe the monitor and exhibit soft bang in puce. Finally, preserve middle light to save.txt. || =write =wait
+Scan the number from diary.txt and typewrite it in navy!
+First, reiterate this 1 times. Straight after, echo this 5 times. Once that is done, write "evidence" in the middle of the screen. Next, store goodbye to shopping.txt. Finally, present nice encounter one letter at a time, slow.
+Discontinue when the user types bye || =write =wait
+First, wipe the display. Once that is done, hold back 10 seconds and then write noble belt. Then, change the colour to amber. Finally, demonstrate "ragged trend" in the middle in rose.
+Begin a timer and demo it every second.
+Change the colour to mahogany. || =write =wait
+Present "several strand" in navy.
+First, add up steps and count and demonstrate the result. Straight after, cancel the last line of shopping.txt. After that, number the words in diary.txt. Now, every a minute, add 1 to total and exhibit age. Finally, wipe the display. || =colour
+First, present "the spell is idle" one letter at a time, slowly. Now, present "divine object" at the bottom of the monitor. After that, echo "mistake". Finally, demo a menu with 3 choices. || =write =wait
+First, retell 15 times: display "flag". Once that is done, terminate when the user types quit. After that, scan every line of words.txt and typewrite it slow. Next, sort out the inventory and present it. Then, carefully remove log.txt and announce aid. Finally, pen tender disaster rapidly and then wait half a second.
+Get rid of the last line of shopping.txt.
+Add intimate bit to the inventory. || =write =wait
+First, wipe the display. Now, arrange the inventory and write it. Once that is done, typewrite a menu with 6 choices. Finally, append 5 to count. || =colour
+Print a large note at the bottom.
+Load the number from scores.txt and print it in olive || =write =wait
+First, wipe the display. After that, preserve the score in words.txt. Finally, inquire the user for a number and call it points.
+Pen fine last chop-chop and then pause 1 second!
+Demo "the player is far" one letter at a time, slowly! || =write =wait
+First, type settled call one letter at a time, tardily. Straight after, print "you win". Finally, write external word on the left side in pink.
+Stash away idea to save.txt.
+Repeat this 7 times. || =write =wait
+Append 1 to points!
+Let the user guess the number, and present "too large" or "too little". || =colour
+If score outperforms 8 then demonstrate you win. || =write =wait
+First, echo this 4 times. After that, store the officer is national to log.txt. Finally, every half a second, append 1 to total and typewrite age.
+Iterate 2 times: print press enter.
+Turn the text carmine || =write =wait
+First, exhibit "mad pattern" in the middle in beige. Straight after, add 2 to level. Then, save the tally in results.txt. After that, record the score in results.txt. Next, ask for their name and welcome them. Finally, wipe the screen. || =colour
+First, let the user guess the number, and exhibit "too big" or "too little". Once that is done, start a timer and echo it every second. Finally, echo a menu with 4 choices.
+First, hold off 1 second. Then, echo 10 times: pen the battery is sublime. After that, carefully cancel notes.txt and demo the medium is national. Now, ask "what is your favourite good?" and record the answer in log.txt. Once that is done, reiterate 8 times: write "fierce mission". Finally, demonstrate "welcome back" in the centre in chartreuse. || =write =wait
+First, demo the influence is major in violet. Once that is done, store the score in log.txt. After that, wipe out the last line of names.txt. Straight after, exhibit "the stuff is absolute" apace and then hold back a moment. Finally, save good morning to scores.txt.
+First, when level reaches 8, stop the application. Once that is done, add up score and steps and typewrite the result. Finally, store "liable force" to shopping.txt.
+First, hold off a minute. Once that is done, change the colour to lemon. Then, repeat this 5 times. Finally, type middle defense in chestnut. || =write =wait
+First, exhibit a large salutation at the top. Then, echo this 18 times. Once that is done, demonstrate a big greeting at the top-left. After that, scan every line of diary.txt and exhibit it slow. Next, present hello near the top-right corner in buff. Finally, linger 1 second.
+If the written document is missing, display an mistake in brown.
+First, append "level" to the stock list. After that, preserve "strong world" to scores.txt. Finally, if lives exceeds 17 then print welcome back. || =write =wait
+First, start a timer and pen it every second. Once that is done, pen "correct sorrow" at the bottom-right in ruby. Now, classify the stock list and type it. Finally, if level passes 17 then present try again.
+Carefully take away results.txt and announce hi there! || =colour
+First, ask the user for a number and call it score. Next, ask for their name and greet them. Then, stash away the tally in words.txt. Finally, tally lives and count and write the result. || =write =wait
+If total tops 10 then type culture
+Pick a random number from 1 to 40 and write it.
+First, hesitate 4 seconds and then typewrite southern theology. After that, exhibit a large salutation on the left side. Now, let the user guess the number, and type "too big" or "too little". Finally, read the number from save.txt and pen it in sepia. || =write =wait
+Wipe the display and present "the ceiling is powerful" in pink || =colour
+First, when points reaches 10, end the program. Now, let the user guess the number, and pen "too big" or "too little". After that, demo stand near the top-right corner in cerise. Then, classify the inventory and pen it. Once that is done, retell 14 times: display "hello". Finally, if the file is missing, write an fault in lazuline.
+Add 2 to lives! || =write =wait
+First, let the user guess the number, and announce "too large" or "too little". After that, finish when the user types exit. Next, wipe the screen and exhibit "the people is conscious" in claret. Now, pick a random number from 1 to 5 and write it. Once that is done, store "critical bag" to notes.txt. Finally, clear the monitor and present full decision in apricot.
+Demonstrate a menu with 5 choices.
+First, linger a moment and then announce back. Now, discontinue when the user types exit. Then, clear the display and exhibit speed in magenta. Once that is done, typewrite external fit. Next, announce a big greeting at the top-left. Finally, inquire for their name and greet them. || =write =wait
+Wipe the monitor.
+Present a big note on the left side.
+Let the user guess the number, and exhibit "too large" or "too little". || =write =wait
+If the written document is missing, exhibit an mistake in red!
+Echo "eastern temper" in the middle of the screen. || =colour
+Write the extension is upset speedily and then wait half a second. || =write =wait
+Read every line of todo.txt and exhibit it tardily
+Begin a timer and demonstrate it every second
+If the written document is missing, typewrite an mistake in cerulean. || =write =wait
+Start a timer and print it every second. || =colour
+When age reaches 7, complete the application program!
+Enumerate the terms in words.txt || =write =wait
+If answer surpasses 1 then present stern location.
+Typewrite "final pressure".
+First, wipe the screen. Next, every 3 seconds, append 1 to answer and write steps. Straight after, load every line of words.txt and display it tardily. Finally, print a menu with 6 choices. || =write =wait
+Pen "interval" one letter at a time, tardily.
+First, scan every line of scores.txt and present it slowly. Once that is done, ask for their name and welcome them. Finally, count the words in save.txt.
+Linger half a second! || =write =wait
+First, echo you win in wheat. Then, pen a menu with 5 choices. Straight after, write the disaster is northern. Finally, pick a random number from 1 to 45 and demo it.
+Scan the number from log.txt and type it in canary || =colour
+First, inquire "what is your favourite bow?" and store the answer in notes.txt. Next, inquire the user for a number and call it guess. Then, read every line of scores.txt and exhibit it tardily. Straight after, begin a timer and demonstrate it every second. Now, clear the monitor. Finally, demo "gross barrier" quickly and then linger 1 second. || =write =wait
+Scan the number from scores.txt and print it in sky-blue.
+Pick a random number from 1 to 15 and demo it
+First, demo a big message at the top-left. Then, display the image is thick on the right side of the monitor. Straight after, carefully remove log.txt and print "hi there". Finally, retell 9 times: exhibit "welcome back". || =write =wait
+Display goodbye on the right side in claret || =colour
+Hold off a minute and then display "pace"!
+Wipe the screen || =write =wait
+Pause 10 seconds and then write "diffusion".
+Add total and guess and type the result.
+Exhibit a menu with 5 choices! || =write =wait
+Announce a large greeting at the bottom!
+Echo awkward english one letter at a time, slowly.
+First, stash away the corner is big to scores.txt. Straight after, wait 1 second. Finally, load the number from log.txt and typewrite it in fawn. || =write =wait
+Sum total and guess and print the result.
+First, take away the last line of notes.txt. Straight after, remove the last line of todo.txt. Finally, print "good morning" apace and then linger a minute. || =colour
+Sort the listing and echo it. || =write =wait
+First, sum level and steps and demonstrate the result. Straight after, tally age and lives and demonstrate the result. Next, arrange the stock list and present it. Now, demo a menu with 2 choices. Finally, repeat 17 times: type "physical water".
+Present the bottom is sporting in purple
+Hold back a minute and then pen face. || =write =wait
+Scan the number from save.txt and present it in brown. || =colour
+Carefully take away results.txt and typewrite "acute bearing".
+Number the words in log.txt. || =write =wait
+Delete the last line of notes.txt!
+Load every line of words.txt and demo it slow.
+Store "red father" to results.txt! || =write =wait
+Let the user guess the number, and display "too big" or "too little".
+Ask for their name and welcome them.
+First, if the file is missing, write an mistake in aquamarine. Once that is done, append 4 to points. Then, pick a random number from 1 to 30 and pen it. After that, let the user guess the number, and demo "too large" or "too little". Straight after, wipe out the last line of words.txt. Finally, pick a random number from 1 to 15 and demo it. || =write =wait
+Scan the number from notes.txt and pen it in wheat.
+First, announce a menu with 4 choices. Then, sum up points and lives and pen the result. Once that is done, tally answer and steps and print the result. Finally, repeat 8 times: echo "notion". || =colour
+First, change the colour to beige. Now, change the colour to sapphire. Finally, typewrite a menu with 4 choices. || =write =wait
+Demo a large greeting at the bottom.
+First, stash away bang to scores.txt. Straight after, announce a menu with 2 choices. Finally, every 4 seconds, append 1 to guess and exhibit steps.
+First, wipe the monitor. Straight after, ask for their name and greet them. Once that is done, write breath. Then, add sympathy to the list. Finally, carefully cancel diary.txt and echo good morning. || =write =wait
+Change the colour to navy! || =colour
+First, wipe the screen and exhibit "slender variety" in green. Now, announce "the hole is cultural" at the top-left in carnation. Next, pick a random number from 1 to 60 and demonstrate it. Straight after, ask the user for a number and call it count. Finally, sort out the stock list and exhibit it.
+Pen symbolic pile in the centre in lemon. || =write =wait
+First, append 2 to answer. Then, print the father is soft one letter at a time, slowly. Once that is done, number the terms in log.txt. After that, commence a timer and present it every second. Finally, stop when the user types bye.
+Load the number from results.txt and echo it in maize!
+Pick a random number from 1 to 95 and echo it. || =write =wait
+Total count and lives and type the result
+Pen the living is late.
+First, inquire "what is your favourite landscape?" and save the answer in scores.txt. Once that is done, retell 7 times: demo automatic account. Now, add national key to the inventory. Finally, append 1 to total. || =write =wait
+Hold back half a second and then pen clip.
+Cease when the user types stop! || =colour
+First, cancel the last line of shopping.txt. Next, add up total and total and pen the result. Once that is done, inquire the user for a number and call it score. Then, stash away the pain is same to names.txt. Now, hesitate a minute. Finally, turn the text green. || =write =wait
+Commence a timer and demonstrate it every second!
+First, append variable estimate to the list. Now, write a big greeting at the bottom-right. Finally, clear the display.
+First, wipe the monitor and echo bang in blue. Next, cease when the user types stop. Finally, when lives reaches 1, quit the application program. || =write =wait
+Clear the screen. || =colour
+If level outdoes 2 then exhibit divine curve.
+Ask "what is your favourite gathering?" and record the answer in notes.txt. || =write =wait
+First, hold off 6 seconds and then typewrite "hi there". After that, every 9 seconds, add 1 to steps and demonstrate count. Once that is done, every a minute, add 1 to count and announce lives. Finally, read every line of log.txt and announce it slowly.
+Add 3 to total
+Commence a timer and demo it every second || =write =wait
+First, print "the peak is low" one letter at a time, slow. Now, erase the last line of diary.txt. Then, demo "try again" in red. Next, inquire the user for a number and call it age. Straight after, wipe the display. Finally, reiterate 3 times: echo eastern color.
+First, hesitate 1 second and then type press enter. Next, tally steps and answer and type the result. Straight after, typewrite gathering one letter at a time, slowly. Finally, start a timer and demonstrate it every second.
+Count the words in words.txt. || =write =wait
+Demo "cold scene" in caramel!
+Pick a random number from 1 to 10 and print it. || =colour
+Hesitate 1 second. || =write =wait
+Pick a random number from 1 to 55 and type it.
+Echo 4 times: pen gold.
+Write alternate gift one letter at a time, slowly! || =write =wait
+Pick a random number from 1 to 95 and demonstrate it. || =colour
+Sum up total and total and exhibit the result.
+First, restate this 17 times. After that, record the score in notes.txt. Next, enumerate the terms in log.txt. Now, tally points and steps and present the result. Finally, sort the stock list and present it. || =write =wait
+Add up answer and answer and display the result!
+First, linger 1 second. After that, retell this 17 times. Now, clear the display and typewrite press enter in sapphire. Then, clear the monitor and echo "good morning" in carnation. Finally, sum score and total and demo the result.
+Preserve the score in todo.txt. || =write =wait
+Inquire "what is your favourite lapse?" and preserve the answer in words.txt
+When count reaches 11, quit the application program.
+First, type domestic obscurity one letter at a time, tardily. Now, announce "double rage" one letter at a time, tardily. Finally, enumerate the words in shopping.txt. || =write =wait
+Repeat 10 times: exhibit spread
+Write alternate inventory one letter at a time, tardily. || =colour
+Store spread knee to diary.txt. || =write =wait
+Wipe the monitor and present vague receiver in sky-blue.
+First, hesitate 8 seconds and then exhibit the liquid is open. Once that is done, enumerate the words in results.txt. Then, append the aid is open to the stock list. Finally, load the number from diary.txt and print it in beige.
+Print a menu with 3 choices! || =write =wait
+First, ask "what is your favourite challenge?" and record the answer in shopping.txt. Once that is done, discontinue when the user types bye. Now, load every line of shopping.txt and demonstrate it slowly. Straight after, turn the text lavender. Finally, linger 9 seconds. || =colour
+Wait 1 second and then type "respect".
+Typewrite "setting" speedily and then hold off a minute. || =write =wait
+Hold off 1 second and then present hello!
+Every a moment, append 1 to answer and pen steps.
+Ask "what is your favourite touch?" and store the answer in log.txt! || =write =wait
+Start a timer and announce it every second.
+Demo "unusual side" at the top-left in ultramarine.
+Carefully wipe out notes.txt and demo the attention is alternate! || =write =wait
+First, hold back half a second. Then, pick a random number from 1 to 20 and exhibit it. Next, restate this 9 times. Finally, let the user guess the number, and echo "too large" or "too small".
+Write try again in the middle of the display. || =colour
+First, turn the text indigo. Straight after, echo a big salutation at the top-left. Then, demonstrate a menu with 2 choices. Finally, wipe the screen and print the binding is existing in carmine. || =write =wait
+First, if the written document is missing, display an error in viridity. Now, every half a second, append 1 to guess and display total. Next, tally total and age and echo the result. Once that is done, inquire for their name and greet them. Finally, clear the display.
+Terminate when the user types exit.
+First, carefully get rid of todo.txt and present "the fool is sound". Then, inquire for their name and welcome them. Finally, demonstrate a large message at the top. || =write =wait
+Inquire "what is your favourite chain?" and stash away the answer in results.txt || =colour
+Inquire the user for a number and call it guess.
+Discontinue when the user types quit. || =write =wait
+Demonstrate "response" at the bottom of the screen.
+Typewrite the support is direct
+First, carefully take away shopping.txt and exhibit official art. Once that is done, restate this 8 times. Next, total count and total and present the result. Straight after, ask "what is your favourite seat?" and stash away the answer in results.txt. Then, if total surpasses 7 then type firm chance. Finally, turn the text sky-blue. || =write =wait
+First, terminate when the user types bye. After that, carefully wipe out diary.txt and display "shadow". Finally, sum up points and score and exhibit the result.
+Echo the trouble is upset in the centre in green.
+First, typewrite "radical stock" near the top-right corner of the screen. Now, complete when the user types exit. After that, typewrite the chamber is modern chop-chop and then hold back 2 seconds. Then, sort the stock list and typewrite it. Finally, add spread yield to the inventory. || =write =wait
+Let the user guess the number, and write "too big" or "too small"
+Add answer and count and typewrite the result. || =colour
+First, typewrite a menu with 3 choices. After that, store blessed reason to shopping.txt. Then, total guess and total and typewrite the result. Straight after, when answer reaches 5, end the application. Now, read the number from todo.txt and exhibit it in sapphire. Finally, if the document is missing, pen an error in fuschia. || =write =wait
+Display "genuine rhythm" speedily and then wait a moment.
+First, exhibit monstrous entry in lemon. After that, count the terms in names.txt. Next, if the written document is missing, exhibit an fault in cherry. Then, inquire "what is your favourite radio?" and store the answer in shopping.txt. Straight after, carefully erase names.txt and write "nuclear string". Finally, every half a second, add 1 to points and display age.
+Turn the text wheat. || =write =wait
+Let the user guess the number, and demonstrate "too big" or "too small" || =colour
+First, scan the number from names.txt and exhibit it in sanguine. Then, every a moment, add 1 to score and display guess. Finally, every a minute, add 1 to points and announce lives.
+If the document is missing, present an error in brown || =write =wait
+Start a timer and print it every second
+Append 5 to guess.
+Carefully wipe out todo.txt and demonstrate cut rebel. || =write =wait
+Echo "insight" near the top-right corner of the screen.
+First, announce a big message near the top-right corner. After that, every 1 second, add 1 to points and echo total. Straight after, pen welcome back at the top of the screen. Then, sort out the stock list and echo it. Once that is done, carefully take away log.txt and demo "conscious picture". Finally, demo "full port".
+Exhibit "advanced verse" rapidly and then hesitate half a second. || =write =wait
+Wipe the screen!
+Take away the last line of diary.txt || =colour
+Sort the inventory and present it! || =write =wait
+Classify the listing and exhibit it.
+Ask the user for a number and call it count!
+First, begin a timer and exhibit it every second. Once that is done, load every line of save.txt and pen it tardily. Next, let the user guess the number, and pen "too big" or "too little". Then, inquire "what is your favourite particle?" and stash away the answer in save.txt. Finally, sort the listing and display it. || =write =wait
+Ask "what is your favourite logic?" and record the answer in results.txt. || =colour
+Commence a timer and announce it every second.
+Echo loaded component in cerulean! || =write =wait
+If guess outmatches 15 then display picture.
+Wait half a second!
+First, wait a minute. Now, every a minute, add 1 to score and write count. Then, echo military height in ruby. Finally, read every line of diary.txt and exhibit it slowly. || =write =wait
+Change the colour to buff
+First, wipe the screen and print "peak" in lemon. Now, wait 1 second. Once that is done, announce short pack at the bottom-right in ochre. Finally, print a menu with 2 choices.
+First, turn the text chestnut. Once that is done, typewrite free job in peach. Straight after, number the words in todo.txt. Now, count the words in shopping.txt. Finally, read every line of log.txt and announce it slowly. || =write =wait
+First, retell 11 times: present "you win". Now, pick a random number from 1 to 30 and present it. After that, echo double stall in navy. Straight after, if the file is missing, print an fault in peach. Next, echo a menu with 3 choices. Finally, count the words in log.txt.
+Exhibit "the grievance is appointed" in maize || =colour
+Announce rate speedily and then hold off 1 second. || =write =wait
+Wait 8 seconds.
+First, add 1 to level. Once that is done, turn the text hazel. Finally, clear the monitor and type the minute is rigid in mauve.
+Iterate 2 times: exhibit "serious regard". || =write =wait
+Ask for their name and welcome them || =colour
+First, change the colour to purplish-red. Then, stop when the user types exit. Finally, hesitate a moment.
+Echo a large note in the middle. || =write =wait
+First, save the tally in todo.txt. Straight after, read every line of names.txt and echo it slow. Once that is done, inquire for their name and welcome them. Then, typewrite press enter in the middle in fawn. After that, every a moment, append 1 to guess and typewrite steps. Finally, append 2 to age.
+Every 1 second, add 1 to points and present age
+Print "the outfit is terrible" in the centre of the monitor || =write =wait
+Wipe the display and display failure in coffee.
+Enumerate the words in results.txt.
+Turn the text gamboge. || =write =wait
+Take away the last line of todo.txt.
+Turn the text purple! || =colour
+Clear the screen and present the creation is level in wine-coloured! || =write =wait
+Inquire for their name and greet them
+If the written document is missing, display an mistake in mahogany!
+First, typewrite alone addition. Once that is done, end when the user types stop. Straight after, total steps and level and typewrite the result. Now, turn the text magenta. After that, store the score in log.txt. Finally, clear the screen and display effective order in topaz. || =write =wait
+Inquire "what is your favourite recovery?" and stash away the answer in save.txt. || =colour
+Arrange the stock list and demo it.
+Turn the text ochre. || =write =wait
+Count the terms in diary.txt.
+Print the spirit is potent!
+Begin a timer and demonstrate it every second. || =write =wait
+Every a moment, add 1 to guess and demo total!
+Let the user guess the number, and demonstrate "too large" or "too little"
+Pick a random number from 1 to 35 and demo it. || =write =wait
+Record the tally in shopping.txt.
+Begin a timer and exhibit it every second || =colour
+Every a minute, add 1 to answer and print score. || =write =wait
+Inquire "what is your favourite level?" and save the answer in words.txt.
+Scan every line of save.txt and echo it tardily.
+Record "well done" to scores.txt || =write =wait
+Turn the text white. || =colour
+First, type the theology is reluctant quickly and then pause 1 second. Now, wipe out the last line of words.txt. Finally, start a timer and exhibit it every second.
+First, quit when the user types bye. Straight after, inquire for their name and welcome them. Finally, quit when the user types bye. || =write =wait
+Demonstrate a menu with 5 choices.
+Save the score in scores.txt.
+Type detached taste. || =write =wait
+First, announce spread one letter at a time, slowly. Now, carefully delete log.txt and exhibit assembly. Once that is done, get rid of the last line of shopping.txt. Then, number the terms in notes.txt. After that, let the user guess the number, and typewrite "too large" or "too small". Finally, change the colour to wheat.
+If age goes past 12 then exhibit vague faith.
+Ask the user for a number and call it points. || =write =wait
+First, restate 9 times: write late prospect. Once that is done, if the file is missing, exhibit an fault in azure. After that, ask for their name and welcome them. Finally, pen folk at the top of the screen.
+First, ask for their name and greet them. Straight after, if the document is missing, exhibit an fault in straw. Finally, stash away the tally in log.txt. || =colour
+First, present a menu with 3 choices. Then, ask "what is your favourite hearing?" and preserve the answer in words.txt. Next, ask for their name and greet them. After that, scan the number from shopping.txt and typewrite it in cherry. Finally, add guess and points and type the result. || =write =wait
+Repeat this 15 times.
+Write "hi there" in hazel.
+First, append well matter to the listing. After that, exhibit "benefit" in the middle in yellow. Next, ask for their name and greet them. Then, display a menu with 5 choices. Finally, append "qualified scent" to the inventory. || =write =wait
+Classify the list and pen it. || =colour
+Inquire for their name and welcome them.
+Announce "straight touch" at the bottom in amber. || =write =wait
+Inquire for their name and welcome them.
+If count goes past 1 then pen "reliable court"!
+First, echo 10 times: exhibit "flexible point". Now, let the user guess the number, and type "too big" or "too small". Then, if the document is missing, typewrite an mistake in hazel. Next, add up steps and level and demo the result. Once that is done, add 2 to score. Finally, carefully cancel diary.txt and print "fixed testimony". || =write =wait
+Exhibit a menu with 6 choices.
+Ask the user for a number and call it level.
+Exhibit "narrow stretch". || =write =wait
+Wait a minute.
+Restate this 18 times! || =colour
+First, commence a timer and type it every second. Now, sort the stock list and display it. Finally, let the user guess the number, and typewrite "too big" or "too little". || =write =wait
+Demo age one letter at a time, slow.
+Store silver veteran to notes.txt.
+Echo 6 times: echo game over. || =write =wait
+First, pause a moment and then demo average nut. After that, demonstrate a large salutation in the middle. Now, type view in the centre in cerulean. Straight after, commence a timer and typewrite it every second. Next, demonstrate a big salutation in the centre. Finally, add "window" to the listing. || =colour
+First, demo "sheer condition" in the middle of the display. Then, print contact one letter at a time, slow. Finally, display a menu with 6 choices.
+Complete when the user types bye. || =write =wait
+Hold off 1 second and then announce the pain is grim.
+Inquire the user for a number and call it level.
+First, display hello. After that, change the colour to ochre. Next, typewrite the trial is tolerant one letter at a time, tardily. Straight after, sort out the inventory and typewrite it. Once that is done, record the tally in scores.txt. Finally, pick a random number from 1 to 55 and announce it. || =write =wait
+Carefully remove names.txt and demo official routine.
+If the document is missing, announce an error in cherry.
+Turn the text turquoise. || =write =wait
+First, carefully delete results.txt and type the union is savage. Once that is done, hold back 1 second and then type the move is living. Now, if age outperforms 3 then demo "new flock". Finally, ask for their name and greet them.
+Change the colour to aquamarine || =colour
+Clear the screen. || =write =wait
+Hold off 9 seconds.
+Cease when the user types bye
+Sort out the stock list and pen it! || =write =wait
+Load the number from words.txt and echo it in purplish-red. || =colour
+First, count the terms in diary.txt. Next, load the number from words.txt and write it in maroon. After that, read every line of todo.txt and announce it slow. Now, finish when the user types stop. Finally, inquire the user for a number and call it age.
+Every 4 seconds, add 1 to points and echo steps. || =write =wait
+Save the score in shopping.txt.
+Scan every line of log.txt and display it tardily
+Classify the stock list and echo it. || =write =wait
+Type building.
+Write a large note in the centre.
+First, reiterate this 20 times. Next, total age and guess and echo the result. Once that is done, type the mate is native. Then, ask the user for a number and call it points. Straight after, let the user guess the number, and announce "too big" or "too little". Finally, turn the text ultramarine. || =write =wait
+Inquire the user for a number and call it score!
+If age surpasses 3 then print "potent system"! || =colour
+First, if the file is missing, print an fault in burgundy. Straight after, stop when the user types stop. Finally, arrange the listing and write it. || =write =wait
+Type zero ring in wine
+First, ask for their name and greet them. Once that is done, reiterate 2 times: present "former detail". After that, pick a random number from 1 to 70 and write it. Now, announce the tendency is firm. Finally, preserve good morning to shopping.txt.
+First, turn the text wine. After that, demonstrate press enter near the top-right corner of the display. Then, save "symbolic defect" to save.txt. Finally, echo you win one letter at a time, tardily. || =write =wait
+Carefully get rid of scores.txt and exhibit savage box. || =colour
+If the file is missing, typewrite an mistake in orange
+Present nuclear credit at the top of the monitor. || =write =wait
+Read every line of results.txt and typewrite it tardily.
+Store the day is prime to words.txt.
+Wipe the monitor. || =write =wait
+First, append invention to the listing. After that, add guess and points and type the result. Once that is done, count the words in scores.txt. Straight after, read every line of save.txt and demo it slow. Finally, classify the list and type it.
+Echo 19 times: display "serious form"!
+First, commence a timer and pen it every second. Then, scan every line of results.txt and write it slow. Straight after, demo some tension. Finally, demo busy rank in canary. || =write =wait
+Inquire for their name and greet them.
+Every half a second, append 1 to guess and write steps || =colour
+Announce a menu with 6 choices. || =write =wait
+First, enumerate the terms in words.txt. Now, demo middle level at the top of the display. Straight after, record the tally in log.txt. After that, end when the user types exit. Finally, read every line of todo.txt and exhibit it slow.
+Demonstrate a menu with 3 choices.
+Pen "fierce quality" one letter at a time, slowly! || =write =wait
+First, finish when the user types exit. Straight after, load the number from names.txt and print it in salmon. Finally, add 3 to score. || =colour
+First, arrange the stock list and pen it. After that, scan the number from diary.txt and write it in maroon. Next, inquire for their name and welcome them. Now, append 1 to lives. Finally, pause a moment and then display the defense is qualified.
+First, echo sheer bull one letter at a time, slowly. Next, wipe the screen and exhibit some queen in buff. Finally, echo this 20 times. || =write =wait
+Inquire for their name and greet them!
+Typewrite estimate quickly and then hold off 1 second.
+Demo positive player one letter at a time, slowly. || =write =wait
+Add 1 to guess
+Inquire for their name and welcome them.
+Inquire the user for a number and call it points. || =write =wait
+Read every line of save.txt and write it slow.
+Ask "what is your favourite spark?" and store the answer in notes.txt. || =colour
+First, take away the last line of diary.txt. Once that is done, ask "what is your favourite fashion?" and stash away the answer in results.txt. After that, clear the display and typewrite goodbye in peach. Finally, store the tally in shopping.txt. || =write =wait
+If the file is missing, write an fault in teal.
+First, pen wide brush at the bottom in gold. Now, exhibit you win in claret. Then, start a timer and print it every second. Finally, append 2 to steps.
+First, ask "what is your favourite share?" and preserve the answer in log.txt. Next, carefully take away names.txt and print crack. Now, end when the user types stop. Finally, ask the user for a number and call it lives. || =write =wait
+Iterate this 8 times. || =colour
+Preserve "you win" to save.txt.
+Let the user guess the number, and announce "too big" or "too little". || =write =wait
+Begin a timer and present it every second.
+First, turn the text viridity. After that, preserve the tally in todo.txt. Next, pen disturbed year in the centre in straw. Then, every a minute, append 1 to age and exhibit steps. Finally, demo "weak water".
+First, add up guess and age and present the result. Once that is done, every 5 seconds, append 1 to points and typewrite guess. Finally, hesitate a minute and then typewrite down story. || =write =wait
+If the file is missing, demo an fault in salmon.
+Ask for their name and welcome them!
+If answer outmatches 5 then exhibit "standard pile" || =write =wait
+First, if the document is missing, exhibit an error in wine. Next, inquire for their name and welcome them. Straight after, ask the user for a number and call it total. Finally, pick a random number from 1 to 65 and write it.
+First, wait half a second. Next, number the words in scores.txt. Finally, carefully cancel shopping.txt and present "the luck is intimate". || =colour
+First, change the colour to crimson. Once that is done, commence a timer and type it every second. Next, if level outdoes 6 then print the cup is like. Then, wait half a second. Finally, ask the user for a number and call it age. || =write =wait
+First, append 1 to score. Then, change the colour to buff. Finally, present the grievance is physical on the right side of the monitor.
+Exhibit you win in cerise.
+Wipe the monitor. || =write =wait
+Retell this 1 times. || =colour
+Change the colour to straw.
+Clear the screen and pen fixed faith in solferino! || =write =wait
+First, demonstrate the price is settled at the bottom in sanguine. Then, when total reaches 6, cease the program. Straight after, every a minute, add 1 to answer and demonstrate guess. Once that is done, total count and total and exhibit the result. Finally, append "nuclear expense" to the inventory.
+Inquire for their name and greet them!
+Cancel the last line of scores.txt || =write =wait
+When total reaches 8, cease the application program!
+When lives reaches 18, quit the application program.
+Save the score in notes.txt! || =write =wait
+Exhibit stake rapidly and then pause half a second.
+Linger a minute and then print gentle damage. || =colour
+Demonstrate warm tip || =write =wait
+Start a timer and echo it every second.
+First, echo real variety in burgundy. After that, linger 1 second. Next, inquire the user for a number and call it count. Now, hesitate a moment. Finally, add 2 to age.
+Carefully take away scores.txt and exhibit "fair rebel". || =write =wait
+Announce the sailing is muscular one letter at a time, slowly. || =colour
