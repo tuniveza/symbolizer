@@ -140,7 +140,18 @@ def analyse(line):
 def read_directions(line):
     """The line as directions, each a list of tokens: a word or phrase with its ideas.
     A direction ends at a comma, semicolon, 'then', a word ending in . ! or ?, a lone '...' or '-', 'and'
-    before a new action, or where a second action starts while one is under way ('wait 3 s the words hi')."""
+    before a new action, or where a second action starts while one is under way ('wait 3 s the words hi').
+    A long messy paragraph is cut where the brain learned directions end (trainer/cutter.py), when it is sure."""
+    tokens = tokens_of(line)
+    from trainer import cutter
+    learned = cutter.cut(tokens)
+    if learned is not None:
+        return tidy_ends(learned)
+    return cut_by_rules(tokens)
+
+
+def tokens_of(line):
+    """The line's words and phrases as tokens, each with its ideas; slips, doubled words and filler 'right' dealt with."""
     world = universe()
     words = []
     line = positions(line)
@@ -202,7 +213,11 @@ def read_directions(line):
             merged[-1] = t                    # 'hold hold on 5 seconds': the phrase keeps the doubled word
             continue
         merged.append(t)
-    tokens = filler_right(merged)
+    return filler_right(merged)
+
+
+def cut_by_rules(tokens):
+    """Cut the tokens into directions at the separators, then where a second action, look, place ... starts."""
     directions, current = [], []
     for k, token in enumerate(tokens):
         after = tokens[k + 1] if k + 1 < len(tokens) else None
@@ -212,8 +227,13 @@ def read_directions(line):
             current = []
         else:
             current.append(token)
+    return tidy_ends([frame for direction in directions + [current] for frame in by_slots(direction)])
+
+
+def tidy_ends(frames):
+    """Chatter, filler and a filler 'right' taken off the ends of each direction; empty ones left out."""
     found = []
-    for d in [frame for direction in directions + [current] for frame in by_slots(direction)]:
+    for d in frames:
         while d and d[0].ideas & {"chatter", "filler", "glue"} and not d[0].quoted:
             d = d[1:]                                         # 'um', 'so yeah' at the start
         while d and d[-1].ideas & {"chatter", "filler", "glue"} and not d[-1].quoted:
