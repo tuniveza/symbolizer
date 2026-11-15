@@ -22,7 +22,6 @@ The network is saved in trainer/data/neurons/, so it keeps learning from where i
 import json
 import os
 import re
-import shutil
 import tempfile
 from collections import Counter
 
@@ -467,7 +466,7 @@ def learn(rounds=5, steps=STEPS, brain=None, say=print, wait=True):
 
 
 def _learn(rounds, steps, brain, say):
-    if not shutil.which("node"):
+    if not neurons.have_engine():
         say("The imagination neurons run with node, and node isn't installed here.")
         return None
     os.makedirs(FOLDER, exist_ok=True)
@@ -528,7 +527,7 @@ def background_round():
     """One quiet learning round for the trainer, at most every EVERY seconds (BRICK_NEURONS=off stops it).
     -> a short line about it, or None."""
     import time
-    if os.environ.get("BRICK_NEURONS", "on") == "off" or not shutil.which("node"):
+    if os.environ.get("BRICK_NEURONS", "on") == "off" or not neurons.have_engine():
         return None
     stamp = os.path.join(FOLDER, "last-round")
     try:

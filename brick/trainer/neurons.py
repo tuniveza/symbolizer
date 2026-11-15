@@ -142,15 +142,50 @@ _engine, _engine_stamp = None, None
 _engine_lock = __import__("threading").Lock()
 
 
+# The same engine in Go (trainer/imagination/engine, built by ./make.sh): same answers bit for bit, much faster.
+ENGINE_DIR = os.path.join(os.path.dirname(RUN), "engine")
+GO_ENGINE = os.path.join(ENGINE_DIR, "imagine")
+
+
+def _go_engine():
+    """The Go engine's path when it is built and newer than its Go sources, else None (then node runs the jobs).
+    BRICK_ENGINE=node always uses node."""
+    if os.environ.get("BRICK_ENGINE", "") == "node":
+        return None
+    try:
+        built = os.path.getmtime(GO_ENGINE)
+        if not os.access(GO_ENGINE, os.X_OK):
+            return None
+        for folder in (ENGINE_DIR, os.path.join(ENGINE_DIR, "cmd", "imagine")):
+            for name in os.listdir(folder):
+                if (name.endswith(".go") or name == "go.mod") and os.path.getmtime(os.path.join(folder, name)) > built:
+                    return None                             # sources changed since the build: not this binary
+    except OSError:
+        return None
+    return GO_ENGINE
+
+
+def have_engine():
+    """Whether any engine can run: the Go one, or node for run.js."""
+    return bool(_go_engine() or shutil.which("node"))
+
+
+def _engine_command():
+    go = _go_engine()
+    return [go] if go else [shutil.which("node"), RUN]
+
+
 def _engine_code_stamp():
     folder = os.path.dirname(RUN)
-    return tuple(os.path.getmtime(os.path.join(folder, n)) for n in ("run.js", "sim.js"))
+    go = _go_engine()
+    return (go and os.path.getmtime(go),) + tuple(os.path.getmtime(os.path.join(folder, n)) for n in ("run.js", "sim.js"))
 
 
 def run_node(job):
-    """Run one engine job. A long-lived engine (node run.js --serve) takes the jobs one by one, so node starts once
-    per brick process instead of once per job; it restarts by itself when the engine's code changes.
-    BRICK_ENGINE_SERVE=off runs a fresh node for every job instead (the results are the same either way)."""
+    """Run one engine job (the Go engine when it is built, else node run.js). A long-lived engine (--serve) takes the
+    jobs one by one, so it starts once per brick process instead of once per job; it restarts by itself when the
+    engine's code changes. BRICK_ENGINE_SERVE=off runs a fresh engine for every job instead, BRICK_ENGINE=node always
+    uses node (the results are the same either way)."""
     global _engine, _engine_stamp
     if os.environ.get("BRICK_ENGINE_SERVE", "on") != "off":
         with _engine_lock:
@@ -159,7 +194,7 @@ def run_node(job):
                 if _engine is None or _engine.poll() is not None or stamp != _engine_stamp:
                     if _engine is not None and _engine.poll() is None:
                         _engine.stdin.close()
-                    _engine = subprocess.Popen([shutil.which("node"), RUN, "--serve"], stdin=subprocess.PIPE,
+                    _engine = subprocess.Popen(_engine_command() + ["--serve"], stdin=subprocess.PIPE,
                                                stdout=subprocess.PIPE, text=True, bufsize=1)
                     _engine_stamp = stamp
                 _engine.stdin.write(json.dumps(job) + "\n")
@@ -169,8 +204,8 @@ def run_node(job):
                     return json.loads(line)
             except (OSError, ValueError, BrokenPipeError):
                 pass
-            _engine = None                                  # it died: fall back to a fresh node for this job
-    done = subprocess.run([shutil.which("node"), RUN], input=json.dumps(job), capture_output=True, text=True, timeout=600)
+            _engine = None                                  # it died: fall back to a fresh engine for this job
+    done = subprocess.run(_engine_command(), input=json.dumps(job), capture_output=True, text=True, timeout=600)
     if done.returncode != 0:
         raise RuntimeError(done.stderr.strip()[-400:])
     return json.loads(done.stdout)
@@ -209,7 +244,7 @@ def split_args(args):
 def read_line(line, brain=None, long=False):
     """Train the neurons and read every word of the line. Returns a dict; "error" is set when it couldn't.
     brain: an archetype name (any spelling find_archetype accepts) or None for the neutral network."""
-    if not shutil.which("node"):
+    if not have_engine():
         return {"error": "The imagination neurons run with node, and node isn't installed here."}
     if brain:
         found = find_archetype(brain)
@@ -290,7 +325,7 @@ def command(args):
         return intuition.command(args)
     line, long, brain, listing = split_args(args)
     if listing:
-        if not shutil.which("node"):
+        if not have_engine():
             print("The imagination neurons run with node, and node isn't installed here.")
             return 1
         for a in archetypes():
