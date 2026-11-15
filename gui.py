@@ -860,6 +860,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.send({"running": trainer.running(), "activity": activity, "items": outliers.entries(),
                               "groups": outliers.groups(),
                               "director": len(outliers.entries(outliers.FOR_DIRECTOR))})
+        if url.path == "/api/neurons/archetypes":    # the Trainer's Neurons tab: the archetypes to pick from
+            from trainer import neurons
+            try:
+                return self.send({"archetypes": neurons.archetypes()})
+            except Exception as error:                  # node missing or the engine broke: say so in the tab
+                return self.send({"archetypes": [], "error": str(error) or "node isn't installed"})
         if url.path == "/api/imagination":           # what brick imagined: newest first, with where it came from
             from trainer import core as trainer
             from trainer import imagine
@@ -950,6 +956,9 @@ class Handler(BaseHTTPRequestHandler):
             if what == "try":
                 return self.send(words.try_text(asked.get("text", ""), mine))
             return self.send({"error": "not here"}, status=404)
+        if url.path == "/api/neurons":               # read a line with the imagination neurons (view only, ~6 s)
+            from trainer import neurons
+            return self.send(neurons.read_line(asked.get("line", ""), asked.get("archetype") or None, bool(asked.get("long"))))
         if url.path == "/api/read_line":
             import bricks
             return self.send({"directions": bricks.read_line(asked.get("line", ""))})

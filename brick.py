@@ -31,6 +31,12 @@ The trainer: everything brick learns, in one place (the code in trainer/, what i
                               teaches the dictionary, the brain and the universes. It runs by itself while
                               brick gui is open or a program runs here
   brick trainer always / off  keep it running all the time, or stop that (brick trainer status)
+  brick trainer neurons "put text at the top in brown"
+                              the imagination neurons (the owner's design), view only: trained on brick's
+                              dictionary groups and practice directions, they say what each word of the line
+                              means there, proved by 16 energy percentages, or that none is relevant.
+                              --as "mirror oracle" gives them an archetype's brain (--archetypes lists them);
+                              the same is in brick gui: Trainer, Neurons
   brick trainer brain         brick's brain: it links each word to how it's used, by itself, so a word
                               brick doesn't know can be read as one used the same way ('hi in vermilion'
                               like 'hi in red'). brick trainer brain: is it on, how much it knows;
@@ -176,7 +182,7 @@ WantedBy=default.target
 """
 
 
-TRAINER_COMMANDS = ("brain", "neural", "learn", "imagine", "dream", "imaginations", "show", "look", "universe",
+TRAINER_COMMANDS = ("neurons", "brain", "neural", "learn", "imagine", "dream", "imaginations", "show", "look", "universe",
                     "universes", "sight", "scramble", "feeder", "review")
 
 
@@ -276,6 +282,9 @@ def main():
             print(__doc__[__doc__.index("The trainer:"):])
             sys.exit(0 if args[1:2] == ["help"] else 1)
         args = args[1:]
+    if args[:1] == ["neurons"]:
+        from trainer import neurons                   # brick trainer neurons "a line": the imagination neurons, view only
+        return neurons.command(args[1:])
     if args[:1] == ["neural"]:
         from trainer import neural
         return neural.command(args[1:])

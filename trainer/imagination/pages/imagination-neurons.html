@@ -1,0 +1,1951 @@
+<title>Imagination Neurons</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one working instrument at the top (the live network + its controls), the written design and findings below in a single readable column. */
+:root {
+  --bg: #f6f1ec; --panel: #fffaf6; --ink: #2a1d17; --dim: #7a645a; --line: #e4d6cc;
+  --ember: #d9481c; --glow: #f29a3a; --cold: #5b7c99; --lit: #f3d36b; --good: #2f8a5b;
+  --canvas: #fbf5f0;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15100d; --panel: #1e1612; --ink: #f3e7df; --dim: #ad968a; --line: #3a2b23;
+  --ember: #ff6a2b; --glow: #ffae4d; --cold: #7ea3c4; --lit: #ffe08a; --good: #5cc48a; --canvas: #100c0a; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #15100d; --panel: #1e1612; --ink: #f3e7df; --dim: #ad968a; --line: #3a2b23;
+  --ember: #ff6a2b; --glow: #ffae4d; --cold: #7ea3c4; --lit: #ffe08a; --good: #5cc48a; --canvas: #100c0a; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--body); margin: 0; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 22px 60px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 700; }
+h2 { font-size: 24px; font-weight: 700; margin-bottom: 10px; }
+h3 { font-size: 16px; font-weight: 700; }
+p { margin: 0; max-width: 68ch; }
+.lead { color: var(--dim); margin-top: 6px; }
+.lead b { color: var(--ink); font-weight: 600; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.lab { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; margin-top: 18px; align-items: start; }
+@media (max-width: 860px) { .lab { grid-template-columns: minmax(0, 1fr); } }
+.stage { background: var(--canvas); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+canvas { width: 100%; height: min(62vh, 560px); min-height: 340px; display: block; touch-action: none; }
+.readout { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 14px; border-top: 1px solid var(--line); font: 13px var(--mono); color: var(--dim); }
+.readout b { color: var(--ink); font-weight: 500; }
+.side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; }
+.box h3 { display: flex; justify-content: space-between; align-items: baseline; }
+.box h3 small { font: 12px var(--body); color: var(--dim); font-weight: 400; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+button, select { font: 500 13px var(--body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+button:hover { border-color: var(--glow); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
+button.main { background: var(--ember); color: #fff; border-color: transparent; }
+button.on { background: color-mix(in srgb, var(--glow) 22%, var(--bg)); border-color: var(--glow); }
+.answer { font: 13px/1.45 var(--body); padding: 8px 10px; border-radius: 8px; background: var(--bg); border: 1px dashed var(--line); min-height: 38px; }
+.answer b { color: var(--ember); }
+.profile { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
+.pkey { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12px; color: var(--dim); margin-bottom: 3px; }
+.pkey small { flex-basis: 100%; font-size: 11px; }
+.pkey .k1, .pkey .k2 { width: 10px; height: 6px; border-radius: 3px; background: var(--ember); display: inline-block; }
+.pkey .k2 { background: var(--cold); }
+.prow { display: grid; grid-template-columns: 112px minmax(0, 1fr) 62px; gap: 6px; align-items: center; font-size: 11.5px; }
+.prow em { font: 11px var(--mono); color: var(--dim); font-style: normal; text-align: right; }
+.prow.off { grid-template-columns: 112px minmax(0, 1fr); color: var(--dim); }
+.prow.off em { text-align: left; }
+.pbar { position: relative; height: 9px; display: block; }
+.pbar b, .pbar u { position: absolute; left: 0; height: 4px; border-radius: 2px; }
+.pbar b { top: 0; background: var(--ember); }
+.pbar u { top: 5px; background: var(--cold); text-decoration: none; }
+.log { font: 12.5px/1.45 var(--body); max-height: 190px; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.log div { padding-left: 10px; border-left: 2px solid var(--line); }
+.log div.fission { border-left-color: var(--ember); }
+.log div.radiant { border-left-color: var(--lit); }
+.log span { color: var(--dim); font-family: var(--mono); font-size: 11px; margin-right: 6px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--dim); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+
+.energies { margin-top: 16px; }
+.energies summary { cursor: pointer; font-family: var(--display); font-weight: 700; font-size: 17px; padding: 6px 0; }
+.drives { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin-top: 8px; }
+.drive { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.drive h4 { margin: 0; font: 600 13px var(--body); letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+.energy { display: grid; grid-template-columns: 92px minmax(0, 1fr) 34px; gap: 8px; align-items: center; font-size: 13px; }
+.energy label { font-weight: 600; }
+.energy label small { display: block; font-weight: 400; color: var(--dim); font-size: 11px; }
+.energy output { font: 12px var(--mono); text-align: right; color: var(--dim); }
+input[type=range] { width: 100%; accent-color: var(--ember); }
+
+section.text { margin-top: 44px; display: flex; flex-direction: column; gap: 14px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.card p, .card li { font-size: 14px; }
+.card ul, .card ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
+.cycle { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font: 500 13px var(--body); }
+.cycle span { padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); }
+.cycle span.hot { border-color: var(--ember); color: var(--ember); }
+.cycle span.coldc { border-color: var(--cold); color: var(--cold); }
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 640px; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 12px var(--body); letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+tr:last-child td { border-bottom: 0; }
+td .fn { font: 11px var(--mono); color: var(--ember); margin-left: 4px; }
+.results td:nth-child(2) { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bar { height: 7px; border-radius: 4px; background: var(--line); position: relative; min-width: 90px; margin-top: 6px; }
+.bar i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--ember); }
+.verdict { display: inline-block; font: 600 11px var(--body); letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; }
+.verdict.yes { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+.verdict.no { background: color-mix(in srgb, var(--ember) 16%, transparent); color: var(--ember); }
+.verdict.part { background: color-mix(in srgb, var(--glow) 20%, transparent); color: var(--dim); }
+textarea, input[type=text] { font: 13px/1.5 var(--mono); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; resize: vertical; }
+input[type=text] { font-family: var(--body); width: auto; flex: 1; min-width: 140px; }
+.flabel { font: 700 15px var(--display); }
+.hint { font-size: 12.5px; color: var(--dim); }
+code { font: 12px var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.compare { min-width: 0; }
+.compare th { text-transform: none; letter-spacing: 0; font: 600 13px var(--body); color: var(--ink); min-width: 170px; }
+.compare td:first-child, .compare th:first-child { min-width: 190px; color: var(--dim); }
+.compare td small { display: block; color: var(--dim); font-size: 11.5px; }
+.ok { color: var(--good); font-weight: 600; }
+.bad { color: var(--ember); font-weight: 600; }
+.mid { color: var(--dim); font-weight: 600; }
+.compare .x { float: right; font-size: 11px; padding: 1px 6px; }
+footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  .compare.arch tr.yours td { background: color-mix(in srgb, var(--ember) 9%, transparent); }
+  .compare.arch tr.neutral td { background: color-mix(in srgb, var(--cold) 9%, transparent); }
+  .compare.arch .bar { margin-top: 4px; }
+  .compare.arch th { min-width: 96px; }
+  .compare.arch th small { display: block; font-weight: 400; color: var(--dim); }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Imagination Neurons</h1>
+    <p class="lead">A small working model of your design: <b>19 neurons, 16 energies</b>, running live. The words "crap" and "test" start as one neuron each and have to work out their two meanings by themselves. <b>The frequencies are set by hand</b>, because there is no cortex engine yet.</p>
+  </header>
+
+  <div class="lab">
+    <div class="stage">
+      <canvas id="net" aria-label="The network of imagination neurons, animated"></canvas>
+      <div class="readout" id="readout"></div>
+    </div>
+    <div class="side">
+      <div class="box">
+        <h3>Run it <small id="clock">0 s</small></h3>
+        <div class="row">
+          <button class="main" id="play">Pause</button>
+          <button id="trainBtn" class="on" aria-pressed="true">Feeding sentences</button>
+          <button id="resetBtn">Start again</button>
+        </div>
+        <div class="row">
+          <label for="preset">Network</label>
+          <select id="preset"><option value="words">Word meanings</option><option value="field">Random field (16)</option></select>
+          <label for="speed">Speed</label>
+          <select id="speed"><option value="1">1×</option><option value="3" selected>3×</option><option value="8">8×</option></select>
+        </div>
+        <div class="row">
+          <label for="brain">Archetype</label>
+          <select id="brain" class="brainpick"></select>
+        </div>
+        <p class="hint" id="brainNote"></p>
+      </div>
+      <div class="box" id="askBox">
+        <h3>Ask it <small>16 percentages per sense</small></h3>
+        <div class="row" id="askRow"></div>
+        <div class="answer" id="answer">Pick a word in a context. Each sense gets 16 percentages, one per energy. A meaning counts as accurate when a sense gets more than its fair share on over half of the energies.</div>
+      </div>
+      <div class="box">
+        <h3>Imagination layer <small>what it changed</small></h3>
+        <div class="log" id="log"><div>Nothing yet. Watch for a split around 20–40 seconds in.</div></div>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--cold)"></i>cold: refines itself</span>
+        <span><i style="background:var(--ember)"></i>hot: exchanges</span>
+        <span><i style="background:var(--lit)"></i>lit by radiant</span>
+        <span>bright line: an impact relayed</span>
+      </div>
+    </div>
+  </div>
+
+  <details class="energies" id="energiesBox">
+    <summary>The 16 energies (drag to change them live)</summary>
+    <div class="row" style="margin-top:6px"><button id="energyReset">All back to 1</button><span class="lead" style="margin:0">0 turns an energy off, 2 doubles it.</span></div>
+    <div class="drives" id="drives"></div>
+  </details>
+
+  <section class="text" id="data">
+    <h2>Try your own data</h2>
+    <p>Write sentences for it to practise on, and questions to ask it. <b>Run test</b> trains it from scratch several times with the energies set above, and adds a column below. Change the data or the energies and run again to compare.</p>
+    <div class="cols datacols">
+      <div class="card">
+        <label class="flabel" for="dataText">Sentences and groups</label>
+        <textarea id="dataText" spellcheck="false" rows="14"></textarea>
+        <p class="hint">One sentence per line. <code>group name: word, word</code> makes a meaning group. Lines starting with <code>#</code> are notes.</p>
+      </div>
+      <div class="card">
+        <label class="flabel" for="askText">Questions</label>
+        <textarea id="askText" spellcheck="false" rows="8"></textarea>
+        <p class="hint"><code>crap @ clear = remove</code> reads <i>crap</i> with <i>clear</i> around it, and expects the <i>remove</i> group. You can also expect a word it should be linked to, or <code>not relevant</code>. Leave out <code>= …</code> to just see the answer.</p>
+        <div class="row">
+          <label for="freqMode">Frequencies</label>
+          <select id="freqMode">
+            <option value="groups">From your groups</option>
+            <option value="use">Stand-in encoder (from use only)</option>
+            <option value="random">Random (no encoder)</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="runs">Runs</label>
+          <select id="runs"><option>1</option><option selected>3</option><option>5</option><option>10</option></select>
+          <label for="steps">Training</label>
+          <select id="steps"><option value="1500">75 s</option><option value="3000" selected>150 s</option><option value="6000">300 s</option></select>
+        </div>
+        <div class="row">
+          <label for="runBrain">Archetype</label>
+          <select id="runBrain" class="brainpick"></select>
+        </div>
+        <div class="row">
+          <label for="runName">Name</label>
+          <input id="runName" type="text" placeholder="optional, e.g. heat off">
+        </div>
+        <div class="row">
+          <button class="main" id="runTest">Run test</button>
+          <button id="loadLive">Load into live view</button>
+          <button id="clearRuns">Clear columns</button>
+          <button id="sampleBtn">Sample data</button>
+        </div>
+        <p class="hint" id="runStatus" role="status"></p>
+      </div>
+    </div>
+    <div class="tablewrap" id="compareWrap" hidden><table class="compare" id="compare"></table></div>
+  </section>
+
+  <section class="text">
+    <h2>Your design, as the model runs it</h2>
+    <div class="cols">
+      <div class="card">
+        <h3>Parts</h3>
+        <ul>
+          <li><b>Neuron impact:</b> a line symbol that is always oscillating. Alone, a neuron oscillates with itself.</li>
+          <li><b>Line of neuron impact:</b> the lines between neurons, carrying oscillating impacts.</li>
+          <li><b>Imagination layer:</b> joined to every neuron. It can redesign any line, whether or not neurons are in sync.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Rules</h3>
+        <ul>
+          <li>An impact relays only between neurons <b>in sync enough</b>. Otherwise a neuron stays self-contained.</li>
+          <li>What a neuron absorbs becomes its <b>temperature</b>.</li>
+          <li><b>Heat flows hot to cold</b>, never the other way.</li>
+          <li><b>Hot neurons exchange</b>. <b>Cold neurons refine their own abstraction.</b></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>The cycle every neuron goes round</h3>
+        <div class="cycle">
+          <span>absorb</span>→<span class="hot">heat up</span>→<span class="hot">exchange</span>→<span class="coldc">cool</span>→<span class="coldc">refine</span>→<span>absorb</span>
+        </div>
+        <p>In the model, splitting a word into two meanings (nuclear fission) only happens while the neuron is cold, as part of refining itself.</p>
+      </div>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Drive</th><th>Internal energy: what it does here</th><th>External energy: what it does here</th></tr></thead>
+        <tbody id="energyTable"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="text" id="archetypes">
+    <h2>The archetypes, compared</h2>
+    <p>Each archetype now drives the network. Its <b>personality</b> sets the 16 energies (its 4 functions lead, the other 4 are weak) and steers heat and order while it runs. Its <b>decisions</b> set the rules: how strict a meaning must be, how soon a word splits, how long unused lines last, how soon hidden neurons join, and how much practice it replays. All 48 were trained on the same word test, 6 runs each.</p>
+    <p class="hint" id="archNote"></p>
+    <div class="tablewrap"><table class="compare arch" id="archTable"></table></div>
+  </section>
+
+  <section class="text">
+    <h2>What it showed</h2>
+    <p>I ran the model many times with different random starts and measured it. "Right" means the word had split, and the sense that won in a context was the correct meaning.</p>
+    <div class="tablewrap results">
+      <table>
+        <thead><tr><th>Test</th><th>Result</th><th>What it means</th></tr></thead>
+        <tbody id="results"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="text">
+    <h2>What it can do, and how far it can go</h2>
+    <div class="cols" id="verdicts"></div>
+  </section>
+
+  <section class="text">
+    <h2>Choices I made to turn your words into rules</h2>
+    <p>Your design says what each part does. To run it, I had to choose how. These are the choices most worth changing.</p>
+    <div class="card"><ul id="choices"></ul></div>
+  </section>
+
+  <footer>Simulation engine and measurements written for this page. Same engine as the live view above; every number on this page came from running it.</footer>
+</div>
+
+<script>
+// Imagination neurons: a small simulation of the owner's spec.
+// Every neuron oscillates; impacts relay only between neurons in sync; absorbed impact is temperature;
+// hot neurons exchange (hot -> cold), cold neurons refine; radiant lights hidden neurons; the imagination
+// layer redesigns lines (links, splits, merges, retunes), steered by 8 drives x 2 energies = 16 energies.
+(function (root) {
+  "use strict";
+
+  const ENERGIES = [
+    { key: "mechanical", name: "Mechanical", drive: "Internal abstraction", side: "internal", fn: "Ni", does: "absorbs incoming impact; what it absorbs becomes temperature" },
+    { key: "heat", name: "Heat", drive: "Internal abstraction", side: "external", fn: "Fe", does: "a hot neuron passes absorbed impact along its links to colder neurons" },
+    { key: "nuclear", name: "Nuclear", drive: "External abstraction", side: "internal", fn: "Ti", does: "a cold neuron holding two meanings splits in two (fission); identical twins merge (fusion)" },
+    { key: "radiant", name: "Radiant", drive: "External abstraction", side: "external", fn: "", does: "a hot neuron lights up hidden neurons at matching frequencies, with no link needed" },
+    { key: "rest", name: "Rest", drive: "Synchronicity", side: "internal", fn: "", does: "self temperature: each neuron settles back to a steady rhythm and its resting heat" },
+    { key: "thermal", name: "Thermal", drive: "Synchronicity", side: "external", fn: "Se", does: "neurons in sync exchange temperature, hot to cold" },
+    { key: "gravity", name: "Gravity", drive: "Order", side: "internal", fn: "", does: "pulls the frequencies of linked, synced neurons together into clusters" },
+    { key: "ionization", name: "Ionization", drive: "Order", side: "external", fn: "", does: "pushes half-matching neurons apart, so clusters stay cleanly separate" },
+    { key: "potential", name: "Potential", drive: "Speed", side: "internal", fn: "", does: "stored heat makes a neuron readier to relay (a lower sync bar)" },
+    { key: "kinetic", name: "Kinetic", drive: "Speed", side: "external", fn: "Te", does: "how strongly an impact travels on to the next neuron" },
+    { key: "chemical", name: "Chemical", drive: "Maintenance", side: "internal", fn: "", does: "holds each neuron near its own original frequency" },
+    { key: "elastic", name: "Elastic", drive: "Maintenance", side: "external", fn: "", does: "links spring back toward their original strength" },
+    { key: "electric", name: "Electric", drive: "Individuality", side: "internal", fn: "", does: "keeps a minimum frequency gap, so two neurons never fully merge" },
+    { key: "magnetic", name: "Magnetic", drive: "Individuality", side: "external", fn: "", does: "a neuron's field pulls on nearby frequencies even without a link" },
+    { key: "work", name: "Mechanical work", drive: "Refinement", side: "internal", fn: "", does: "a cold neuron retunes itself toward the neurons whose impacts reach it" },
+    { key: "oscillation", name: "Mechanical oscillation", drive: "Refinement", side: "external", fn: "", does: "a refined neuron's sharper rhythm spreads to the neurons in sync with it" },
+  ];
+
+  // How each of the 16 energies is read as evidence that a neuron belongs with a context (see read()).
+  const PROOF = {
+    mechanical: "impact it absorbed from the context",
+    heat: "heat it took in from hot context neurons along its lines",
+    nuclear: "how often it was used together with the context (meaning bound at its core)",
+    radiant: "light it received from the context",
+    rest: "how closely its own rhythm locked onto the context's",
+    thermal: "temperature it exchanged with the context",
+    gravity: "strength of its lines to the context",
+    ionization: "how cleanly it belongs with the context rather than with anything else",
+    potential: "activation it built up from the context's impacts",
+    kinetic: "impacts it received from the context",
+    chemical: "how close its own original frequency is to the context's",
+    elastic: "the settled strength its lines to the context spring back to",
+    electric: "its own charge, in step with the context",
+    magnetic: "how much its field overlaps the context's",
+    work: "past impacts from the context it refined itself toward",
+    oscillation: "sharp rhythm it shares with the context",
+  };
+
+  // Constants (simulation units: time in seconds, frequency in radians per second)
+  const C = {
+    dt: 0.05, SIGMA: 0.6, SYNC: 0.45, T_HOT: 1.0, T_COLD: 0.5, T_REST: 0.2,
+    K: 1.6, RELAY: 1.2, DECAY: 1.6, ABSORB: 0.5, REST: 0.25, HEAT: 0.8, THERMAL: 0.6, RADIANT: 0.6,
+    GRAVITY: 0.15, ION: 0.12, GAP: 0.18, ELECTRIC: 0.6, CHEM: 0.04, ELASTIC: 0.02, FIELD: 0.08,
+    WORK: 0.35, OSC: 0.5, SHARE: 0.25, SPLIT_GAP: 0.4, MEAN_GAP: 1.0, CO_MIN: 0.15, CO_LINK: 0.1, MIN_GROUP: 2, NOISE: 0.6, LIT_DECAY: 0.4, INBOX_DECAY: 0.015, IMAGINE_EVERY: 20, TRAIN_EVERY: 20,
+  };
+
+  function rng(seed) {                       // mulberry32: same seed, same run
+    let a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function defaults() { const e = {}; for (const x of ENERGIES) e[x.key] = 1; return e; }
+
+  class Network {
+    // brain: an archetype (object or name). Its personality sets the 16 energies and steers heat and order;
+    // its decisions set the rules (how strict, how soon to split, how long to keep lines, ...). No brain = neutral.
+    constructor(spec, seed = 1, energies = null, brain = null) {
+      this.rand = rng(seed);
+      this.brain = brain ? (typeof brain === "string" ? findArchetype(brain) : brain) : null;
+      if (brain && !this.brain) throw new Error("no archetype called " + brain);
+      const lean = this.brain ? this.brain.personality.energies : defaults();
+      this.e = {};
+      for (const x of ENERGIES) this.e[x.key] = lean[x.key] * ((energies || {})[x.key] ?? 1);   // "x off" still means off
+      this.base = Object.assign({}, this.e);
+      this.d = Object.assign({}, NEUTRAL, this.brain ? this.brain.decisions : {});
+      this.warmth = 1; this.orderPull = 1;
+      this.t = 0; this.steps = 0; this.nextId = 0; this.log = [];
+      this.N = []; this.links = new Map();
+      this.groups = spec.groups || {};
+      for (const n of spec.neurons) this.add(n);
+      for (const [a, b, w] of spec.links || []) this.connect(this.byLabel(a), this.byLabel(b), w);
+      this.sentences = spec.sentences || [];
+    }
+
+    add(n) {
+      const r = this.rand;
+      const neuron = {
+        id: this.nextId++, label: n.label, word: n.word || n.label, group: n.group || null,
+        omega: n.omega, omega0: n.omega, theta: r() * Math.PI * 2, amp: 0.6, E: 0, T: C.T_REST, lit: 0,
+        inbox: new Map(), co: new Map(), stepIn: new Map(), stepHeat: new Map(), stepThermal: new Map(), stepLit: new Map(), litBy: null, refined: 0, x: n.x ?? r(), y: n.y ?? r(), relayed: 0, hidden: !!n.hidden,
+      };
+      this.N.push(neuron);
+      return neuron;
+    }
+
+    byLabel(label) { return this.N.find(n => n.label === label); }
+    key(a, b) { return a.id < b.id ? a.id + "|" + b.id : b.id + "|" + a.id; }
+    link(a, b) { return this.links.get(this.key(a, b)); }
+    connect(a, b, w = 0.5) {
+      if (!a || !b || a === b) return;
+      this.links.set(this.key(a, b), { a: a.id, b: b.id, w, w0: w, carried: 0, idle: 0 });
+    }
+    linksOf(n) { const out = []; for (const l of this.links.values()) if (l.a === n.id || l.b === n.id) out.push(l); return out; }
+    get(id) { return this.N.find(n => n.id === id); }
+
+    say(text) { this.log.push({ t: this.t, text }); if (this.log.length > 200) this.log.shift(); }
+
+    stimulate(words, strength = 1) {
+      const set = new Set(words), hit = this.N.filter(n => set.has(n.word));
+      for (const n of hit) n.E += strength;
+      // used together: the imagination layer notes which neurons were set off by the same moment of input.
+      // A word with several senses gets the context only on the sense that fits it best (its contextual association).
+      const chosen = [];
+      for (const word of set) {
+        const senses = hit.filter(n => n.word === word);
+        if (senses.length < 2) { chosen.push(...senses); continue; }
+        const others = hit.filter(n => n.word !== word);
+        const fit = sn => others.reduce((t, o) => { const l = this.link(sn, o); return t + (l ? l.w : 0) + this.sync(sn, o).fsim; }, 0);
+        chosen.push(senses.reduce((best, sn) => fit(sn) > fit(best) ? sn : best));
+      }
+      for (const a of chosen) for (const b of chosen) if (a.word !== b.word) a.co.set(b.id, (a.co.get(b.id) || 0) + strength);
+    }
+
+    sync(a, b) {
+      const df = a.omega - b.omega, fsim = Math.exp(-((df / C.SIGMA) ** 2));
+      return { df, fsim, s: fsim * (1 + Math.cos(b.theta - a.theta)) / 2 };
+    }
+
+    step() {
+      const N = this.N, n = N.length, e = this.e, dt = C.dt, r = this.rand;
+      const dTheta = new Float64Array(n), inc = new Float64Array(n), dOmega = new Float64Array(n);
+      for (const x of N) { x.stepIn = new Map(); x.stepHeat = new Map(); x.stepThermal = new Map(); x.stepLit = new Map(); }   // what arrives this step, by source
+      const bar = x => C.SYNC - 0.12 * e.potential * Math.min(x.T, 1.5) / 1.5;   // potential: heat lowers the bar
+
+      for (let i = 0; i < n; i++) {
+        const a = N[i];
+        for (let j = i + 1; j < n; j++) {
+          const b = N[j];
+          const { df, fsim, s } = this.sync(a, b);
+          const l = this.link(a, b), w = l ? l.w : 0;
+          const c = w + C.FIELD * e.magnetic * fsim;                         // magnetic: a field beyond links
+          if (c > 0) {
+            const pull = C.K * c * fsim * Math.sin(b.theta - a.theta);        // falling into rhythm
+            dTheta[i] += pull; dTheta[j] -= pull;
+          }
+          // the sync rule: an impact relays only when the two are in sync enough
+          if (c > 0 && s > bar(b) && a.E > 0.01) {
+            const imp = C.RELAY * e.kinetic * c * a.amp * a.E * s * dt;
+            inc[j] += imp; b.inbox.set(a.id, (b.inbox.get(a.id) || 0) + imp); b.stepIn.set(a.id, imp); a.relayed += imp;
+            if (l) l.carried += imp;
+          }
+          if (c > 0 && s > bar(a) && b.E > 0.01) {
+            const imp = C.RELAY * e.kinetic * c * b.amp * b.E * s * dt;
+            inc[i] += imp; a.inbox.set(b.id, (a.inbox.get(b.id) || 0) + imp); a.stepIn.set(b.id, imp); b.relayed += imp;
+            if (l) l.carried += imp;
+          }
+          // order: gravity pulls linked synced neurons together, ionization pushes half-matches apart
+          if (l && s > C.SYNC) {
+            const g = e.gravity * C.GRAVITY * (b.omega - a.omega) * s;
+            dOmega[i] += g; dOmega[j] -= g;
+          } else if (!l && fsim > 0.12 && fsim < 0.5) {                  // only neurons with no line between them
+            const p = e.ionization * C.ION * Math.sign(df || 1) * fsim;
+            dOmega[i] += p; dOmega[j] -= p;
+          }
+          // individuality: electric keeps a minimum gap
+          if (Math.abs(df) < C.GAP) {
+            const p = e.electric * C.ELECTRIC * Math.sign(df || (r() - 0.5)) * (C.GAP - Math.abs(df)) / C.GAP;
+            dOmega[i] += p; dOmega[j] -= p;
+          }
+          // thermal: temperature exchange between neurons in sync, hot to cold
+          if (s > C.SYNC) {
+            const f = e.thermal * C.THERMAL * s * (a.T - b.T) * dt;
+            a.T -= f; b.T += f;
+            if (f > 0) b.stepThermal.set(a.id, f); else if (f < 0) a.stepThermal.set(b.id, -f);
+          }
+          // heat: a neuron hot enough passes absorbed impact along its links, hot to cold
+          if (l) {
+            const hot = a.T >= b.T ? a : b, cold = hot === a ? b : a;
+            if (hot.T > C.T_HOT) {
+              const f = e.heat * C.HEAT * l.w * (hot.T - cold.T) * dt;
+              hot.T -= f; cold.T += f; cold.stepHeat.set(hot.id, f);
+            }
+          }
+          // radiant: a hot neuron lights up others at matching frequencies, no link needed
+          if (a.T > C.T_HOT) { const add = e.radiant * C.RADIANT * (a.T - C.T_HOT) * fsim * dt; if (add > 0.002 && b.lit < 1) { b.lit += add; b.litBy = a.id; } if (add > 0) b.stepLit.set(a.id, add); }
+          if (b.T > C.T_HOT) { const add = e.radiant * C.RADIANT * (b.T - C.T_HOT) * fsim * dt; if (add > 0.002 && a.lit < 1) { a.lit += add; a.litBy = b.id; } if (add > 0) a.stepLit.set(b.id, add); }
+          // mechanical oscillation: a refined neuron's sharper rhythm spreads to synced, linked neighbours
+          if (l && s > C.SYNC) {
+            const f = e.oscillation * C.OSC * s * (a.amp - b.amp) * dt;
+            a.amp -= f; b.amp += f;
+          }
+        }
+      }
+
+      for (let i = 0; i < n; i++) {
+        const a = N[i];
+        const noise = C.NOISE / (1 + 2 * e.rest);                            // rest: a steadier self rhythm
+        a.theta += (a.omega + dTheta[i]) * dt + noise * Math.sqrt(dt) * (r() - 0.5);
+        a.E += inc[i] - a.E * C.DECAY * dt;
+        a.T += e.mechanical * C.ABSORB * inc[i];                             // mechanical: absorbing impact
+        a.T += (C.T_REST - a.T) * e.rest * C.REST * dt;                      // rest: self temperature
+        if (a.T > C.T_HOT) a.amp -= 0.15 * (a.T - C.T_HOT) * dt;              // hot: the rhythm blurs
+        // cold: the neuron refines its own abstraction (mechanical work toward its useful inputs)
+        a.refined = 0;
+        if (a.T < C.T_COLD && a.inbox.size) {
+          const split = this.spread(a);
+          if (split && !split.bimodal && split.total > 0.05) {
+            dOmega[i] += e.work * C.WORK * (split.mean - a.omega);
+            a.amp += e.work * 0.2 * (1 - a.amp) * dt;
+            a.refined = 1;
+          }
+        }
+        dOmega[i] += e.chemical * C.CHEM * (a.omega0 - a.omega);              // chemical: hold your own frequency
+        a.omega += dOmega[i] * dt;
+        a.amp = Math.min(1, Math.max(0.15, a.amp));
+        a.T = Math.max(0, a.T);
+        a.lit = Math.max(0, Math.min(1, a.lit * (1 - C.LIT_DECAY * dt)));
+        for (const m of [a.inbox, a.co]) for (const [k, v] of m) { const nv = v * (1 - C.INBOX_DECAY * dt); if (nv < 1e-4) m.delete(k); else m.set(k, nv); }
+      }
+      for (const l of this.links.values()) {                                  // elastic: links spring back
+        l.w += this.e.elastic * C.ELASTIC * (l.w0 - l.w) * dt;
+        l.idle = l.carried > 0.001 ? 0 : l.idle + dt;
+        l.carried *= 0.9;
+      }
+      this.t += dt; this.steps++;
+      if (this.steps % C.IMAGINE_EVERY === 0) { this.steer(); this.imagine(); }
+    }
+
+    // The personality, reacting: it measures how warm and how ordered the network is and nudges the energies toward
+    // its own target (warmer: more absorbing, less resting; more order: more gravity, less holding to old frequencies).
+    heatNow() { return this.N.reduce((t, n) => t + n.T, 0) / Math.max(1, this.N.length); }
+    orderNow() { let s = 0, c = 0; for (const l of this.links.values()) { const a = this.get(l.a), b = this.get(l.b); if (a && b) { s += this.sync(a, b).s; c++; } } return c ? s / c : 0; }
+    steer() {
+      if (!this.brain || !this.d.react) return;
+      const tg = this.brain.personality.target, k = this.d.react, clamp = v => Math.min(2, Math.max(0.5, v));
+      this.warmth = clamp(this.warmth + k * (tg.heat - this.heatNow()));
+      this.orderPull = clamp(this.orderPull + 4 * k * (tg.order - this.orderNow()));
+      const e = this.e, b = this.base;
+      if (b.mechanical) e.mechanical = b.mechanical * this.warmth;
+      if (b.rest) e.rest = b.rest / this.warmth;
+      if (b.gravity) e.gravity = b.gravity * this.orderPull;
+      if (b.chemical) e.chemical = b.chemical / this.orderPull;
+    }
+
+    // Where a neuron's impacts come from: the frequencies of its sources, weighted, and whether they form two groups.
+    spread(a, from = "inbox") {
+      const items = [];
+      for (const [id, v] of a[from]) { const s = this.get(id); if (s && s.word !== a.word) items.push({ s, v }); }
+      if (!items.length) return null;
+      items.sort((x, y) => x.s.omega - y.s.omega);
+      const total = items.reduce((t, x) => t + x.v, 0);
+      const mean = items.reduce((t, x) => t + x.v * x.s.omega, 0) / total;
+      let best = null;                                                       // the widest gap that leaves weight on both sides
+      let left = 0;
+      for (let k = 0; k < items.length - 1; k++) {
+        left += items[k].v;
+        const gap = items[k + 1].s.omega - items[k].s.omega, share = Math.min(left, total - left) / total;
+        if (share > C.SHARE && gap > C.SPLIT_GAP * C.SIGMA && (!best || gap * share > best.gap * best.share)) best = { k, gap, share };
+      }
+      if (!best) return { total, mean, bimodal: false };
+      const lo = items.slice(0, best.k + 1), hi = items.slice(best.k + 1);
+      const m = xs => xs.reduce((t, x) => t + x.v * x.s.omega, 0) / xs.reduce((t, x) => t + x.v, 0);
+      const loMean = m(lo), hiMean = m(hi);
+      if (hiMean - loMean < C.MEAN_GAP * C.SIGMA) return { total, mean, bimodal: false };   // two sides, but not two meanings
+      return { total, mean, bimodal: true, lo, hi, loMean, hiMean, share: best.share, gap: best.gap };
+    }
+
+    // Contexts: the neurons used at the same moment as this one, grouped by whether they are also used with
+    // each other. Two groups that never meet are two contexts, so two meanings. Frequencies play no part.
+    contexts(a) {
+      const partners = [];
+      let top = 0;
+      for (const [id, v] of a.co) { const s = this.get(id); if (s && s.word !== a.word) { partners.push({ s, v }); top = Math.max(top, v); } }
+      const strong = partners.filter(p => p.v > C.CO_MIN * top);
+      if (strong.length < 2) return null;
+      const seen = new Set(), groups = [];
+      for (const p of strong) {
+        if (seen.has(p.s.id)) continue;
+        const group = [], todo = [p];
+        seen.add(p.s.id);
+        while (todo.length) {
+          const x = todo.pop(); group.push(x);
+          for (const q of strong) if (!seen.has(q.s.id)) {
+            const together = Math.max(x.s.co.get(q.s.id) || 0, q.s.co.get(x.s.id) || 0), line = this.link(x.s, q.s);
+            if (together > C.CO_LINK * Math.min(x.v, q.v) || (line && line.w > 0.2)) { seen.add(q.s.id); todo.push(q); }
+          }
+        }
+        groups.push(group);
+      }
+      const total = strong.reduce((t, x) => t + x.v, 0);
+      const weight = g => g.reduce((t, x) => t + x.v, 0);
+      groups.sort((x, y) => weight(y) - weight(x));
+      const big = groups.filter(g => g.length >= C.MIN_GROUP);                  // a context needs at least two members
+      groups.length = 0; groups.push(...big);
+      if (groups.length < 2 || weight(groups[1]) / total < C.SHARE) return { total, bimodal: false, groups: groups.length };
+      const m = xs => xs.reduce((t, x) => t + x.v * x.s.omega, 0) / weight(xs);
+      let [lo, hi] = groups;
+      if (m(lo) > m(hi)) [lo, hi] = [hi, lo];
+      return { total, bimodal: true, lo, hi, loMean: m(lo), hiMean: m(hi), share: weight(groups[1]) / total, groups: groups.length };
+    }
+
+    // The imagination layer: redesigns lines, steered by the drives.
+    imagine() {
+      const e = this.e;
+      // nuclear fission: a cold neuron whose impacts come from two separate groups splits into two
+      for (const a of [...this.N]) {
+        if (a.T >= C.T_COLD) continue;
+        const sp = this.contexts(a);                                         // the layer sees use, not only impacts
+        if (!sp || !sp.bimodal || sp.total < 0.05) continue;
+        const score = e.nuclear * sp.share * 2 * (0.5 + 0.5 * e.electric) - 0.25 * e.chemical;
+        if (score > this.d.split) this.fission(a, sp);
+      }
+      // nuclear fusion: two neurons with nearly the same frequency and the same neighbours merge (electric resists)
+      if (e.electric < 0.5) {
+        for (let i = 0; i < this.N.length; i++) for (let j = i + 1; j < this.N.length; j++) {
+          const a = this.N[i], b = this.N[j];
+          if (a.word === b.word && Math.abs(a.omega - b.omega) < 0.12 && e.nuclear * (1 - e.electric) > 0.5) { this.fusion(a, b); return; }
+        }
+      }
+      // lines: links that carry impact grow (order); links idle a long time fade and go (refinement)
+      for (const [k, l] of this.links) {
+        if (l.carried > 0.01) l.w = Math.min(1, l.w + 0.02 * e.gravity);
+        if (l.idle > this.d.patience / Math.max(0.2, e.work)) { l.w -= 0.05; if (l.w <= 0.03) { this.links.delete(k); const a = this.get(l.a), b = this.get(l.b); this.say(`refinement: the unused line ${a.label}—${b.label} faded away`); } }
+      }
+      // radiant + imagination: a hidden, unlinked neuron that was lit up gets retuned and joined, regardless of sync
+      for (const a of this.N) {
+        if (this.linksOf(a).length || a.lit < this.d.radiant || a.litBy == null) continue;
+        const src = this.get(a.litBy);
+        if (!src || e.radiant <= 0) continue;
+        a.omega0 = a.omega = a.omega + 0.6 * (src.omega - a.omega);
+        this.connect(a, src, 0.3);
+        a.hidden = false;
+        this.say(`radiant: hidden ${a.label} was lit up by ${src.label}; the imagination layer tuned it closer and joined them`);
+      }
+    }
+
+    fission(a, sp) {
+      const base = a.word;
+      this.senseCount = this.senseCount || {};
+      const mk = (part, mean, side) => {
+        const suffix = this.senseCount[base] = (this.senseCount[base] || 0) + 1;
+        const child = this.add({ label: `${base}·${suffix}`, word: base, omega: mean, x: a.x + side * 0.05, y: a.y + 0.05 });
+        child.T = a.T; child.amp = a.amp; child.theta = a.theta; child.parentLabel = a.label;
+        for (const { s } of part) { const old = this.link(a, s); this.connect(child, s, old ? old.w : 0.3); }
+        return child;
+      };
+      const c1 = mk(sp.lo, sp.loMean, -1), c2 = mk(sp.hi, sp.hiMean, 1);
+      // keep any other links of the parent on the closer child
+      for (const l of this.linksOf(a)) {
+        const other = this.get(l.a === a.id ? l.b : l.a);
+        if (this.link(c1, other) || this.link(c2, other)) continue;
+        const near = Math.abs(other.omega - c1.omega) < Math.abs(other.omega - c2.omega) ? c1 : c2;
+        this.connect(near, other, l.w);
+      }
+      this.remove(a);
+      const names = xs => xs.slice().sort((p, q) => q.v - p.v).slice(0, 3).map(x => x.s.label).join(", ");
+      this.say(`nuclear fission: ${a.label} held two meanings, so it split into ${c1.label} (near ${names(sp.lo)}) and ${c2.label} (near ${names(sp.hi)})`);
+    }
+
+    fusion(a, b) {
+      a.omega = a.omega0 = (a.omega + b.omega) / 2;
+      for (const l of this.linksOf(b)) { const other = this.get(l.a === b.id ? l.b : l.a); if (other !== a && !this.link(a, other)) this.connect(a, other, l.w); }
+      this.remove(b);
+      this.say(`nuclear fusion: ${b.label} merged into ${a.label} (electric was too weak to keep them apart)`);
+    }
+
+    remove(a) {
+      for (const [k, l] of this.links) if (l.a === a.id || l.b === a.id) this.links.delete(k);
+      this.N = this.N.filter(x => x !== a);
+      for (const x of this.N) { x.inbox.delete(a.id); x.co.delete(a.id); }
+    }
+
+    // One training moment: a random sentence from the spec, felt as impacts on its words.
+    // replay (a decision): some practice goes to a sentence holding the line closest to fading, like sleep.
+    train() {
+      if (!this.sentences.length) return null;
+      let s = null;
+      if (this.d.replay && this.rand() < this.d.replay) {
+        let worst = null;
+        for (const l of this.links.values()) if (l.idle > this.d.patience * 0.25 && (!worst || l.idle > worst.idle)) worst = l;
+        if (worst) {
+          const a = this.get(worst.a), b = this.get(worst.b);
+          const both = this.sentences.filter(x => x.includes(a.word) && x.includes(b.word));
+          const one = both.length ? both : this.sentences.filter(x => x.includes(a.word) || x.includes(b.word));
+          if (one.length) s = one[Math.floor(this.rand() * one.length)];
+        }
+      }
+      s = s || this.sentences[Math.floor(this.rand() * this.sentences.length)];
+      this.stimulate(s, 1.2);
+      return s;
+    }
+
+    // Which sense of a word wins in a context, and whether it's relevant at all. For each of the 16 energies, the
+    // context's energy of that kind is shared out among every neuron it reaches: a neuron's percentage is its share.
+    // A sense matches on an energy when it gets more than a fair share (100% / the neurons reached). The meaning is
+    // accurate when it matches on more than half the energies that carried anything; partly at a quarter; else not relevant.
+    read(word, context, steps = 40) {
+      const senses = this.N.filter(x => x.word === word);
+      if (!senses.length) return null;
+      const ctx = new Set(context), keys = Object.keys(PROOF);
+      const sums = new Map();
+      const add = (x, k, v) => { if (!(v > 0)) return; let t = sums.get(x.id); if (!t) sums.set(x.id, t = {}); t[k] = (t[k] || 0) + v; };
+      const isCtx = n => ctx.has(n.word);
+      for (let k = 0; k < steps; k++) {
+        if (k % 8 === 0) { this.stimulate(context, 1.0); this.stimulate([word], 0.4); }
+        this.step();
+        const cx = this.N.filter(isCtx);
+        if (!cx.length) continue;
+        const ctxOmega0 = cx.reduce((t, n) => t + n.omega0, 0) / cx.length, dt = C.dt;
+        for (const r of this.N) {
+          if (isCtx(r)) continue;
+          const take = m => { let v = 0; for (const [id, a] of m) { const src = this.get(id); if (src && isCtx(src)) v += a; } return v; };
+          const imp = take(r.stepIn), allIn = [...r.stepIn.values()].reduce((t, v) => t + v, 0);
+          add(r, "kinetic", imp); add(r, "mechanical", imp * C.ABSORB);
+          add(r, "heat", take(r.stepHeat)); add(r, "thermal", take(r.stepThermal)); add(r, "radiant", take(r.stepLit));
+          add(r, "potential", allIn > 0 ? r.E * imp / allIn * dt : 0);
+          add(r, "work", take(r.inbox) * dt);
+          add(r, "chemical", Math.exp(-(((r.omega0 - ctxOmega0) / C.SIGMA) ** 2)) * dt);
+          let fsAll = 0;
+          for (const o of this.N) if (o !== r && !isCtx(o)) fsAll += this.sync(r, o).fsim;
+          for (const o of cx) {
+            const sy = this.sync(r, o), l = this.link(r, o);
+            add(r, "rest", sy.s * dt); add(r, "magnetic", sy.fsim * dt);
+            add(r, "gravity", (l ? l.w : 0) * dt); add(r, "elastic", (l ? l.w0 : 0) * dt);
+            add(r, "nuclear", (r.co.get(o.id) || 0) * dt);
+            add(r, "electric", r.E * sy.s * dt);
+            add(r, "oscillation", sy.s * Math.min(r.amp, o.amp) * dt);
+            add(r, "ionization", sy.fsim / (sy.fsim + fsAll + 1e-9) * dt);
+          }
+        }
+      }
+      const alive = senses.filter(x => this.N.includes(x));
+      if (!alive.length) return null;
+      const profile = new Map(alive.map(x => [x.id, {}])), matched = new Map(alive.map(x => [x.id, 0]));
+      let carried = 0;
+      for (const k of keys) {
+        if (this.e[k] <= 0) continue;
+        let total = 0, reached = 0;
+        for (const [, t] of sums) if (t[k] > 0) { total += t[k]; reached++; }
+        if (total <= 1e-12) continue;
+        carried++;
+        const fair = 100 / reached;
+        for (const x of alive) {
+          const pct = 100 * ((sums.get(x.id) || {})[k] || 0) / total;
+          profile.get(x.id)[k] = pct;
+          if (pct > fair) matched.set(x.id, matched.get(x.id) + 1);
+        }
+      }
+      const avg = x => { const v = Object.values(profile.get(x.id)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0; };
+      const ranked = alive.map(x => ({ s: x, matched: matched.get(x.id), pct: avg(x), profile: profile.get(x.id) }))
+        .sort((a, b) => b.matched - a.matched || b.pct - a.pct);
+      const best = ranked[0];
+      const bar = this.d.strict;                                         // the archetype's strictness (neutral 0.5)
+      const verdict = !carried ? "not relevant" : best.matched > carried * bar ? "accurate" : best.matched >= carried * bar / 2 ? "partly" : "not relevant";
+      const clear = ranked.length < 2 || best.matched > ranked[1].matched;
+      return { winner: best.s, senses: ranked.length, ranked, carried, verdict, clear,
+               meaning: verdict === "accurate" && clear ? this.meaningOf(best.s) : null };
+    }
+
+    fromContext(s, ctx) { let t = 0; for (const [id, v] of (s.stepIn || new Map())) { const src = this.get(id); if (src && (ctx.has(src.word) || this.isNear(src, ctx))) t += v; } return t; }
+    isNear(src, ctx) { for (const l of this.linksOf(src)) { const o = this.get(l.a === src.id ? l.b : l.a); if (o && ctx.has(o.word)) return true; } return false; }
+
+    // The group a neuron's linked neighbours mostly belong to (for display and scoring only; the dynamics never read it).
+    meaningOf(n) {
+      if (n.group) return n.group;                                       // a word that never split keeps its own group
+      const count = {};
+      for (const l of this.linksOf(n)) { const o = this.get(l.a === n.id ? l.b : l.a); if (o && o.group) count[o.group] = (count[o.group] || 0) + l.w; }
+      const best = Object.entries(count).sort((a, b) => b[1] - a[1])[0];
+      if (best) return best[0];
+      const near = this.neighbours(n).slice(0, 2);                     // no groups given: name it by its strongest lines
+      return near.length ? "near " + near.join(", ") : null;
+    }
+
+    neighbours(n) {
+      return this.linksOf(n).map(l => ({ o: this.get(l.a === n.id ? l.b : l.a), w: l.w })).filter(x => x.o && x.o.word !== n.word)
+        .sort((a, b) => b.w - a.w).map(x => x.o.word);
+    }
+
+    // Does an answer match what the person expected? expected: a group name, a word the sense should be linked to,
+    // or "not relevant".
+    matches(r, want) {
+      if (!want) return null;
+      if (!r) return false;
+      if (/^(not relevant|none|no)$/.test(want)) return r.verdict !== "accurate";
+      if (r.verdict !== "accurate" || !r.clear) return false;
+      if (this.N.some(x => x.group === want)) return this.meaningOf(r.winner) === want;
+      return this.neighbours(r.winner).slice(0, 4).includes(want);
+    }
+
+    // Overall readings for the page.
+    stats() {
+      const N = this.N;
+      let re = 0, im = 0; for (const n of N) { re += Math.cos(n.theta); im += Math.sin(n.theta); }
+      const order = Math.hypot(re, im) / Math.max(1, N.length);
+      const heat = N.reduce((t, n) => t + n.T, 0);
+      const hot = N.filter(n => n.T > C.T_HOT).length, cold = N.filter(n => n.T < C.T_COLD).length;
+      return { order, heat, hot, cold, neurons: N.length, links: this.links.size, lit: N.filter(n => n.lit > 0.3).length };
+    }
+  }
+
+  // The word preset: four meaning groups and two ambiguous words. Frequencies are set by hand: there is no
+  // cortex engine yet to turn a word into a frequency.
+  function wordSpec(gap = 1.2) {
+    const g = { remove: 2.0, show: 2.0 + gap, check: 2.0 + 2 * gap, place: 2.0 + 3 * gap };
+    const groups = {
+      remove: ["clear", "wipe", "remove", "junk"],
+      show: ["write", "show", "text", "quote"],
+      place: ["window", "put", "place", "position"],
+      check: ["check", "if", "compare", "equals"],
+    };
+    const pos = { remove: [0.16, 0.3], show: [0.5, 0.2], check: [0.7, 0.68], place: [0.26, 0.76] };
+    const neurons = [];
+    for (const [grp, words] of Object.entries(groups)) words.forEach((w, k) => {
+      const [cx, cy] = pos[grp], ang = (k / words.length) * Math.PI * 2;
+      neurons.push({ label: w, group: grp, omega: g[grp] + (k - 1.5) * 0.12, x: cx + 0.11 * Math.cos(ang), y: cy + 0.11 * Math.sin(ang) });
+    });
+    neurons.push({ label: "crap", omega: (g.remove + g.show) / 2, x: 0.4, y: 0.25 });
+    neurons.push({ label: "test", omega: (g.show + g.check) / 2 + 0.05, x: 0.46, y: 0.5 });
+    neurons.push({ label: "zorp", omega: g.place + 0.35, x: 0.92, y: 0.42, hidden: true });
+    const links = [];
+    for (const words of Object.values(groups)) for (let i = 0; i < words.length; i++) for (let j = i + 1; j < words.length; j++) links.push([words[i], words[j], 0.5]);
+    for (const w of ["clear", "wipe", "junk", "write", "text", "quote"]) links.push(["crap", w, 0.4]);
+    for (const w of ["text", "write", "check", "compare"]) links.push(["test", w, 0.4]);
+    const sentences = [
+      ["clear", "crap"], ["wipe", "crap"], ["crap", "junk"], ["remove", "crap"],
+      ["write", "crap"], ["show", "crap"], ["crap", "text"], ["quote", "crap"],
+      ["write", "test"], ["test", "text"], ["check", "test"], ["if", "test"], ["compare", "test"],
+      ["put", "window"], ["place", "position"], ["clear", "junk"], ["write", "text"], ["check", "equals"],
+    ];
+    return { neurons, links, sentences, groups: g, truth: { crap: { clear: "remove", wipe: "remove", junk: "remove", remove: "remove", write: "show", show: "show", text: "show", quote: "show" }, test: { write: "show", text: "show", show: "show", check: "check", if: "check", compare: "check", equals: "check" } } };
+  }
+
+
+  // ---------- the brain system: archetype -> personality (MBTI) -> the 16 energies ----------
+  // Each of the 8 functions owns 2 energies (the owner's 5 links, the rest proposed and still to confirm).
+  const FUNCTIONS = {
+    Ni: ["mechanical", "work"], Ne: ["radiant", "oscillation"], Ti: ["nuclear", "gravity"], Te: ["kinetic", "ionization"],
+    Fi: ["electric", "chemical"], Fe: ["heat", "magnetic"], Si: ["rest", "potential"], Se: ["thermal", "elastic"],
+  };
+  const STACKS = {
+    INTJ: ["Ni", "Te", "Fi", "Se"], INTP: ["Ti", "Ne", "Si", "Fe"], ENTJ: ["Te", "Ni", "Se", "Fi"], ENTP: ["Ne", "Ti", "Fe", "Si"],
+    INFJ: ["Ni", "Fe", "Ti", "Se"], INFP: ["Fi", "Ne", "Si", "Te"], ENFJ: ["Fe", "Ni", "Se", "Ti"], ENFP: ["Ne", "Fi", "Te", "Si"],
+    ISTJ: ["Si", "Te", "Fi", "Ne"], ISFJ: ["Si", "Fe", "Ti", "Ne"], ESTJ: ["Te", "Si", "Ne", "Fi"], ESFJ: ["Fe", "Si", "Ne", "Ti"],
+    ISTP: ["Ti", "Se", "Ni", "Fe"], ISFP: ["Fi", "Se", "Ni", "Te"], ESTP: ["Se", "Ti", "Fe", "Ni"], ESFP: ["Se", "Fi", "Te", "Ni"],
+  };
+  const STACK_WEIGHT = [1.6, 1.3, 0.9, 0.6], SHADOW_WEIGHT = 0.5;
+
+  // The personality: the 16 energies an MBTI type leans toward, by its function order.
+  function personality(type) {
+    const stack = STACKS[type], e = {};
+    for (const [fn, keys] of Object.entries(FUNCTIONS)) {
+      const at = stack.indexOf(fn), w = at >= 0 ? STACK_WEIGHT[at] : SHADOW_WEIGHT;
+      for (const k of keys) e[k] = w;
+    }
+    // where it reactively steers the network: extraverts run warmer, judgers keep more order
+    // (a neutral network runs at about 0.85 mean temperature and 0.80 sync along its lines)
+    const target = { heat: +(0.75 + (type[0] === "E" ? 0.25 : 0) + (type[3] === "P" ? 0.1 : 0)).toFixed(2), order: type[3] === "J" ? 0.86 : 0.76 };
+    return { type, stack, energies: e, target };
+  }
+
+  // How an archetype decides (determination), the same whether the network is young or mature.
+  function decisions(type, bias) {
+    const T = type[2] === "T", J = type[3] === "J", N = type[1] === "N", S = !N, F = !T, P = !J;
+    const d = {
+      strict: 0.5 + (T ? 0.08 : -0.04) + (J ? 0.07 : -0.03) + (bias === "strict" ? 0.1 : 0),      // share of energies a meaning must win
+      split: 0.4 - (N ? 0.08 : 0) + (J ? 0.04 : -0.04) - (bias === "split" ? 0.12 : 0),          // lower = splits meanings sooner
+      patience: Math.round(40 * (S ? 1.6 : 1) * (F ? 1.3 : 1) * (P ? 1.1 : 0.9) * (bias === "keep" ? 2 : 1)),   // seconds before an unused line fades
+      radiant: 0.5 - (N ? 0.1 : 0) - (P ? 0.08 : 0) - (bias === "explore" ? 0.12 : 0),          // lower = joins hidden neurons sooner
+      replay: +((S ? 0.25 : 0.05) + (F ? 0.1 : 0) + (bias === "keep" ? 0.2 : 0)).toFixed(2),     // share of practice spent on fading words
+      react: bias === "swift" ? 0.08 : bias === "order" ? 0.03 : 0.05,                           // how fast the personality reacts
+    };
+    d.strict = +Math.min(0.8, d.strict).toFixed(2); d.split = +Math.max(0.15, d.split).toFixed(2); d.radiant = +Math.max(0.2, d.radiant).toFixed(2);
+    return d;
+  }
+
+  // The neutral rules, used when there is no archetype (the values the network was first tuned with).
+  const NEUTRAL = { strict: 0.5, split: 0.4, patience: 40, radiant: 0.5, replay: 0, react: 0 };
+
+  function findArchetype(name) {
+    const clean = x => String(x).toLowerCase().replace(/^the\s+/, "").replace(/[^a-z ]/g, "").trim();
+    const want = clean(name);
+    return ARCHETYPES.find(a => clean(a.name) === want) || ARCHETYPES.find(a => clean(a.name).includes(want)) || null;
+  }
+
+  // Archetypes. Two are the owner's (Mirror Oracle, the Sensory Mythweaver); the MBTI each one picks is a choice of
+  // character, from popular psychology, not tested science.
+  const ARCHETYPES = [
+    ["The Mirror Oracle", "INFJ", "strict", "Sees itself in others and the future in both: it reflects every context back until the true meaning shows.", true],
+    ["The Veiled Seer", "INFJ", "keep", "Holds quiet visions for a long time and lets nothing meaningful fade."],
+    ["The Dream Keeper", "INFJ", "explore", "Walks the edges of sleep, lighting up meanings no one else has noticed."],
+    ["The Sensory Mythweaver", "ISFP", "explore", "Weaves myths out of colour, texture and feeling: every sensation becomes a story.", true],
+    ["The Colour Drifter", "ISFP", "keep", "Moves gently through hues and moods, keeping each one it has loved."],
+    ["The Wild Gardener", "ISFP", "split", "Lets meanings grow in every direction, then prunes them by feel."],
+    ["The Silent Architect", "INTJ", "strict", "Plans the whole structure before laying a single brick."],
+    ["The Midnight Strategist", "INTJ", "order", "Works alone in the dark hours, ordering every possibility into one path."],
+    ["The Crystal Cartographer", "INTJ", "split", "Maps meanings with cold precision, splitting each region cleanly."],
+    ["The Paradox Engineer", "INTP", "split", "Takes every idea apart to see whether its opposite also works."],
+    ["The Quiet Logician", "INTP", "strict", "Accepts nothing that isn't proven, and says so softly."],
+    ["The Fractal Hermit", "INTP", "explore", "Follows patterns inward forever, finding worlds inside words."],
+    ["The Iron Conductor", "ENTJ", "order", "Sets the tempo for the whole network and keeps it in line."],
+    ["The Sovereign Engine", "ENTJ", "swift", "Decides fast, drives hard, and turns every impact into motion."],
+    ["The Storm Marshal", "ENTJ", "strict", "Commands chaos into formation, keeping only what holds."],
+    ["The Spark Trickster", "ENTP", "explore", "Throws sparks at every idea to see which ones catch fire."],
+    ["The Idea Smith", "ENTP", "split", "Hammers one word into many shapes and tests each blade."],
+    ["The Chaos Cartographer", "ENTP", "swift", "Charts what's changing while it changes."],
+    ["The Ember Poet", "INFP", "keep", "Keeps small fires of meaning burning long after others have gone out."],
+    ["The Wandering Lantern", "INFP", "explore", "Carries a soft light into forgotten corners."],
+    ["The Soft Rebel", "INFP", "split", "Refuses the obvious meaning and finds the personal one."],
+    ["The Warm Beacon", "ENFJ", "order", "Draws every neuron toward one warm centre."],
+    ["The Chorus Shepherd", "ENFJ", "keep", "Keeps every voice in the choir, even the quietest."],
+    ["The Sun Herald", "ENFJ", "swift", "Announces meaning the moment it rises."],
+    ["The Wildfire Muse", "ENFP", "explore", "Sets imagination alight and follows wherever it spreads."],
+    ["The Starlight Vagabond", "ENFP", "split", "Collects meanings like stars, one for every road."],
+    ["The Kaleidoscope Child", "ENFP", "swift", "Turns every context and sees a new pattern each time."],
+    ["The Stone Keeper", "ISTJ", "keep", "Remembers every brick ever laid, exactly where it was."],
+    ["The Ledger Monk", "ISTJ", "strict", "Records only what balances, and checks it twice."],
+    ["The Clockwork Sentinel", "ISTJ", "order", "Keeps perfect time and lets nothing slip out of rhythm."],
+    ["The Hearth Guardian", "ISFJ", "keep", "Tends the fire so the oldest meanings stay warm."],
+    ["The Gentle Archivist", "ISFJ", "order", "Files every memory with care so it can be found again."],
+    ["The Lantern Nurse", "ISFJ", "strict", "Heals only what it understands, one careful step at a time."],
+    ["The Steel Steward", "ESTJ", "order", "Runs the network like a well-kept workshop."],
+    ["The Bridge Builder", "ESTJ", "swift", "Connects what should be connected, fast and solid."],
+    ["The Order Captain", "ESTJ", "strict", "Keeps the ranks straight and the rules clear."],
+    ["The Village Heart", "ESFJ", "keep", "Knows everyone's story and keeps them all together."],
+    ["The Table Host", "ESFJ", "order", "Seats every meaning where it belongs."],
+    ["The Golden Thread", "ESFJ", "swift", "Ties people and meanings together before they drift apart."],
+    ["The Lone Mechanic", "ISTP", "strict", "Strips each brick to its working parts and rebuilds it right."],
+    ["The Edge Walker", "ISTP", "explore", "Tests the limits by standing on them."],
+    ["The Silent Blade", "ISTP", "split", "Cuts one meaning cleanly into two."],
+    ["The Thunder Runner", "ESTP", "swift", "Acts first, learns from the impact, acts again."],
+    ["The Street Alchemist", "ESTP", "explore", "Turns whatever is lying around into something that works."],
+    ["The Daredevil Spark", "ESTP", "split", "Tries the risky meaning just to see it fly."],
+    ["The Stage Flame", "ESFP", "swift", "Lights up the moment and plays to every impact."],
+    ["The Festival Spirit", "ESFP", "explore", "Brings every neuron to the party."],
+    ["The Velvet Performer", "ESFP", "keep", "Remembers how every moment felt, and replays the best ones."],
+  ].map(([name, type, bias, line, yours]) => ({ name, type, bias, line, yours: !!yours, personality: personality(type), decisions: decisions(type, bias) }));
+
+  // Your own data. Lines like "group remove: clear, wipe, junk" make a meaning group; every other line is a sentence.
+  // Questions: "crap @ clear = remove" reads crap in the context "clear" and expects the remove meaning
+  // (or a word it should be linked to, or "not relevant").
+  function parseData(text) {
+    const groups = {}, sentences = [];
+    for (const raw of String(text).split(/\n/)) {
+      const line = raw.replace(/#.*/, "").trim().toLowerCase();
+      if (!line) continue;
+      const g = line.match(/^group\s+([a-z0-9_-]+)\s*:\s*(.+)$/);
+      if (g) { groups[g[1]] = (g[2].match(/[a-z0-9']+/g) || []); continue; }
+      const words = line.match(/[a-z0-9']+/g) || [];
+      if (words.length) sentences.push(words);
+    }
+    return { groups, sentences };
+  }
+
+  function parseQuestions(text) {
+    const out = [];
+    for (const raw of String(text).split(/\n/)) {
+      const line = raw.replace(/#.*/, "").trim().toLowerCase();
+      const m = line.match(/^([a-z0-9']+)\s*@\s*([^=]+?)\s*(?:=\s*(.+))?$/);
+      if (m) out.push({ word: m[1], context: m[2].match(/[a-z0-9']+/g) || [], want: m[3] ? m[3].trim() : null, text: line });
+    }
+    return out;
+  }
+
+  // mode: "groups" = your groups set the frequency bands, other words sit at the average of the words used with them;
+  // "use" = a stand-in encoder that orders words by use only (ignores groups); "random" = no encoder at all.
+  function dataSpec(text, mode = "groups", seed = 1) {
+    const { groups, sentences } = parseData(text);
+    const r = rng(seed * 7919 + 3), omega = {}, groupOf = {}, words = [];
+    const seen = new Set(), addWord = w => { if (!seen.has(w)) { seen.add(w); words.push(w); } };
+    for (const g of Object.values(groups)) g.forEach(addWord);
+    for (const st of sentences) st.forEach(addWord);
+    const co = {};
+    for (const st of sentences) for (const a of st) for (const b of st) if (a !== b) { co[a] = co[a] || {}; co[a][b] = (co[a][b] || 0) + 1; }
+    const names = Object.keys(groups);
+    names.forEach((g, i) => groups[g].forEach((w, k) => { groupOf[w] = groupOf[w] || g; if (mode === "groups") omega[w] = omega[w] ?? 2 + i * 1.2 + (k - (groups[g].length - 1) / 2) * 0.12; }));
+    if (mode === "random") words.forEach(w => omega[w] = 2 + r() * 4);
+    else {
+      const free = words.filter(w => omega[w] === undefined);
+      const fixed = words.length - free.length;
+      free.forEach(w => omega[w] = 2 + r() * 4);
+      for (let it = 0; it < 60; it++) {
+        const next = {};
+        for (const w of free) {
+          let t = 0, n = 0;
+          for (const [o, c] of Object.entries(co[w] || {})) { t += c * omega[o]; n += c; }
+          next[w] = n ? 0.5 * omega[w] + 0.5 * t / n : omega[w];
+        }
+        if (fixed) free.forEach(w => omega[w] = next[w]);
+        else free.slice().sort((a, b) => next[a] - next[b]).forEach((w, k) => omega[w] = 2 + 4 * k / Math.max(1, free.length - 1));   // keep them spread
+      }
+    }
+    const neurons = words.map(w => {
+      const a = ((omega[w] - 1.6) / 5) * Math.PI * 2, rad = 0.3 + 0.1 * r();
+      return { label: w, group: groupOf[w] || null, omega: omega[w], x: 0.5 + rad * Math.cos(a), y: 0.5 + rad * 0.95 * Math.sin(a) };
+    });
+    const links = [], linked = new Set(), key = (a, b) => a < b ? a + "|" + b : b + "|" + a;
+    for (const g of Object.values(groups)) for (let i = 0; i < g.length; i++) for (let j = i + 1; j < g.length; j++) if (!linked.has(key(g[i], g[j]))) { linked.add(key(g[i], g[j])); links.push([g[i], g[j], 0.5]); }
+    for (const a of Object.keys(co)) for (const b of Object.keys(co[a])) if (!linked.has(key(a, b))) { linked.add(key(a, b)); links.push([a, b, 0.4]); }
+    return { neurons, links, sentences, groups: Object.fromEntries(names.map((g, i) => [g, 2 + i * 1.2])) };
+  }
+
+  const SAMPLE_DATA = `# Meaning groups: "group name: words". Every other line is a sentence it practises on.
+group remove: clear, wipe, remove, junk
+group show: write, show, text, quote
+group check: check, if, compare, equals
+group place: window, put, place, position
+clear crap
+wipe crap
+crap junk
+remove crap
+write crap
+show crap
+crap text
+quote crap
+write test
+test text
+check test
+if test
+compare test
+put window
+place position
+clear junk
+write text
+check equals`;
+
+  const SAMPLE_QUESTIONS = `# word @ context = what you expect (a group, a word it should be linked to, or "not relevant")
+crap @ clear = remove
+crap @ write = show
+crap @ quote = show
+test @ check = check
+test @ text = show
+crap @ put = not relevant
+test @ window = not relevant`;
+
+  // A random field: n neurons with random frequencies and random links (for watching sync and heat).
+  function fieldSpec(n = 16, seed = 7) {
+    const r = rng(seed), neurons = [], links = [];
+    for (let i = 0; i < n; i++) neurons.push({ label: "n" + (i + 1), omega: 2 + r() * 3, x: 0.1 + 0.8 * r(), y: 0.1 + 0.8 * r() });
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (r() < 0.18) links.push(["n" + (i + 1), "n" + (j + 1), 0.3 + 0.4 * r()]);
+    return { neurons, links, sentences: neurons.map(x => [x.label]) };
+  }
+
+  const api = { ENERGIES, PROOF, C, Network, FUNCTIONS, STACKS, ARCHETYPES, NEUTRAL, findArchetype, personality, decisions, parseData, parseQuestions, dataSpec, SAMPLE_DATA, SAMPLE_QUESTIONS, wordSpec, fieldSpec, rng, defaults };
+  if (typeof module !== "undefined" && module.exports) module.exports = api; else root.INeuron = api;
+})(typeof window !== "undefined" ? window : globalThis);
+
+</script>
+<script>
+(() => {
+  const { Network, wordSpec, fieldSpec, dataSpec, parseQuestions, parseData, SAMPLE_DATA, SAMPLE_QUESTIONS, ENERGIES, C, ARCHETYPES, findArchetype } = window.INeuron;
+  const ARCH = {
+ "(neutral)": {
+  "right": 83,
+  "wrong": 0,
+  "held": 17,
+  "notRelevant": 100,
+  "split": 100,
+  "falseSplits": 0,
+  "firstSplit": 34,
+  "forget": 57,
+  "rare": 88,
+  "unseen": 92,
+  "heat": 0.91,
+  "order": 0.8
+ },
+ "The Mirror Oracle": {
+  "right": 56,
+  "wrong": 0,
+  "held": 44,
+  "notRelevant": 100,
+  "split": 75,
+  "falseSplits": 0,
+  "firstSplit": 62,
+  "forget": 53,
+  "rare": 75,
+  "unseen": 92,
+  "heat": 0.77,
+  "order": 0.88
+ },
+ "The Veiled Seer": {
+  "right": 77,
+  "wrong": 0,
+  "held": 23,
+  "notRelevant": 100,
+  "split": 83,
+  "falseSplits": 0,
+  "firstSplit": 74,
+  "forget": 73,
+  "rare": 88,
+  "unseen": 100,
+  "heat": 0.87,
+  "order": 0.89
+ },
+ "The Dream Keeper": {
+  "right": 77,
+  "wrong": 0,
+  "held": 23,
+  "notRelevant": 100,
+  "split": 75,
+  "falseSplits": 0,
+  "firstSplit": 62,
+  "forget": 53,
+  "rare": 85,
+  "unseen": 92,
+  "heat": 0.77,
+  "order": 0.88
+ },
+ "The Sensory Mythweaver": {
+  "right": 53,
+  "wrong": 4,
+  "held": 42,
+  "notRelevant": 100,
+  "split": 17,
+  "falseSplits": 0,
+  "firstSplit": 77,
+  "forget": 112,
+  "rare": 38,
+  "unseen": 58,
+  "heat": 0.81,
+  "order": 0.79
+ },
+ "The Colour Drifter": {
+  "right": 57,
+  "wrong": 4,
+  "held": 39,
+  "notRelevant": 100,
+  "split": 8,
+  "falseSplits": 0,
+  "firstSplit": 107,
+  "forget": 211,
+  "rare": 35,
+  "unseen": 58,
+  "heat": 0.72,
+  "order": 0.68
+ },
+ "The Wild Gardener": {
+  "right": 59,
+  "wrong": 3,
+  "held": 38,
+  "notRelevant": 100,
+  "split": 33,
+  "falseSplits": 0,
+  "firstSplit": 95,
+  "forget": 112,
+  "rare": 46,
+  "unseen": 50,
+  "heat": 0.82,
+  "order": 0.78
+ },
+ "The Silent Architect": {
+  "right": 13,
+  "wrong": 0,
+  "held": 87,
+  "notRelevant": 100,
+  "split": 17,
+  "falseSplits": 0,
+  "firstSplit": 101,
+  "forget": 40,
+  "rare": 19,
+  "unseen": 17,
+  "heat": 1.29,
+  "order": 0.83
+ },
+ "The Midnight Strategist": {
+  "right": 17,
+  "wrong": 0,
+  "held": 83,
+  "notRelevant": 100,
+  "split": 8,
+  "falseSplits": 0,
+  "firstSplit": 69,
+  "forget": 35,
+  "rare": 38,
+  "unseen": 42,
+  "heat": 1.46,
+  "order": 0.83
+ },
+ "The Crystal Cartographer": {
+  "right": 57,
+  "wrong": 0,
+  "held": 43,
+  "notRelevant": 100,
+  "split": 83,
+  "falseSplits": 0,
+  "firstSplit": 29,
+  "forget": 45,
+  "rare": 75,
+  "unseen": 58,
+  "heat": 1.2,
+  "order": 0.81
+ },
+ "The Paradox Engineer": {
+  "right": 79,
+  "wrong": 0,
+  "held": 21,
+  "notRelevant": 100,
+  "split": 92,
+  "falseSplits": 0,
+  "firstSplit": 45,
+  "forget": 101,
+  "rare": 94,
+  "unseen": 100,
+  "heat": 0.82,
+  "order": 0.86
+ },
+ "The Quiet Logician": {
+  "right": 64,
+  "wrong": 0,
+  "held": 36,
+  "notRelevant": 100,
+  "split": 92,
+  "falseSplits": 0,
+  "firstSplit": 45,
+  "forget": 101,
+  "rare": 83,
+  "unseen": 100,
+  "heat": 0.82,
+  "order": 0.86
+ },
+ "The Fractal Hermit": {
+  "right": 80,
+  "wrong": 0,
+  "held": 20,
+  "notRelevant": 100,
+  "split": 92,
+  "falseSplits": 0,
+  "firstSplit": 44,
+  "forget": 101,
+  "rare": 96,
+  "unseen": 100,
+  "heat": 0.79,
+  "order": 0.86
+ },
+ "The Iron Conductor": {
+  "right": 14,
+  "wrong": 0,
+  "held": 86,
+  "notRelevant": 100,
+  "split": 0,
+  "falseSplits": 0,
+  "firstSplit": null,
+  "forget": 40,
+  "rare": 10,
+  "unseen": 33,
+  "heat": 1.74,
+  "order": 0.84
+ },
+ "The Sovereign Engine": {
+  "right": 12,
+  "wrong": 0,
+  "held": 88,
+  "notRelevant": 100,
+  "split": 0,
+  "falseSplits": 0,
+  "firstSplit": null,
+  "forget": 29,
+  "rare": 6,
+  "unseen": 42,
+  "heat": 1.65,
+  "order": 0.86
+ },
+ "The Storm Marshal": {
+  "right": 9,
+  "wrong": 0,
+  "held": 91,
+  "notRelevant": 100,
+  "split": 0,
+  "falseSplits": 0,
+  "firstSplit": null,
+  "forget": 43,
+  "rare": 6,
+  "unseen": 0,
+  "heat": 1.7,
+  "order": 0.85
+ },
+ "The Spark Trickster": {
+  "right": 87,
+  "wrong": 0,
+  "held": 13,
+  "notRelevant": 100,
+  "split": 83,
+  "falseSplits": 0,
+  "firstSplit": 54,
+  "forget": 134,
+  "rare": 79,
+  "unseen": 92,
+  "heat": 0.67,
+  "order": 0.84
+ },
+ "The Idea Smith": {
+  "right": 86,
+  "wrong": 0,
+  "held": 14,
+  "notRelevant": 100,
+  "split": 83,
+  "falseSplits": 0,
+  "firstSplit": 54,
+  "forget": 134,
+  "rare": 85,
+  "unseen": 83,
+  "heat": 0.71,
+  "order": 0.84
+ },
+ "The Chaos Cartographer": {
+  "right": 91,
+  "wrong": 0,
+  "held": 9,
+  "notRelevant": 100,
+  "split": 100,
+  "falseSplits": 0,
+  "firstSplit": 57,
+  "forget": 100,
+  "rare": 79,
+  "unseen": 100,
+  "heat": 0.74,
+  "order": 0.85
+ },
+ "The Ember Poet": {
+  "right": 67,
+  "wrong": 2,
+  "held": 31,
+  "notRelevant": 100,
+  "split": 42,
+  "falseSplits": 0,
+  "firstSplit": 56,
+  "forget": 240,
+  "rare": 56,
+  "unseen": 67,
+  "heat": 0.73,
+  "order": 0.69
+ },
+ "The Wandering Lantern": {
+  "right": 79,
+  "wrong": 0,
+  "held": 21,
+  "notRelevant": 100,
+  "split": 58,
+  "falseSplits": 0,
+  "firstSplit": 73,
+  "forget": 127,
+  "rare": 88,
+  "unseen": 58,
+  "heat": 0.77,
+  "order": 0.75
+ },
+ "The Soft Rebel": {
+  "right": 82,
+  "wrong": 1,
+  "held": 17,
+  "notRelevant": 100,
+  "split": 67,
+  "falseSplits": 0,
+  "firstSplit": 56,
+  "forget": 155,
+  "rare": 98,
+  "unseen": 83,
+  "heat": 0.87,
+  "order": 0.76
+ },
+ "The Warm Beacon": {
+  "right": 50,
+  "wrong": 0,
+  "held": 50,
+  "notRelevant": 100,
+  "split": 0,
+  "falseSplits": 0,
+  "firstSplit": null,
+  "forget": 49,
+  "rare": 42,
+  "unseen": 92,
+  "heat": 0.8,
+  "order": 0.87
+ },
+ "The Chorus Shepherd": {
+  "right": 51,
+  "wrong": 1,
+  "held": 48,
+  "notRelevant": 100,
+  "split": 0,
+  "falseSplits": 0,
+  "firstSplit": null,
+  "forget": 82,
+  "rare": 44,
+  "unseen": 92,
+  "heat": 0.84,
+  "order": 0.88
+ },
+ "The Sun Herald": {
+  "right": 44,
+  "wrong": 0,
+  "held": 56,
+  "notRelevant": 100,
+  "split": 0,
+  "falseSplits": 0,
+  "firstSplit": null,
+  "forget": 48,
+  "rare": 42,
+  "unseen": 75,
+  "heat": 0.88,
+  "order": 0.86
+ },
+ "The Wildfire Muse": {
+  "right": 74,
+  "wrong": 4,
+  "held": 21,
+  "notRelevant": 100,
+  "split": 50,
+  "falseSplits": 0,
+  "firstSplit": 98,
+  "forget": 125,
+  "rare": 79,
+  "unseen": 58,
+  "heat": 0.84,
+  "order": 0.77
+ },
+ "The Starlight Vagabond": {
+  "right": 73,
+  "wrong": 2,
+  "held": 24,
+  "notRelevant": 100,
+  "split": 50,
+  "falseSplits": 0,
+  "firstSplit": 74,
+  "forget": 126,
+  "rare": 100,
+  "unseen": 75,
+  "heat": 0.77,
+  "order": 0.77
+ },
+ "The Kaleidoscope Child": {
+  "right": 78,
+  "wrong": 3,
+  "held": 19,
+  "notRelevant": 100,
+  "split": 50,
+  "falseSplits": 0,
+  "firstSplit": 74,
+  "forget": 126,
+  "rare": 79,
+  "unseen": 58,
+  "heat": 0.82,
+  "order": 0.77
+ },
+ "The Stone Keeper": {
+  "right": 17,
+  "wrong": 0,
+  "held": 83,
+  "notRelevant": 100,
+  "split": 0,
+  "falseSplits": 0,
+  "firstSplit": null,
+  "forget": 300,
+  "rare": 13,
+  "unseen": 8,
+  "heat": 0.89,
+  "order": 0.71
+ },
+ "The Ledger Monk": {
+  "right": 13,
+  "wrong": 0,
+  "held": 87,
+  "notRelevant": 100,
+  "split": 0,
+  "falseSplits": 0,
+  "firstSplit": null,
+  "forget": 300,
+  "rare": 13,
+  "unseen": 0,
+  "heat": 0.74,
+  "order": 0.83
+ },
+ "The Clockwork Sentinel": {
+  "right": 14,
+  "wrong": 0,
+  "held": 86,
+  "notRelevant": 100,
+  "split": 0,
+  "falseSplits": 0,
+  "firstSplit": null,
+  "forget": 275,
+  "rare": 13,
+  "unseen": 0,
+  "heat": 0.99,
+  "order": 0.83
+ },
+ "The Hearth Guardian": {
+  "right": 52,
+  "wrong": 0,
+  "held": 48,
+  "notRelevant": 100,
+  "split": 42,
+  "falseSplits": 0,
+  "firstSplit": 22,
+  "forget": 300,
+  "rare": 48,
+  "unseen": 75,
+  "heat": 0.73,
+  "order": 0.83
+ },
+ "The Gentle Archivist": {
+  "right": 52,
+  "wrong": 0,
+  "held": 48,
+  "notRelevant": 100,
+  "split": 42,
+  "falseSplits": 0,
+  "firstSplit": 52,
+  "forget": 184,
+  "rare": 52,
+  "unseen": 83,
+  "heat": 0.68,
+  "order": 0.84
+ },
+ "The Lantern Nurse": {
+  "right": 42,
+  "wrong": 0,
+  "held": 58,
+  "notRelevant": 100,
+  "split": 50,
+  "falseSplits": 0,
+  "firstSplit": 54,
+  "forget": 175,
+  "rare": 33,
+  "unseen": 42,
+  "heat": 0.71,
+  "order": 0.83
+ },
+ "The Steel Steward": {
+  "right": 12,
+  "wrong": 0,
+  "held": 88,
+  "notRelevant": 100,
+  "split": 0,
+  "falseSplits": 0,
+  "firstSplit": null,
+  "forget": 112,
+  "rare": 6,
+  "unseen": 17,
+  "heat": 1.1,
+  "order": 0.82
+ },
+ "The Bridge Builder": {
+  "right": 13,
+  "wrong": 0,
+  "held": 87,
+  "notRelevant": 100,
+  "split": 0,
+  "falseSplits": 0,
+  "firstSplit": null,
+  "forget": 127,
+  "rare": 6,
+  "unseen": 17,
+  "heat": 1.13,
+  "order": 0.82
+ },
+ "The Order Captain": {
+  "right": 9,
+  "wrong": 0,
+  "held": 91,
+  "notRelevant": 100,
+  "split": 0,
+  "falseSplits": 0,
+  "firstSplit": null,
+  "forget": 115,
+  "rare": 4,
+  "unseen": 0,
+  "heat": 1.09,
+  "order": 0.82
+ },
+ "The Village Heart": {
+  "right": 36,
+  "wrong": 0,
+  "held": 64,
+  "notRelevant": 100,
+  "split": 0,
+  "falseSplits": 0,
+  "firstSplit": null,
+  "forget": 300,
+  "rare": 40,
+  "unseen": 92,
+  "heat": 0.74,
+  "order": 0.77
+ },
+ "The Table Host": {
+  "right": 36,
+  "wrong": 0,
+  "held": 64,
+  "notRelevant": 100,
+  "split": 0,
+  "falseSplits": 0,
+  "firstSplit": null,
+  "forget": 164,
+  "rare": 38,
+  "unseen": 92,
+  "heat": 0.72,
+  "order": 0.77
+ },
+ "The Golden Thread": {
+  "right": 33,
+  "wrong": 0,
+  "held": 67,
+  "notRelevant": 100,
+  "split": 0,
+  "falseSplits": 0,
+  "firstSplit": null,
+  "forget": 164,
+  "rare": 38,
+  "unseen": 83,
+  "heat": 0.72,
+  "order": 0.77
+ },
+ "The Lone Mechanic": {
+  "right": 37,
+  "wrong": 0,
+  "held": 63,
+  "notRelevant": 100,
+  "split": 58,
+  "falseSplits": 0,
+  "firstSplit": 71,
+  "forget": 88,
+  "rare": 44,
+  "unseen": 83,
+  "heat": 0.73,
+  "order": 0.86
+ },
+ "The Edge Walker": {
+  "right": 62,
+  "wrong": 0,
+  "held": 38,
+  "notRelevant": 100,
+  "split": 58,
+  "falseSplits": 0,
+  "firstSplit": 71,
+  "forget": 88,
+  "rare": 67,
+  "unseen": 92,
+  "heat": 0.7,
+  "order": 0.86
+ },
+ "The Silent Blade": {
+  "right": 61,
+  "wrong": 0,
+  "held": 39,
+  "notRelevant": 100,
+  "split": 58,
+  "falseSplits": 0,
+  "firstSplit": 71,
+  "forget": 88,
+  "rare": 67,
+  "unseen": 92,
+  "heat": 0.73,
+  "order": 0.86
+ },
+ "The Thunder Runner": {
+  "right": 69,
+  "wrong": 0,
+  "held": 31,
+  "notRelevant": 100,
+  "split": 67,
+  "falseSplits": 0,
+  "firstSplit": 54,
+  "forget": 156,
+  "rare": 63,
+  "unseen": 83,
+  "heat": 0.79,
+  "order": 0.85
+ },
+ "The Street Alchemist": {
+  "right": 76,
+  "wrong": 0,
+  "held": 24,
+  "notRelevant": 100,
+  "split": 67,
+  "falseSplits": 0,
+  "firstSplit": 68,
+  "forget": 126,
+  "rare": 71,
+  "unseen": 83,
+  "heat": 0.69,
+  "order": 0.84
+ },
+ "The Daredevil Spark": {
+  "right": 80,
+  "wrong": 0,
+  "held": 20,
+  "notRelevant": 100,
+  "split": 75,
+  "falseSplits": 0,
+  "firstSplit": 68,
+  "forget": 126,
+  "rare": 81,
+  "unseen": 83,
+  "heat": 0.69,
+  "order": 0.85
+ },
+ "The Stage Flame": {
+  "right": 53,
+  "wrong": 3,
+  "held": 43,
+  "notRelevant": 100,
+  "split": 8,
+  "falseSplits": 0,
+  "firstSplit": 110,
+  "forget": 163,
+  "rare": 38,
+  "unseen": 58,
+  "heat": 0.75,
+  "order": 0.69
+ },
+ "The Festival Spirit": {
+  "right": 54,
+  "wrong": 3,
+  "held": 42,
+  "notRelevant": 100,
+  "split": 8,
+  "falseSplits": 0,
+  "firstSplit": 103,
+  "forget": 163,
+  "rare": 35,
+  "unseen": 50,
+  "heat": 0.7,
+  "order": 0.69
+ },
+ "The Velvet Performer": {
+  "right": 52,
+  "wrong": 3,
+  "held": 44,
+  "notRelevant": 100,
+  "split": 8,
+  "falseSplits": 0,
+  "firstSplit": 98,
+  "forget": 300,
+  "rare": 38,
+  "unseen": 50,
+  "heat": 0.71,
+  "order": 0.69
+ }
+};
+  const $ = s => document.querySelector(s);
+  const RESULTS = {"rows":[{"test":"Right meaning in a trained context","value":"82% right · 0% wrong · 18% held back","pct":82,"means":"15 contexts × 10 runs. When it isn't sure, it says \"partly\" instead of guessing, so it was never wrong."},{"test":"Unrelated context marked “not relevant”","value":"100%","pct":100,"means":"\"put crap\", \"window test\" and 4 more. The 16 percentages show no sense gets a fair share, so it claims no meaning."},{"test":"Contexts it never saw in training","value":"95% right · 0% wrong","pct":95,"means":"\"quote crap\" and \"compare test\" were left out of training. It still read them right through the lines it already had."},{"test":"Words split into meanings by themselves","value":"crap 10/10 · test 10/10","pct":100,"means":"First split after about 35 s. No word with only one meaning ever split (0 wrong splits)."},{"test":"A third meaning grows on its own","value":"9/10 runs","pct":90,"means":"When \"crap\" is also used with put and place, it ends up with 3 senses."},{"test":"Forgetting with no practice","value":"~57 s","pct":null,"means":"Stop feeding sentences and a meaning loses its lines after about 57 s of simulated time (refinement removes unused lines)."},{"test":"How close meaning groups can be","value":"1.6: 81% · 1.2: 84% · 0.9: 79% · 0.6: 85% · 0.4: 84% · 0.25: 63%","pct":null,"means":"Frequency gap between groups. Splitting comes from use, so closeness barely matters here."},{"test":"Random frequencies (no cortex engine)","value":"30% right · 5% wrong","pct":30,"means":"Frequencies scrambled, as if nothing encoded the words. Reading gets clearly worse: frequencies carry part of the meaning."},{"test":"Energies it can't do without","value":"Nuclear (46%), Rest (38%), Kinetic (0%), Electric (29%)","pct":null,"means":"Each energy switched off on its own (6 runs each). These dropped accuracy by more than 15 points. Barely missed: Heat, Radiant, Thermal, Gravity, Potential, Chemical, Elastic, Magnetic, Mechanical work, Mechanical oscillation."},{"test":"Speed as it grows","value":"20: 0.08 ms · 100: 0.85 ms · 300: 6.9 ms · 1000: 111.58 ms","pct":null,"means":"Time per step in this browser engine. Every neuron checks every other one, so 10× more neurons costs about 100× more time."}],"verdicts":[{"kind":"yes","label":"Works","title":"Finds meanings from use","text":"Ambiguous words split by themselves when their contexts never meet: crap 10/10, test 10/10, and no false splits."},{"kind":"yes","label":"Works","title":"Proves or rejects a meaning","text":"With 16 percentages per sense it picked the right meaning 82% of the time, was never wrong, and marked unrelated contexts not relevant 100% of the time."},{"kind":"yes","label":"Works","title":"Keeps growing","text":"A third use of a word grew a third sense in 9 of 10 runs. This is your \"keep generating bricks\" idea, at small size."},{"kind":"part","label":"Partly","title":"It forgets","text":"A meaning nobody uses fades after about 57 s. Good for tidiness, bad for rare words. It needs practice or replay (like sleep) to keep rare meanings."},{"kind":"part","label":"Partly","title":"Needs your cortex engines","text":"With scrambled frequencies it scored 30% instead of 82%. Splitting works from use alone, but reading a context also relies on frequencies, and nothing makes those yet."},{"kind":"no","label":"Limit","title":"Doesn't understand","text":"It groups words by how they're used together. It can't know a meaning nobody ever used, and two meanings that share the same contexts can never be told apart."},{"kind":"no","label":"Limit","title":"Size","text":"1000 neurons take 111.58 ms per step. A real vocabulary (100,000 words) would be about 10,000× slower per step unless neurons only check nearby frequencies."},{"kind":"no","label":"Limit","title":"Only proven on a toy","text":"19 neurons, 18 practice sentences, settings I tuned on this example. Messy real text will need retuning and new tests before any claim holds there."}],"choices":["<b>Frequencies are set by hand<\/b>, one band per meaning group, with \"crap\" and \"test\" starting between two groups.","<b>In sync<\/b> = how close two frequencies are × how aligned their rhythms are. An impact relays above 0.45 (a little lower when a neuron is warm: potential).","<b>Hot<\/b> is a temperature above 1.0 and <b>cold<\/b> is below 0.5. Splitting (nuclear fission) only happens while cold.","<b>The imagination layer sees use, not only impacts.<\/b> It notes which words come in the same sentence. Without this, \"crap\" was pulled to one side before it ever cooled down, and never split.","<b>A word splits<\/b> when its partners form two groups that are never used together (each with 2+ members and at least 25% of its use).","<b>A context attaches to the sense it fits best.<\/b> Without this, new senses kept splitting again and again.","<b>Ionization only pushes apart neurons with no line between them.<\/b> Otherwise it pushed a new sense away from its own meaning group.","<b>Lines unused for about 40 s fade<\/b> (refinement). This is what causes forgetting.","<b>Proving a meaning:<\/b> for each energy, a sense's percentage is its share of the context's energy among all neurons reached. Over a fair share counts as a match. More than half the energies = accurate, a quarter = partly, less = not relevant.","<b>What each energy counts as evidence is my reading:<\/b> Mechanical: impact it absorbed from the context; Heat: heat it took in from hot context neurons along its lines; Nuclear: how often it was used together with the context (meaning bound at its core); Radiant: light it received from the context; Rest: how closely its own rhythm locked onto the context's; Thermal: temperature it exchanged with the context; Gravity: strength of its lines to the context; Ionization: how cleanly it belongs with the context rather than with anything else; Potential: activation it built up from the context's impacts; Kinetic: impacts it received from the context; Chemical: how close its own original frequency is to the context's; Elastic: the settled strength its lines to the context spring back to; Electric: its own charge, in step with the context; Magnetic: how much its field overlaps the context's; Mechanical work: past impacts from the context it refined itself toward; Mechanical oscillation: sharp rhythm it shares with the context."]};
+  const MEANING = { remove: "remove things", show: "show it as text", check: "check something", place: "place or window" };
+
+  // ---------- energies UI ----------
+  const energy = {}; ENERGIES.forEach(x => energy[x.key] = 1);
+  const drives = [...new Set(ENERGIES.map(x => x.drive))];
+  $("#drives").innerHTML = drives.map(d => `<div class="drive"><h4>${d}</h4>${ENERGIES.filter(x => x.drive === d).map(x => `
+    <div class="energy" title="${x.does}"><label for="e-${x.key}">${x.name}<small>${x.side}${x.fn ? " · " + x.fn : ""}</small></label>
+    <input type="range" id="e-${x.key}" min="0" max="2" step="0.1" value="1"><output id="o-${x.key}">1.0</output></div>`).join("")}</div>`).join("");
+  for (const x of ENERGIES) $("#e-" + x.key).addEventListener("input", ev => { energy[x.key] = +ev.target.value; $("#o-" + x.key).textContent = (+ev.target.value).toFixed(1); if (net) setEnergy(x.key); });
+  $("#energyReset").addEventListener("click", () => { for (const x of ENERGIES) { energy[x.key] = 1; $("#e-" + x.key).value = 1; $("#o-" + x.key).textContent = "1.0"; } if (net) ENERGIES.forEach(x => setEnergy(x.key)); });
+  function setEnergy(k) { const lean = net.brain ? net.brain.personality.energies[k] : 1; net.e[k] = net.base[k] = lean * energy[k]; }
+  $("#energyTable").innerHTML = drives.map(d => { const [i, e] = ENERGIES.filter(x => x.drive === d);
+    const cell = x => `<b>${x.name}</b>${x.fn ? `<span class="fn">${x.fn}</span>` : ""}<br>${x.does}`;
+    return `<tr><td><b>${d}</b></td><td>${cell(i)}</td><td>${cell(e)}</td></tr>`; }).join("");
+
+  // ---------- network ----------
+  let net, preset = "words", running = true, training = true, speed = 3, seed = 1, lastLog = 0;
+  const yoursFirst = ARCHETYPES.slice().sort((a, b) => b.yours - a.yours);
+  const brainOptions = `<option value="">None (neutral)</option>` + yoursFirst.map(a => `<option value="${esc(a.name)}">${esc(a.name)} · ${a.type}${a.yours ? " · yours" : ""}</option>`).join("");
+  document.querySelectorAll(".brainpick").forEach(el => el.innerHTML = brainOptions);
+  const ruleText = d => `strict ${Math.round(d.strict * 100)}% · splits at ${d.split} · lines last ${d.patience} s · joins hidden at ${d.radiant} · replays ${Math.round(d.replay * 100)}%`;
+  function brainNote() {
+    const a = findArchetype($("#brain").value || "-");
+    $("#brainNote").textContent = a ? `${a.line} Leads with ${a.personality.stack.join(" → ")}. Rules: ${ruleText(a.decisions)}.` : "No archetype: every energy at 1, neutral rules.";
+  }
+  $("#brain").addEventListener("change", () => { brainNote(); build(); });
+  function build() {
+    seed = Math.floor(Math.random() * 1e6);
+    net = new Network(preset === "words" ? wordSpec(1.2) : preset === "data" ? dataSpec(liveData.text, liveData.mode, seed) : fieldSpec(16, seed % 97 + 1), seed, energy, $("#brain").value || null);
+    lastLog = 0; $("#log").innerHTML = "<div>Nothing yet. Watch for a split around 20–40 seconds in.</div>";
+    $("#answer").textContent = preset !== "field" ? "Pick a word in a context. Each sense gets 16 percentages, one per energy. A meaning counts as accurate when a sense gets more than its fair share on over half of the energies." : "Asking works on the Word meanings network.";
+    askButtons();
+  }
+  function askButtons() {
+    const row = $("#askRow");
+    if (preset === "field") { row.innerHTML = ""; return; }
+    const asks = preset === "data" ? parseQuestions(liveData.questions).slice(0, 8).map(q => [q.word, q.context.join(" ")])
+      : [["crap", "clear"], ["crap", "write"], ["test", "check"], ["test", "write"], ["crap", "put"], ["test", "window"]];
+    row.innerHTML = asks.map(([w, c]) => `<button data-w="${esc(w)}" data-c="${esc(c)}">${esc(c)} ${esc(w)}</button>`).join("");
+    row.querySelectorAll("button").forEach(b => b.addEventListener("click", () => ask(b.dataset.w, b.dataset.c)));
+  }
+  function ask(word, ctx) {
+    const senses = net.N.filter(n => n.word === word);
+    const r = net.read(word, ctx.split(" "));
+    if (!r) { $("#answer").textContent = `"${word}" isn't in this network.`; return; }
+    const best = r.ranked[0], other = r.ranked[1];
+    let head;
+    if (senses.length < 2) head = `<b>${word}</b> hasn't split yet, so one neuron holds both meanings. Its 16 energies below show how well that one neuron fits "${ctx}".`;
+    else if (r.meaning) head = `"${ctx} ${word}": <b>${best.s.label}</b>, meaning <b>${esc(MEANING[r.meaning] || r.meaning)}</b>. It matched on <b>${best.matched} of ${r.carried}</b> energies; ${other.s.label} matched on ${other.matched}.`;
+    else if (r.verdict === "not relevant") head = `"${ctx} ${word}": <b>not relevant</b>. No sense of ${word} got a fair share on enough energies (best: ${best.matched} of ${r.carried}).`;
+    else head = `"${ctx} ${word}": <b>${r.verdict === "partly" ? "only partly matched" : "too close to call"}</b>. Best was ${best.s.label} on ${best.matched} of ${r.carried} energies, so it doesn't claim a meaning.`;
+    const rows = ENERGIES.map(x => {
+      const a = best.profile[x.key], b = other ? other.profile[x.key] : undefined;
+      if (a === undefined) return `<div class="prow off"><span>${x.name}</span><em>nothing carried</em></div>`;
+      return `<div class="prow"><span>${x.name}</span><i class="pbar"><b style="width:${Math.min(100, a)}%"></b>${other ? `<u style="width:${Math.min(100, b)}%"></u>` : ""}</i><em>${a.toFixed(0)}%${other ? " · " + b.toFixed(0) + "%" : ""}</em></div>`;
+    }).join("");
+    $("#answer").innerHTML = head + `<div class="profile"><div class="pkey"><span class="k1"></span>${best.s.label}${other ? `<span class="k2"></span>${other.s.label}` : ""}<small>share of the context's energy, per energy</small></div>${rows}</div>`;
+  }
+
+  // ---------- drawing ----------
+  const cv = $("#net"), ctx = cv.getContext("2d");
+  let W = 0, H = 0, DPR = 1;
+  function size() { DPR = Math.min(2, window.devicePixelRatio || 1); const r = cv.getBoundingClientRect(); W = r.width; H = r.height; cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0); }
+  new ResizeObserver(size).observe(cv);
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  function mix(a, b, t) { const p = x => [1, 3, 5].map(i => parseInt(x.slice(i, i + 2), 16)); const A = p(a), B = p(b); return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(",")})`; }
+  function pos(n) { const pad = 46; return [pad + n.x * (W - 2 * pad), pad + n.y * (H - 2 * pad)]; }
+  function draw() {
+    const col = { cold: css("--cold"), ember: css("--ember"), glow: css("--glow"), lit: css("--lit"), ink: css("--ink"), dim: css("--dim"), line: css("--line"), bg: css("--canvas") };
+    ctx.clearRect(0, 0, W, H);
+    const byId = new Map(net.N.map(n => [n.id, n]));
+    for (const l of net.links.values()) {
+      const a = byId.get(l.a), b = byId.get(l.b); if (!a || !b) continue;
+      const [x1, y1] = pos(a), [x2, y2] = pos(b), flow = Math.min(1, l.carried * 6);
+      ctx.strokeStyle = flow > 0.05 ? col.glow : col.line; ctx.globalAlpha = 0.35 + 0.65 * flow;
+      ctx.lineWidth = 0.8 + 3 * l.w * (0.4 + flow); ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    for (const n of net.N) {
+      const [x, y] = pos(n), heat = Math.min(1, n.T / 1.6);
+      const fill = heat < 0.31 ? mix(col.cold, col.glow, heat / 0.31) : mix(col.glow, col.ember, Math.min(1, (heat - 0.31) / 0.5));
+      if (n.lit > 0.05) { ctx.fillStyle = col.lit; ctx.globalAlpha = Math.min(0.7, n.lit); ctx.beginPath(); ctx.arc(x, y, 22 + 10 * n.lit, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+      const r = 9 + 4 * n.amp, wob = 2.5 * Math.sin(n.theta);
+      ctx.strokeStyle = fill; ctx.lineWidth = 2; ctx.globalAlpha = 0.55;
+      ctx.beginPath(); ctx.arc(x, y, r + 5 + wob, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;    // the oscillation, always moving
+      ctx.fillStyle = fill; ctx.beginPath(); ctx.arc(x, y, r + Math.min(6, n.E * 3), 0, 7); ctx.fill();
+      if (n.refined) { ctx.strokeStyle = col.cold; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(x, y, r + 10, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+      ctx.fillStyle = col.ink; ctx.font = `${n.label.includes("·") || n.word === "crap" || n.word === "test" ? "600 " : ""}12px ${css("--body")}`;
+      ctx.textAlign = "center"; ctx.fillText(n.label, x, y - r - 12);
+    }
+  }
+  function readout() {
+    const s = net.stats();
+    $("#readout").innerHTML = `<span>in sync <b>${Math.round(s.order * 100)}%</b></span><span>hot <b>${s.hot}</b></span><span>cold <b>${s.cold}</b></span><span>neurons <b>${s.neurons}</b></span><span>lines <b>${s.links}</b></span><span>lit <b>${s.lit}</b></span>${net.brain ? `<span>warmth <b>${net.warmth.toFixed(2)}×</b></span><span>order pull <b>${net.orderPull.toFixed(2)}×</b></span>` : ""}`;
+    $("#clock").textContent = Math.round(net.t) + " s";
+    if (net.log.length !== lastLog) {
+      const items = net.log.slice(-14).reverse().map(l => `<div class="${l.text.startsWith("nuclear") ? "fission" : l.text.startsWith("radiant") ? "radiant" : ""}"><span>${Math.round(l.t)}s</span>${l.text}</div>`);
+      $("#log").innerHTML = items.join(""); lastLog = net.log.length;
+    }
+  }
+  let acc = 0, last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    if (running) {
+      acc += dt * speed / C.dt;
+      let k = 0;
+      while (acc >= 1 && k < 60) { if (training && net.steps % C.TRAIN_EVERY === 0) net.train(); net.step(); acc--; k++; }
+    }
+    draw(); readout();
+    requestAnimationFrame(frame);
+  }
+  $("#play").addEventListener("click", () => { running = !running; $("#play").textContent = running ? "Pause" : "Play"; });
+  $("#trainBtn").addEventListener("click", () => { training = !training; const b = $("#trainBtn"); b.classList.toggle("on", training); b.setAttribute("aria-pressed", training); b.textContent = training ? "Feeding sentences" : "Not feeding"; });
+  $("#resetBtn").addEventListener("click", build);
+  $("#preset").addEventListener("change", e => { preset = e.target.value; build(); });
+  $("#speed").addEventListener("change", e => { speed = +e.target.value; });
+
+  // ---------- your data: test and compare ----------
+  function esc(t) { return String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+  const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+  let liveData = { text: SAMPLE_DATA, questions: SAMPLE_QUESTIONS, mode: "groups" };
+  $("#dataText").value = store.get("in-data") || SAMPLE_DATA;
+  $("#askText").value = store.get("in-ask") || SAMPLE_QUESTIONS;
+  $("#dataText").addEventListener("input", e => store.set("in-data", e.target.value));
+  $("#askText").addEventListener("input", e => store.set("in-ask", e.target.value));
+  $("#sampleBtn").addEventListener("click", () => { $("#dataText").value = SAMPLE_DATA; $("#askText").value = SAMPLE_QUESTIONS; store.set("in-data", SAMPLE_DATA); store.set("in-ask", SAMPLE_QUESTIONS); });
+  $("#loadLive").addEventListener("click", () => {
+    const text = $("#dataText").value;
+    if (!parseData(text).sentences.length) { $("#runStatus").textContent = "Add at least one sentence first."; return; }
+    liveData = { text, questions: $("#askText").value, mode: $("#freqMode").value };
+    if (!$("#preset").querySelector('option[value="data"]')) $("#preset").insertAdjacentHTML("beforeend", '<option value="data">Your data</option>');
+    $("#preset").value = preset = "data"; build();
+    $("#runStatus").textContent = "Loaded into the live view at the top of the page.";
+    document.querySelector(".lab").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  const runs = [];
+  const answerOf = r => !r ? "not found" : r.verdict === "accurate" && r.clear ? r.meaning : r.verdict === "accurate" ? "too close" : r.verdict;
+  async function runTest() {
+    const text = $("#dataText").value, qtext = $("#askText").value, qs = parseQuestions(qtext);
+    const parsed = parseData(text);
+    if (!parsed.sentences.length) { $("#runStatus").textContent = "Add at least one sentence first."; return; }
+    if (!qs.length) { $("#runStatus").textContent = 'Add at least one question, like "crap @ clear = remove".'; return; }
+    const mode = $("#freqMode").value, n = +$("#runs").value, steps = +$("#steps").value, e = { ...energy }, brain = $("#runBrain").value || null;
+    const btn = $("#runTest"); btn.disabled = true;
+    const res = { name: $("#runName").value.trim() || (brain ? brain.replace(/^The /, "") : `Test ${runs.length + 1}`), brain, mode, n, steps, changed: ENERGIES.filter(x => e[x.key] !== 1).map(x => `${x.name} ${e[x.key]}`),
+                  words: new Set(parsed.sentences.flat()).size, sentences: parsed.sentences.length, splits: {}, q: qs.map(q => ({ text: q.text, want: q.want, answers: {}, ok: 0, judged: 0, matched: 0 })) };
+    for (let seed = 1; seed <= n; seed++) {
+      $("#runStatus").textContent = `Training run ${seed} of ${n}…`;
+      await new Promise(r => setTimeout(r, 20));
+      const t = new Network(dataSpec(text, mode, seed), seed, e, brain);
+      for (let k = 0; k < steps; k++) { if (k % C.TRAIN_EVERY === 0) t.train(); t.step(); }
+      for (const w of new Set(t.N.filter(x => x.label.includes("·")).map(x => x.word))) res.splits[w] = (res.splits[w] || 0) + 1;
+      qs.forEach((q, i) => {
+        for (let j = 0; j < 30; j++) { if (t.steps % C.TRAIN_EVERY === 0) t.train(); t.step(); }
+        const r = t.read(q.word, q.context), a = answerOf(r), cell = res.q[i];
+        cell.answers[a] = (cell.answers[a] || 0) + 1;
+        if (r) cell.matched += r.ranked[0].matched / Math.max(1, r.carried);
+        const m = t.matches(r, q.want); if (m !== null) { cell.judged++; if (m) cell.ok++; }
+      });
+    }
+    runs.push(res); if (runs.length > 6) runs.shift();
+    btn.disabled = false;
+    $("#runStatus").textContent = `Done: ${res.name} added to the comparison below.`;
+    renderCompare();
+  }
+  function renderCompare() {
+    $("#compareWrap").hidden = !runs.length;
+    if (!runs.length) return;
+    const qtexts = [...new Set(runs.flatMap(r => r.q.map(q => q.text)))];
+    const head = `<tr><th>Test</th>${runs.map((r, i) => `<th>${esc(r.name)} <button class="x" data-i="${i}" aria-label="Remove ${esc(r.name)}">×</button></th>`).join("")}</tr>`;
+    const modeName = { groups: "from your groups", use: "stand-in encoder", random: "random" };
+    const settings = `<tr><td>Settings</td>${runs.map(r => `<td>${r.n} run${r.n > 1 ? "s" : ""} · ${r.steps * C.dt} s training<small>frequencies ${modeName[r.mode]} · ${r.sentences} sentences, ${r.words} words</small><small>${r.brain ? "archetype: " + esc(r.brain) : "no archetype"}</small><small>${r.changed.length ? "changed: " + esc(r.changed.join(", ")) : "all energies at 1"}</small></td>`).join("")}</tr>`;
+    const overall = `<tr><td>As expected</td>${runs.map(r => { const ok = r.q.reduce((t, q) => t + q.ok, 0), j = r.q.reduce((t, q) => t + q.judged, 0);
+      return `<td>${j ? `<b>${Math.round(100 * ok / j)}%</b> (${ok} of ${j})` : "no expectations given"}</td>`; }).join("")}</tr>`;
+    const splits = `<tr><td>Words that split</td>${runs.map(r => `<td>${Object.keys(r.splits).length ? Object.entries(r.splits).map(([w, k]) => `${esc(w)} ${k}/${r.n}`).join(", ") : "none"}</td>`).join("")}</tr>`;
+    const rows = qtexts.map(qt => `<tr><td>${esc(qt)}</td>${runs.map(r => {
+      const q = r.q.find(x => x.text === qt);
+      if (!q) return "<td>—</td>";
+      const [top, k] = Object.entries(q.answers).sort((a, b) => b[1] - a[1])[0];
+      const verdict = q.judged ? `<span class="${q.ok === q.judged ? "ok" : q.ok ? "mid" : "bad"}">${q.ok === q.judged ? "✓ " : q.ok ? "" : "✗ "}${q.ok} of ${q.judged} as expected</span>` : "";
+      return `<td>${esc(top)}<small>${verdict}</small><small>${Math.round(100 * k / r.n)}% of runs agree · matched ${Math.round(100 * q.matched / r.n)}% of energies</small></td>`; }).join("")}</tr>`).join("");
+    $("#compare").innerHTML = `<thead>${head}</thead><tbody>${settings}${overall}${splits}${rows}</tbody>`;
+    $("#compare").querySelectorAll("button.x").forEach(b => b.addEventListener("click", () => { runs.splice(+b.dataset.i, 1); renderCompare(); }));
+  }
+  $("#runTest").addEventListener("click", runTest);
+  $("#clearRuns").addEventListener("click", () => { runs.length = 0; renderCompare(); $("#runStatus").textContent = ""; });
+
+  // ---------- written findings ----------
+  if (RESULTS) {
+    $("#results").innerHTML = RESULTS.rows.map(r => `<tr><td>${r.test}</td><td>${r.value}${r.pct != null ? `<div class="bar"><i style="width:${r.pct}%"></i></div>` : ""}</td><td>${r.means}</td></tr>`).join("");
+    $("#verdicts").innerHTML = RESULTS.verdicts.map(v => `<div class="card"><span class="verdict ${v.kind}">${v.label}</span><h3>${v.title}</h3><p>${v.text}</p></div>`).join("");
+    $("#choices").innerHTML = RESULTS.choices.map(c => `<li>${c}</li>`).join("");
+  }
+  // ---------- archetypes compared ----------
+  if (ARCH) {
+    const n0 = ARCH["(neutral)"];
+    const rows = Object.entries(ARCH).map(([name, v]) => ({ name, v, a: findArchetype(name) || null })).sort((x, y) => y.v.right - x.v.right || x.v.wrong - y.v.wrong);
+    const cell = (v, base, unit = "%", better = 1) => { const d = v - base; const cls = !d ? "" : (d * better > 0 ? "ok" : "bad"); return `<span class="${cls}">${v}${unit}</span>`; };
+    $("#archTable").innerHTML = `<thead><tr><th>Archetype</th><th>Right meaning<small>wrong · held back</small></th><th>Words split</th><th>Rare meaning kept</th><th>Unseen contexts</th><th>Lines last, no practice</th></tr></thead><tbody>` +
+      rows.map(({ name, v, a }) => `<tr class="${a && a.yours ? "yours" : !a ? "neutral" : ""}"><td><b>${esc(name)}</b><small>${a ? `${a.type} · ${a.bias}${a.yours ? " · yours" : ""}` : "no archetype, the baseline"}</small></td>
+        <td>${cell(v.right, n0.right)}<div class="bar"><i style="width:${v.right}%"></i></div><small>${v.wrong}% wrong · ${v.held}% held back</small></td>
+        <td>${cell(v.split, n0.split)}</td><td>${cell(v.rare, n0.rare)}</td><td>${cell(v.unseen, n0.unseen)}</td><td>${cell(v.forget, n0.forget, " s")}${v.forget >= 300 ? "<small>300 s = never in the test</small>" : ""}</td></tr>`).join("") + "</tbody>";
+    const weakTi = rows.filter(r => r.a && r.a.personality.energies.nuclear < 1);
+    const splitWeak = Math.round(weakTi.reduce((t, r) => t + r.v.split, 0) / weakTi.length), splitStrong = Math.round(rows.filter(r => r.a && r.a.personality.energies.nuclear >= 1).reduce((t, r) => t + r.v.split, 0) / (rows.length - 1 - weakTi.length));
+    $("#archNote").innerHTML = `Green beats the neutral network, red is worse. <b>Why some barely learn:</b> splitting needs Nuclear (Ti). Archetypes with Ti outside their top 4 functions split ${splitWeak}% of the time, against ${splitStrong}% for the rest, so they hold back most meanings. Strict ones hold back more but are never wrong. This comes from my proposed function pairings, which you haven't confirmed.`;
+  }
+  brainNote(); size(); build(); requestAnimationFrame(frame);
+})();
+</script>

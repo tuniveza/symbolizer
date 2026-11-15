@@ -417,6 +417,16 @@ mark { background: rgba(255, 106, 31, .35); color: inherit; border-radius: 2px; 
 .badge { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px; background: var(--ember); color: #1b0d07; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
 .badge:empty { display: none; }
 .imagine { padding: 10px 16px 24px; }
+.neurons { padding: 14px 16px 24px; max-width: 980px; }
+.neurons .card { margin-bottom: 12px; cursor: default; }
+.neurons input[type="text"], .neurons select { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-family: var(--mono); font-size: 13px; color: var(--text); outline: none; }
+.neurons .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.neurons input.line { flex: 1; min-width: 0; }
+.neurons .status { font-size: 13px; color: var(--dim); line-height: 1.6; }
+.neurons .status b { color: var(--gold); }
+.neurons td.ok { color: var(--gold); }
+.neurons td.mid { color: var(--flame); }
+.neurons td.no { color: var(--faint); }
 .imagine .status { font-size: 13px; color: var(--dim); margin: 10px 0 12px; line-height: 1.6; }
 .imagine .status b { color: var(--gold); }
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
@@ -554,6 +564,7 @@ write hi name</div>
     <div class="subtabs" id="trainerTabs" style="display:none">
       <button class="subtab on" data-sub="decideView" title="What brick couldn't settle by itself: decide, if you like">Decisions</button>
       <button class="subtab" data-sub="imagineView" title="What brick imagines, on its own or when you ask, and what its eye made of it">Imagination</button>
+      <button class="subtab" data-sub="neuronsView" title="The imagination neurons reading a line, with the brain of an archetype you pick (view only)">Neurons</button>
     </div>
 
     <div class="view on" id="consoleView">
@@ -624,6 +635,23 @@ write hi name</div>
       </div>
       <div class="status" id="imagineStatus"></div>
       <div class="gallery" id="imagineGallery"></div>
+    </div></div>
+
+    <div class="view" id="neuronsView"><div class="neurons" id="neurons">
+      <p class="intro">The imagination neurons train on brick's own sentences, then read each word of your line. Pick an archetype to give them its brain. View only: brick still builds the line its own way.</p>
+      <div class="card">
+        <div class="row">
+          <input type="text" class="line" id="nLine" spellcheck="false" value="put window at left side of screen and place text in brown at the top right of the window">
+        </div>
+        <div class="row">
+          <label for="nBrain">Archetype</label>
+          <select id="nBrain"><option value="">None (neutral)</option></select>
+          <label><input type="checkbox" id="nLong"> Train twice as long</label>
+          <button class="hot" id="nRead">Read it</button>
+        </div>
+        <div class="status" id="nStatus" role="status"></div>
+      </div>
+      <div id="nResult"></div>
     </div></div>
 
     <div class="view" id="helpView"><div class="help">
@@ -821,7 +849,7 @@ $("#under").addEventListener("click", e => { const b = e.target.closest("[data-n
 
 $$(".tab").forEach(t => t.addEventListener("click", () => showTab(t.dataset.tab)));
 $$("#trainerTabs .subtab").forEach(t => t.addEventListener("click", () => showTab(t.dataset.sub)));
-const TRAINER = ["decideView", "imagineView"];        // the Trainer tab: everything brick learns
+const TRAINER = ["decideView", "imagineView", "neuronsView"];        // the Trainer tab: everything brick learns
 function showTab(id) {
   if (id === "trainerView") id = state.trainerSub || "decideView";
   const trainer = TRAINER.includes(id);
@@ -835,6 +863,7 @@ function showTab(id) {
   if (id === "helpView") drawHelp();
   if (id === "decideView") drawDecisions();
   if (id === "imagineView") drawImagination();
+  if (id === "neuronsView") drawNeurons();
   if (id === "wordsView") drawWords();
   if (id === "consoleView") fitTerm();
 }
@@ -1623,6 +1652,39 @@ async function drawImagination() {
     </div>`).join("") : `<p class="intro">Nothing ${state.origin ? "like that " : ""}imagined yet. It dreams while brick runs; brick trainer imagine in a terminal makes some now.</p>`;
 }
 setInterval(() => { if (state.tab === "imagineView" && !document.hidden) drawImagination(); }, 5000);
+
+// ---------------- neurons: the imagination neurons reading a line, with an archetype's brain ----------------
+
+let neuronsLoaded = false;
+async function drawNeurons() {
+  if (neuronsLoaded) return;
+  let d;
+  try { d = await api("/api/neurons/archetypes"); } catch (e) { d = null; }
+  if (!d || !d.archetypes) { $("#nStatus").textContent = "The brick gui behind this window is older than the Neurons tab, or restarting. It fixes itself in a few seconds."; return; }
+  if (d.error) { $("#nStatus").textContent = "The neurons can't run here: " + d.error; return; }
+  neuronsLoaded = true;
+  const list = d.archetypes.slice().sort((a, b) => b.yours - a.yours);
+  $("#nBrain").innerHTML = `<option value="">None (neutral)</option>` + list.map(a => `<option value="${esc(a.name)}" title="${esc(a.line)}">${esc(a.name)} · ${a.type}${a.yours ? " · yours" : ""}</option>`).join("");
+}
+$("#nRead").addEventListener("click", async () => {
+  const line = $("#nLine").value.trim();
+  if (!line) { $("#nStatus").textContent = "Write a line first."; return; }
+  const btn = $("#nRead"); btn.disabled = true;
+  $("#nStatus").textContent = `Training the neurons${$("#nBrain").value ? " with " + $("#nBrain").value : ""}… (about ${$("#nLong").checked ? 12 : 6} seconds)`;
+  let d;
+  try { d = await api("/api/neurons", {line, archetype: $("#nBrain").value, long: $("#nLong").checked}); } catch (e) { d = {error: "The brick gui didn't answer."}; }
+  btn.disabled = false;
+  if (d.error) { $("#nStatus").textContent = d.error; $("#nResult").innerHTML = ""; return; }
+  const a = d.archetype;
+  $("#nStatus").innerHTML = `${d.practised} directions, ${d.groups} meaning groups, ${d.seconds} s of training: <b>${d.neurons}</b> neurons, ${d.links} lines.` +
+    (a ? `<br><b>${esc(a.name)}</b> (${a.type}, leads with ${a.stack.join(" → ")}): a meaning must win ${Math.round(a.rules.strict * 100)}% of the energies; unused lines last ${a.rules.patience} s; replays ${Math.round(a.rules.replay * 100)}% of practice.` : "");
+  const cls = v => v === "accurate" ? "ok" : v === "partly" || v === "tie" ? "mid" : "no";
+  $("#nResult").innerHTML = `<table class="t"><thead><tr><th>word</th><th>meaning it found</th><th>how sure</th><th>senses</th></tr></thead><tbody>` +
+    d.rows.map(r => `<tr><td class="m">${esc(r.word)}</td><td class="${cls(r.verdict)}">${esc(r.meaning)}</td><td>${esc(r.sure)}</td><td>${esc(r.senses)}</td></tr>`).join("") + `</tbody></table>` +
+    (d.split.length ? `<p class="intro">Split into separate meanings while training: ${d.split.map(esc).join(", ")}</p>` : "") +
+    (d.small.length ? `<p class="intro">Left to brick's grammar (small joining words): ${d.small.map(esc).join(", ")}</p>` : "");
+});
+$("#nLine").addEventListener("keydown", e => { if (e.key === "Enter") $("#nRead").click(); });
 
 // ---------------- bricks: click or drag brick's words into place ----------------
 

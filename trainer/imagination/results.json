@@ -1,0 +1,317 @@
+{
+ "base": {
+  "right": 82,
+  "wrong": 0,
+  "refused": 18,
+  "notRelevantOk": 100,
+  "splitCrap": 10,
+  "splitTest": 10,
+  "wrongSplits": 0,
+  "seeds": 10,
+  "firstSplit": 35
+ },
+ "unseen": {
+  "right": 95,
+  "wrong": 0,
+  "refused": 5,
+  "notRelevantOk": null,
+  "splitCrap": 10,
+  "splitTest": 10,
+  "wrongSplits": 0,
+  "seeds": 10,
+  "firstSplit": 37
+ },
+ "third": {
+  "three": 9,
+  "seeds": 10,
+  "senses": [
+   3,
+   2,
+   3,
+   3,
+   3,
+   3,
+   3,
+   3,
+   3,
+   3
+  ]
+ },
+ "forget": {
+  "times": [
+   56,
+   56,
+   67,
+   55,
+   53,
+   56,
+   53,
+   57,
+   57,
+   57
+  ]
+ },
+ "gaps": {
+  "1.6": {
+   "right": 81,
+   "wrong": 0,
+   "refused": 19,
+   "notRelevantOk": 100,
+   "splitCrap": 8,
+   "splitTest": 8,
+   "wrongSplits": 0,
+   "seeds": 8,
+   "firstSplit": 28
+  },
+  "1.2": {
+   "right": 84,
+   "wrong": 0,
+   "refused": 16,
+   "notRelevantOk": 100,
+   "splitCrap": 8,
+   "splitTest": 8,
+   "wrongSplits": 0,
+   "seeds": 8,
+   "firstSplit": 34
+  },
+  "0.9": {
+   "right": 79,
+   "wrong": 0,
+   "refused": 21,
+   "notRelevantOk": 100,
+   "splitCrap": 8,
+   "splitTest": 8,
+   "wrongSplits": 0,
+   "seeds": 8,
+   "firstSplit": 33
+  },
+  "0.6": {
+   "right": 85,
+   "wrong": 0,
+   "refused": 15,
+   "notRelevantOk": 100,
+   "splitCrap": 8,
+   "splitTest": 8,
+   "wrongSplits": 0,
+   "seeds": 8,
+   "firstSplit": 35
+  },
+  "0.4": {
+   "right": 84,
+   "wrong": 0,
+   "refused": 16,
+   "notRelevantOk": 98,
+   "splitCrap": 8,
+   "splitTest": 8,
+   "wrongSplits": 0,
+   "seeds": 8,
+   "firstSplit": 31
+  },
+  "0.25": {
+   "right": 63,
+   "wrong": 7,
+   "refused": 30,
+   "notRelevantOk": 100,
+   "splitCrap": 7,
+   "splitTest": 4,
+   "wrongSplits": 0,
+   "seeds": 8,
+   "firstSplit": 74
+  }
+ },
+ "random": {
+  "right": 30,
+  "wrong": 5,
+  "refused": 65,
+  "notRelevantOk": 90,
+  "splitCrap": 6,
+  "splitTest": 7,
+  "wrongSplits": 0,
+  "seeds": 10,
+  "firstSplit": 29
+ },
+ "drives": {
+  "mechanical": {
+   "right": 74,
+   "wrong": 0,
+   "refused": 26,
+   "notRelevantOk": 100,
+   "splitCrap": 6,
+   "splitTest": 6,
+   "wrongSplits": 0,
+   "seeds": 6,
+   "firstSplit": 15
+  },
+  "heat": {
+   "right": 79,
+   "wrong": 0,
+   "refused": 21,
+   "notRelevantOk": 100,
+   "splitCrap": 6,
+   "splitTest": 6,
+   "wrongSplits": 0,
+   "seeds": 6,
+   "firstSplit": 29
+  },
+  "nuclear": {
+   "right": 46,
+   "wrong": 1,
+   "refused": 53,
+   "notRelevantOk": 100,
+   "splitCrap": 0,
+   "splitTest": 0,
+   "wrongSplits": 0,
+   "seeds": 6,
+   "firstSplit": null
+  },
+  "radiant": {
+   "right": 82,
+   "wrong": 0,
+   "refused": 18,
+   "notRelevantOk": 100,
+   "splitCrap": 6,
+   "splitTest": 6,
+   "wrongSplits": 0,
+   "seeds": 6,
+   "firstSplit": 34
+  },
+  "rest": {
+   "right": 38,
+   "wrong": 0,
+   "refused": 62,
+   "notRelevantOk": 100,
+   "splitCrap": 0,
+   "splitTest": 0,
+   "wrongSplits": 0,
+   "seeds": 6,
+   "firstSplit": null
+  },
+  "thermal": {
+   "right": 86,
+   "wrong": 0,
+   "refused": 14,
+   "notRelevantOk": 100,
+   "splitCrap": 6,
+   "splitTest": 6,
+   "wrongSplits": 0,
+   "seeds": 6,
+   "firstSplit": 28
+  },
+  "gravity": {
+   "right": 92,
+   "wrong": 0,
+   "refused": 8,
+   "notRelevantOk": 100,
+   "splitCrap": 6,
+   "splitTest": 6,
+   "wrongSplits": 0,
+   "seeds": 6,
+   "firstSplit": 47
+  },
+  "ionization": {
+   "right": 74,
+   "wrong": 1,
+   "refused": 24,
+   "notRelevantOk": 100,
+   "splitCrap": 5,
+   "splitTest": 6,
+   "wrongSplits": 0,
+   "seeds": 6,
+   "firstSplit": 33
+  },
+  "potential": {
+   "right": 87,
+   "wrong": 0,
+   "refused": 13,
+   "notRelevantOk": 100,
+   "splitCrap": 6,
+   "splitTest": 6,
+   "wrongSplits": 0,
+   "seeds": 6,
+   "firstSplit": 35
+  },
+  "kinetic": {
+   "right": 0,
+   "wrong": 0,
+   "refused": 100,
+   "notRelevantOk": 100,
+   "splitCrap": 6,
+   "splitTest": 4,
+   "wrongSplits": 0,
+   "seeds": 6,
+   "firstSplit": 15
+  },
+  "chemical": {
+   "right": 82,
+   "wrong": 0,
+   "refused": 18,
+   "notRelevantOk": 100,
+   "splitCrap": 6,
+   "splitTest": 6,
+   "wrongSplits": 0,
+   "seeds": 6,
+   "firstSplit": 34
+  },
+  "elastic": {
+   "right": 90,
+   "wrong": 0,
+   "refused": 10,
+   "notRelevantOk": 100,
+   "splitCrap": 6,
+   "splitTest": 6,
+   "wrongSplits": 0,
+   "seeds": 6,
+   "firstSplit": 29
+  },
+  "electric": {
+   "right": 29,
+   "wrong": 0,
+   "refused": 71,
+   "notRelevantOk": 100,
+   "splitCrap": 0,
+   "splitTest": 0,
+   "wrongSplits": 0,
+   "seeds": 6,
+   "firstSplit": null
+  },
+  "magnetic": {
+   "right": 79,
+   "wrong": 0,
+   "refused": 21,
+   "notRelevantOk": 100,
+   "splitCrap": 6,
+   "splitTest": 6,
+   "wrongSplits": 0,
+   "seeds": 6,
+   "firstSplit": 38
+  },
+  "work": {
+   "right": 88,
+   "wrong": 0,
+   "refused": 12,
+   "notRelevantOk": 100,
+   "splitCrap": 5,
+   "splitTest": 6,
+   "wrongSplits": 0,
+   "seeds": 6,
+   "firstSplit": 39
+  },
+  "oscillation": {
+   "right": 81,
+   "wrong": 0,
+   "refused": 19,
+   "notRelevantOk": 100,
+   "splitCrap": 6,
+   "splitTest": 6,
+   "wrongSplits": 0,
+   "seeds": 6,
+   "firstSplit": 35
+  }
+ },
+ "scale": {
+  "20": 0.08,
+  "100": 0.85,
+  "300": 6.9,
+  "1000": 111.58
+ }
+}
