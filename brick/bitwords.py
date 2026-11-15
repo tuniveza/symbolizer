@@ -220,6 +220,8 @@ class BitWords:
         self.gui_lines = set()                      # lines read as window words (not for the misread checks)
         self.gui_slots = {}
         self.gl_names = set()
+        self.gui_drawn = set()                      # the shapes it draws on canvases (1 box ... 6 dot), for bitwin
+        self.gui_looks = set()                      # "shadow", "texture": looks some style may get, for paint
         self.gui_text_sizes = {16}                  # for paint.add_all: the letters the program needs                       # 3D things the program named ("a red cube called box")
 
     # ---------------- where window words start ----------------
@@ -290,7 +292,28 @@ class BitWords:
     def gui_routines(self):
         if self.uses_gui:
             add_routines(self.a, self.gui_slots, sizes=sorted(self.gui_text_sizes), gl=any(e.kind == GLVIEW for e in self.gui_order) or
-                         getattr(self, "uses_glspace", False))
+                         getattr(self, "uses_glspace", False),
+                         kinds={WINDOW} | {e.kind for e in self.gui_order}, drawn=self.gui_drawn,
+                         looks=self.gui_looks_used())
+
+    def gui_note_looks(self, effects):
+        """Note the looks these style effects may give ("set"/"add" a shadow or texture that isn't 0)."""
+        for e in effects:
+            if e[0] in ("set", "add") and e[2] != 0:
+                if e[1] == S + SHADOW:
+                    self.gui_looks.add("shadow")
+                elif e[1] == S + TEXTURE:
+                    self.gui_looks.add("texture")
+
+    def gui_looks_used(self):
+        """What shapes can look like, for paint.add_all: menus' item lists have a shadow; circles and dots
+        drawn on canvases are round."""
+        looks = set(self.gui_looks)
+        if any(e.kind == MENU for e in self.gui_order):
+            looks.add("shadow")
+        if self.gui_drawn & {2, 6}:
+            looks.add("ellipse")
+        return looks
 
     # ---------------- finding elements ----------------
 
@@ -1299,6 +1322,7 @@ class BitWords:
         """Store the effects in the element's record (and call the runtime for depth, items, text)."""
         a = self.a
         effects = self.gui_resolve(elem.kind, effects)
+        self.gui_note_looks(effects)
         have = False                                    # does rax hold the record's address?
         for e in effects:
             op = e[0]
@@ -1826,6 +1850,7 @@ class BitWords:
         a = self.a
         self.gui_use()
         shape = self.gui_slot("shape", 64)
+        self.gui_drawn.add(kind)
         points = [(self.gui_in_canvas(x, canvas, AX), self.gui_in_canvas(y, canvas, AY)) for x, y in points]
 
         def put(offset, value):
@@ -1859,6 +1884,7 @@ class BitWords:
                 style_block = a.reserve(128, "bww_style")
                 if colour is not None and not any(e[1] == S + FILL for e in style):
                     style = [("set", S + FILL, 1), ("set", S + COLOUR, colour)] + style
+                self.gui_note_looks(style)
                 for e in style:
                     self.gui_emit_value(e[2])
                     a.address(RCX, style_block)
@@ -1990,6 +2016,7 @@ class BitWords:
             a = self.a
             self.gui_use()
             shape = self.gui_slot("shape", 64)
+            self.gui_drawn.add(5)                               # text
             x, y = self.gui_in_canvas(point[0], canvas, AX), self.gui_in_canvas(point[1], canvas, AY)
             if isinstance(text_size, int):
                 self.gui_text_sizes.add(text_size)
@@ -2755,9 +2782,10 @@ class BitWords:
 
 # ---------------- routines the window words add ----------------
 
-def add_routines(a, slots, sizes=None, gl=False):
+def add_routines(a, slots, sizes=None, gl=False, kinds=None, drawn=None, looks=None):
     """bww_window (opens the window the first time it's needed), bww_sleep (waiting with a window open),
-    bww_key_text (the last key as text), then the bitwin runtime (bitwin.add_all)."""
+    bww_key_text (the last key as text), then the bitwin runtime (bitwin.add_all; kinds: the element kinds
+    the program makes, drawn: the shapes it draws on canvases, looks: paint.add_all's; None = not known)."""
     def window_routines(a):
         a.label("bww_window")
         done = a.new_label("bww_open_done")
@@ -2831,11 +2859,11 @@ def add_routines(a, slots, sizes=None, gl=False):
         bitwin = None
     if bitwin is not None:
         wayland.add_all(a)
-        paint.add_all(a, sizes)
+        paint.add_all(a, sizes, looks)
         if gl:
             import glspace
             glspace.add_all(a)
-        bitwin.add_all(a)
+        bitwin.add_all(a, kinds, drawn)
     else:
         import os
         if os.environ.get("BRICK_BITWIN_STUB") != "1":
