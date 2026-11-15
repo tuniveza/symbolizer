@@ -51,8 +51,24 @@ def test_the_brain_holds_back_when_unsure():
     if picker.off():
         return
     from trainer import details
-    for line in ("write she was saying hi", "write hello in blue at the x 20 and y 20", "state hello in red",
+    for line in ("write she was saying hi", "write hello in blue at the x 20 and y 20", "orange juice at the top",
                  "hi in zorp", "Hide the message after 4 seconds", "pause moment"):
+        assert details.read(line) is None, (line, details.read(line))
+
+
+def test_the_brain_reads_window_directions():
+    """brick's own window: words in it, opening, sizing, naming, colouring and closing it."""
+    if picker.off():
+        return
+    from trainer import details
+    for line, meant in (("write hello in brown at window", "write hello in the window in brown"),
+                        ("write yellow in yellow on a window", "write yellow in the window in yellow"),
+                        ("new window 400x480 with title clock make", "open a window called clock 400 by 480"),
+                        ("make window 800 by 600", "make the window 800 by 600"),
+                        ("close my window", "close the window"),
+                        ("bg wite", "set the background colour to white")):
+        assert details.read(line) == meant, (line, details.read(line))
+    for line in ("after 3 secs SHADOW", "write what is 7 x 6?", "paint everything black"):
         assert details.read(line) is None, (line, details.read(line))
 
 

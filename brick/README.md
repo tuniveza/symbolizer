@@ -147,7 +147,8 @@ brick keeps learning from what you write, by itself.
 - **The brain decides the details too.** It reads what each word is for (the words to show, a colour, a place,
   how many times, a time, chatter) and says the whole line again in brick's words (`python3 -m trainer.details`).
   brick uses that reading first when every word fits its role, and checks it by building it. On fresh messy
-  paragraphs brick is exactly right 95% of the time with it, 92.6% without.
+  paragraphs brick is exactly right 95% of the time with it, 92.6% without. It knows brick's own window too:
+  words in it, opening, sizing, naming, colouring and closing it (`write hello in brown at window`).
 - **Imagination neurons** predict the next word and propose new links. The compiler approves or rejects each one.
 - **New bricks** are made from what it finds, only when they build exactly right.
 - **A daemon** keeps learning in the background, at the lowest priority.

@@ -279,7 +279,8 @@ def practice(count=4000, seed=12345):
     found, built = [], {}
     try:
         for _ in range(count):
-            part = random.choice(scrambler.MAKERS)()
+            from trainer import details
+            part = random.choice(details.makers())()
             said = scrambler.say(part)
             if random.random() < 0.25:
                 said = f"{random.choice(scrambler.CHATTER_BEFORE)} {said}"

@@ -184,6 +184,7 @@ class Compiler(Actions, Window, BitWords):
         self.uses_window = False       # does it move its own window? Then it needs one of its own.
         self.bricks_on = {}            # line number -> the bricks its directions became, in order
         self.brain_wants = {}          # line number -> the bricks the brain says it should be (when brick built others)
+        self.brain_found = {}          # line number -> the brain's own reading of it, checked by building (final)
         self.erases = False            # does it make text disappear? Then text put on the screen is remembered.
         self.written = False           # has anything been shown yet? Until then a background colours the whole screen
         self.uses_brain = False        # does it link symbols? Then it carries the brain's routines too
@@ -228,10 +229,25 @@ class Compiler(Actions, Window, BitWords):
         first = {}
         try:
             program = self.compile_text(text)
+            self.brain_found = {}
             first = self.misread(text)
             stuck = "\n".join(f"Line {n}: " for n in first)
             if not stuck:
                 return program
+            if self.brain_found and set(self.brain_found) == set(first):   # only the brain's readings: final
+                lines = text.split("\n")
+                for n, way in self.brain_found.items():
+                    lines[n - 1] = lines[n - 1][:len(lines[n - 1]) - len(lines[n - 1].lstrip())] + way
+                retold = "\n".join(lines)
+                if not failing_lines(retold, self.words_file):
+                    notes = [f"Note: line {n} read as: {way}" for n, way in sorted(self.brain_found.items())]
+                    words_file, ask_user = self.words_file, self.ask_user
+                    self.__dict__.clear()
+                    type(self).__init__(self, words_file, ask_user)
+                    try:
+                        return self.compile_text(retold)
+                    finally:
+                        self.notes[:0] = notes
         except Problem as problem:
             stuck = str(problem)
             check = Checking(self.words_file, text)
@@ -244,6 +260,7 @@ class Compiler(Actions, Window, BitWords):
             finally:
                 check.done()
         told = self.brain_retells(text, stuck) if READING[0] == 1 else None   # the brain's whole reading first
+        by_brain = told is not None
         words = universe.trial_words(self.words_file)
         try:
             told = told or universe.retell(text, stuck, lambda attempt: failing_lines(attempt, words),
@@ -259,8 +276,11 @@ class Compiler(Actions, Window, BitWords):
                 return program
             raise Problem(stuck)
         retold, notes = told
-        if READING[0] == 1:                                              # the brain has the last word on the bricks
+        if READING[0] == 1 and not by_brain:                             # the brain has the last word on the bricks
+            self.brain_notes = {}
             retold = self.brain_over(text, retold, stuck)
+            notes = [self.brain_notes.get(int(m.group(1)), n) if (m := re.match(r"Note: line (\d+) read as: ", n))
+                     else n for n in notes]
         words_file, ask_user = self.words_file, self.ask_user            # start again, with those lines said again:
         self.__dict__.clear()                                            # nothing kept from the first try
         type(self).__init__(self, words_file, ask_user)
@@ -333,6 +353,7 @@ class Compiler(Actions, Window, BitWords):
                 way = way or picker.resay(line, want, check.scratch())
                 if way:
                     said[number - 1] = way
+                    self.brain_notes[number] = f"Note: line {number} read as: {way}"
         finally:
             check.done()
         return "\n".join(said)
@@ -423,14 +444,17 @@ class Compiler(Actions, Window, BitWords):
         try:
             for number, raw in enumerate(lines, 1):
                 line = raw.strip()
-                if not line or line.startswith("#") or line.endswith(":") or number in self.gui_lines:
-                    continue                  # window words are brick's own reading
+                if not line or line.startswith("#") or line.endswith(":"):
+                    continue
                 if self.uses_definition(line):
                     continue                  # a word you taught ('to splash something in a word means ...'): yours
                 way = self.brain_reads(line) if READING[0] == 1 else None   # the brain's whole reading leads:
-                if way and way.lower() != line.lower() and check.differs(number, way):   # bricks and details
-                    found[number] = way
+                if way and way.lower() != line.lower() and check.differs(number, way):   # bricks and details,
+                    found[number] = way                                                 # window lines too
+                    self.brain_found[number] = way
                     continue
+                if number in self.gui_lines:
+                    continue                  # window words are brick's own reading
                 way = self.brain_bricks(line, number, check)    # the brain says which bricks it should be
                 if way:
                     found[number] = way

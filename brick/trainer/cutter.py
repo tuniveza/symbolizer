@@ -228,7 +228,9 @@ def examples(count, seed):
     random.seed(seed)
     out = []
     for _ in range(count):
-        parts = [random.choice(scrambler.MAKERS)() for _ in range(random.randint(2, 4))]
+        from trainer import details                  # the scrambler's kinds, and directions about brick's own window
+        kinds = scrambler.MAKERS * 2 + details.WINDOW_MAKERS
+        parts = [random.choice(kinds)() for _ in range(random.randint(2, 4))]
         flat = []                                   # (piece, starts a direction?)
         for k, part in enumerate(parts):
             said = scrambler.say(part)
