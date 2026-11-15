@@ -643,7 +643,13 @@ def real_word(word):
             if os.path.isfile(path):
                 with open(path, encoding="utf-8", errors="replace") as f:
                     _real.update(line.split(" ", 1)[0] for line in f if not line.startswith(" "))
-    return word in _real                      # WordNet's everyday words; ConceptNet also knows rare ones ('wite')
+    if word in _real:                         # WordNet's everyday words; ConceptNet also knows rare ones ('wite')
+        return True
+    for end in ("s", "es", "ed", "d", "ing"):   # WordNet lists base forms: 'lets', 'waited', 'showing' are words too
+        stem = word[:-len(end)] if word.endswith(end) and len(word) - len(end) >= 3 else None
+        if stem and (stem in _real or stem + "e" in _real or len(stem) > 3 and stem[-1] == stem[-2] and stem[:-1] in _real):
+            return True
+    return False
 
 
 def spelled(word, real=False):
