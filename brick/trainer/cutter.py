@@ -60,7 +60,7 @@ def spelled_right(tokens):
     from trainer import universe as u
     world = u.universe()
     return [u.Token(t.spelled[0], world.about(world.words[t.spelled[0]]))
-            if t.spelled and len(t.spelled) == 1 and not t.real and not t.ideas and
+            if t.spelled and len(t.spelled) == 1 and not t.real and not t.ideas and not u.real_word(t.word) and
             world.words.get(t.spelled[0], {"other action"}) - {"other action"} else t for t in tokens]
 
 
@@ -72,6 +72,8 @@ def pieces(tokens):
     while i < len(tokens):
         name, slot, end = label(fixed, i)
         end = max(end, i + 1)
+        if name == "Vother" and out and out[-1][1] == "words" and not out[-1][0] == "Wq":
+            name, slot = "W", "words"         # 'lets go': an action word straight after words to show is a word
         out.append((name, slot, tokens[i:end]))
         i = end
     return out

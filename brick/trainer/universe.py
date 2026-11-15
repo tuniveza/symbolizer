@@ -542,7 +542,8 @@ def stops_words(tokens, k):
                                                                       nxt.ideas & {"screen"} or nxt.word == "the"):
         return True                           # '... welcome back pause 2 seconds': the words end at pause
     return bool(look_at(tokens, k) or where_at(tokens, k) and (t.ideas & {"toward"} or t.word in SIDES) or
-                t.quoted or "count" in t.ideas or
+                t.quoted or "count" in t.ideas or "saying" in t.ideas or      # 'the words hi the words bye': two sets
+                t.word == "text" and nxt is not None and "saying" in nxt.ideas or
                 "later" in t.ideas and number_and_unit(tokens, k + 1) or
                 "number" in t.ideas and k + 1 < len(tokens) and "times" in tokens[k + 1].ideas or
                 t.ideas & {"show", "placing", "window", "background"})
