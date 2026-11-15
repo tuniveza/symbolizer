@@ -32,8 +32,10 @@ _weights = None
 def label(tokens, i):
     """(the piece's label for the cutter, the slot it fills, where it ends)."""
     from trainer import universe as u
-    slot, end = u.piece(tokens, i)
     t = tokens[i]
+    if "gap" in t.ideas:
+        return "gap", None, i + 1             # two spaces: a pause, which often ends a direction
+    slot, end = u.piece(tokens, i)
     if slot == "action":
         kind = next((k for k in ("wait", "clear", "show", "placing", "make") if k in t.ideas), "other")
         return "V" + kind, "action", end
@@ -127,7 +129,7 @@ def decode(w, ps):
             kind = next((p[0] for p in seg if p[1] == "action"), None)
             if kind in ("Vwait", "Vclear") and slot in ("words", "look", "where", "count", "style") and \
                     not (kind == "Vwait" and "number" in ps[g][2][0].ideas or
-                         kind == "Vwait" and g >= 1 and "number" in ps[g - 1][2][0].ideas):
+                         kind == "Vwait" and g >= 1 and ps[g - 1][0] == "W" and "number" in ps[g - 1][2][0].ideas):
                 nxt.append((total + score(w, f, "C:") + score(w, close_features(seg), "E:"), cuts + (g,), [ps[g]],
                             frozenset({slot} - {None}), slot == "action"))
                 continue                      # a wait or a clear takes no words, look or place: always cut
@@ -205,12 +207,15 @@ def cut(tokens):
     frames = []
     for stretch in stretches(tokens):
         ps = pieces(stretch)
+        plain = [t for t in stretch if "gap" not in t.ideas]
         if sum(p[1] == "words" for p in ps) < 2 and sum(p[1] == "action" for p in ps) < 2:
-            frames += u.by_slots(stretch)   # one direction's worth ('write hi on a blue background'): the rules read it
+            frames += u.by_slots(plain)     # one direction's worth ('write hi on a blue background'): the rules read it
             continue
         starts = [0] + decode(w, ps) + [len(ps)]
         for a, b in zip(starts, starts[1:]):
-            frames.append([t for p in ps[a:b] for t in p[2]])
+            frame = [t for p in ps[a:b] for t in p[2] if "gap" not in t.ideas]
+            if frame:
+                frames.append(frame)
     return frames
 
 
@@ -233,10 +238,12 @@ def examples(count, seed):
                 said = f"{said} {random.choice(scrambler.CHATTER_AFTER)}"
             join = random.choice(scrambler.JOINS) if k else ""
             lower = random.random() < 0.3
+            if "  " in join:                   # two spaces between directions: the gap token the reader makes
+                flat.append((("gap", None, [u.Token(u.GAP, {"gap"})]), True, None))
             if join.strip():
                 for t in u.tokens_of(join.strip() if join.strip() not in (".", "...", "-") else ";"):
                     flat.append((("sep",), False, t))
-            first = True
+            first = "  " not in join              # after a gap, the gap itself starts the direction
             for p in pieces(u.tokens_of(said.lower() if lower else said)):
                 flat.append((p, first, None))
                 first = False

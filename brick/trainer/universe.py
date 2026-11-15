@@ -164,18 +164,24 @@ def read_directions(line):
     A direction ends at a comma, semicolon, 'then', a word ending in . ! or ?, a lone '...' or '-', 'and'
     before a new action, or where a second action starts while one is under way ('wait 3 s the words hi').
     A long messy paragraph is cut where the brain learned directions end (trainer/cutter.py), when it is sure."""
-    tokens = tokens_of(line)
+    tokens = tokens_of(line, gaps=True)
     from trainer import cutter
     learned = cutter.cut(tokens)
     if learned is not None:
         return tidy_ends(learned)
-    return cut_by_rules(tokens)
+    return cut_by_rules([t for t in tokens if "gap" not in t.ideas])
 
 
-def tokens_of(line):
-    """The line's words and phrases as tokens, each with its ideas; slips, doubled words and filler 'right' dealt with."""
+GAP = "\u00b6"                                       # two or more spaces between words: a pause the cutter weighs
+
+
+def tokens_of(line, gaps=False):
+    """The line's words and phrases as tokens, each with its ideas; slips, doubled words and filler 'right' dealt
+    with. gaps: two or more spaces between words become a gap token (the cutter learned what such a pause means)."""
     world = universe()
     words = []
+    if gaps:
+        line = re.sub(r"(?<=[^\s\"]) {2,}(?=[^\s\"])", f" {GAP} ", line)
     line = positions(line)
     for w in re.findall(r'"[^"]*"|[^\s,;]+|[,;]', line):
         if w.startswith('"'):
@@ -192,6 +198,10 @@ def tokens_of(line):
             words.append(";")                                  # 'yellow.' 'screen!': that direction ends here
     tokens, i = [], 0
     while i < len(words):
+        if words[i] == GAP:
+            tokens.append(Token(GAP, {"gap"}))
+            i += 1
+            continue
         if words[i].startswith('"'):
             tokens.append(Token(words[i], quoted=True))
             i += 1

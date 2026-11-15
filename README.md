@@ -109,6 +109,8 @@ Each line shows how many bytes it builds.
 
 When the brain has a fix, **Alt + R** writes it in before running. **Ctrl + Z** takes it back.
 The brain learned where messy directions end from thousands of scrambled paragraphs, so colours and places stay with the right line.
+On brick's hardest messy-English test (40 run-on paragraphs, `brick/tools/bench.py`) it builds all 40 exactly as meant; on fresh scrambled paragraphs about 95%.
+Every word has its own universe (1.4 million, from WordNet, Wiktionary, ConceptNet and the brain's own links): `python3 -m trainer.words position` shows one.
 It also knows the whole English dictionary (WordNet and Wiktionary): about 1,000 more verbs, each test-built (`holler hello` writes hello), plus colours, places and chatter it never shows.
 The language model teaches the brain: what it reads right is learned, so the brain reads it by itself next time.
 Programs carry only the routines they use: `write hello` is 335 bytes.
