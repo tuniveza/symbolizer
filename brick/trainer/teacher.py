@@ -53,7 +53,7 @@ def lessons():
     reading: the same line read with different lines before it is one lesson)."""
     out = {}
     for key, readings in list(neural.cache().items()):
-        if key.startswith("choose|") or not readings or not isinstance(readings, list):
+        if key.startswith(("choose|", "invent|")) or not readings or not isinstance(readings, list):
             continue
         parts = key.split("|", 3)
         if len(parts) != 4:

@@ -29,6 +29,7 @@ Examples:
 Reply with JSON only: {"definitions": ["best", "second best"]}"""
 
 HOLE_NAMES = "something someone somebody number word"
+VERSION = 1                      # the asking's version: drafts for an older one are asked again
 
 
 def unknown_action(line):
@@ -56,14 +57,20 @@ def invent(line, before="", verb=None):
         return []
     asked = (f"(the lines before it: {before.strip()[-200:]})\n" if before.strip() else "") + \
         f"line: {line.strip()}\nThe word brick has no action for: {verb}"
-    try:
-        answer = neural.call("/api/chat", {"model": neural.settings()["model"], "stream": False, "format": "json",
-                                           "messages": [{"role": "system", "content": ASK},
-                                                        {"role": "user", "content": asked}],
-                                           "options": {"temperature": 0.2, "num_predict": 300}})
-        found = json.loads(answer.get("message", {}).get("content", "{}")).get("definitions", [])
-    except Exception:
-        return []
+    key = f"invent|{neural.settings()['model']}|{VERSION}|{asked}"
+    if key in neural.cache():                            # the same line always gets the same new action
+        found = neural.cache()[key]
+    else:
+        try:
+            answer = neural.call("/api/chat", {"model": neural.settings()["model"], "stream": False, "format": "json",
+                                               "messages": [{"role": "system", "content": ASK},
+                                                            {"role": "user", "content": asked}],
+                                               "options": {"temperature": 0, "num_predict": 300}})
+            found = json.loads(answer.get("message", {}).get("content", "{}")).get("definitions", [])
+        except Exception:
+            return []
+        found = [d for d in found if isinstance(d, str)]
+        neural.remember(key, found)
     out = []
     for d in found:
         if not isinstance(d, str):
@@ -82,8 +89,14 @@ def invent(line, before="", verb=None):
         got = read_definition(d)
         if not neural.only_known_words(got.body, line + " " + HOLE_NAMES):
             continue                                     # it made up words: brick couldn't build what it means
-        if made_up(line, got.body):
-            continue                                     # it added a place, colour or number nobody asked for
+        if made_up(line, got.body):                      # a place nobody asked for ('... write something at the
+            head, sep, body = d.partition(" means ")     # bottom'): taken out, and the rest checked again
+            trimmed = re.sub(r"\s+(?:at|on|to|in) the (?:top|bottom|left|right|middle|centre|center)(?:[- ]\w+)?"
+                             r"(?: side)?(?: of the screen)?\b", "", body)
+            again = read_definition(head + sep + trimmed) if trimmed != body else None
+            if not again or made_up(line, again.body):
+                continue                                 # it added a place, colour or number nobody asked for
+            d, got = head + sep + trimmed, again
         if d not in out:
             out.append(d)
     return out[:3]
