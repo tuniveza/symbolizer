@@ -555,7 +555,9 @@ FRONT = {"show", "look", "at", "see", "teach", "learn", "this", "is", "it", "it'
 def show_request(text):
     """'show apple.png as apple', 'this is an apple: apple.png', 'apple.png is an apple' -> (path, name);
     'look at photo.jpg', 'what is this.png', 'look photo.jpg' -> (path, ''): the eye names it.
-    None if there's no picture in it."""
+    None if there's no picture in it. A typed 'brick trainer ' in front is the command, not part of the name,
+    so 'brick trainer look this.png' is (this.png, '') while 'show shoe.png as a trainer' keeps 'trainer'."""
+    text = re.sub(r"^\s*brick\s+trainer(?=\s|$)", "", text, flags=re.I)
     found = re.search(rf"\"([^\"]+)\"|'([^']+\.(?:{IMAGES}))'|(\S+\.(?:{IMAGES}))(?=[\s:,.;!?]|$)", text, re.I)
     if not found:
         return None

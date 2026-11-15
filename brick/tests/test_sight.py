@@ -145,6 +145,8 @@ def test_loose_show_wordings():
     for said in ("what is this.png", "look at this.png", "look this.png", "brick trainer look this.png",
                  "what do you see in this.png"):
         assert sight.show_request(said) == ("this.png", ""), (said, sight.show_request(said))
+    assert sight.show_request("brick trainer show shoe.png as a trainer") == ("shoe.png", "trainer")
+    assert sight.show_request("this is a trainer: shoe.png") == ("shoe.png", "trainer")
     assert sight.show_request("show game.txt") is None
     assert sight.show_request("write hello in red") is None
 
