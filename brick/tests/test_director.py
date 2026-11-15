@@ -546,7 +546,7 @@ def test_times_stays_in_a_question():
 def test_the_dictionary_reads_cleanly():
     import dictionary
     lines = [line for line in open(dictionary.PATH, encoding="utf-8") if "=" in line and not line.startswith("#")]
-    entries = dictionary.entries()
+    entries = [e for e in dictionary.entries() if not getattr(e, "lexicon", False)]   # dictionary.txt's own
     assert len(entries) == len(lines) and len(entries) > 600, (len(entries), len(lines))
     keys = [(e.key, e.kind) for e in entries]
     assert len(keys) == len(set(keys)), [k for k in keys if keys.count(k) > 1]

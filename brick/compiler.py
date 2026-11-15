@@ -1258,7 +1258,8 @@ class Compiler(Actions, Window, BitWords):
                               + "  |  ".join(dictionary.examples_for(verb)[:6]))
             first = words[0].text if verb else words[0].raw
             own = [d.first_word() for d in self.definitions if d.first_word()]
-            close = difflib.get_close_matches(first.lower(), own + STARTERS + sorted(self.dictionary_starts), n=1)
+            close = difflib.get_close_matches(first.lower(), own + STARTERS +
+                                              sorted(self.dictionary_starts - dictionary.lexicon_keys()), n=1)
             hint = f" Did you mean '{close[0]}'?" if close and close[0] != first.lower() else ""
             if first.lower() in ("each", "every", "for"):          # "each turn hi"
                 hint = " To go through a list, say: for each name in names write name."

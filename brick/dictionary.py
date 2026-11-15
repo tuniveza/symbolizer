@@ -20,6 +20,9 @@ import textwrap
 from reader import Word
 
 PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "texts", "dictionary.txt")
+# the whole English dictionary as bricks (trainer/lexicon.py), read after dictionary.txt: its words never
+# replace one dictionary.txt has. BRICK_LEXICON=off leaves it out.
+EXTRA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "texts", "dictionary-lexicon.txt")
 GAPS = ("something else", "something", "a number", "a colour")
 TIME_UNITS = {"seconds": 1, "second": 1, "minutes": 60, "minute": 60, "milliseconds": 0.001, "millisecond": 0.001}
 PLACES = {"top", "bottom", "left", "right", "middle", "centre", "center", "up", "down", "forward", "back",
@@ -56,7 +59,18 @@ def entries():
     global _entries
     if _entries is None:
         _entries = read(PATH)
+        if EXTRA and os.path.isfile(EXTRA) and os.environ.get("BRICK_LEXICON") != "off":
+            have = {e.key for e in _entries}
+            extra = [e for e in read(EXTRA) if e.key not in have]
+            for e in extra:
+                e.lexicon = True                 # from the whole dictionary: never a guess for a slip
+            _entries = _entries + extra
     return _entries
+
+
+def lexicon_keys():
+    """The words that come from the whole-dictionary lexicon (dictionary-lexicon.txt), not brick's own."""
+    return {e.key for e in entries() if getattr(e, "lexicon", False)}
 
 
 def read(path):

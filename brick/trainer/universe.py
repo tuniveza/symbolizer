@@ -85,6 +85,27 @@ class Universe:
                 self.words.setdefault(entry.key, set()).update(meant)
         for word in STARTERS:                          # ask, count, repeat ...: the universe leaves those alone
             self.words.setdefault(word, {"other action"})
+        self.lexicon()
+
+    def lexicon(self):
+        """Words from the whole English dictionary (trainer/lexicon.py) the universe doesn't know yet: chatter
+        ('erm', 'lmao'), joining words, and slips of its own words ('bg' -> background)."""
+        path = os.path.join(os.path.dirname(PATH), "lexicon.tsv")
+        if not os.path.isfile(path) or os.environ.get("BRICK_LEXICON") == "off":
+            return
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("#") or "\t" not in line:
+                    continue
+                word, what = line.rstrip("\n").split("\t", 1)
+                if word in self.words:
+                    continue
+                if what == "chatter":
+                    self.words[word] = {"chatter"}
+                elif what == "join":
+                    self.words[word] = {"glue"}
+                elif what.startswith("same:") and what[5:] in self.words:
+                    self.words[word] = set(self.words[what[5:]])
 
     def about(self, ideas):
         """The ideas, and every wider idea they're a kind of."""
@@ -102,7 +123,8 @@ _universe, _read_when = None, None
 
 def universe():
     global _universe, _read_when
-    when = [(p, os.path.getmtime(p)) for p in (PATH, dictionary.PATH)]
+    when = [(p, os.path.getmtime(p)) for p in (PATH, dictionary.PATH, dictionary.EXTRA,
+                                                 os.path.join(os.path.dirname(PATH), "lexicon.tsv")) if p and os.path.isfile(p)]
     if _universe is None or when != _read_when:
         _universe, _read_when = Universe(PATH), when
     return _universe
@@ -633,6 +655,7 @@ def spelled(word, real=False):
     world = universe()
     small = {"filler", "glue", "toward", "becoming", "it", "saying", "chatter"}
     known = {w for w in world.words if " " not in w and len(w) >= 3 and world.words[w] - small} | set(STARTERS)
+    known -= lexicon_words()                  # the whole dictionary's words are read, never guessed for a slip
     most = 1 if len(word) < 7 else 2
     found = [w for w in known if abs(len(w) - len(word)) <= most and apart(word, w) <= most]
     short = [w for w in known if len(word) >= 3 and devowel(w) == word and w != word]   # 'scrn', 'clr': vowels left out
@@ -647,6 +670,22 @@ def spelled(word, real=False):
     if len(usual) == 1 and not real_word(word):
         return usual                          # one usual slip among them: that's the word (never for real words:
     return ranked or None                     # 'well' stays well, not dwell)
+
+
+_lexicon_words = (None, None)
+
+
+def lexicon_words():
+    """Words the universe has only from the whole-dictionary lexicon (trainer/lexicon.py)."""
+    global _lexicon_words
+    if _lexicon_words[0] is not universe():
+        found = set(dictionary.lexicon_keys())
+        path = os.path.join(os.path.dirname(PATH), "lexicon.tsv")
+        if os.path.isfile(path) and os.environ.get("BRICK_LEXICON") != "off":
+            with open(path, encoding="utf-8") as f:
+                found |= {line.split("\t", 1)[0] for line in f if "\t" in line and not line.startswith("#")}
+        _lexicon_words = (universe(), found - core_words())
+    return _lexicon_words[1]
 
 
 def devowel(word):
