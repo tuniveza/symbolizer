@@ -91,6 +91,10 @@ Hold a key and the arrows change what they do. The status bar always says which.
 [brick](brick/) turns plain English into real Linux programs. It lives in this repo.
 In Brick mode every word is coloured by what brick reads it as.
 
+<img src="docs/media/brick.gif" alt="Brick mode: typing plain English, the bricks in use building up live, the brain inventing a 'splash' action, then Alt + R fixing the line and running the program" width="880">
+
+*Type plain English. The brain checks each line. **Alt + R** writes in its fixes and runs it.*
+
 | Key | |
 |:---:|:---|
 | **Alt + R** | run it (the brain checks it first) |
