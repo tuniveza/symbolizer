@@ -73,6 +73,33 @@ def do_watch(asked):
     return {**{k: got.get(k) for k in keep}, "lines": lines}
 
 
+def do_check(asked):
+    """The light check while typing: does it build, and if not, what's wrong (no disassembly; F7 does the full one)."""
+    import shutil
+    import tempfile
+    import time
+    from compiler import Compiler
+    from expressions import Problem
+    from trainer import neural
+    words_file = os.path.join(folder_of(asked), "mywords.txt")
+    with tempfile.TemporaryDirectory() as scratch:
+        mine = os.path.join(scratch, "mywords.txt")
+        if os.path.isfile(words_file):
+            shutil.copy(words_file, mine)
+        compiler = Compiler(mine, ask_user=lambda question: "yes")
+        neural.patient = False
+        started, problems, program = time.perf_counter(), [], None
+        try:
+            program = compiler.compile(asked.get("text", ""))
+        except Problem as problem:
+            problems = str(problem).split("\n")
+        except Exception as error:
+            problems = [f"Line {compiler.line_number}: (brick itself tripped up here)", f"    {type(error).__name__}: {error}"]
+        neural.patient = True
+    return {"ok": program is not None, "problems": problems, "notes": compiler.notes,
+            "took": round((time.perf_counter() - started) * 1000, 1), "layout": {"file": len(program) if program else 0}, "light": True}
+
+
 def do_run(asked):
     import kiln as gui
     program, folder, problems, notes = gui.build_for_running(asked.get("text", ""), asked.get("path"))

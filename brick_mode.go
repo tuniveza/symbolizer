@@ -107,9 +107,13 @@ func (m *Model) brickColour() tea.Cmd {
 	m.hl.running = true
 	text := m.buf.Text()
 	cmds := []tea.Cmd{m.brickAsk("lines", map[string]any{"text": text, "version": v})}
-	if s.watched != v && !s.busy["watch"] {
+	if s.watched != v && !s.busy["watch"] && !s.busy["check"] {
+		what := "check" // the light check while typing; F7 asks for the full report (watch)
+		if s.watched == -1 {
+			what = "watch"
+		}
 		s.watched = v
-		cmds = append(cmds, m.brickAsk("watch", map[string]any{"text": text, "path": m.buf.Path}))
+		cmds = append(cmds, m.brickAsk(what, map[string]any{"text": text, "path": m.buf.Path}))
 	}
 	return tea.Batch(cmds...)
 }
@@ -188,7 +192,7 @@ func (m *Model) brickAnswer(a brickMsg) tea.Cmd {
 		if v != m.buf.Version() && m.inBrick() {
 			return tea.Batch(next, m.brickColour())
 		}
-	case "watch":
+	case "watch", "check":
 		s.watch = d
 	case "words":
 		if _, isList := d["here"]; isList {
