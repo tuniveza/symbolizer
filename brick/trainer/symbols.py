@@ -1043,9 +1043,18 @@ def practise(budget=0.5, neurons=PER_ROUND):
 
 
 def links_for(name):
-    """For the brain: [(symbol, facet, weight 0..1)] from name's universe ('round', 'shape', 1.0)."""
+    """For the brain: [(symbol, facet, weight 0..1)] from name's universe ('round', 'shape', 1.0). A symbol with no
+    neuron file yet has the word's universe (trainer/words.py): its same-meaning words, kinds and companions."""
     if not exists(name):
-        return []
+        try:
+            from trainer import words
+            u = words.universe_of(name)
+        except Exception:
+            u = None
+        if not u:
+            return []
+        return [(w, "same as", 0.6) for w in u["same"][:8]] + [(w, "is", 0.5) for w in u["kind"][:4]] + \
+            [(w, "goes with", 0.3) for w in u["goes"][:6]]
     neuron = Neuron(name)
     found = [(target(facet, value), facet, round(min(1.0, link.strength / YOURS), 3))
              for value, facet, link in neuron.links()]

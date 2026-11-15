@@ -132,7 +132,9 @@ def digest(say=print):
             if not word or "\t" in word or "\n" in word or len(word) > 40:
                 continue
             glosses, tags, of = [], set(), ""
+            same = [x.get("word", "") for x in entry.get("synonyms", [])[:12]]
             for sense in entry.get("senses", [])[:6]:
+                same += [x.get("word", "") for x in sense.get("synonyms", [])[:6]]
                 st = set(sense.get("tags", []))
                 if st & {"obsolete", "archaic", "rare", "dated", "historical"} and glosses:
                     continue
@@ -146,7 +148,8 @@ def digest(say=print):
                     break
             if not glosses and not of:
                 continue
-            out.write("\t".join([word, pos, ",".join(sorted(tags)), " || ".join(glosses), of]) + "\n")
+            same = [w.replace("\t", " ").replace("|", " ") for w in dict.fromkeys(same) if w and w != word][:16]
+            out.write("\t".join([word, pos, ",".join(sorted(tags)), " || ".join(glosses), of, "|".join(same)]) + "\n")
             n += 1
     os.replace(DIGEST + ".tmp", DIGEST)
     say(f"Wiktionary digested: {n} entries")
@@ -160,7 +163,7 @@ def wiki_entries():
     with open(DIGEST, encoding="utf-8") as f:
         for line in f:
             parts = line.rstrip("\n").split("\t")
-            if len(parts) == 5:
+            if len(parts) >= 5:
                 out.append((parts[0], parts[1], set(filter(None, parts[2].split(","))), parts[3].split(" || "),
                             parts[4]))
     return out

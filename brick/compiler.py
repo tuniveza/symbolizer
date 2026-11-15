@@ -70,6 +70,9 @@ def built(text, words_file):
         return None
 
 
+_runtime_words = None
+
+
 class Checking:
     """Trial builds for the misread check, with a scratch copy of the user's words (made when first needed)."""
 
@@ -259,7 +262,11 @@ class Compiler(Actions, Window, BitWords):
                 if self.shows_describing(line, shown) or self.drops_words(line, shown, lines, number):
                     found[number] = None
                     continue
-                heard = self.second_opinion(line, shown, lines, number, check)
+                heard = self.second_opinion(line, shown, lines, number, check) or \
+                    self.brain_opinion(line, lines, number, check) or \
+                    (self.left_out(line, number, quoted_only=True) and self.keeps_every_word(line, number, lines, check))
+                # quoted words it never showed: unmistakable, so the brain fixes it (other dropped words are
+                # only shown in the panel: 'tell the user that ...' uses 'user' without showing it)
                 if heard:                     # brick printed the line itself; the neural reader says it's a direction
                     found[number] = heard
                     continue
@@ -310,6 +317,47 @@ class Compiler(Actions, Window, BitWords):
             return way if pick == 1 and universe.may_overrule(line, line, way) else None
         return None
 
+    def brain_opinion(self, line, lines, number, check):
+        """brick printed this line nearly word for word ('display bottom saying nice one 4 times in color
+        greeen' showed all of it), and the brain reads it as a direction that shows fewer words: a look, a
+        place, a count or 'saying' it knows ('write nice one in green at bottom 4 times'). That reading, if it
+        builds a different program. Asked when the language model is off or agrees; None otherwise."""
+        words = re.findall(r"[a-z0-9']+", line.lower())
+        if len(words) < 3 or '"' in line or set(words) & CONTROL or teach.read_definition(line) or \
+                number in self.worked_out:
+            return None
+        if not re.search(r"\b(saying|says|said|the words|text|colou?r|times|x\d+|\d+x)\b", line.lower()):
+            return None                       # nothing says it's a direction: 'write I live in a red house' is words
+        here = " ".join(self.texts_on.get(number, ()))
+        seen = set(re.findall(r"[a-z0-9']+", here.lower()))
+        loose = [w for w in words[1:] if w not in ("text", "that", "says", "saying", "the", "words", "with", "in",
+                                                   "at", "on", "to", "of", "color", "colour", "can", "you")]
+        if not loose or sum(w in seen for w in loose) < 0.8 * len(loose):
+            return None                       # brick read most of it as directions: its own reading
+        others = {other.strip().lower() for k, other in enumerate(lines, 1) if k != number}
+        global _runtime_words
+        if _runtime_words is None:            # brick's own messages ('out of memory ...'), not words shown
+            _runtime_words = set(universe.printed_words("write zqx in red at the bottom 2 times")) - {"zqx"}
+        best = None
+        for way in universe.tellings(line)[:8]:
+            if way.strip().lower() in others:
+                continue
+            printed = [w for w in universe.printed_words(way) if w not in _runtime_words]
+            if not printed or any(w not in words for w in printed):
+                continue                      # it must show the line's own words, as typed
+            if len(printed) >= sum(w in seen for w in words):
+                continue                      # no fewer words shown: nothing gained
+            removed = {w for w in seen if w not in printed}
+            if not any(universe.universe().words.get(w, set()) & {"colour", "place", "count", "time unit", "look"}
+                       or re.fullmatch(r"x\d+|\d+x", w) for w in removed):
+                continue                      # only brick words come out ('red', 'bottom', '4 times'), never
+                                              # a sentence's own words ('write she was saying hi')
+            if best is None or len(printed) < best[0]:
+                best = (len(printed), way)
+        if best and check.differs(number, best[1]):
+            return best[1]
+        return None
+
     def shows_describing(self, line, shown):
         """It showed 'with red color', 'text that says', 'the words' or 'x=20 y=20' as words."""
         shown = " ".join(universe.positions(shown).split())   # 'x=20 y=20', '(5, 10)': said as the universe says them
@@ -322,6 +370,48 @@ class Compiler(Actions, Window, BitWords):
                 if p.lower().split()[-1] in ("saying", "says", "words", "reading")) or \
             any(w in starts for w in ("saying", "says", "reading") if re.search(rf"\b{w}\b", loose))
         # ... or a text starts with 'saying' or 'words' (from 'the words you win'): that describes it
+
+    def left_out(self, line, number, quoted_only=False):
+        """Words of a line that shows things which the program neither shows nor uses as a brick: dropped
+        without a word ('place hello on left side of window' must use 'on left side'). [] when every word is
+        accounted for, or the line isn't one that shows things (ask, set, if ... are brick's own)."""
+        words = re.findall(r"[a-z']+", line.lower())
+        if number in self.gui_lines or number in self.worked_out or line.count('"') % 2 or \
+                set(words) & CONTROL or teach.read_definition(line) or self.uses_definition(line):
+            return []
+        directions = universe.analyse(line)
+        if not directions or any(universe.relate(d).action not in (None, "show", "placing", "wait", "clear")
+                                 for d in directions):
+            return []
+        here = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", " ".join(self.texts_on.get(number, ())))
+        shown = set(re.findall(r"[a-z0-9']+", here.lower()))
+        names = {w for n in self.known_names for w in n.replace("_", " ").split()}
+        out, kept = [], 0
+        for t in universe.tokens_of(line):
+            if t.quoted:
+                said = re.findall(r"[a-z0-9']+", t.text.lower())
+                out += [w for w in said if w not in shown]
+                kept += sum(w in shown for w in said)
+            elif not quoted_only and not (t.ideas or t.borrowed or t.spelled or t.word in FILLER or t.word in names or
+                      not re.fullmatch(r"[a-z']+", t.word)):
+                if t.word in shown:
+                    kept += 1
+                else:
+                    out.append(t.text)
+        return out if kept else []            # it showed none of the line's own words: it worked something out
+                                              # ('write the contents of shopping.txt', 'the numbers from 1 to 3')
+
+    def keeps_every_word(self, line, number, lines, check):
+        """The brain's reading of a line that dropped words, that keeps them all (and builds something else)."""
+        for way in universe.tellings(line)[:8]:
+            other = Compiler(os.devnull, ask_user=lambda question: "no")
+            try:
+                other.compile_text(way)
+            except Exception:
+                continue
+            if not other.left_out(way, 1) and check.differs(number, way):
+                return way
+        return None
 
     def drops_words(self, line, shown, lines, number):
         """brick showed some of the words of this one-direction line as plain text, but lost the rest, and the

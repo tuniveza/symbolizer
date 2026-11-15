@@ -1038,6 +1038,15 @@ def borrowed(word):
     if synchronicity.off():
         return set()
     world, web = universe(), conceptnet.web()
+    from trainer import words as word_universes   # the word's own universe first: its brick, from all its links
+    found = word_universes.brick_of(word)
+    if found and found[1] >= word_universes.SURE:
+        brick = word_universes.canon(found[0])
+        ideas = {"action:write": {"show"}, "action:put": {"placing"}, "action:wait": {"wait"},
+                 "action:clear": {"clear"}, "action:make": {"make"}, "colour": {"colour"}, "place": {"place"},
+                 "time": {"time unit"}, "chatter": {"chatter"}}.get(brick)
+        if ideas:
+            return ideas
     for first, how in web.stands_for(word)[:8]:
         for other, how_again in [(first, how)] + web.stands_for(first)[:4]:
             lends = BORROWABLE if how in conceptnet.SAME and how_again in conceptnet.SAME else THINGS
