@@ -1084,8 +1084,9 @@ def readings(tokens, follows=False):
         def respelled(k, word):
             return Token(word, world.about(world.words.get(word, {"other action"})))
         sure_slips = [k for k in slips if not tokens[k].real]          # true slips: 'afer', 'pirnt'
-        bases = [dict(zip(sure_slips, combo)) for combo in
-                 itertools.islice(itertools.product(*(tokens[k].spelled for k in sure_slips)), 16)]
+        bases = [{k: w for k, w in zip(sure_slips, combo) if w is not None} for combo in
+                 itertools.islice(itertools.product(*(list(tokens[k].spelled) + [None] for k in sure_slips)), 32)]
+        # each slip respelled, or kept as typed: 'text that says lets go ... 3 tmies' fixes tmies, keeps lets
         choices = [b for b in bases if b]                              # every way the true slips could go,
         choices += [{**b, k: other} for b in bases for k in slips if tokens[k].real   # each with a real word
                     for other in tokens[k].spelled]                    # respelled too: '1 scs wit' = wait 1 sec
