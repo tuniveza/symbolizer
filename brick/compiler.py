@@ -109,6 +109,20 @@ class Checking:
         return not (told and told.lower() != line.lower() and built(told, self.scratch()) not in
                     (None, built(line, self.scratch())))
 
+    def reread(self, line):
+        """How brick reads this one direction alone, with every check of the brain's ('Note: line 1 read as: ...'),
+        if that differs from the line as typed; None otherwise."""
+        compiler = Compiler(self.scratch(), ask_user=lambda question: "no")
+        try:
+            compiler.compile(line)
+        except Exception:
+            return None
+        for note in compiler.notes:
+            m = re.match(r"Note: line 1 read as: (.*)", note)
+            if m and m.group(1).strip().lower() != line.strip().lower():
+                return m.group(1).strip()
+        return None
+
     def done(self):
         if self.words:
             shutil.rmtree(os.path.dirname(self.words), ignore_errors=True)
@@ -449,6 +463,11 @@ class Compiler(Actions, Window, BitWords):
         parts, changed = [], False
         for tokens in directions:
             typed = " ".join(t.text for t in tokens)
+            again = check.reread(typed)       # the brain reads this direction another way alone: that reading
+            if again and check.builds(again):
+                parts.append(again)
+                changed = True
+                continue
             if check.reads_right(typed):
                 parts.append(typed)
                 continue
