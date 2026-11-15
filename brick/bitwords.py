@@ -1963,6 +1963,20 @@ class BitWords:
 
     def write_in_window(self, t):
         ctx = {"creating": True, "kind": TEXTKIND}
+        lead, k = [], 0                     # "red text at left side": the colour in front colours it, and
+        while self.gui_colour(t, k):        # 'text at left side' isn't "text saying 'at left side'"
+            colour, used = self.gui_colour(t, k)
+            lead.append(("colour", colour))
+            k += used
+        if lead and k < t.n and t.w[k] in ("text", "writing", "words", "letters") and \
+                (k + 1 == t.n or self.gui_mod_at(t, k + 1, t.n, ctx, stop_only=True)) and \
+                not any(e[0] == "text" for e in self.gui_mods(t, k + 1, t.n, dict(ctx))):   # 'red text saying hi'
+            said, effects = t.words[:k + 1], lead + self.gui_mods(t, k + 1, t.n, ctx)
+
+            def plan():
+                elem = self.gui_make(TEXTKIND, None, effects)
+                self.gui_apply(elem, [("text", ("textwords", said))])
+            return plan
         j = 0
         while j < t.n and not (j and self.gui_mod_at(t, j, t.n, ctx, stop_only=True)):
             j += 1

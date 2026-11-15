@@ -84,6 +84,8 @@ make a canvas called board below go, 400 by 240
 when board is clicked, draw a red dot on board at the mouse x and the mouse y
 ```
 
+Short is fine too: `write red text on window at left side` writes "red text" in red at the window's left.
+
 **Your own words:**
 
 ```text

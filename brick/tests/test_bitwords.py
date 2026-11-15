@@ -294,6 +294,24 @@ def test_places_and_units():
     assert f[bitwords.XU] == 5
 
 
+def test_a_colour_in_front_of_text():
+    """'write red text on window at left side': red, at the left, saying 'red text' (not 'at left side' in white)."""
+    for line in ("write red text on window at left side", "write red text in the window"):
+        c, made = compiler(), []
+        make, apply = c.gui_make, c.gui_apply
+        c.gui_make = lambda kind, name, effects: made.append(list(effects)) or make(kind, name, effects)
+        c.gui_apply = lambda elem, effects: made.append(list(effects)) or apply(elem, effects)
+        c.compile_text(line)
+        assert ("colour", 0xFF0000) in made[0], (line, made)
+        texts = [e[1][1] for effects in made for e in effects if e[0] == "text"]
+        assert [w.word for w in texts[-1]] == ["red", "text"], (line, made)
+    c, made = compiler(), []
+    make = c.gui_make
+    c.gui_make = lambda kind, name, effects: made.append(list(effects)) or make(kind, name, effects)
+    c.compile_text("write red text on window at left side")
+    assert ("set", 32, 10) in made[0], made                          # at the left, like 'write hi at left side'
+
+
 def test_looks():
     f = fields(read("in orange with round corners"))
     assert (f[bitwords.S + bitwords.FILL], f[bitwords.S + bitwords.COLOUR], f[bitwords.S + bitwords.RADIUS]) == \
