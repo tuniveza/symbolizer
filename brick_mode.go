@@ -47,12 +47,14 @@ type brState struct {
 	watch, words, decisions, imagination, neurons, learning, daemon map[string]any
 	voices                                                          bool // the brains speak what they learn (trainer/narrator.py)
 	archetypes                                                      []any
-	cursorLine                                                      map[string]any // the cursor's line as bricks
-	repair                                                          map[string]any // a line the brain judged not precise, and its fixes
-	lines                                                           []any          // every line as bricks (brick's latest reading): the wall of bricks in use
-	watched, coloured                                               int            // buffer versions
-	brainAsked, brainV                                              int            // the version the brain was asked about / its verdict (repair) is for
-	manual, runAfter                                                bool           // Alt+C asked (say what it found) / Alt+R waits for the brain, then builds
+	cursorLine                                                      map[string]any  // the cursor's line as bricks
+	repair                                                          map[string]any  // a line the brain judged not precise, and its fixes
+	lines                                                           []any           // every line as bricks (brick's latest reading): the wall of bricks in use
+	watched, coloured                                               int             // buffer versions
+	brainAsked, brainV                                              int             // the version the brain was asked about / its verdict (repair) is for
+	manual, runAfter                                                bool            // Alt+C asked (say what it found) / Alt+R waits for the brain, then builds
+	fixed                                                           []string        // what the brain fixed during this Alt+R (it fixes line after line)
+	fixedSeen                                                       map[string]bool // program texts its fixes made, so it never goes round in circles
 	busy                                                            map[string]bool
 	note                                                            string
 }
@@ -417,28 +419,40 @@ func (m *Model) brickRunChecked() tea.Cmd {
 	s := m.br()
 	r := s.repair
 	fixes := list(r, "fixes")
-	if r == nil {
-		return m.brickRun("the brain checked every line")
+	done := func(why string) tea.Cmd { // build, saying what the brain did on the way
+		if len(s.fixed) > 0 {
+			why = "the brain fixed " + strings.Join(s.fixed, "; ") + " (Ctrl+Z takes it back), and " + why
+		}
+		s.fixed, s.fixedSeen = nil, nil
+		return m.brickRun(why)
 	}
-	if (yes(r, "precise") || yes(r, "picked")) && len(fixes) > 0 {
+	if r == nil {
+		return done("checked every line")
+	}
+	if (yes(r, "precise") || yes(r, "picked")) && len(fixes) > 0 && len(s.fixed) < 8 && !s.fixedSeen[str(obj(fixes[0]), "text")] {
 		f := obj(fixes[0])
 		var ch []string
 		for _, c := range list(f, "changes") {
 			cs, _ := c.(string)
 			ch = append(ch, cs)
 		}
+		if s.fixedSeen == nil {
+			s.fixedSeen = map[string]bool{}
+		}
+		s.fixedSeen[str(f, "text")] = true
+		guess := ""
+		if !yes(r, "precise") {
+			guess = " (its best guess)" // the brain wasn't certain: the language model picked between its fixes
+		}
+		s.fixed = append(s.fixed, fmt.Sprintf("line %d: %s%s", int(num(r, "number")), strings.Join(ch, "; "), guess))
 		last := len(m.buf.Lines) - 1
 		m.buf.Change(Pos{0, 0}, Pos{last, len(m.buf.Lines[last])}, str(f, "text"), "the brain's fix")
-		s.repair, s.brainV = nil, m.buf.Version() // what the brain picked is now the text
-		s.brainAsked = s.brainV
-		how := "fixed"
-		if !yes(r, "precise") {
-			how = "made its best guess at" // the brain wasn't certain: the language model picked between its fixes
-		}
-		return tea.Batch(m.brickColour(), m.brickRun(fmt.Sprintf("the brain %s line %d first: %s (Ctrl+Z takes it back)", how, int(num(r, "number")), strings.Join(ch, "; "))))
+		s.repair, s.runAfter = nil, true // check the fixed program again: the next line may need a fix too
+		m.say(fmt.Sprintf("The brain fixed line %d; checking the rest (a few seconds) ...", int(num(r, "number"))))
+		return tea.Batch(m.brickColour(), m.brickBrain())
 	}
 	s.tab = 0
-	return m.brickRun(fmt.Sprintf("the brain isn't sure line %d does what you meant: see the Bricks panel", int(num(r, "number"))))
+	return done(fmt.Sprintf("isn't sure line %d does what you meant: see the Bricks panel", int(num(r, "number"))))
 }
 
 // brickRun builds the text as it is and runs it; why says what the brain made of it.
@@ -951,6 +965,9 @@ func (m *Model) brickBricksPanel(w, h int) []string {
 	var order []*brick
 	total := 0
 	for row, l := range s.lines {
+		if str(obj(l), "kind") == "definition" {
+			continue // a new word being taught: its words aren't bricks in use
+		}
 		for _, d := range list(obj(l), "directions") {
 			ds, _ := d.([]any)
 			for _, t := range ds {

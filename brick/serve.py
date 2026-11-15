@@ -113,12 +113,14 @@ def do_hello(asked):
 
 def do_lines(asked):
     import bricks
+    from teach import read_definition
     lines = []
     for number, raw in enumerate(asked.get("text", "").split("\n"), 1):
         stripped = raw.strip()
-        kind = "blank" if not stripped else "note" if stripped.startswith("#") else "line"
+        kind = "blank" if not stripped else "note" if stripped.startswith("#") else \
+            "definition" if read_definition(stripped) else "line"     # 'to shout something means ...': a new word
         lines.append({"number": number, "kind": kind,
-                      "directions": bricks.read_line(raw) if kind == "line" else []})
+                      "directions": bricks.read_line(raw) if kind in ("line", "definition") else []})
     return {"lines": lines}
 
 

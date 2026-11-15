@@ -180,8 +180,9 @@ def repair(text, number=None):
     targets = [number] if number else range(1, len(lines) + 1)
     for n in targets:
         line = lines[n - 1].strip()
-        if not line or line.startswith("#"):
-            continue
+        from teach import read_definition, opens_block
+        if not line or line.startswith("#") or read_definition(line) or opens_block(line):
+            continue                                       # a new word being taught is the person's own: never "fixed"
         want = expected(line)
         made = set(base["lines"].get(n, []))
         reread = base["read"].get(n, "")
