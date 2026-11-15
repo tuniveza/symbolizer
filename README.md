@@ -9,8 +9,10 @@
 <img src="https://img.shields.io/badge/Lip%20Gloss-v2-ffb400?style=for-the-badge&labelColor=161616" alt="Lip Gloss v2">
 <img src="https://img.shields.io/badge/brick-inside-ff3704?style=for-the-badge&labelColor=161616" alt="brick inside">
 
-### A text editor for the terminal.
-Embers on charcoal · it saves by itself · every key is meant for your hands
+### Your whole workspace, in the terminal.
+Write and code · keep a diary · run your projects · design in 3D · make programs from plain English
+
+Embers on charcoal. It saves by itself.
 
 [Install](#-install) · [Keys](#-keys) · [Modes](#-modes) · [Brick](#-brick) · [Design](#-design) · [More](#-more)
 
