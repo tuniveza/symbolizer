@@ -117,11 +117,12 @@ class Checking:
             compiler.compile(line)
         except Exception:
             return None
-        for note in compiler.notes:
+        found = None
+        for note in compiler.notes:           # the last reading: the brain may read its first reading again
             m = re.match(r"Note: line 1 read as: (.*)", note)
             if m and m.group(1).strip().lower() != line.strip().lower():
-                return m.group(1).strip()
-        return None
+                found = m.group(1).strip()
+        return found
 
     def done(self):
         if self.words:
@@ -344,8 +345,10 @@ class Compiler(Actions, Window, BitWords):
             return None                       # nothing says it's a direction: 'write I live in a red house' is words
         here = " ".join(self.texts_on.get(number, ()))
         seen = set(re.findall(r"[a-z0-9']+", here.lower()))
+        world = universe.universe()
         loose = [w for w in words[1:] if w not in ("text", "that", "says", "saying", "the", "words", "with", "in",
-                                                   "at", "on", "to", "of", "color", "colour", "can", "you")]
+                                                   "at", "on", "to", "of", "color", "colour", "can", "you")
+                 and not world.words.get(w, set()) & {"colour", "look"}]     # a colour is used, not printed
         if not loose or sum(w in seen for w in loose) < 0.8 * len(loose):
             return None                       # brick read most of it as directions: its own reading
         others = {other.strip().lower() for k, other in enumerate(lines, 1) if k != number}
@@ -362,8 +365,10 @@ class Compiler(Actions, Window, BitWords):
             if len(printed) >= sum(w in seen for w in words):
                 continue                      # no fewer words shown: nothing gained
             removed = {w for w in seen if w not in printed}
-            if not any(universe.universe().words.get(w, set()) & {"colour", "place", "count", "time unit", "look"}
-                       or re.fullmatch(r"x\d+|\d+x", w) for w in removed):
+            brickish = lambda w: world.words.get(w, set()) & {"colour", "place", "count", "time unit", "look"} or \
+                re.fullmatch(r"x\d+|\d+x", w) or not universe.real_word(w) and any(
+                    world.words.get(c, set()) & {"colour", "place"} for c in (universe.spelled(w) or [])[:1])
+            if not any(brickish(w) for w in removed):     # 'riht' is a slip for right: a brick word too
                 continue                      # only brick words come out ('red', 'bottom', '4 times'), never
                                               # a sentence's own words ('write she was saying hi')
             if best is None or len(printed) < best[0]:

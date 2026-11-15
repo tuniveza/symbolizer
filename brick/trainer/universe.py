@@ -1119,8 +1119,8 @@ def readings(tokens, follows=False):
                 found.append(d)               # a real word ('wit') only if that completes it: '1 scs wit'
 
     memory = synchronicity.memory()
-    slipped = lambda d: sum(1 for t in d.content if t.spelled and not t.real and not t.quoted)
-    return sorted(found, key=lambda d: -(memory.fit(d.roles()) - (1.0 if id(d) in demoted else 0) - 0.5 * slipped(d)))
+    slipped = lambda d: sum(1 for t in d.content if t.spelled and not t.real and not t.quoted and not real_word(t.word))
+    return sorted(found, key=lambda d: -(memory.fit(d.roles()) - (1.0 if id(d) in demoted else 0) - 2.0 * slipped(d)))
     # a reading that would print a slip as words to show ('to the riht') comes after one that reads it
 
 
