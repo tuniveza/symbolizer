@@ -254,7 +254,9 @@ def read_line(line, brain=None, long=False):
     from trainer import intuition
     # the learned network, read in one run: on with BRICK_NEURONS_READ=learned (default once the Go engine lands:
     # in JavaScript it is 6.7 s against 1.3 s for the small fresh network)
-    if os.environ.get("BRICK_NEURONS_READ") == "learned" and os.path.isfile(intuition.STATE) and not long:
+    # (the Go engine reads a line in ~0.3 s, so with it built the learned network is the default; node takes ~2-6 s)
+    default = "learned" if os.path.isfile(GO_ENGINE) and os.environ.get("BRICK_ENGINE") != "node" else "fresh"
+    if os.environ.get("BRICK_NEURONS_READ", default) == "learned" and os.path.isfile(intuition.STATE) and not long:
         asked = [w for w in dict.fromkeys(words_of(line)) if w not in SMALL]
         if len(asked) < 2:
             return {"error": "Give it a line with at least two words that aren't small joining words."}

@@ -92,7 +92,7 @@ func (m *marks) next(n int) {
 // null, so alike() returns 0 outside those passes: candidates() after any training sees every likeness as 0
 // (a network that has not run propose/decide yet, like run.js's score task, is not affected). When sim.js is
 // fixed (e.g. `if (memo != null) return memo`), set this to false and the Go engine follows.
-var AlikeZeroOutsidePass = true
+var AlikeZeroOutsidePass = false // sim.js fixed on 15 Nov: alike() works out the size when no pass is running
 
 // alike is alike(a, b, pred): cosine of how the two are used, each context neuron weighted by its rarity.
 // Its three sums (dot, na, nb) are kept apart, each added up in sim.js's order.

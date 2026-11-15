@@ -436,7 +436,7 @@
       // a neuron's own size (sum of squares) only depends on itself, so within one pass (propose, decide,
       // candidates: nothing changes meanwhile) it is worked out once, adding in the same order as before
       const norm = (x, px) => {
-        const memo = this._norm && this._norm.get(x.id);
+        const memo = this._norm ? this._norm.get(x.id) : undefined;   // no pass running: work it out
         if (memo !== undefined) return memo;
         let t = 0;
         for (const [k, v] of x.next) { const q = v * (rare.get(k) || 1); t += q * q; }
