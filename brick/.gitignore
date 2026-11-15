@@ -8,3 +8,7 @@ wa/
 trainer/data/sources/public/
 trainer/data/sources/dictionary-api/
 trainer/data/neurons/
+
+# the narrator's Piper voices (about 60 MB each, from huggingface.co/rhasspy/piper-voices) and its on/off switch
+trainer/data/voices/
+trainer/data/narrator.json
