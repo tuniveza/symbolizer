@@ -14,7 +14,7 @@
 <br>
 Embers on charcoal. It saves by itself. Every key is meant for your hands.
 
-[Install](#-install) · [Key modes](#-key-modes) · [File manager](#-file-manager) · [Themes](#-colour-themes) · [Diary](#-diary) · [Manager](#-manager) · [Design](#-design-mode) · [Every key](#-every-key)
+[Install](#-install) · [Key modes](#-key-modes) · [File manager](#-file-manager) · [Themes](#-colour-themes) · [Diary](#-diary) · [Manager](#-manager) · [Brick](#-brick-mode) · [Design](#-design-mode) · [Every key](#-every-key)
 
 <br>
 
@@ -29,7 +29,8 @@ Embers on charcoal. It saves by itself. Every key is meant for your hands.
 - **A calm editor.** The text sits in a centred column. The bars glow a little warmer in the middle.
 - **Nothing to lose.** Every change saves itself a moment later. Text with no name is kept as a **session**.
 - **Keys that say what they do.** Hold Shift, Ctrl or Alt and the status bar tells you what the arrows will do.
-- **More than one kind of work.** Text, Diary and Design work today. Slides, Book and Draw are on the way.
+- **More than one kind of work.** Text, Diary, Manager, Brick and Design work today. Slides, Book and Draw are on the way.
+- **Brick mode.** Write programs in plain English; [brick](brick/), the compiler that lives in this repo, builds them. It keeps learning from what you write. [See it below](#-brick-mode).
 - **Design mode.** A board made of text: octagons with pictures and six layouts, pages, notes, cabinets and drawers, links and a highlighter pen. Drag files onto it, delete anything, undo and redo, and move around it all by keyboard. Fast with thousands of elements. [See it below](#-design-mode).
 
 ## ✦ Install
@@ -58,6 +59,7 @@ sy ~/projects/web  open a folder as a project, with the file manager
 sy -t ~/notes      open every text file in a folder and its folders as tabs
 sy diary           Diary mode
 sy manager         Manager mode: all of ~/an by category
+sy brick [FILE]    Brick mode: programs in plain English
 sy design          Design mode   (also: slide, book, draw)
 sy --keys          show what each key does
 sy --version       show the version and build number (the status bar shows the build too)
@@ -160,7 +162,7 @@ Pages are plain text files: `~/.local/share/symbolizer/diary/2026-10-28/001.txt`
 
 `sy manager` (or **Alt + M** → Manager). All of `~/an` on one screen, sorted into its top folders.
 The names come from `~/an/ca/sy/manager/names.tsv`. **◆** is a project: a `make.sh`, or a build file of its own (`go.mod`, `Cargo.toml`, `package.json` …), like Symbolizer.
-**Other projects** lists the projects outside `pj`, `ca` and `co` (brick in `br` …); each is also in its own category.
+**Other projects** lists the projects outside `pj`, `ca` and `co`; each is also in its own category.
 **Recovered files** (`~/recovered_files`) and **Downloaded source** (`~/.local/src`) list other people's code and old copies: what is straight inside, and below it each git repository or project (CMake, meson, a Makefile …). The Manager never offers to adopt them.
 
 | Keys | What it does |
@@ -184,6 +186,21 @@ It runs in the terminal, so you see what it prints. Then any key comes back to s
 After **New project**, **Adopt** and **Tidy**, the Manager looks at the folders again.
 
 <br>
+
+## ✦ Brick mode
+
+`sy brick` (or **Alt + M** → Brick). brick, the plain-English compiler, lives in this repo in [`brick/`](brick/) ([its own README](brick/README.md)).
+Write a program as in Text mode; every word is coloured by what brick reads it as. Under the text, a panel shows brick's whole system.
+
+| Keys | What it does |
+|:---|:---|
+| **F6** | build and run the program, in a kitty window beside this one |
+| **F7** | check it now, and look for steps that are missing or misread |
+| **F8** | the panel takes the keys / gives them back (**Esc** too) |
+| **F9** | the next panel: Bricks, Words, Decisions, Imagination, Neurons, Learning |
+| **F12** | brick learning on / off, in **every** mode |
+
+While learning is on, brick learns from everything you write in Symbolizer: code, notes, anything. The diary only when its switch (**D** in the Learning panel) is on. It all stays on your computer.
 
 ## ✦ Design mode
 
@@ -342,7 +359,8 @@ Press **F1** inside Symbolizer for the full, scrollable list, or **AltGr + K** t
 | ŧ (Right Alt + T) | sy term: show or hide a kitty terminal under the editor |
 | Alt + Tab (Design mode, sy term) | the other split: the editor ↔ sy term (a kitty map in `~/.config/kitty/panes.conf`) |
 | Alt + R, then arrows | resize mode: each arrow moves the line between the panes that way; any other key stops (not in Text mode: there it is Emmet's remove tag) |
-| Alt + M | switch modes: Text, Design, Slides, Diary, Book, Draw, Manager |
+| Alt + M | switch modes: Text, Design, Slides, Diary, Book, Draw, Manager, Brick |
+| F12 | brick learning on / off (every mode) |
 | Design: Alt + N, then P · N · S · C · D · R · B · O | new page · note · shape · cabinet · drawer · rack · board · box (F1 in Design mode lists all its keys) |
 | Design: D · PgUp · PgDn (a box chosen) | the box's next design · its chosen thing a layer up · down (none chosen: look at one layer) |
 | Design: click · Tab · Esc (a container in a box) | open it out (what it holds) · open the next thing · fold it again |
@@ -426,6 +444,7 @@ map --when-focus-on title:Symbolizer kitty_mod+down
 | `ghost.go` · `emmet/units.go` | CSS unit hints: the dim shadow and its rules |
 | `learn.go` · `learn_*.go` | the Learn box (AltGr + L) and its cards |
 | `lamps.go` · `lockplate.go` | lock keys and the lock plate |
+| `brick_mode.go` · `brick_client.go` · `brick_learning.go` · `brick/` | Brick mode: the panel and keys · talking to `brick.py serve` · learning from what you write · brick itself |
 
 </details>
 

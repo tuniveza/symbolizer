@@ -18,7 +18,7 @@
 <p align="center">
   <a href="#-quick-start">Quick start</a> ·
   <a href="#-a-tour-of-the-language">The language</a> ·
-  <a href="#-brick-kiln-the-window">brick kiln</a> ·
+  <a href="#-brick-mode-in-symbolizer">Brick mode</a> ·
   <a href="#-how-it-works">How it works</a> ·
   <a href="#-brick-teaches-itself">Learning</a> ·
   <a href="#-every-command">Commands</a>
@@ -53,8 +53,8 @@ game: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, no
 ```
 
 <p align="center">
-  <img src="docs/screens/run.png" alt="brick kiln: English on the left, the running program on the right" width="92%">
-  <br><sub>brick kiln, the window: the English on the left, the finished program running on the right.</sub>
+  <img src="docs/screens/run.png" alt="brick's old web window: English on the left, the running program on the right" width="92%">
+  <br><sub>brick's old web window: the English on the left, the finished program running on the right. It is now <a href="#-brick-mode-in-symbolizer">brick mode in Symbolizer</a>.</sub>
 </p>
 
 ---
@@ -80,13 +80,13 @@ It is built around three ideas:
 
 - Linux on a 64-bit Intel or AMD processor (x86-64).
 - Python 3. Nothing to install with pip. (Tested on Python 3.14.)
-- A web browser, only if you want the window (`brick gui`).
+- [Symbolizer](https://github.com/tuniveza/symbolizer), only for brick mode (`sy brick`). brick lives in its `brick/` folder.
 
 **Get it and try an example:**
 
 ```console
-$ git clone https://github.com/tuniveza/brick.git
-$ cd brick
+$ git clone https://github.com/tuniveza/symbolizer.git
+$ cd symbolizer/brick
 $ python3 brick.py texts/examples/hello.txt
 ```
 
@@ -98,11 +98,11 @@ Put this small script in a folder on your `PATH` (for example `~/.local/bin/bric
 exec python3 /path/to/brick/brick.py "$@"
 ```
 
-**Open the window:**
+**Open brick mode** (build Symbolizer first: `./make.sh` in the `symbolizer` folder):
 
 ```console
-$ brick gui                  # opens brick kiln in your browser
-$ brick gui game.txt         # opens it with game.txt loaded
+$ sy brick                   # Symbolizer in brick mode
+$ sy brick game.txt          # with game.txt open (brick gui game.txt does the same)
 ```
 
 > [!TIP]
@@ -311,27 +311,35 @@ When brick had to guess, it tells you how it read the line, and after the progra
 
 ---
 
-## 🔥 brick kiln, the window
+## 🧱 Brick mode in Symbolizer
 
-`brick gui` opens **brick kiln**: an editor on the left, and on the right, everything brick does with your words.
-It is a small web page served only to your own computer (`http://127.0.0.1:8766`).
+brick lives inside [Symbolizer](https://github.com/tuniveza/symbolizer), the terminal editor, in its `brick/` folder.
+`sy brick` (or **Alt + M** → Brick, or `brick gui`) opens **brick mode**: write the program as in Text mode, and every word is coloured by what brick reads it as.
+Under the text is a panel with brick's whole system. It replaced the old web window.
 
-| | |
+| Panel | What it shows |
 |---|---|
-| <img src="docs/screens/made.png" alt="How it's made: overview"> | <img src="docs/screens/wall.png" alt="The brick wall"> |
-| **How it's made.** The five stages for your file (read, split, understand, add the toolbox, wrap), then every line with the actions brick found in it and how many bytes of machine code it became. | **The brick wall.** Every word as a brick, coloured by what brick read it as: an action, a thing, how it looks, when or how long, words to show, a joining word. |
-| <img src="docs/screens/machine.png" alt="The machine code"> | <img src="docs/screens/bits.png" alt="The bits"> |
-| **Machine code.** Each line's real x86-64 instructions, byte by byte, with the text and routines they use. | **Bits.** The whole program file as 1s and 0s. Hover over any byte to see which line, direction and instruction made it. |
+| **Bricks** | Is the program right: problems, size, build time, and the line under the cursor as bricks |
+| **Words** | Words brick doesn't know in this file, and the words you taught (type `zap means write`) |
+| **Decisions** | What the trainer couldn't settle by itself: **Left / Right** pick a reading, **Enter** keeps it |
+| **Imagination** | What brick imagined, with its pictures, and what its eye saw |
+| **Neurons** | The imagination neurons read the cursor's line (**Left / Right** pick an archetype's brain) |
+| **Learning** | The training daemon: on or off, the diary switch (**D**), and what it learned |
 
-What else is in the window:
+| Key | What it does |
+|---|---|
+| **F6** | Builds and runs the program, in a kitty window beside this one |
+| **F7** | Checks it now, and looks for steps that are missing or misread, with fixes to apply |
+| **F8** | Gives the keys to the panel, and back to the text (**Esc** too) |
+| **F9** | The next panel (**Tab** / **Shift + Tab** while the panel has the keys) |
+| **F12** | In every mode of Symbolizer: brick learning on or off |
 
-- **Run** builds and runs the program in the built-in console. **Run in console** opens a console window of its own.
-- **Bricks** opens a tray of every word brick knows, as tiles to click or drag into your program.
-- **Decisions** lists the lines and words brick couldn't settle by itself, for you to decide when you like.
-- **Words** teaches brick new words: type a word and what it means, for all your programs or just this folder. It lists the words in your program brick doesn't know, with a Teach button (or a spelling fix) for each, has a Try box that builds and runs a line on the spot, and lists your words with a Forget button.
-- **Help** explains how brick works, step by step.
-- **Save .brick** writes your program plus everything the window shows about it, as plain text, to hand to someone else to read.
-- **Save bits** writes the program as brick materials (see below).
+**Learning from your writing.** While learning is on, brick learns from everything you write in Symbolizer, in any mode: code, notes, anything.
+Your diary is read only when its switch is on. All of it stays on your computer.
+Only single words go out, to look them up in a public dictionary; never sentences.
+
+`brick export game.txt` and `brick bits game.txt` write the plain-text report and the brick materials (see below).
+Behind brick mode, brick runs as `brick.py serve` (one JSON message per line), so all the work is brick's own.
 
 ---
 
@@ -389,7 +397,11 @@ Nothing else is needed on the computer that runs it.
 | [`trainer/neural.py`](trainer/neural.py) | The optional local language model |
 | [`trainer/core.py`](trainer/core.py), [`trainer/scrambler.py`](trainer/scrambler.py) | Self-learning: made-up and scrambled directions |
 | [`trainer/review.py`](trainer/review.py), [`trainer/outliers.py`](trainer/outliers.py) | "Did it do what you meant?" and the Decisions list |
-| [`gui.py`](gui.py), [`gui.html`](gui.html), [`bricks.py`](bricks.py) | brick kiln, the window, and its brick tray |
+| [`serve.py`](serve.py), [`kiln.py`](kiln.py), [`bricks.py`](bricks.py) | What Symbolizer's brick mode asks brick for, and the reports it shows |
+| [`trainer/intuition.py`](trainer/intuition.py), [`trainer/imagination/`](trainer/imagination/) | The imagination neurons: learning by themselves (Ni predicts, Ne proposes), checked by the compiler |
+| [`trainer/imagination/engine/`](trainer/imagination/engine/) | The same neurons in Go, bit for bit (`./make.sh engine` builds it; much faster) |
+| [`trainer/repair.py`](trainer/repair.py), [`trainer/sandbox.py`](trainer/sandbox.py) | Finding missing or misread steps and fixing them; running made programs safely |
+| [`trainer/daemon.py`](trainer/daemon.py), [`trainer/wordfeed.py`](trainer/wordfeed.py), [`trainer/encoder.py`](trainer/encoder.py) | The learning daemon, new words from the dictionary, and where a new neuron's frequency comes from |
 
 ---
 
@@ -398,7 +410,7 @@ Nothing else is needed on the computer that runs it.
 brick keeps learning while you use it.
 Everything it learns is kept as plain text that you can read, change or delete.
 
-**The trainer** runs by itself while brick kiln is open or a program is running. Every 5 seconds it:
+**The trainer** runs by itself while brick mode is open or a program is running. Every 5 seconds it:
 
 - **makes** a new direction for a console program, often as loosely as people really type them (`bg red`, `type at left of the screen the words hi in teal`);
 - **watches** your saved `.brick` files and learns from every line in them;
@@ -543,7 +555,7 @@ $ brick trainer imaginations own     # what it imagined by itself (also: mine, l
 ```
 
 Everything it imagined is in `trainer/data/imagination/`: the pictures (60 at most; its own oldest go first) and
-`log.txt`, one line each, saying where it came from. brick kiln shows them live in its **Imagination** tab.
+`log.txt`, one line each, saying where it came from. Brick mode shows them live in its **Imagination** panel.
 
 ### In your programs
 
@@ -597,7 +609,8 @@ Use `brick sand game.txt` (or `clay`, `shale`, `cement`) to write just one of th
 | `brick console game.txt` | Makes it and runs it in a new console window. `brick window game.txt` works too. |
 | `brick here game.txt` | Makes it and runs it right here, in this terminal |
 | `brick build game.txt` | Only makes `./game` |
-| `brick gui` | Opens brick kiln. `brick gui game.txt` opens it with that file. `brick gui --app` opens it in a window of its own. |
+| `brick gui` | Opens Symbolizer's brick mode (the same as `sy brick`). `brick gui game.txt` opens it with that file. `brick gui --app` opens it in a kitty window of its own. |
+| `brick serve` | What brick mode talks to: one JSON message per line |
 | `brick export game.txt` | Writes `game.brick`: the program and everything brick made from it, as plain text |
 | `brick bits game.txt` | Writes the brick materials (sand, clay, shale, cement) |
 | `brick trainer review game.txt` | The lines brick had to guess: say if they're right, or fix them |
@@ -606,6 +619,10 @@ Use `brick sand game.txt` (or `clay`, `shale`, `cement`) to write just one of th
 | `brick trainer scramble 10` | 10 messy paragraphs, and how brick did with each |
 | `brick trainer` | Runs the trainer in this terminal, to watch it. `brick trainer always` / `off` / `status` |
 | `brick trainer learn x.brick` | Learns from these files now |
+| `brick trainer neurons learn` | The imagination neurons learn by themselves. `learned`, `score`, `bricks`, `build`, `forget` |
+| `brick trainer neurons repair game.txt` | Finds steps that are missing or misread, and the fix for each |
+| `brick trainer neurons words 20` | 20 new words from the dictionary, made into bricks |
+| `brick trainer neurons always` | The learning daemon runs all the time (a systemd user service). `off` / `status` |
 | `brick trainer neural setup` | Sets up the optional local language model |
 | `brick director` | The English Director (see above) |
 | `brick trainer feeder` | The dictionary feeder (see above) |
@@ -643,9 +660,9 @@ All 172 passed on 8 November 2026, on CachyOS Linux with Python 3.14.
 ## 🗂️ What's in the folder
 
 ```text
-brick/
+symbolizer/brick/
 ├── brick.py ... window.py     the compiler, toolbox, assembler and window (see "Where things live")
-├── gui.html                   the brick kiln page
+├── serve.py, kiln.py          what Symbolizer's brick mode talks to
 ├── tests/                     172 tests that build and run real programs
 ├── texts/
 │   ├── examples/              finished example programs
