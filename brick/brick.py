@@ -79,8 +79,9 @@ The trainer: everything brick learns, in one place (the code in trainer/, what i
                               archetypes, each with a known meaning, and how brick did with each
                               (kept in trainer/data/voiced.txt; the trainer practises on these too)
   brick trainer narrator on   the brains say out loud what they're learning, each archetype in its own voice
+                              and personality, softly (off / status; say hello The Ember Poet;
+                              setup: download its Piper voices and install Piper on a new computer)
   brick trainer lessons 20    the language model's readings of your lines, taught to brick's own brain
-                              and personality, softly (off / status; say hello The Ember Poet)
   brick trainer review game.txt
                               the lines brick had to guess in game.txt: say if they're right, or fix them.
                               brick also asks after each run ("Did it do what you meant?")

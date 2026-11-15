@@ -3,6 +3,7 @@
     brick trainer narrator on             switch it on (it's off until you do)
     brick trainer narrator off            switch it off
     brick trainer narrator status         on or off, which voices and where its lines come from
+    brick trainer narrator setup          download its Piper voices and install Piper (skips what's here)
     brick trainer narrator say TEXT [ARCHETYPE]
                                           say TEXT now in that archetype's voice (or the next one's)
 
@@ -532,6 +533,89 @@ def _work():
 
 # ---------------- brick trainer narrator ... ----------------
 
+# ---------------- setting up the voices on a new computer ----------------
+
+VOICE_SOURCE = "https://huggingface.co/rhasspy/piper-voices/resolve/main"     # Piper's official voices
+
+
+def voice_url(name, suffix=".onnx"):
+    """'en_GB-jenny_dioco-medium' -> .../en/en_GB/jenny_dioco/medium/en_GB-jenny_dioco-medium.onnx"""
+    region, speaker, quality = name.split("-", 2)
+    return f"{VOICE_SOURCE}/{region.split('_')[0]}/{region}/{speaker}/{quality}/{name}{suffix}"
+
+
+def shared_python():
+    """The shared venv's Python ($AN_PY, from ~/an/st/tools/env.sh), whether or not it exists yet."""
+    tools = os.environ.get("AN_TOOLS") or os.path.expanduser("~/an/st/tools")
+    return os.environ.get("AN_PY") or os.path.join(tools, "py", "venv", "bin", "python")
+
+
+def has_piper(py):
+    return bool(py) and os.path.isfile(py) and \
+        subprocess.run([py, "-c", "import piper"], capture_output=True, timeout=120).returncode == 0
+
+
+def download(url, path):
+    """url saved at path, through a .part file so a broken download never looks finished."""
+    import urllib.request
+    part = path + ".part"
+    request = urllib.request.Request(url, headers={"User-Agent": "brick-narrator-setup"})
+    with urllib.request.urlopen(request, timeout=60) as response, open(part, "wb") as f:
+        shutil.copyfileobj(response, f, 1 << 20)
+    if os.path.getsize(part) == 0:
+        os.remove(part)
+        raise OSError("the download was empty")
+    os.replace(part, path)
+
+
+def setup(folder=None, python=None, say=print):
+    """brick trainer narrator setup: the Piper voices the narrator uses (into trainer/data/voices/) and piper-tts
+    (into the shared venv), skipping what's already here. -> True when both are ready."""
+    global _piper_py
+    folder = folder or VOICES
+    os.makedirs(folder, exist_ok=True)
+    ok = True
+    for name in PIPER_VOICES:
+        for suffix in (".onnx", ".onnx.json"):
+            path = os.path.join(folder, name + suffix)
+            if os.path.isfile(path) and os.path.getsize(path) > 0:
+                say(f"  have {name}{suffix}")
+                continue
+            say(f"  downloading {name}{suffix} ...")
+            try:
+                download(voice_url(name, suffix), path)
+            except Exception as error:
+                say(f"  couldn't download {name}{suffix}: {error}")
+                ok = False
+    if python is None and piper_python():
+        say(f"  have Piper ({'this Python' if piper_python() == 'here' else piper_python()})")
+        return ok
+    py = python or shared_python()
+    if has_piper(py):
+        say(f"  have Piper ({py})")
+        return ok
+    uv = shutil.which("uv")
+    if not uv:
+        say("  Piper isn't installed and uv isn't here to install it (it comes with the shared tools); "
+            "the narrator uses espeak-ng until then.")
+        return False
+    if not os.path.isfile(py):          # the shared venv, made the way ~/an/st/tools/py/setup.sh makes it
+        venv = os.path.dirname(os.path.dirname(py))
+        say(f"  making the shared venv at {venv} ...")
+        if subprocess.run([uv, "venv", "--python", os.environ.get("AN_PYVER", "3.14"), venv]).returncode != 0:
+            say("  couldn't make the venv.")
+            return False
+    say(f"  installing piper-tts into {py} ...")
+    done = subprocess.run([uv, "pip", "install", "--python", py, "piper-tts"],
+                          env=dict(os.environ, VIRTUAL_ENV=os.path.dirname(os.path.dirname(py))))
+    _piper_py = None                    # look again next time
+    if done.returncode != 0 or not has_piper(py):
+        say("  couldn't install piper-tts.")
+        return False
+    say(f"  installed Piper ({py})")
+    return ok
+
+
 def split_say(args):
     """(text, archetype or None) from 'say' words: the archetype is the last 1-4 words, if they name one."""
     words = list(args)
@@ -567,6 +651,13 @@ def command(args):
         print("Its lines: " + ("the language model, in each archetype's personality." if model_ready()
                                else "its own hand-made lines for each archetype's bias (the language model isn't running)."))
         return 0
+    if what == "setup":                  # brick trainer narrator setup [--into FOLDER]
+        folder = args[args.index("--into") + 1] if "--into" in args[:-1] else None
+        print(f"Setting up the narrator's voices (from {VOICE_SOURCE.split('/resolve')[0]}):")
+        ready = setup(folder)
+        print("The voices are ready. (The narrator stays " + ("on" if on() else "off") + ".)" if ready else
+              "Not everything could be set up; the narrator uses espeak-ng where Piper can't speak.")
+        return 0 if ready else 1
     if what == "say" and len(args) > 1:
         text, chosen = split_say(args[1:])
         if not text.strip():

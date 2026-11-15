@@ -121,6 +121,8 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     os.environ.setdefault("BRICK_TRAINER", "off")         # builds inside never start another trainer
+    os.environ["BRICK_NEURAL"] = "off"                    # and never ask the language model (no graphics card in the
+                                                          # background): the teacher reads only its cached readings
     log("started")
     rounds = read_status().get("rounds", 0)
     while not stopping:
@@ -149,7 +151,12 @@ def main():
         if rounds % TEACH_EVERY == 0 and not on_battery():
             try:                                          # the model's readings of your lines, taught to the brain
                 from trainer import teacher
+                began = time.time()
                 got = teacher.teach(5, say=lambda s: log(s.strip()))
+                if got["looked"]:
+                    log(f"lessons: {got['looked']} looked at, {len(got['learned'])} learned, {got['already']} known, "
+                        f"{len(got['not yet'])} not yet, {got['refused']} readings refused "
+                        f"({time.time() - began:.0f}s)")
                 status(taught=read_status().get("taught", 0) + len(got["learned"]))
                 if got["learned"]:
                     hear({"kind": "say", "text": f"The language model taught me to read '{got['learned'][0]}' by myself."})
