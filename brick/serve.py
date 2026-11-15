@@ -185,9 +185,23 @@ def do_bitstream(asked):
 
 
 def do_repair(asked):
+    """The brain's check: does every line build what was meant? A precise fix is the brain's pick. When it isn't
+    sure between a few fixes, the language model picks the one the person most likely meant (put first, "picked")."""
     from trainer import repair
-    got = repair.repair(asked.get("text", ""), asked.get("number"))
-    return {"repair": got}
+    text = asked.get("text", "")
+    got = repair.repair(text, asked.get("number"))
+    if got and not got.get("precise") and len(got.get("fixes") or []) > 1:
+        from trainer import neural
+        mine = set(text.split("\n"))
+        ways = [" / ".join(l.strip() for l in f["text"].split("\n") if l not in mine) or f["text"] for f in got["fixes"]]
+        try:
+            pick = neural.choose(got["line"], ways, "\n".join(text.split("\n")[:max(0, got["number"] - 1)]))
+        except Exception:
+            pick = None
+        if isinstance(pick, int) and 0 <= pick < len(got["fixes"]):
+            got["fixes"].insert(0, got["fixes"].pop(pick))
+            got["picked"] = True
+    return {"repair": got, "version": asked.get("version")}
 
 
 def do_learning(asked):

@@ -119,6 +119,8 @@ type Model struct {
 	tabMode     bool
 	tabModeFrom int
 	altTap      bool      // Left Alt is down with no other key yet (a tap ends tab mode)
+	altTapAt    time.Time // when Left Alt was last tapped on its own (twice quickly arms altAltAt)
+	altAltAt    time.Time // Alt was tapped twice: a B straight after switches to brick mode (tabmode.go)
 	tabDownAt   time.Time // when Down was last pressed in tab mode (twice quickly chooses)
 	tabDownFrom int       // the tab chosen before that Down
 	eatEnterAt  time.Time // Enter chose a tab: a quick second Enter is not typed
@@ -516,8 +518,14 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	case tea.KeyPressMsg:
 		m.keys.press(msg.Key(), m.altGr.down)
 		m.altTap = msg.Key().Code == tea.KeyLeftAlt && !msg.Key().IsRepeat || m.altTap && msg.Key().IsRepeat
+		if msg.Key().Code != tea.KeyLeftAlt {
+			m.altTapAt = time.Time{} // another key between two Alt taps: not Alt twice
+		}
 		if m.altGrPress(msg.Key()) || isModifierOnly(msg.Key()) {
 			return nil // a modifier on its own does nothing (and keeps the message line)
+		}
+		if cmd, done := m.altAltKey(msg.Key()); done {
+			return cmd // Alt tapped twice, then B: brick mode (tabmode.go)
 		}
 		if m.undoProjectKey(keyName(msg.Key())) {
 			return nil // Left straight after opening a project undoes it (project.go)

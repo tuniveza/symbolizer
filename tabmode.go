@@ -158,10 +158,39 @@ func (m *Model) altTapRelease(k tea.Key) bool {
 		m.endTabMode()
 		return false
 	}
+	if tapped {
+		if !m.altTapAt.IsZero() && time.Since(m.altTapAt) < altTwice {
+			m.altTapAt, m.altAltAt = time.Time{}, time.Now()
+		} else {
+			m.altTapAt = time.Now()
+		}
+	}
 	if tapped && m.inDesign() && !m.help && m.learn == nil && !m.modesOpen && !m.themeOpen && m.prompt == pNone {
 		return m.designAltTap()
 	}
 	return false
+}
+
+// altThenKey is how soon after Alt tapped twice the next key must come.
+const altThenKey = 1500 * time.Millisecond
+
+// altAltKey: Alt tapped twice, then B, switches to brick mode from any mode.
+// Any other key straight after does what it always does.
+func (m *Model) altAltKey(k tea.Key) (tea.Cmd, bool) {
+	if m.altAltAt.IsZero() {
+		return nil, false
+	}
+	quick := time.Since(m.altAltAt) < altThenKey
+	m.altAltAt = time.Time{}
+	if !quick || keyName(k) != "b" || m.prompt != pNone || m.help || m.learn != nil {
+		return nil, false
+	}
+	m.themeOpen = false
+	if m.inBrick() {
+		m.say("Already in brick mode. Alt+M switches to another mode.")
+		return nil, true
+	}
+	return m.setMode(brickMode), true
 }
 
 // endTabMode leaves tab mode on the file now chosen.

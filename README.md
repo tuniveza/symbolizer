@@ -93,11 +93,17 @@ In Brick mode every word is coloured by what brick reads it as.
 
 | Key | |
 |:---:|:---|
-| **F6** | run it |
-| **F7** | check it, and fix missing steps |
-| **F8** | keys to the panel and back |
-| **F9** | next panel |
+| **Alt + R** | run it (the brain checks it first) |
+| **Alt + C** | check it, and fix missing steps |
+| **Alt + P** | keys to the panel and back |
+| **Alt + N** | next panel |
+| **Alt, Alt, B** | tap Left Alt twice, then B: brick mode from any mode |
 | **F12** | brick learning on / off, in any mode |
+
+The brain checks every line while you type: does it build what the words mean?
+When it finds a precise fix, **Alt + R** writes it in before building. **Ctrl + Z** takes it back.
+The **Bricks** panel shows every brick in use, live, coloured by kind.
+An empty file shows lines to start with. **F1** has the rest.
 
 brick learns from what you write. It stays on your computer.
 Your diary is read only when you switch it on.
