@@ -23,7 +23,7 @@ def test_the_brain_picks_bricks():
 def test_a_long_line_is_its_bricks_in_order():
     if picker.off():
         return
-    assert picker.line_bricks("make the bg blue then after 2 secs say hi in red lol") == ["set", "write"]
+    assert picker.line_bricks("turn the background blue then after 2 secs say hi in red lol") == ["set", "write"]
 
 
 def test_the_brain_has_the_last_word_on_a_misspelled_line():
@@ -68,7 +68,13 @@ def test_the_brain_reads_window_directions():
                         ("close my window", "close the window"),
                         ("bg wite", "set the background colour to white")):
         assert details.read(line) == meant, (line, details.read(line))
-    for line in ("after 3 secs SHADOW", "write what is 7 x 6?", "paint everything black"):
+    for line, meant in (('"hi there" at end of todo.txt add', "add hi there to the end of todo.txt"),
+                        ('record "welcome back" to shopping.txt lol', "save welcome back to shopping.txt"),
+                        ("the file best.txt delete", "delete best.txt"),
+                        ("now write to words.txt \"ready\"", "write ready to words.txt")):
+        assert details.read(line) == meant, (line, details.read(line))
+    for line in ("after 3 secs SHADOW", "write what is 7 x 6?", "paint everything black",
+                 "Make the window half the screen"):
         assert details.read(line) is None, (line, details.read(line))
 
 

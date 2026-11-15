@@ -5,6 +5,7 @@ trainer/picker.py picks the brick (write, set, wait ...). This picks the rest: f
   F  the frame of words to show ('text that says', 'the words', 'saying')
   B  the background       K  the console     Q  the text itself ('make the writing red')
   G  brick's own window   M  a name ('called My Game')                S  a size ('800 by 600')
+  D  a file ('notes.txt')
   V  the action word      X  chatter and small words
 and then says the direction again from those roles, exactly ('after 2 seconds write hi in red at the top 3 times'),
 which brick builds, to check.
@@ -31,11 +32,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
 LINKS = os.path.join(HERE, "data", "brain-details.txt")
-ROLES = ["W", "F", "C", "P", "N", "T", "B", "K", "Q", "G", "M", "S", "V", "X"]
+ROLES = ["W", "F", "C", "P", "N", "T", "B", "K", "Q", "G", "M", "S", "D", "V", "X"]
+FILE_NAME = re.compile(r"[\w-]+\.(?:txt|csv|md|log|json|dat)$", re.IGNORECASE)
 WINDOW_WORDS = {"window", "windows", "win", "windw"}
 VERBS = {"write", "say", "show", "print", "display", "type", "put", "make", "turn", "set", "paint", "move", "clear",
          "wipe", "cls", "wait", "pause", "sleep", "hold", "add", "open", "create", "start", "pop", "resize", "size",
-         "name", "call", "title", "rename", "label", "colour", "color", "close", "shut", "up"}
+         "name", "call", "title", "rename", "label", "colour", "color", "close", "shut", "up", "save", "store",
+         "record", "keep", "stash", "away", "append", "load", "read", "get", "delete", "remove", "erase"}
 SIDES = {"left", "right", "top", "bottom", "middle", "centre", "center", "top-left", "top-right", "bottom-left",
          "bottom-right"}
 
@@ -75,7 +78,7 @@ def mess(pairs):
     out = []
     for word, role in pairs:
         low = word.lower()
-        if role not in ("W",):
+        if role not in ("W", "D"):                      # (words to show and file names stay as typed)
             if low in ("the", "a", "of") and random.random() < 0.5:
                 continue
             if low in scrambler.SHORT and random.random() < 0.4:
@@ -170,9 +173,72 @@ WINDOW_MAKERS = [window_write, window_write, window_write, window_open, window_s
                  window_close]
 
 
+# ---------------- files: practice directions with known parts ----------------
+
+FILES = ["notes.txt", "todo.txt", "scores.txt", "names.txt", "log.txt", "diary.txt", "shopping.txt", "best.txt",
+         "words.txt", "results.txt", "save.txt", "list.txt"]
+LOAD_NAMES = ["notes", "names", "best", "words", "lines", "todo"]
+
+
+def said_words():
+    from trainer import scrambler
+    w = random.choice(scrambler.WORDS)
+    return w, [w, f'"{w}"']
+
+
+def file_save():
+    from trainer import scrambler
+    w, ways = said_words()
+    f = random.choice(FILES)
+    return scrambler.Part(f"save {w} to {f}", {"verb": ["save", "store", "record", "keep", "stash away", "put"],
+                                               "words": ways, "file": [f"to {f}", f"in {f}", f"into {f}"]},
+                          keep=["words"])
+
+
+def file_add():
+    from trainer import scrambler
+    w, ways = said_words()
+    f = random.choice(FILES)
+    return scrambler.Part(f"add {w} to the end of {f}", {"verb": ["add", "append"], "words": ways,
+                          "file": [f"to the end of {f}", f"to {f}", f"onto {f}", f"at the end of {f}"]},
+                          keep=["words"])
+
+
+def file_write():
+    from trainer import scrambler
+    w, ways = said_words()
+    f = random.choice(FILES)
+    return scrambler.Part(f"write {w} to {f}", {"verb": ["write"], "words": ways, "file": [f"to {f}"]},
+                          keep=["words"])
+
+
+def file_load():
+    from trainer import scrambler
+    f, n = random.choice(FILES), random.choice(LOAD_NAMES + [None, None])
+    pieces = {"verb": ["load", "open", "read", "get"], "file": [f]}
+    if n:
+        pieces["as"] = [f"as {n}"]
+    return scrambler.Part(f"load {f}" + (f" as {n}" if n else ""), pieces)
+
+
+def file_delete():
+    from trainer import scrambler
+    f = random.choice(FILES)
+    return scrambler.Part(f"delete {f}", {"verb": ["delete", "remove", "erase"], "file": [f, f"the file {f}"]})
+
+
+def file_show():
+    from trainer import scrambler
+    f = random.choice(FILES)
+    return scrambler.Part(f"show {f}", {"verb": ["show", "display"], "file": [f, f"the file {f}"]})
+
+
+FILE_MAKERS = [file_save, file_save, file_add, file_write, file_load, file_delete, file_show]
+
+
 def makers():
     from trainer import scrambler
-    return scrambler.MAKERS + WINDOW_MAKERS
+    return scrambler.MAKERS + WINDOW_MAKERS + FILE_MAKERS
 
 
 def example():
@@ -211,6 +277,13 @@ def example():
             pairs += [(w, "F") for w in (m.group(1) or "").split()] + [(w, "M") for w in m.group(2).split()]
         elif name == "size":
             pairs += mess([(w, "S" if re.search(r"\d", w) else "X") for w in said.split()])
+        elif name == "file":
+            pairs += [(w, "D") if FILE_NAME.match(w) else (w, "X") for w in said.split()]
+            pairs = pairs[:len(pairs) - len(said.split())] + mess(pairs[len(pairs) - len(said.split()):]) \
+                if not any(FILE_NAME.match(w) for w in said.split()[:-1]) else pairs
+        elif name == "as":
+            words_ = said.split()
+            pairs += [(words_[0], "F")] + [(w, "M") for w in words_[1:]]
         else:
             pairs += mess(words_roles(said, "mixed"))
     if random.random() < 0.25:
@@ -446,23 +519,29 @@ def place_of(words):
 
 
 ALL_BRICKS = ["write", "set", "wait", "clear", "put", "window write in window", "window window open plan",
-              "window window phrase"]
+              "window window phrase", "save", "add", "load", "delete"]
 
 
 def key_part(brick, words, roles):
     """Does the direction have what this brick is about (a time for a wait, a colour for a set ...)?"""
     present = set(roles)
     verbs = {w.lower().strip(".,!?;:") for w, r in zip(words, roles) if r == "V"}
-    return {"write": "W" in present, "put": "K" in present or "W" in present, "place": "W" in present,
+    return {"write": "W" in present or "D" in present, "put": "K" in present or "W" in present,
+            "place": "W" in present,
             "set": "C" in present and bool(present & {"B", "Q"}),
             "wait": "T" in present and "W" not in present,
-            "clear": bool({near(v, {"clear", "wipe", "cls", "erase"}) for v in verbs} - {None}),
+            "clear": bool({near(v, {"clear", "wipe", "cls"}) for v in verbs} - {None}),
             "window write in window": "G" in present and "W" in present,
-            "window window open plan": "G" in present, "window window phrase": "G" in present}.get(brick, True)
+            "window window open plan": "G" in present, "window window phrase": "G" in present,
+            "save": "D" in present and "W" in present, "add": "D" in present and "W" in present,
+            "load": "D" in present and "W" not in present, "delete": "D" in present and "W" not in present,
+            "remove": "D" in present and "W" not in present}.get(brick, True)
 
 
 USES = {"write": set("WFCPNTV"), "console": set("KPVF"), "set": set("CBQVF"), "clear": set("V"), "wait": set("TV"),
-        "window write": set("WFCPNTGV"), "window open": set("GMFSCV"), "window phrase": set("GMFSCV")}
+        "window write": set("WFCPNTGV"), "window open": set("GMFSCV"), "window phrase": set("GMFSCV"),
+        "file save": set("WDVF"), "file add": set("WDVF"), "file write": set("WDVF"), "file load": set("DMFV"),
+        "file delete": set("DV"), "file show": set("DV")}
 
 
 def say_again(brick, words, roles):
@@ -471,13 +550,22 @@ def say_again(brick, words, roles):
     text = say_again_parts(brick, words, roles)
     if text is None:
         return None
-    verbs = {w.lower().strip(".,!?;:") for w, r in zip(words, roles) if r == "V"} - {"up"}
+    verbs = {w.lower().strip(".,!?;:") for w, r in zip(words, roles) if r == "V"} - {"up", "away"}
     shown = [w for w, r in zip(words, roles) if r == "W"]
     if shown and shown[-1].endswith("?") and not shown[-1].endswith("??"):
         return None                                  # 'what is 7 x 6?': the question mark may be meant
-    own = {"wait": {"wait", "pause", "sleep", "hold"}, "clear": {"clear", "wipe", "cls", "erase"},
-           "set": {"make", "turn", "set", "paint", "colour", "color", "change"}, "console": {"put", "move", "place"}}
-    kind = ("window write" if text.split(" in the window")[0] != text else "window open" if text.startswith("open")
+    own = {"wait": {"wait", "pause", "sleep", "hold"}, "clear": {"clear", "wipe", "cls"},
+           "set": {"make", "turn", "set", "paint", "colour", "color", "change"}, "console": {"put", "move", "place"},
+           "file save": {"save", "store", "record", "keep", "stash", "put"}, "file add": {"add", "append"},
+           "file write": {"write"}, "file load": {"load", "open", "read", "get"},
+           "file delete": {"delete", "remove", "erase"}, "file show": {"show", "display"}}
+    file_kind = {"save": "file save", "add": "file add", "write": "file write", "load": "file load",
+                 "delete": "file delete", "show": "file show"}
+    if any(r == "D" for r in roles):
+        kind = file_kind[text.split()[0]]
+    else:
+        kind = None
+    kind = kind or ("window write" if text.split(" in the window")[0] != text else "window open" if text.startswith("open")
             else "window phrase" if "the window" in text else "console" if "console" in text
             else "set" if text.startswith("set") else "clear" if text.startswith("clear")
             else "wait" if text.startswith("wait") else "write")
@@ -486,7 +574,8 @@ def say_again(brick, words, roles):
         return v in choices or v not in VERBS and v not in action_words() and near(v, choices) is not None
     if kind in own and verbs and not all(one_of(v, own[kind]) for v in verbs):
         return None                                  # the action word doesn't suit it ('after 3 secs SHADOW')
-    if kind == "write" and any(one_of(v, set().union(*own.values()) - {"put", "make"}) for v in verbs):
+    if kind == "write" and any(one_of(v, set().union(*(own[k] for k in ("wait", "clear", "set", "console"))) -
+                                      {"put", "make"}) for v in verbs):
         return None
     return text if found <= USES[kind] else None
 
@@ -494,6 +583,8 @@ def say_again(brick, words, roles):
 def say_again_parts(brick, words, roles):
     part = {r: [w for w, x in zip(words, roles) if x == r] for r in ROLES}
     later = number(part["T"]) if part["T"] else None
+    if part["D"]:
+        return say_file(brick, part)
     if part["G"]:
         return say_window(brick, part, later)
     if brick in ("put", "place", "move", "write") and part["K"] and not part["W"]:
@@ -528,6 +619,35 @@ def sizes(words):
     return found if len(found) == 2 else None
 
 
+def say_file(brick, part):
+    """A direction about a file, from its brick and the words' roles -> text, or None."""
+    f = part["D"][0].strip(",!?;:\"'")
+    f = f[:-1] if f.endswith(".") and not FILE_NAME.match(f) else f
+    shown = " ".join(part["W"]).strip(".,!?;:")
+    if part["C"] or part["P"] or part["N"] or part["T"] or part["G"] or part["K"] or part["B"]:
+        return None
+    if shown and shown.startswith('"') != shown.endswith('"'):
+        return None
+    if brick in ("save", "put") and shown:
+        return f"save {shown.strip(chr(34))} to {f}"
+    if brick == "add" and shown:
+        return f"add {shown.strip(chr(34))} to the end of {f}"
+    if brick == "write" and shown:
+        return f"write {shown.strip(chr(34))} to {f}"
+    if shown:
+        return None
+    name = " ".join(part["M"]).strip(".,!?;:")
+    if brick == "load":
+        return f"load {f}" + (f" as {name}" if name else "")
+    if part["M"]:
+        return None
+    if brick in ("delete", "remove"):
+        return f"delete {f}"
+    if brick == "write":
+        return f"show {f}"
+    return None
+
+
 def say_window(brick, part, later):
     """A direction about brick's own window, from its brick and the words' roles -> text, or None."""
     verbs = {w.lower().strip(".,!?;:") for w in part["V"]}
@@ -550,6 +670,9 @@ def say_window(brick, part, later):
 
     def said_with(*allowed):                         # the action word is said, and fits ('write' doesn't open
         return bool(verbs) and all(near(v, set(allowed)) for v in verbs)      # a window)
+    framed = {w.lower() for w in part["F"]} & {"called", "named", "titled", "title"}
+    if name and not framed and not said_with("name", "call", "title", "rename", "label", "set"):
+        return None                                  # a name needs its frame ('called My Game'): 'half the screen'
     if brick == "window window open plan" and said_with("open", "make", "create", "start", "pop", "show"):
         return "open a window" + (f" called {name}" if name else "") + (f" {size[0]} by {size[1]}" if size else "") + \
             (f" in {colour}" if colour else "")
@@ -568,7 +691,8 @@ def say_window(brick, part, later):
 FILLER = {"secs", "sec", "seconds", "second", "s", "times", "time", "screen", "side", "color", "colour", "of", "the",
           "a", "with", "at", "to", "on", "in", "rn", "thx", "thanks", "pls", "please", "lol", "yeah", "ok", "so", "um",
           "hey", "just", "now", "right", "and", "then", "can", "you", "u", "real", "quick", "also", "&", "x", "for",
-          "my", "new", "that", "up", "by", "size", "wide", "high", "inside", "background"}
+          "my", "new", "that", "up", "by", "size", "wide", "high", "inside", "background", "end", "into", "onto",
+          "away", "file", "down"}
 
 
 def filler(word):
@@ -587,7 +711,7 @@ def filler(word):
 
 
 SLIP_VERBS = {"write", "show", "print", "display", "type", "clear", "wait", "pause", "sleep", "open", "close",
-              "resize", "rename"}         # action words whose slips are common ('tpe', 'wirte', 'claer')
+              "resize", "rename", "save", "store", "record", "append", "load", "delete", "remove", "erase"}         # action words whose slips are common ('tpe', 'wirte', 'claer')
 TIME_MARKS = {"after", "sec", "secs", "second", "seconds", "s", "minute", "minutes", "min", "mins"}
 JOINERS = {"but", "and", "or", "so", "then", "that", "which"}
 _actions = None
@@ -599,7 +723,8 @@ def action_words():
     import dictionary
     if _actions is None:
         from actions import STARTERS
-        _actions = set(STARTERS) | set(dictionary.first_words("action", "loop"))
+        _actions = (set(STARTERS) | set(dictionary.first_words("action", "loop"))) - \
+            {"as", "file", "end", "can", "the", "a", "to", "in", "on", "at"}     # small words aren't actions here
     return _actions
 
 
@@ -616,6 +741,8 @@ def consistent(words, roles):
         from actions import STARTERS
         _actions = set(STARTERS) | set(dictionary.first_words("action", "loop"))
     low = [w.lower().strip(".,!?;:") for w in words]
+    if len({low[i] for i, r in enumerate(roles) if r == "D"}) > 1:
+        return False                                   # two different files
     for one in ("W", "M"):                             # the words to show, or a name, are one stretch
         found = [i for i, r in enumerate(roles) if r == one]
         if found and found != list(range(found[0], found[-1] + 1)):
@@ -640,7 +767,7 @@ def consistent(words, roles):
     if shown and any(not words[i].startswith('"') and low[i] not in VERBS and near(low[i], SLIP_VERBS)
                      for i in (shown[0], shown[-1])):
         return False                                   # 'welcome back tpe': a slip of an action word isn't shown
-    verbs = {picker.respell([low[i]])[0] for i, r in enumerate(roles) if r == "V"} - {"up"}   # 'open up', 'pop up'
+    verbs = {picker.respell([low[i]])[0] for i, r in enumerate(roles) if r == "V"} - {"up", "away"}   # 'open up', 'pop up'
     if len(verbs) > 1:
         return False
     marks = set(low)
@@ -687,13 +814,15 @@ def fits(word, role):
             low in ("tet", "txt")
     if role == "F":
         return {low, near} & {"text", "that", "says", "the", "words", "saying", "called", "named", "titled", "title",
-                              "with", "to"} != set()
+                              "with", "to", "as"} != set()
     if role == "G":
         return {low, near} & WINDOW_WORDS != set() or slip(low, {"window"}) is not None
     if role == "S":
         return bool(re.search(r"\d", low))
     if role == "M":
         return True
+    if role == "D":
+        return bool(FILE_NAME.match(word.strip(".,!?;:\"'") if not FILE_NAME.match(word) else word))
     if role == "V":
         return low in VERBS or near in VERBS or globals()["near"](low, SLIP_VERBS) is not None or \
             low in action_words()
@@ -800,10 +929,10 @@ def score_one(job):
         shutil.rmtree(folder, ignore_errors=True)
 
 
-def paragraph(window_share=0.5):
-    """A broken paragraph like the scrambler's, with directions about brick's own window mixed in."""
+def paragraph(window_share=0.5, others=None):
+    """A broken paragraph like the scrambler's, with directions about brick's own window (or others) mixed in."""
     from trainer import scrambler
-    parts = [random.choice(WINDOW_MAKERS if random.random() < window_share else scrambler.MAKERS)()
+    parts = [random.choice((others or WINDOW_MAKERS) if random.random() < window_share else scrambler.MAKERS)()
              for _ in range(random.randint(2, 4))]
     mess_text = ""
     for k, p in enumerate(parts):
@@ -827,10 +956,13 @@ def score(count=300, seed=777, workers=10):
     for _ in range(count):
         mess_text, _, tidy = scrambler.paragraph()
         fresh.append((mess_text, " then ".join(tidy)))
-    windows = []
+    windows, files = [], []
     for _ in range(count):
         mess_text, tidy = paragraph()
         windows.append((mess_text, " then ".join(tidy)))
+    for _ in range(count):
+        mess_text, tidy = paragraph(others=FILE_MAKERS)
+        files.append((mess_text, " then ".join(tidy)))
     bench, messy = [], None
     with open(os.path.join(os.path.dirname(HERE), "tools", "bench40.txt"), encoding="utf-8") as f:
         for row in f:
@@ -842,7 +974,7 @@ def score(count=300, seed=777, workers=10):
     report = []
     with Pool(workers) as pool:
         for name, jobs in (("fresh scrambled paragraphs", fresh), ("with window directions", windows),
-                           ("bench paragraphs", bench)):
+                           ("with file directions", files), ("bench paragraphs", bench)):
             done = [r for r in pool.map(score_one, jobs, chunksize=4) if r]
             brain = sum(r[0] for r in done)
             brick = sum(r[1] for r in done)
