@@ -108,11 +108,13 @@ Every word is coloured by what brick reads it as. Under it, a panel shows brick'
 
 | Key | |
 |:---:|:---|
-| **F6** | run it |
-| **F7** | check it, and fix missing or misread steps |
-| **F8** | keys to the panel and back |
-| **F9** | next panel: Bricks · Words · Decisions · Imagination · Neurons · Learning |
+| **Alt + R** | run it: the brain checks it first and writes in its fix |
+| **Alt + C** | check it, and fix missing or misread steps |
+| **Alt + P** | keys to the panel and back |
+| **Alt + N** | next panel: Bricks · Words · Decisions · Imagination · Neurons · Learning |
 | **F12** | learning on / off, in any Symbolizer mode |
+
+The **Bricks** panel shows every brick in use, live as you type, and what the brain thinks of each line.
 
 <br>
 
@@ -137,6 +139,12 @@ brick keeps learning from what you write, by itself.
 - **Imagination neurons** predict the next word and propose new links. The compiler approves or rejects each one.
 - **New bricks** are made from what it finds, only when they build exactly right.
 - **A daemon** keeps learning in the background, at the lowest priority.
+- **The language model teaches the brain.** What it reads right in your lines becomes a lesson: a reading, or a
+  pattern with gaps (`bg a colour = set the background colour to a colour`), kept only when it builds exactly right.
+- **New actions**: a word brick has no action for gets one made of what brick can already do
+  (`to shout something means write something in bold then beep`), proved by building it.
+- **The archetypes write practice lines** in their own voices, each with a known meaning, so brick tests itself.
+- **Voices** (off by default): each archetype says out loud what it's learning, in its own voice.
 - **Everything stays on your computer.** Only single words go to a public dictionary.
 
 All it learns is plain text in `trainer/data/`, to read, change or delete.
@@ -154,6 +162,9 @@ All it learns is plain text in `trainer/data/`, to read, change or delete.
 | `brick export game.txt` | everything brick made, as plain text |
 | `brick trainer neurons learn` | learn now (`score`, `repair FILE`, `words 20`) |
 | `brick trainer neurons always` | keep learning in the background (`off`, `status`) |
+| `brick trainer lessons 20` | the language model's readings, taught to the brain |
+| `brick trainer voices 10` | 10 practice lines in the archetypes' voices |
+| `brick trainer narrator on` | the brains' voices (`off`, `status`) |
 | `brick help` | every phrase it knows |
 
 <br>

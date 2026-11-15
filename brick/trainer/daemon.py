@@ -50,6 +50,7 @@ STATUS = os.path.join(intuition.FOLDER, "daemon-status.json")
 LOG = os.path.join(intuition.FOLDER, "daemon.log")
 PAUSE, BATTERY_PAUSE = 30, 600          # seconds between rounds (on mains, on battery)
 BRICKS_EVERY, WORDS_EVERY = 6, 86400    # rounds between brick making; seconds between dictionary lookups
+TEACH_EVERY = 3                         # rounds between lessons from the language model's readings (trainer/teacher.py)
 SPEAK_EVERY = 10                        # rounds between the narrator's round summaries (when it's switched on)
 stopping = False
 
@@ -145,6 +146,15 @@ def main():
             status(last_bricks=made, bricks_made=read_status().get("bricks_made", 0) + len(made))
             if made:
                 hear({"kind": "bricks", "lines": made})
+        if rounds % TEACH_EVERY == 0 and not on_battery():
+            try:                                          # the model's readings of your lines, taught to the brain
+                from trainer import teacher
+                got = teacher.teach(5, say=lambda s: log(s.strip()))
+                status(taught=read_status().get("taught", 0) + len(got["learned"]))
+                if got["learned"]:
+                    hear({"kind": "say", "text": f"The language model taught me to read '{got['learned'][0]}' by myself."})
+            except Exception as error:
+                log(f"teaching failed: {error}")
         last_words = read_status().get("words_at", 0)
         if time.time() - last_words > WORDS_EVERY and not on_battery():
             try:

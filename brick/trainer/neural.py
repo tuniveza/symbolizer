@@ -68,6 +68,9 @@ Rules:
 - Use "write", not "make it say", unless something was just shown and the person wants it changed.
 - Keep the words to show exactly as the person wrote them; never add words they didn't write.
 - If the line really is just words to show, the reading is: write THOSE WORDS.
+- A colour said with words to show belongs to that write: "type hi in green" -> write hi in green (never "set the
+  colour to green then write hi"). Use "set the colour to" only when no words to show go with the colour.
+- Never add anything the person didn't ask for: no bold, no times, no place, no colour, no wait.
 Reply with JSON only: {"readings": ["best reading", "second best", "third best"]}"""
 
 EXAMPLES = [
@@ -84,7 +87,7 @@ EXAMPLES = [
     ("on top the words see you soon cyan say after 2 sec", "after 2 seconds write see you soon in cyan at the top"),
     ("bg orange then saying lets go in green bottom", "set the background colour to orange then write lets go in green at the bottom"),
 ]
-VERSION = 2                      # the guide's version: answers to an older guide are asked again
+VERSION = 3                      # the guide's version: answers to an older guide are asked again
 
 
 # ---------------- settings ----------------
@@ -215,6 +218,23 @@ def readings(line, before=""):
             threading.Thread(target=ask, args=(line, before, key), daemon=True).start()
         return []
     return ask(line, before, key)
+
+
+def read_pieces(line):
+    """A messy line of several directions, read one direction at a time: brick splits it (universe.analyse), the
+    model reads each piece on its own. Small models read one direction far better than a paragraph (they stop after
+    the first direction), and shown the lines before they repeat them, so no context. -> 'a then b ...' or None."""
+    from trainer import universe
+    pieces = [" ".join(t.text for t in p) for p in universe.analyse(line)]
+    if len(pieces) < 2:
+        found = readings(line)
+        return found[0] if found else None
+    out, changed = [], False
+    for text in pieces:
+        found = readings(text)
+        out.append(found[0] if found else text)
+        changed = changed or bool(found)
+    return " then ".join(out) if changed else None
 
 
 def ask(line, before, key):

@@ -79,6 +79,7 @@ The trainer: everything brick learns, in one place (the code in trainer/, what i
                               archetypes, each with a known meaning, and how brick did with each
                               (kept in trainer/data/voiced.txt; the trainer practises on these too)
   brick trainer narrator on   the brains say out loud what they're learning, each archetype in its own voice
+  brick trainer lessons 20    the language model's readings of your lines, taught to brick's own brain
                               and personality, softly (off / status; say hello The Ember Poet)
   brick trainer review game.txt
                               the lines brick had to guess in game.txt: say if they're right, or fix them.
@@ -204,7 +205,7 @@ def open_brick_mode(args):
 
 
 TRAINER_COMMANDS = ("neurons", "brain", "neural", "learn", "imagine", "dream", "imaginations", "show", "look", "universe",
-                    "universes", "sight", "scramble", "voices", "narrator", "feeder", "review")
+                    "universes", "sight", "scramble", "voices", "narrator", "lessons", "feeder", "review")
 
 
 def trainer_command(args):
@@ -342,6 +343,9 @@ def main():
     if args[:1] == ["voices"]:
         from trainer import voices                                 # brick trainer voices 10: the archetypes' own messy lines
         return voices.main(args[1:])
+    if args[:1] == ["lessons"]:
+        from trainer import teacher                                # brick trainer lessons 20: the model teaches the brain
+        return teacher.command(args[1:])
     if args[:1] == ["narrator"]:
         from trainer import narrator                               # brick trainer narrator on / off / status / say ...
         return narrator.command(args[1:])

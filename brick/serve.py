@@ -22,12 +22,14 @@ What it can do ("do"):
   bitstream  line                English -> bits by the brain, judged by itself
   learning                       what the neurons have learned so far
   daemon     what                status / always / off: the training daemon
+  narrator   what                status / on / off: the brains say out loud what they're learning
   help                           brick's phrases and dictionary
 """
 import json
 import os
 import sys
 import threading
+from collections.abc import MutableMapping
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
@@ -35,6 +37,61 @@ if HERE not in sys.path:
 os.chdir(HERE)
 
 out_lock = threading.Lock()
+
+
+class ThreadEnv(MutableMapping):
+    """os.environ, except that brick's own switches (BRICK_MEMORY, BRICK_NEURAL, BRICK_TRAINER) set while answering
+    one request stay with that request's thread. brick turns the brain off for a moment in places (the repair's
+    trial builds, the intuition's traces); with requests answered side by side, that must never switch the brain
+    off for a build running at the same time."""
+    KEYS = {"BRICK_MEMORY", "BRICK_NEURAL", "BRICK_TRAINER"}
+
+    def __init__(self, real):
+        self.real, self.here = real, threading.local()
+
+    def _mine(self):
+        if not hasattr(self.here, "keys"):
+            self.here.keys = {}
+        return self.here.keys
+
+    def __getitem__(self, key):
+        mine = self._mine()
+        if key in self.KEYS and key in mine:
+            if mine[key] is None:
+                raise KeyError(key)
+            return mine[key]
+        return self.real[key]
+
+    def __setitem__(self, key, value):
+        if key in self.KEYS:
+            self._mine()[key] = value
+        else:
+            self.real[key] = value
+
+    def __delitem__(self, key):
+        if key in self.KEYS:
+            if key not in self:
+                raise KeyError(key)
+            self._mine()[key] = None
+        else:
+            del self.real[key]
+
+    def __iter__(self):
+        mine = self._mine()
+        seen = set()
+        for key in self.real:
+            if mine.get(key, "") is not None:
+                seen.add(key)
+                yield key
+        for key, value in mine.items():
+            if value is not None and key not in seen:
+                yield key
+
+    def __len__(self):
+        return sum(1 for _ in self)
+
+    def copy(self):
+        return dict(self)
 
 
 def say(answer):
@@ -200,7 +257,9 @@ def do_repair(asked):
     from trainer import repair
     text = asked.get("text", "")
     got = repair.repair(text, asked.get("number"))
-    if got and not got.get("precise") and len(got.get("fixes") or []) > 1:
+    if got and not got.get("precise") and len(got.get("fixes") or []) == 1:
+        got["picked"] = True                          # the only fix that passed the brain's checks: its pick
+    elif got and not got.get("precise") and len(got.get("fixes") or []) > 1:
         from trainer import neural
         mine = set(text.split("\n"))
         ways = [" / ".join(l.strip() for l in f["text"].split("\n") if l not in mine) or f["text"] for f in got["fixes"]]
@@ -211,6 +270,9 @@ def do_repair(asked):
         if isinstance(pick, int) and 0 <= pick < len(got["fixes"]):
             got["fixes"].insert(0, got["fixes"].pop(pick))
             got["picked"] = True
+    if got and got.get("picked"):                    # sy writes a pick in by itself only when it comes from the
+        first = (got["fixes"][0].get("changes") or [""])[0]   # line's own meaning: the model's reading, a new action
+        got["picked"] = first.startswith(("read as", "new action", "split"))   # or a split, never an unrelated added step
     return {"repair": got, "version": asked.get("version")}
 
 
@@ -235,6 +297,15 @@ def do_daemon(asked):
     return daemon.state()
 
 
+def do_narrator(asked):
+    """The brains' voices: status / on / off (trainer/narrator.py; the daemon speaks when it's on)."""
+    from trainer import narrator
+    what = asked.get("what", "status")
+    if what in ("on", "off"):
+        narrator.set_on(what == "on")
+    return {"on": narrator.on()}
+
+
 def do_help(asked):
     import actions
     import dictionary
@@ -254,6 +325,7 @@ def handle(request):
 
 def main():
     os.environ.setdefault("BRICK_TRAINER", "off")     # the daemon does the learning; serving never starts a trainer
+    os.environ = ThreadEnv(os.environ)                # brick's switches set by one request stay with it
     for line in sys.stdin:
         line = line.strip()
         if not line:

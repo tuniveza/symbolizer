@@ -101,7 +101,11 @@ In Brick mode every word is coloured by what brick reads it as.
 | **F12** | brick learning on / off, in any mode |
 
 The brain checks every line while you type: does it build what the words mean?
-When it finds a precise fix, **Alt + R** writes it in before building. **Ctrl + Z** takes it back.
+Messy lines are read one direction at a time. A word brick has no action for gets a new one, made of what brick can already do.
+When the brain finds a fix (precise, or its best pick from the line's meaning), **Alt + R** writes it in before building. **Ctrl + Z** takes it back.
+The language model teaches the brain: what it reads right is learned, so the brain reads it by itself next time.
+Programs carry only the routines they use: `write hello` is 335 bytes.
+In the **Learning** panel, **V** turns on the brains' voices: each archetype says what it learns, in its own voice.
 The **Bricks** panel shows every brick in use, live, coloured by kind.
 An empty file shows lines to start with. **F1** has the rest.
 
