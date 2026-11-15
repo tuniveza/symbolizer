@@ -11,7 +11,9 @@ What it can do ("do"):
   hello                          brick's version stamp and where it lives
   lines      text                every line as bricks: each word and what brick reads it as (do, thing, colour ...)
   watch      text path           build it the way brick would: problems, notes, size, how long it took
+  check      text path version   the light check while typing: each line as understood, its bytes, and the program ready to run
   run        text path           build it next to its file, ready to run -> program (the file to run)
+  keep       text path           as run, when sy already started the program a check had ready
   bits       text path           write the program's bits and materials next to the file
   words      what text path [word meaning where key]   list / teach / forget / try (as the Words tab)
   decisions                      what the trainer couldn't settle by itself, and what it did lately
@@ -137,8 +139,8 @@ def do_check(asked):
     import shutil
     import tempfile
     import time
-    from compiler import Compiler
     from expressions import Problem
+    from kiln import Watching
     from trainer import neural
     words_file = os.path.join(folder_of(asked), "mywords.txt")
     with tempfile.TemporaryDirectory() as scratch:
@@ -148,7 +150,7 @@ def do_check(asked):
         started = time.perf_counter()
 
         def build():
-            compiler = Compiler(mine, ask_user=lambda question: "yes")
+            compiler = Watching(mine, ask_user=lambda question: "yes")   # writes down what each line meant
             try:
                 return compiler, compiler.compile(asked.get("text", "")), []
             except Problem as problem:
@@ -166,13 +168,68 @@ def do_check(asked):
             compiler, program, problems = build()
             waited = True
     return {"ok": program is not None, "problems": problems, "notes": compiler.notes, "waited": waited,
-            "took": round((time.perf_counter() - started) * 1000, 1), "layout": {"file": len(program) if program else 0}, "light": True}
+            "took": round((time.perf_counter() - started) * 1000, 1), "layout": {"file": len(program) if program else 0}, "light": True,
+            "lines": understood(compiler, asked.get("text", ""), problems), "version": asked.get("version"),
+            "ready": ready(program, asked.get("path"))}
+
+
+READY = []
+
+
+def ready(program, path):
+    """Keep the program the check just built, ready to run at once (Alt+R in sy starts it with no wait).
+    Each build gets its own file, so one already running is never written over."""
+    import hashlib
+    import tempfile
+    if not program:
+        return None
+    if not READY:
+        READY.append(tempfile.mkdtemp(prefix="brick-ready-"))
+    name = os.path.splitext(os.path.basename(path))[0] if path else "program"
+    folder = os.path.join(READY[0], hashlib.sha1(program).hexdigest()[:12])
+    output = os.path.join(folder, name or "program")
+    if not os.path.isfile(output):
+        os.makedirs(folder, exist_ok=True)
+        with open(output + ".part", "wb") as f:
+            f.write(program)
+        os.chmod(output + ".part", 0o755)
+        os.replace(output + ".part", output)
+    return output
+
+
+def understood(compiler, text, problems):
+    """What brick understood each line as (its directions, as it meant them), how many bytes of code each made,
+    and the problem brick has with it, if any: the one panel's view of the program."""
+    import re
+    from kiln import owners
+    code = compiler.a.code
+    start, end = compiler.program_at or 0, compiler.program_end if compiler.program_end is not None else len(code)
+    made = {}
+    for at, number in enumerate(owners(compiler.spans, len(code))):
+        if number is not None and start <= at < end:
+            made[number] = made.get(number, 0) + 1
+    trouble, current = {}, None
+    for line in problems:
+        m = re.match(r"Line (\d+): (.*)", line)
+        if m:
+            current = int(m[1])
+            trouble.setdefault(current, []).append(m[2].strip())
+        elif current is not None and line.strip():
+            trouble[current].append(line.strip())
+    return [{"number": n, "meant": [b for _, b in compiler.tidied.get(n, [])], "bytes": made.get(n, 0),
+             "problem": " ".join(trouble.get(n, [])) or None} for n in range(1, len(text.split("\n")) + 1)]
 
 
 def do_run(asked):
     import kiln as gui
     program, folder, problems, notes = gui.build_for_running(asked.get("text", ""), asked.get("path"))
     return {"program": program, "folder": folder, "problems": problems, "notes": notes}
+
+
+def do_keep(asked):
+    """As run, after sy already started the program the check had ready: the program is also written next to its
+    file, and brick learns from the build. sy doesn't start it a second time."""
+    return do_run(asked)
 
 
 def do_bits(asked):

@@ -140,7 +140,7 @@ func (m *Model) setMode(i int) tea.Cmd {
 	}
 	m.mode = i
 	if i == brickMode {
-		m.say(modes[i].Icon() + "  Brick mode. Write plain English · Alt+R runs · Alt+C checks · Alt+P panel · Alt+N next panel · F1 help.")
+		m.say(modes[i].Icon() + "  Brick mode. Write plain English · Alt+R runs it · Alt+C checks again · Alt+P the brain's fixes · F1 help.")
 		return tea.Batch(m.enterBrick(), m.tellKittyMode())
 	}
 	if i == diaryMode {

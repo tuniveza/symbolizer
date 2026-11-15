@@ -97,24 +97,19 @@ In Brick mode every word is coloured by what brick reads it as.
 
 | Key | |
 |:---:|:---|
-| **Alt + R** | run it (the brain checks it first) |
-| **Alt + C** | check it, and fix missing steps |
-| **Alt + P** | keys to the panel and back (**Esc** back too) |
-| **1 – 7** | in the panel: Bricks, Words, Decisions, Imagination, Neurons, Learning, Phrases |
+| **Alt + R** | run it: built while you type, so it starts at once |
+| **Alt + C** | check every line again |
+| **Alt + P** | pick one of the brain's fixes (**Esc** back) |
 | **Alt, Alt, B** | tap Left Alt twice, then B: brick mode from any mode |
 | **F12** | brick learning on / off, in any mode |
 
-Each panel shows its own keys on its top line, one letter each.
-**Bricks**: B bytes of the cursor's line, S save the bits. **Words**: Enter teaches, Delete forgets.
-**Learning**: L learning, D your diary, V the brains' voices. **Phrases**: every line brick can build.
+One panel under the text shows the brain's reading of each line, live:
+**✓** read as written · **→** understood as something else · **✗** can't build yet, and why · **?** may not do what you meant, with its fix under it.
+Each line shows how many bytes it builds.
 
-The brain checks every line while you type: does it build what the words mean?
-Messy lines are read one direction at a time. A word brick has no action for gets a new one, made of what brick can already do.
-When the brain finds a fix (precise, or its best pick from the line's meaning), **Alt + R** writes it in before building. **Ctrl + Z** takes it back.
+When the brain has a fix, **Alt + R** writes it in before running. **Ctrl + Z** takes it back.
 The language model teaches the brain: what it reads right is learned, so the brain reads it by itself next time.
 Programs carry only the routines they use: `write hello` is 335 bytes.
-The brains' voices: each archetype says what it learns, in its own voice.
-The **Bricks** panel shows every brick in use, live, coloured by kind.
 An empty file shows lines to start with. **F1** has the rest.
 
 brick learns from what you write. It stays on your computer.

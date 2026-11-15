@@ -199,8 +199,16 @@ def repair(text, number=None):
     data = order()
     lines = text.split("\n")
     base = traced_build(text)
+    stuck = None                                           # the line brick stopped at, when it doesn't build
+    for p in base["problems"]:
+        m = re.match(r"Line (\d+): ", p)
+        if m:
+            stuck = int(m.group(1))
+            break
     targets = [number] if number else range(1, len(lines) + 1)
     for n in targets:
+        if stuck and n > stuck:
+            break                                          # brick never got this far: nothing built to judge
         line = lines[n - 1].strip()
         from teach import read_definition, opens_block
         if not line or line.startswith("#") or read_definition(line) or opens_block(line):
@@ -212,10 +220,11 @@ def repair(text, number=None):
         verbs = [w for w, r in intuition.roles_in(line) if r == "do"]
         changed_verb = reread and verbs and not any(v in reread.lower().split() for v in verbs)
         from trainer import inventor
-        lacking = inventor.unknown_action(line) if not base["ok"] or made <= {"=write"} else None
-        if base["ok"] and not missing and not changed_verb and not lacking:
+        built = base["ok"] or (stuck is not None and n < stuck)   # the lines before the one brick stopped at built
+        lacking = inventor.unknown_action(line) if not built or made <= {"=write"} else None
+        if built and not missing and not changed_verb and not lacking:
             continue
-        why = ("brick can't build it" if not base["ok"] else
+        why = ("brick can't build it" if not built else
                f"brick read it as '{reread}'" if changed_verb else
                f"its build has no {', '.join(missing)}" if missing else
                f"brick has no action for '{lacking}': it would only show the words")
