@@ -218,6 +218,10 @@ def read_directions(line):
             d = d[1:]                                         # 'um', 'so yeah' at the start
         while d and d[-1].ideas & {"chatter", "filler", "glue"} and not d[-1].quoted:
             d = d[:-1]                                        # 'lol', 'thanks', 'ok and' at the end
+        if d and d[0].word.lower() == "right" and not d[0].quoted and (len(d) == 1 or not d[1].ideas & {"place"} and
+                                                                      d[1].word.lower() not in ("side", "of") and
+                                                                      any(t.ideas & {"place"} for t in d[1:])):
+            d = d[1:]                         # 'right at the left ...', 'right after 4 secs print at top': a filler
         if d:
             found.append(d)
     return found
@@ -291,7 +295,8 @@ def by_slots(tokens):
             not (kind == "wait" and "time" not in filled and slot == "words") or         # a wait has no words
                                                                                           # (but '2 secnds' may be its time)
             slot in filled and slot not in ("words", "skip", "text", "action") or
-            slot == "text" and kind == "clear" and "text" in filled or
+            slot == "text" and kind == "clear" and ("text" in filled or end < len(tokens) and
+                                                    tokens[end].ideas & {"saying"}) or   # 'cls text that says hi'
             slot == "text" and kind == "colour" and "text" in filled and "look" in filled or   # 'turn text red text that says hi'
             slot == "text" and "words" in filled and end < len(tokens) and look_at(tokens, end) and \
             end + (look_at(tokens, end)[0] - end) >= len(tokens) or        # '... see you soon at the bottom text purple'
@@ -508,6 +513,8 @@ def certain(tokens):
             continue
         candidates = t.spelled if t.spelled and not t.real else spelled(t.word, real=True) or []
         wanted = wanted_here(tokens, k)
+        if t.real and "colour" in wanted and k + 2 < len(tokens) and tokens[k + 2].ideas & {"colour"}:
+            wanted = wanted - {"colour"}      # 'welcome back bg blue': blue is the colour, back stays back
         found = [w for w in candidates if world.words.get(w, set()) & wanted]
         if not wanted and any(x.ideas & {"action"} for x in tokens):    # it has its verb: not another one
             verbs = {"action", "other action"}
