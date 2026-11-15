@@ -527,6 +527,8 @@ def wanted_here(tokens, k):
     before = tokens[k - 1] if k else None
     after = tokens[k + 1] if k + 1 < len(tokens) else None
     things = {"text", "background"}
+    if before and before.ideas & {"becoming"} and before.ideas & {"toward"}:
+        return {"colour", "place"}                           # 'turn to red', but 'console to letf'
     if after and after.ideas & {"look word"} or before and before.ideas & {"look word", "by means of", "becoming"}:
         return {"colour"}
     if before and "colour" in before.ideas:
@@ -602,9 +604,35 @@ def spelled(word, real=False):
     known = {w for w in world.words if " " not in w and len(w) >= 3 and world.words[w] - small} | set(STARTERS)
     most = 1 if len(word) < 7 else 2
     found = [w for w in known if abs(len(w) - len(word)) <= most and apart(word, w) <= most]
+    short = [w for w in known if len(word) >= 3 and devowel(w) == word and w != word]   # 'scrn', 'clr': vowels left out
+    found += [w for w in short if w not in found]
     best = min((apart(word, w) for w in found), default=None)
-    core = core_words()                       # among ties, brick's own words before the dictionary's extras
-    return sorted((w for w in found if apart(word, w) == best), key=lambda w: (w not in core, w))[:4] or None
+    core = core_words()                       # among ties: the usual slips of fast typing first (letters left out,
+                                              # two swapped: 'tal' teal, 'lft' left, 'letf' left), then brick's own
+                                              # words before the dictionary's extras
+    ranked = sorted((w for w in found if apart(word, w) == best or w in short),
+                    key=lambda w: (not usual_slip(word, w), w not in core, w))[:4]
+    usual = [w for w in ranked if usual_slip(word, w)]
+    if len(usual) == 1 and not real_word(word):
+        return usual                          # one usual slip among them: that's the word (never for real words:
+    return ranked or None                     # 'well' stays well, not dwell)
+
+
+def devowel(word):
+    return word[:1] + re.sub(r"[aeiou]", "", word[1:])
+
+
+def usual_slip(typed, word):
+    """Is 'typed' the word with letters left out ('tal' teal, 'scrn' screen) or two next to each other swapped
+    ('letf' left)? Those are how fast typing slips; a wrong letter ('tan') is rarer."""
+    if len(typed) < len(word):
+        it = iter(word)
+        return all(c in it for c in typed)
+    if len(typed) == len(word):
+        diff = [k for k in range(len(word)) if typed[k] != word[k]]
+        return len(diff) == 2 and diff[1] == diff[0] + 1 and typed[diff[0]] == word[diff[1]] and \
+            typed[diff[1]] == word[diff[0]]
+    return False
 
 
 _core = None
