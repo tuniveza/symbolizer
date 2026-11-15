@@ -292,10 +292,31 @@ def data_text(sentences):
 
 
 _roles = {}
+ROLES = os.path.join(FOLDER, "roles.json")               # brick's reader's roles per line, kept across runs
+
+
+def load_roles():
+    global _roles
+    if not _roles:
+        try:
+            with open(ROLES, encoding="utf-8") as f:
+                _roles = {k: [tuple(x) for x in v] for k, v in json.load(f).items()}
+        except (OSError, ValueError):
+            _roles = {}
+
+
+def save_roles():
+    if _roles:
+        os.makedirs(FOLDER, exist_ok=True)
+        tmp = ROLES + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(_roles, f)
+        os.replace(tmp, ROLES)
 
 
 def roles_in(line):
     """[(word, role)] as brick's reader reads the line (do, thing, place, colour, time, count, glue, words ...)."""
+    load_roles()
     if line not in _roles:
         import bricks
         try:
@@ -459,6 +480,7 @@ def _learn(rounds, steps, brain, say):
     for k in range(1, rounds + 1):
         sentences, vocab = raw_input()
         roles = {w: r for w in vocab if (r := role_of(w)) not in UNKNOWN}
+        save_roles()
         out = neurons.run_node({"task": "learn", "state": STATE, "data": data_text(sentences),
                                 "roles": roles, "verdicts": verdicts, "steps": steps, "candidates": 24, "batch": BATCH, "omegas": encoded(vocab), "seed": k + 100 * int(os.environ.get("BRICK_NEURONS_SEED", "0")), "brain": brain})
         if out.get("error"):

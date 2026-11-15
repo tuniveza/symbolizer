@@ -10,14 +10,26 @@ WORDNET = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 FILES = {'n': 'noun', 'v': 'verb', 'a': 'adj', 'r': 'adv'}
 
 
+_index = {}
+
+
 def senses(word, pos):
-    key = word.replace(' ', '_').lower() + ' '
-    with open(os.path.join(WORDNET, 'index.' + FILES[pos])) as index:
-        for line in index:
-            if line.startswith(key):
-                fields = line.split()
-                return fields[6 + int(fields[3]):]
-    return []
+    """The word's entries (offsets) for a part of speech. The index is read once into memory (the same lines,
+    first match kept, so the answers are the same as scanning the file each time)."""
+    if pos not in _index:
+        table = {}
+        with open(os.path.join(WORDNET, 'index.' + FILES[pos])) as index:
+            for line in index:
+                if line.startswith(' '):
+                    continue
+                head = line.split(' ', 1)[0]
+                table.setdefault(head, line)
+        _index[pos] = table
+    line = _index[pos].get(word.replace(' ', '_').lower())
+    if line is None:
+        return []
+    fields = line.split()
+    return fields[6 + int(fields[3]):]
 
 
 def synset(offset, pos):

@@ -738,8 +738,11 @@ class Trainer:
 def broken(builder):
     """The test files that fail and the examples that don't build."""
     env = dict(os.environ, BRICK_TRAINER="off", BRICK_MEMORY="off")
-    found = {t for t in glob.glob(os.path.join(HERE, "tests", "test_*.py"))
-             if subprocess.run([sys.executable, t], env=env, capture_output=True).returncode != 0}
+    from concurrent.futures import ThreadPoolExecutor        # the test files are separate programs: all at once
+    tests = sorted(glob.glob(os.path.join(HERE, "tests", "test_*.py")))
+    with ThreadPoolExecutor(max_workers=min(len(tests) or 1, os.cpu_count() or 4)) as pool:
+        codes = list(pool.map(lambda t: subprocess.run([sys.executable, t], env=env, capture_output=True).returncode, tests))
+    found = {t for t, code in zip(tests, codes) if code != 0}
     for example in glob.glob(os.path.join(EXAMPLES, "*.txt")):
         with open(example, encoding="utf-8") as f:
             words = os.path.join(os.path.dirname(example), "mywords.txt")
