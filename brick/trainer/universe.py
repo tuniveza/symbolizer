@@ -282,7 +282,13 @@ def filler_right(tokens):
                                              ("at", "on", "to", "the", "of", "side", "move", "put", "console"))
             starts = before is None or before.word in ENDS or "end" in before.ideas
             if not placed and after.ideas & {"action", "other action"} and not after.ideas & {"place"}:
-                continue
+                rest = []
+                for x in tokens[k + 1:]:
+                    if x.word in ENDS or "end" in x.ideas:
+                        break
+                    rest.append(x)
+                if not (after.ideas & {"placing"} and not any(x.ideas & {"place"} for x in rest[1:])):
+                    continue                  # 'right put all done': put needs a place, and right is the only one
             if starts and after.word.lower() in ("left", "top", "bottom", "middle"):
                 continue                      # 'right left side console', 'right TOP crimson ...': the second is the place
             if starts:
@@ -1112,7 +1118,9 @@ def readings(tokens, follows=False):
                 found.append(d)               # a real word ('wit') only if that completes it: '1 scs wit'
 
     memory = synchronicity.memory()
-    return sorted(found, key=lambda d: -(memory.fit(d.roles()) - (1.0 if id(d) in demoted else 0)))
+    slipped = lambda d: sum(1 for t in d.content if t.spelled and not t.real and not t.quoted)
+    return sorted(found, key=lambda d: -(memory.fit(d.roles()) - (1.0 if id(d) in demoted else 0) - 0.5 * slipped(d)))
+    # a reading that would print a slip as words to show ('to the riht') comes after one that reads it
 
 
 def describing(line):

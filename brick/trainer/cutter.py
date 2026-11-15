@@ -54,11 +54,23 @@ def label(tokens, i):
     return slot, slot, end
 
 
+def spelled_right(tokens):
+    """The tokens with clear slips spelled right (one word they could be: 'riht' -> right, 'lme' -> lime), as
+    brick's rules cut too, so a slip doesn't hide a place or a colour from the cutter."""
+    from trainer import universe as u
+    world = u.universe()
+    return [u.Token(t.spelled[0], world.about(world.words[t.spelled[0]]))
+            if t.spelled and len(t.spelled) == 1 and not t.real and not t.ideas and
+            world.words.get(t.spelled[0], {"other action"}) - {"other action"} else t for t in tokens]
+
+
 def pieces(tokens):
-    """[(label, slot, the piece's tokens)] for one stretch between separators."""
+    """[(label, slot, the piece's tokens)] for one stretch between separators (labels read with slips spelled
+    right; the pieces keep the tokens as typed)."""
+    fixed = spelled_right(tokens)
     out, i = [], 0
     while i < len(tokens):
-        name, slot, end = label(tokens, i)
+        name, slot, end = label(fixed, i)
         end = max(end, i + 1)
         out.append((name, slot, tokens[i:end]))
         i = end
@@ -110,6 +122,20 @@ def decode(w, ps):
         for total, cuts, seg, filled, has_action in beams:
             f = gap_features(ps, g, filled, has_action)
             slot = ps[g][1]
+            kind = next((p[0] for p in seg if p[1] == "action"), None)
+            if kind in ("Vwait", "Vclear") and slot in ("words", "look", "where", "count", "style") and \
+                    not (kind == "Vwait" and "number" in ps[g][2][0].ideas or
+                         kind == "Vwait" and g >= 1 and "number" in ps[g - 1][2][0].ideas):
+                nxt.append((total + score(w, f, "C:") + score(w, close_features(seg), "E:"), cuts + (g,), [ps[g]],
+                            frozenset({slot} - {None}), slot == "action"))
+                continue                      # a wait or a clear takes no words, look or place: always cut
+                                              # (but 'wait 2 secnds': a number after a wait may be its time)
+            joined = lambda k: 1 <= k < len(ps) - 1 and ps[k][0] in ("g:and", "g:or") and ps[k - 1][0] == "W" and \
+                ps[k + 1][0] == "W"
+            if joined(g) or joined(g - 1) or ps[g][1] == "time" and ps[g - 1][0] == "Vwait":
+                nxt.append((total + score(w, f, "J:"), cuts, seg + [ps[g]], filled | ({slot} - {None}),
+                            has_action or slot == "action"))
+                continue                      # 'apples and pears' is one set of words; 'wait 5 secs' one wait
             # join: piece g goes with the direction so far
             nxt.append((total + score(w, f, "J:"), cuts, seg + [ps[g]], filled | ({slot} - {None}),
                         has_action or slot == "action"))
