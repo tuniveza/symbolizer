@@ -10,13 +10,12 @@
 //        refresher on data); without, it trains a fresh one on data first (the first version: groups given).
 const S = require("./sim.js");
 const fs = require("fs");
-let input = "";
-process.stdin.on("data", d => input += d);
-process.stdin.on("end", () => {
-  const job = JSON.parse(input);
-  if (job.list) { process.stdout.write(JSON.stringify(S.ARCHETYPES.map(a => ({ name: a.name, type: a.type, bias: a.bias, yours: a.yours, line: a.line })))); return; }
+// --serve: stay running and take one job per line (one answer per line), so callers skip starting node each time.
+// The network is still read from its file for every job, exactly as a fresh run would, so results are identical.
+function handle(job, write) {
+  if (job.list) { write(JSON.stringify(S.ARCHETYPES.map(a => ({ name: a.name, type: a.type, bias: a.bias, yours: a.yours, line: a.line })))); return; }
   const brain = job.brain ? S.findArchetype(job.brain) : null;
-  if (job.brain && !brain) { process.stdout.write(JSON.stringify({ error: "no archetype called " + job.brain, names: S.ARCHETYPES.map(a => a.name) })); return; }
+  if (job.brain && !brain) { write(JSON.stringify({ error: "no archetype called " + job.brain, names: S.ARCHETYPES.map(a => a.name) })); return; }
   const seed = job.seed || 1;
   const tick = net => { if (net.steps % S.C.TRAIN_EVERY === 0) net.train(); net.step(); };
 
@@ -45,7 +44,7 @@ process.stdin.on("end", () => {
     const candidates = net.candidates(job.candidates ?? 20);
     if (job.state) fs.writeFileSync(job.state, JSON.stringify(net.save()));
     const links = [...net.links.values()];
-    process.stdout.write(JSON.stringify({ fresh, candidates, neurons: net.N.length, links: links.length,
+    write(JSON.stringify({ fresh, candidates, neurons: net.N.length, links: links.length,
       settled: links.filter(l => l.tent == null).length, proved: links.filter(l => l.proved).length,
       banned: (net.banned || new Set()).size, ni: +net.niRate().toFixed(3), bits: +net.bitRate().toFixed(3),
       phrases: (net.phrases || new Set()).size, slotted: net.N.filter(n => !n.role && net.roleOf(n) && net.roleOf(n).from === "its slot neuron").length, proposed: net.proposed, kept: net.confirmed, cut: net.rejected,
@@ -58,7 +57,7 @@ process.stdin.on("end", () => {
     const net = new S.Network({ neurons: [] }, seed, null, null, { intuition: true }).load(JSON.parse(fs.readFileSync(job.state, "utf8")));
     const out = {};
     for (const w of job.words || []) out[w] = net.brickOf(w);
-    process.stdout.write(JSON.stringify(out));
+    write(JSON.stringify(out));
     return;
   }
 
@@ -72,7 +71,7 @@ process.stdin.on("end", () => {
                carried: r.carried, role: role && role.role, senses: r.ranked.map(x => ({ label: x.s.label, matched: x.matched, near: net.neighbours(x.s).slice(0, 3) })) };
     });
     const missing = (job.words || []).filter(w => !answers.some(a => a.word === w)).map(word => ({ word, found: false }));
-    process.stdout.write(JSON.stringify({ answers: answers.concat(missing), split: [], neurons: net.N.length, links: net.links.size, learned: true }));
+    write(JSON.stringify({ answers: answers.concat(missing), split: [], neurons: net.N.length, links: net.links.size, learned: true }));
     return;
   }
 
@@ -95,7 +94,7 @@ process.stdin.on("end", () => {
       if (!o || o.word === n.word || !groupsOf.has(o.word)) continue; for (const g of groupsOf.get(o.word)) vote.set(g, (vote.get(g) || 0) + l.w); }
       const best = [...vote].sort((x, y) => y[1] - x[1])[0]; if (best && groupsOf.get(n.word).has(best[0])) placed++; }
     let chance = 0, cn = 0; for (let k = 0; k < Math.min(pairs.length, 4000); k++) { const p = pairs[Math.floor(Math.random() * pairs.length)]; cn++; if (share(p[1], p[2])) chance++; }
-    process.stdout.write(JSON.stringify({ gold: gold.length, p20: at(20), p100: at(100), placed: Math.round(100 * placed / Math.max(1, gold.length)),
+    write(JSON.stringify({ gold: gold.length, p20: at(20), p100: at(100), placed: Math.round(100 * placed / Math.max(1, gold.length)),
       placedAlike: Math.round(100 * alikePlaced / Math.max(1, gold.length)),
       chance: Math.round(100 * chance / Math.max(1, cn)), ni: (saved.stats || {}).ni || 0, top: pairs.slice(0, 12).map(p => p[1] + "~" + p[2]) }));
     return;
@@ -122,6 +121,20 @@ process.stdin.on("end", () => {
   const split = [...new Set(net.N.filter(n => n.label.includes("·")).map(n => n.word))];
   const archetype = brain ? { name: brain.name, type: brain.type, stack: brain.personality.stack, rules: net.d,
                               warmth: +net.warmth.toFixed(2), orderPull: +net.orderPull.toFixed(2) } : null;
-  process.stdout.write(JSON.stringify({ archetype, answers, split, neurons: net.N.length, links: net.links.size, seconds: Math.round(net.t),
+  write(JSON.stringify({ archetype, answers, split, neurons: net.N.length, links: net.links.size, seconds: Math.round(net.t),
                                         learned: !!job.state, events: net.log.filter(l => /fission|fusion/.test(l.text)).map(l => l.text) }));
-});
+}
+
+if (process.argv.includes("--serve")) {
+  const rl = require("readline").createInterface({ input: process.stdin });
+  rl.on("line", line => {
+    if (!line.trim()) return;
+    let out = "";
+    try { handle(JSON.parse(line), s => { out += s; }); } catch (e) { out = JSON.stringify({ error: String(e && e.stack || e) }); }
+    process.stdout.write(out.replace(/\n/g, " ") + "\n");
+  });
+} else {
+  let input = "";
+  process.stdin.on("data", d => input += d);
+  process.stdin.on("end", () => handle(JSON.parse(input), s => process.stdout.write(s)));
+}

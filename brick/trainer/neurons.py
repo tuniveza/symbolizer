@@ -138,7 +138,38 @@ def build(line, seed=1):
     return data, questions, asked, groups, len(chosen), unseen
 
 
+_engine, _engine_stamp = None, None
+_engine_lock = __import__("threading").Lock()
+
+
+def _engine_code_stamp():
+    folder = os.path.dirname(RUN)
+    return tuple(os.path.getmtime(os.path.join(folder, n)) for n in ("run.js", "sim.js"))
+
+
 def run_node(job):
+    """Run one engine job. A long-lived engine (node run.js --serve) takes the jobs one by one, so node starts once
+    per brick process instead of once per job; it restarts by itself when the engine's code changes.
+    BRICK_ENGINE_SERVE=off runs a fresh node for every job instead (the results are the same either way)."""
+    global _engine, _engine_stamp
+    if os.environ.get("BRICK_ENGINE_SERVE", "on") != "off":
+        with _engine_lock:
+            try:
+                stamp = _engine_code_stamp()
+                if _engine is None or _engine.poll() is not None or stamp != _engine_stamp:
+                    if _engine is not None and _engine.poll() is None:
+                        _engine.stdin.close()
+                    _engine = subprocess.Popen([shutil.which("node"), RUN, "--serve"], stdin=subprocess.PIPE,
+                                               stdout=subprocess.PIPE, text=True, bufsize=1)
+                    _engine_stamp = stamp
+                _engine.stdin.write(json.dumps(job) + "\n")
+                _engine.stdin.flush()
+                line = _engine.stdout.readline()
+                if line:
+                    return json.loads(line)
+            except (OSError, ValueError, BrokenPipeError):
+                pass
+            _engine = None                                  # it died: fall back to a fresh node for this job
     done = subprocess.run([shutil.which("node"), RUN], input=json.dumps(job), capture_output=True, text=True, timeout=600)
     if done.returncode != 0:
         raise RuntimeError(done.stderr.strip()[-400:])
