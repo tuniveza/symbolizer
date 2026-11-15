@@ -41,8 +41,8 @@ BRICKS = os.path.join(FOLDER, "new-bricks.txt")          # suggested new words: 
 WAREHOUSE = os.path.join(HERE, "wa")
 CAP = 1500                                               # words it keeps neurons for (the most used ones)
 PENDING = os.path.join(FOLDER, "pending.json")          # the last verdicts, applied at the start of the next round
-BATCH = 20                                               # sentences Ni and Ne read per training moment
-STEPS = 1200                                             # one round: 60 s of simulated time
+BATCH = int(os.environ.get("BRICK_NEURONS_BATCH", "20"))                                                # sentences Ni and Ne read per training moment
+STEPS = int(os.environ.get("BRICK_NEURONS_STEPS", "1200"))                                              # one round: 60 s of simulated time
 UNKNOWN = {None, "words"}                                # roles that mean brick doesn't know the word
 
 
@@ -240,6 +240,11 @@ def raw_input():
     keep = [w for w, n in mine.most_common() if n >= 2][:CAP]
     keep += [w for w, n in theirs.most_common() if n >= 3 and w not in mine][:max(0, CAP - len(keep))]
     keep = set(keep)
+    if os.environ.get("BRICK_NEURONS_DEFINITIONS", "off") == "on":   # rare words: their dictionary definitions too
+        everyone = mine + theirs
+        for w in [w for w in keep if everyone[w] < 6 and w.isalpha()]:
+            for d in pieces(gloss_text(w)):
+                public.append(d)
     out = []
     for d in own + public:
         kept = Sentence(w for w in d if w in keep)
@@ -247,6 +252,38 @@ def raw_input():
         if len(kept) >= 2:
             out.append(kept)
     return out, keep
+
+
+_encoded = {}
+
+
+def encoded(vocab):
+    """Starting frequencies from the encoder (trainer/encoder.py: a stand-in dictionary encoder until the owner's
+    encoder engine exists; BRICK_ENCODER=none turns it off). Worked out once per vocabulary."""
+    from trainer import encoder
+    key = (os.environ.get("BRICK_ENCODER", encoder.DEFAULT), len(vocab), hash(frozenset(vocab)))
+    if key not in _encoded:
+        _encoded.clear()
+        _encoded[key] = encoder.frequencies(sorted(vocab), max(4, len(vocab) / 25))
+    return _encoded[key]
+
+
+def gloss_text(word):
+    """WordNet's first definitions of a word, as sentences the neurons can read ("flicker means ...")."""
+    from trainer import wordnet
+    out = []
+    for pos in "nva":
+        try:
+            offsets = wordnet.senses(word, pos)[:1]
+        except OSError:
+            return out
+        for offset in offsets:
+            with open(os.path.join(wordnet.WORDNET, "data." + wordnet.FILES[pos])) as data:
+                data.seek(int(offset))
+                text = data.readline().split(" | ", 1)[-1].split(";")[0].split('"')[0].strip()
+            if text:
+                out.append(f"{word} means {text}")
+    return out
 
 
 def data_text(sentences):
@@ -353,6 +390,28 @@ def append(path, lines):
             f.write("".join(l + "\n" for l in lines))
 
 
+_pool = None
+
+
+def pmap(fn, items):
+    """fn over items side by side in worker processes (brick's compiler checks don't depend on each other), in the
+    same order, so the results are the same as one after another. BRICK_PARALLEL=off runs them one by one."""
+    items = list(items)
+    if len(items) < 3 or os.environ.get("BRICK_PARALLEL", "on") == "off":
+        return [fn(x) for x in items]
+    global _pool
+    try:
+        if _pool is None:
+            import concurrent.futures
+            import multiprocessing
+            _pool = concurrent.futures.ProcessPoolExecutor(max_workers=min(12, os.cpu_count() or 4),
+                                                           mp_context=multiprocessing.get_context("forkserver"))
+        return list(_pool.map(fn, items))
+    except Exception:                                      # no workers here: one by one
+        _pool = None
+        return [fn(x) for x in items]
+
+
 class Lock:
     """One learner at a time (the daemon, brick gui's trainer, a command): the saved network has one writer."""
 
@@ -401,15 +460,15 @@ def _learn(rounds, steps, brain, say):
         sentences, vocab = raw_input()
         roles = {w: r for w in vocab if (r := role_of(w)) not in UNKNOWN}
         out = neurons.run_node({"task": "learn", "state": STATE, "data": data_text(sentences),
-                                "roles": roles, "verdicts": verdicts, "steps": steps, "candidates": 24, "batch": BATCH, "seed": k, "brain": brain})
+                                "roles": roles, "verdicts": verdicts, "steps": steps, "candidates": 24, "batch": BATCH, "omegas": encoded(vocab), "seed": k + 100 * int(os.environ.get("BRICK_NEURONS_SEED", "0")), "brain": brain})
         if out.get("error"):
             say(out["error"])
             return None
         verdicts, proved, cut, new, bricks = [], 0, 0, [], []
         have = set(lines_of(IMAGINED))
         known_bricks = set(lines_of(BRICKS))
-        for c in out["candidates"]:
-            ok, why, level, built = check(c)
+        checked = pmap(check, out["candidates"])          # the compiler checks, side by side
+        for c, (ok, why, level, built) in zip(out["candidates"], checked):
             verdicts.append({"a": c["a"], "b": c["b"], "ok": ok, "why": why, "level": level})
             if ok:
                 proved += 1
@@ -773,7 +832,8 @@ def command(args):
     if what == "score":
         got = score()
         print(f"precision: {got['p20']}% of its top 20 alike pairs and {got['p100']}% of its top 100 really share a group "
-              f"(random pairs: {got['chance']}%); {got['placed']}% of {got['gold']} words placed in their own group; "
+              f"(random pairs: {got['chance']}%); {got['placed']}% of {got['gold']} words placed in their own group "
+              f"({got.get('placedAlike')}% by alike lines only); "
               f"Ni guesses {round(got['ni'] * 100)}%.\nTop pairs: {', '.join(got['top'])}")
         return 0
     if what == "forget":
