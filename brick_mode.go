@@ -19,7 +19,7 @@ import (
 //	✓  the line, read as you wrote it          (how many bytes it builds)
 //	→  what the brain understood it as, when it read it differently
 //	✗  what brick can't build yet, and why
-//	?  the brain isn't sure the line does what you meant: its fixes under it
+//	?  the brain isn't sure the line does what you meant (its fixes under it), or words were left out
 //
 // The keys, kept to three while you write:
 //
@@ -628,6 +628,13 @@ func (m *Model) brickPanel(w int) []string {
 			body = dim.Render("… " + cut(typed, room-2))
 		case str(o, "problem") != "":
 			body = bad.Render("✗ ") + text.Render(cut(str(o, "problem"), room-2))
+		case len(list(o, "left out")) > 0:
+			var lost []string
+			for _, x := range list(o, "left out") {
+				xs, _ := x.(string)
+				lost = append(lost, xs)
+			}
+			body = hot.Render("? ") + text.Render(cut("left out: \""+strings.Join(lost, " ")+"\" (the program doesn't use these words)", room-2))
 		case r != nil && int(num(r, "number")) == i+1:
 			why := str(r, "why")
 			if why == "" {

@@ -216,8 +216,15 @@ def understood(compiler, text, problems):
             trouble.setdefault(current, []).append(m[2].strip())
         elif current is not None and line.strip():
             trouble[current].append(line.strip())
+    lines = text.split("\n")
+
+    def dropped(n):
+        try:
+            return compiler.left_out(lines[n - 1].strip(), n) if lines[n - 1].strip() and not problems else []
+        except Exception:
+            return []
     return [{"number": n, "meant": [b for _, b in compiler.tidied.get(n, [])], "bytes": made.get(n, 0),
-             "problem": " ".join(trouble.get(n, [])) or None} for n in range(1, len(text.split("\n")) + 1)]
+             "problem": " ".join(trouble.get(n, [])) or None, "left out": dropped(n)} for n in range(1, len(lines) + 1)]
 
 
 def do_run(asked):
