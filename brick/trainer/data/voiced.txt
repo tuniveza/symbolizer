@@ -1,0 +1,30 @@
+✓ cls. then bottom in yellow write hi there and then write see you soon at the right pls
+    meant: clear the screen then write hi there in yellow at the bottom then write see you soon at the right
+    voice: The Festival Spirit
+✓ wait 3 & then set the colour to lime write all done in green - clear the screen
+    meant: wait 3 seconds then set the colour to lime then write all done in green then clear the screen
+    voice: The Clockwork Sentinel
+✓ colour green;clr scrn;3 secs then right purple nice one
+    meant: set the colour to green then clear the screen then after 3 seconds write nice one in purple at the right
+    voice: The Chaos Cartographer
+✗ after 6 secs write ready at right... set bg colour to blue then after 3 secs write try again in yellow at bottom
+    meant: after 6 seconds write ready at the right then set the background colour to blue then after 3 seconds write try again in yellow at the bottom
+    voice: The Starlight Vagabond
+✓ then wait 1 sec;bg colour teal pls
+    meant: wait 1 second then set the background colour to teal
+    voice: The Bridge Builder
+✓ put the console on the left side of the screen, then like 3 secs wait
+    meant: put the console on the left side of the screen then wait 3 seconds
+    voice: The Wildfire Muse
+✓ set background colour to green write well done in red at the bottom  put the console on the left side of the screen
+    meant: set the background colour to green then write well done in red at the bottom then put the console on the left side of the screen
+    voice: The Starlight Vagabond
+✓ set navy; wait 1... set red ; set navy
+    meant: set the colour to navy then wait 1 second then set the colour to red then set the colour to navy
+    voice: The Lone Mechanic
+✗ write well done right 3 times. set colour to white then good morning in lime at the top
+    meant: write well done at the right 3 times then set the colour to white then write good morning in lime at the top
+    voice: The Colour Drifter
+✗ set bg colour to pink then left side good morning in white pls
+    meant: set the background colour to pink then write good morning in white at the left
+    voice: The Iron Conductor

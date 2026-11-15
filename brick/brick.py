@@ -75,6 +75,9 @@ The trainer: everything brick learns, in one place (the code in trainer/, what i
                               brick trainer neural model qwen2.5:7b
   brick trainer scramble 10   10 broken, errored paragraphs of directions, and how brick did with each
                               (the trainer practises on these by itself while brick runs)
+  brick trainer voices 10     10 messy paragraphs the language model types in the voices of the 48
+                              archetypes, each with a known meaning, and how brick did with each
+                              (kept in trainer/data/voiced.txt; the trainer practises on these too)
   brick trainer review game.txt
                               the lines brick had to guess in game.txt: say if they're right, or fix them.
                               brick also asks after each run ("Did it do what you meant?")
@@ -199,7 +202,7 @@ def open_brick_mode(args):
 
 
 TRAINER_COMMANDS = ("neurons", "brain", "neural", "learn", "imagine", "dream", "imaginations", "show", "look", "universe",
-                    "universes", "sight", "scramble", "feeder", "review")
+                    "universes", "sight", "scramble", "voices", "feeder", "review")
 
 
 def trainer_command(args):
@@ -334,6 +337,9 @@ def main():
     if args[:1] == ["scramble"]:
         from trainer import scrambler
         return scrambler.main(args[1:])
+    if args[:1] == ["voices"]:
+        from trainer import voices                                 # brick trainer voices 10: the archetypes' own messy lines
+        return voices.main(args[1:])
     if args[:1] == ["review"] and len(args) in (2, 3):
         from trainer import review
         source = find_source(args[-1])

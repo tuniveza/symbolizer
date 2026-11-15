@@ -55,6 +55,7 @@ from trainer import outliers  # noqa: E402
 from trainer import scrambler  # noqa: E402
 from trainer import synchronicity  # noqa: E402
 from trainer import universe  # noqa: E402
+from trainer import voices  # noqa: E402
 from actions import STARTERS  # noqa: E402
 from compiler import Compiler  # noqa: E402
 from expressions import Problem  # noqa: E402
@@ -577,12 +578,18 @@ class Trainer:
 
     def practise(self):
         mess, said, tidy = scrambler.paragraph()
+        voice = None
+        if random.random() < 1 / 3 and not voices.neural.off():       # now and then in an archetype's voice instead
+            found = voices.voice(tidy)
+            if found:
+                mess, said, voice = found
         how, missed = self.checker.check(mess, said, tidy)
         if how is None:
             return
         self.tally[how] += 1
         with open(os.path.join(FOLDER, "scrambled.txt"), "a", encoding="utf-8") as f:
-            f.write(f"{'✓' if how == 'right' else '✗'} {mess}\n" + ("" if how == "right" else f"    meant: {' then '.join(tidy)}\n"))
+            f.write(f"{'✓' if how == 'right' else '✗'} {mess}\n" + ("" if how == "right" else f"    meant: {' then '.join(tidy)}\n")
+                    + (f"    voice: {voice}\n" if voice else ""))
         if how == "right":
             for messy, meant in zip(said, tidy):
                 self.steer(messy, meant)
