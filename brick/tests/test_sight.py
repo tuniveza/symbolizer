@@ -156,7 +156,8 @@ def test_loose_show_wordings():
 def test_no_ollama_or_no_vision_model_is_said_plainly():
     from trainer import neural
     saved = (os.environ.pop("BRICK_SIGHT"), sight.shutil.which, neural.start, neural.call)
-    try:
+    switched = os.environ.pop("BRICK_NEURAL", None)     # the learning daemon runs with the model switched off;
+    try:                                                # here every engine is stubbed, so it's on
         sight.shutil.which = lambda tool: None
         facets, note = sight.model_sees(b"png", "apple")
         assert facets is None and "Ollama isn't installed" in note, note
@@ -181,6 +182,8 @@ def test_no_ollama_or_no_vision_model_is_said_plainly():
         assert facets is None and "didn't answer" in note, note
     finally:
         os.environ["BRICK_SIGHT"], sight.shutil.which, neural.start, neural.call = saved
+        if switched is not None:
+            os.environ["BRICK_NEURAL"] = switched
 
 
 # ---------------- universes ----------------

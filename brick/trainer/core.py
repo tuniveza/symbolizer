@@ -747,15 +747,35 @@ def broken(builder):
     env = dict(os.environ, BRICK_TRAINER="off", BRICK_MEMORY="off")
     from concurrent.futures import ThreadPoolExecutor        # the test files are separate programs: all at once
     tests = sorted(glob.glob(os.path.join(HERE, "tests", "test_*.py")))
+    python = test_python()
+    env["PYTHONPATH"] = HERE + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    has_pytest = subprocess.run([python, "-c", "import pytest"], capture_output=True).returncode == 0
+    run = (lambda t: [python, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", t]) if has_pytest else \
+        (lambda t: [python, t])                          # every test file as the suite runs it
     with ThreadPoolExecutor(max_workers=min(len(tests) or 1, os.cpu_count() or 4)) as pool:
-        codes = list(pool.map(lambda t: subprocess.run([sys.executable, t], env=env, capture_output=True).returncode, tests))
+        codes = list(pool.map(lambda t: subprocess.run(run(t), env=env, cwd=HERE, capture_output=True).returncode, tests))
     found = {t for t, code in zip(tests, codes) if code != 0}
-    for example in glob.glob(os.path.join(EXAMPLES, "*.txt")):
+    from teach import read_definition
+    examples = sorted(glob.glob(os.path.join(EXAMPLES, "*.txt")))
+    taught = []                                              # words the examples teach ('to greet someone means ...')
+    for example in examples:
         with open(example, encoding="utf-8") as f:
-            words = os.path.join(os.path.dirname(example), "mywords.txt")
-            if not isinstance(builder.build(f.read(), words=words), bytes):
-                found.add(example)
+            taught += [line for line in f.read().splitlines() if read_definition(line)]
+    for example in examples:
+        with open(example, encoding="utf-8") as f:
+            text = f.read()
+        words = os.path.join(os.path.dirname(example), "mywords.txt")
+        if not isinstance(builder.build(text, words=words), bytes) and \
+                not (taught and isinstance(builder.build("\n".join(taught) + "\n" + text, words=words), bytes)):
+            found.add(example)                               # (again.txt uses what teach.txt taught)
     return found
+
+
+def test_python():
+    """The Python the tests run with: the shared tools one (it has pytest), else this one."""
+    tools = os.environ.get("AN_TOOLS") or os.path.expanduser("~/an/st/tools")
+    venv = os.path.join(tools, "py", "venv", "bin", "python")
+    return venv if os.access(venv, os.X_OK) else sys.executable
 
 
 def teach(line):
