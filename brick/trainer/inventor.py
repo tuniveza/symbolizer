@@ -39,6 +39,9 @@ def unknown_action(line):
     first = words[0]
     if intuition.role_of(first) == "do" or first in ("write", "say", "show", "put", "set", "make", "wait", "clear"):
         return None
+    import dictionary
+    if dictionary.by_first_word().get(first):
+        return None                                      # the dictionary has it ('yell something = write in capitals')
     from trainer import wordnet
     if not wordnet.senses(first, "v"):
         return None                                      # not a doing word ('hello world' is words to show)
@@ -68,11 +71,50 @@ def invent(line, before="", verb=None):
         d = re.sub(r"\s+", " ", d).strip().rstrip(".")
         if not d.lower().startswith("to "):
             d = "to " + d
+        head, sep, body = d.partition(" means ")
+        if sep:                                          # in the directions a hole goes by its name alone:
+            body = re.sub(r"\b(?:a|the) (word|number)\b", r"\1", body)   # 'colour to a word' -> 'colour to word'
+            d = head + sep + body
         got = read_definition(d)
         if not got or got.first_word() != verb:
             continue                                     # not a definition of this word
+        d = fixed_colours(d, got, line)
+        got = read_definition(d)
         if not neural.only_known_words(got.body, line + " " + HOLE_NAMES):
             continue                                     # it made up words: brick couldn't build what it means
+        if made_up(line, got.body):
+            continue                                     # it added a place, colour or number nobody asked for
         if d not in out:
             out.append(d)
     return out[:3]
+
+
+def made_up(line, body):
+    """Does the definition's body bring a place, colour, number or count the line didn't have? ('splash bye in
+    green' defined with '... write something at the bottom': nobody asked for the bottom.)"""
+    from trainer import teacher
+    have = set().union(*(f for _, f in teacher.key_words(line, every=True))) if line.strip() else set()
+    said = {i for ideas, _ in teacher.key_words(line) for i in ideas}
+    for ideas, forms in teacher.key_words(body):
+        if forms & have or forms & set(HOLE_NAMES.split()) or "colour" in ideas and teacher.same_colour(forms, have):
+            continue
+        if "place" in ideas or ideas & {"colour", "number", "count"} & said:
+            return True                       # a place nobody asked for; or another colour / number than the line's
+    return False                              # ('flash the screen' may flash white and black: no colour was said)
+
+
+def fixed_colours(d, got, line):
+    """A gap is filled while the program runs, but a colour must be known when it's built: 'set the background
+    colour to word' builds and does nothing. So a gap used as a colour takes the line's own colour:
+    'to splash something in a word means set the background colour to word ...' for 'splash bye in blue'
+    -> 'to splash something in blue means set the background colour to blue ...'."""
+    import teach
+    from reader import words_of
+    head, _, body = d.partition(" means ")
+    filled = teach.match(got, words_of(line))
+    if not filled or "word" not in filled or not re.search(r"\b(?:colou?r to|in|to|turn) word\b", body):
+        return d
+    value = " ".join(w.raw if hasattr(w, "raw") else w.text for w in filled["word"]).lower()
+    head = re.sub(r"\ba word\b", value, head, count=1)
+    body = re.sub(r"\bword\b", value, body)
+    return f"{head} means {body}"

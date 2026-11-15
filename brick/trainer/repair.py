@@ -77,6 +77,28 @@ def traced_build(text, words_file=None):
             "read": read, "problems": problems}
 
 
+# ---- does a reading keep what the line says? ----
+
+def keeps_meaning(line, reading):
+    """A model's reading is only a fix when it keeps what the line says: every place, colour, number and time
+    (teacher.changes_meaning), and every word the line shows ('splash bye in blue' read as 'set the background
+    colour to blue' lost 'bye'). The line's own unknown action word may go (it's what the reading explains)."""
+    from trainer import inventor, teacher, universe
+    if teacher.changes_meaning(line, reading):
+        return False
+    lacking = inventor.unknown_action(line)
+    said = set(re.findall(r"[a-z0-9']+", reading.lower()))
+    for piece in universe.analyse(line):
+        for k, tok in enumerate(piece):
+            word = (tok.word or tok.text or "").lower()
+            if tok.ideas or not re.fullmatch(r"[a-z0-9']+", word) or word == lacking or k == 0 and not tok.quoted:
+                continue                                   # brick's own words, and a first word (the action)
+            forms = {word} | {x.lower() for x in tok.spelled or []}
+            if not forms & said:
+                return False
+    return True
+
+
 # ---- what the brain expects ----
 
 def expected(line):
@@ -234,7 +256,7 @@ def repair(text, number=None):
         # 4. the language model's reading of the line, in brick's own words (each direction its own line)
         before = "\n".join(lines[max(0, n - 3):n - 1])
         ways = [neural.read_pieces(line)] + neural.readings(line)[:1]
-        for way in dict.fromkeys(w for w in ways if w):
+        for way in dict.fromkeys(w for w in ways if w and keeps_meaning(line, w)):
             parts = [p.strip() for p in re.split(r"\bthen\b", way) if p.strip()]
             if parts and [p.lower() for p in parts] != [line.lower()]:
                 tries.append((lines[:n - 1] + [indent + p for p in parts] + lines[n:], [f"read as '{way}'"]))
@@ -262,7 +284,7 @@ def repair(text, number=None):
             from trainer import inventor
             verb = inventor.unknown_action(line) or (verbs[0] if verbs else None)
             made = [(lines[:n - 1] + [indent + d] + lines[n - 1:], [f"new action: {d}"])
-                    for d in inventor.invent(line, before, verb)]
+                    for d in inventor.invent(line, "", verb)]    # no context: shown other lines, small models stray
             # a definition goes before the first line that uses it; at the top keeps it out of the way
             made = [([t_lines[n - 1]] + t_lines[:n - 1] + t_lines[n:], change) if n > 1 else (t_lines, change)
                     for t_lines, change in made]

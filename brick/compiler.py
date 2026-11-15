@@ -233,6 +233,12 @@ class Compiler(Actions, Window, BitWords):
         finally:
             self.notes[:0] = notes
 
+    def uses_definition(self, line):
+        """Does this line use one of the words taught (in mywords.txt or earlier in the program)?"""
+        from reader import words_of
+        words = words_of(line)
+        return any(teach.match(d, words) is not None for d in self.definitions)
+
     def misread(self, text):
         """Lines brick built, but plainly got wrong -> {line number: a better reading, or None}:
           it showed the words that describe the text ('a blue text that says hi') as the text itself;
@@ -248,6 +254,8 @@ class Compiler(Actions, Window, BitWords):
                 line = raw.strip()
                 if not line or line.startswith("#") or line.endswith(":") or number in self.gui_lines:
                     continue                  # window words are brick's own reading
+                if self.uses_definition(line):
+                    continue                  # a word you taught ('to splash something in a word means ...'): yours
                 if self.shows_describing(line, shown) or self.drops_words(line, shown, lines, number):
                     found[number] = None
                     continue
