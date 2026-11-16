@@ -10,7 +10,7 @@
 <img src="https://img.shields.io/badge/brick-inside-ff3704?style=for-the-badge&labelColor=161616" alt="brick inside">
 
 ### Your whole workspace, in the terminal.
-Write and code · keep a diary · run your projects · design in 3D · make programs from plain English
+Write and code · keep a diary · run your projects · design rooms · make programs from plain English
 
 Embers on charcoal. It saves by itself.
 
@@ -78,7 +78,7 @@ Hold a key and the arrows change what they do. The status bar always says which.
 | **Diary** | A chapter a day, plain-text pages. **Left / Right** turn pages, **Alt + N** a new one. |
 | **Manager** | All your projects on one screen. Type to search, **F6** run, **F7** build. |
 | **Brick** | Programs written in plain English. [See below](#-brick). |
-| **Design** | A board made of text, flat or as a 3D room. [See below](#-design). |
+| **Design** | A board made of text: rooms with walls, a floor and windows. [See below](#-design). |
 
 <div align="center">
 <img src="docs/media/diary.gif" alt="Diary pages turned one by one, the all-pages view, then the modes box" width="880">
@@ -128,7 +128,11 @@ A board you build with text: shapes with pictures, pages, notes, cabinets, drawe
 - **Alt + N** places a new thing. **Drag** to move. **X X** deletes. **Ctrl + Z** undoes.
 - **Arrows** jump between things. **Tab** writes in one.
 - **Drop files** from your file manager onto the board.
-- **Ctrl + F** walks into it as a 3D room, with its own music.
+- Every room has **4 walls** and a **floor**, each a board of its own. **AltGr + R** spins to the next wall; **AltGr + F** looks down at the floor, the place for unfinished things.
+- Each room has a few **windows** with the town outside, and little text people going about.
+- **M** plays chiptune music, on or off.
+- **AltGr + N, then R** adds a room (with a door to it); **W** a wall; **L** a level (with stairs). **Enter** or **Space** on a door or stairs goes through.
+- Labels and name plates are written **on the board**. **Tap Alt, then Space** adds the chosen one to a selection; **Alt + A** gives the selection one name plate.
 
 <div align="center">
 <img src="docs/media/design.gif" alt="A picture in an octagon, its layouts, a cabinet, a page and a note placed and filed" width="880">

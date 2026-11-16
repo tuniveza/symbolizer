@@ -48,8 +48,8 @@ const (
 // stackKinds are what a cabinet (and every drawer) holds, a stack of each.
 var stackKinds = []string{kPage, kBook, kSlide, kNote, kDrawing}
 
-var kindIcons = map[string]string{kOct: "◆", kCabinet: "≣", kPage: "≡", kNote: "✎", kBook: "◫", kSlide: "☐", kDrawing: "✐", kDrawer: "⊔", kRack: "║", kBoard: "⊞", kBox: "⊡"}
-var kindNames = map[string]string{kOct: "structure", kCabinet: "cabinet", kPage: "page", kNote: "note", kBook: "book", kSlide: "slide", kDrawing: "drawing", kDrawer: "drawer", kRack: "rack", kBoard: "board", kBox: "box"}
+var kindIcons = map[string]string{kOct: "◆", kCabinet: "≣", kPage: "≡", kNote: "✎", kBook: "◫", kSlide: "☐", kDrawing: "✐", kDrawer: "⊔", kRack: "║", kBoard: "⊞", kBox: "⊡", kDoor: "▯", kStairs: "⌸"}
+var kindNames = map[string]string{kOct: "structure", kCabinet: "cabinet", kPage: "page", kNote: "note", kBook: "book", kSlide: "slide", kDrawing: "drawing", kDrawer: "drawer", kRack: "rack", kBoard: "board", kBox: "box", kDoor: "door", kStairs: "stairs"}
 var stackNames = map[string]string{kPage: "Pages", kBook: "Books", kSlide: "Slides", kNote: "Notes", kDrawing: "Drawings"}
 
 const (
@@ -232,6 +232,8 @@ func selHint(o *dOct) string {
 		return "Space: next drawer  ·  Tab: each part  ·  [ ]: fewer / more  ·  C / Shift+C: colour / texture  ·  X X: delete"
 	case kRack:
 		return "Tab: each row  ·  click a row to open it  ·  drag a row out  ·  drop anything in"
+	case kDoor, kStairs:
+		return "Enter or Space: go through  ·  Tab: write  ·  Alt+arrows: move  ·  X X: delete"
 	case kBox:
 		return "Space: lid  ·  D: design  ·  Tab: each part  ·  PgUp / PgDn: layers  ·  drop anything in"
 	}
@@ -658,6 +660,8 @@ func (d *designState) structLayers(o *dOct) []*lipgloss.Layer {
 		return d.containerLayers(o)
 	case o.Kind == kBox:
 		return d.boxLayers(o) // design_box.go
+	case (o.Kind == kDoor || o.Kind == kStairs) && !(d.sel == o.ID && d.editing != partNone && !isTagPart(d.editing)):
+		return d.doorLayers(o) // a door with a window into its room (design_door.go); written in: a card, with the cursor
 	default:
 		layers = d.paperLayers(o)
 	}
@@ -923,7 +927,7 @@ func (m *Model) designDrawer(o *dOct) {
 func (d *designState) dropTarget(o *dOct, sx, sy int) *dOct {
 	for i := len(d.octs) - 1; i >= 0; i-- {
 		p := d.octs[i]
-		if p == o || d.room.on() && p.Layer != o.Layer {
+		if p == o {
 			continue // (in 3D, a structure on another layer is not where it is dropped)
 		}
 		x, y, w, h := d.rect(p)

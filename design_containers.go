@@ -463,9 +463,6 @@ func (m *Model) designRackClose() bool {
 		return false
 	}
 	d.opened = rackOpen{}
-	if op.max {
-		m.grabCameraBack() // in 3D the camera goes back to where it was (design_grab.go)
-	}
 	it, r := d.byID(op.id), d.byID(op.rack)
 	if it == nil || r == nil {
 		return true // deleted while open, or its rack is gone: it stays where it is

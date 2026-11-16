@@ -143,30 +143,34 @@ type Model struct {
 	themeBefore int
 
 	// Central zone (zone.go)
-	zoneWidth  int    // letters across; 0 = the default
-	dragMargin string // "left" or "right" while a margin is being dragged
-	fmBox      [4]int // the floating file manager: x, y, width, height (fileview.go)
-	fmListTop  int
-	fmListH    int
-	altGr      altGrState   // AltGr tapped twice opens the file manager (altgr.go)
-	kittyMode  string       // the mode kitty was last told (syterm.go)
-	emblem     emblem       // made fresh each start (emblem.go)
-	lamps      string       // lock-key state (lamps.go)
-	plate      *lockPlate   // the lock plate while it shows (lockplate.go)
-	blurred    bool         // the terminal says another window has the keyboard
-	pxm        pixelMouse   // the mouse reported to the pixel in the 3D view (design_3d_mouse.go)
-	diary      *diaryState  // diary mode: chapters, pages, the page in focus (diary.go)
-	mgr        *mgState     // manager mode: all of ~/an (manager.go)
-	brick      *brState     // brick mode: brick inside Symbolizer (brick_mode.go)
-	bk         *brickClient // brick serve, running in the background (brick_client.go)
+	zoneWidth   int    // letters across; 0 = the default
+	dragMargin  string // "left" or "right" while a margin is being dragged
+	fmBox       [4]int // the floating file manager: x, y, width, height (fileview.go)
+	fmListTop   int
+	fmListH     int
+	altGr       altGrState   // AltGr tapped twice opens the file manager (altgr.go)
+	kittyMode   string       // the mode kitty was last told (syterm.go)
+	emblem      emblem       // made fresh each start (emblem.go)
+	lamps       string       // lock-key state (lamps.go)
+	plate       *lockPlate   // the lock plate while it shows (lockplate.go)
+	blurred     bool         // the terminal says another window has the keyboard
+	mouseCell   [2]int       // the cell the mouse was last seen over (design_select.go)
+	spin        *wallSpin    // turning to another wall of the room (design_walls.go)
+	windowsTick bool         // a step of the people outside is on its way (design_town.go)
+	diary       *diaryState  // diary mode: chapters, pages, the page in focus (diary.go)
+	mgr         *mgState     // manager mode: all of ~/an (manager.go)
+	brick       *brState     // brick mode: brick inside Symbolizer (brick_mode.go)
+	bk          *brickClient // brick serve, running in the background (brick_client.go)
 
-	brickLearningLamp bool // brick's training daemon is learning (brick_learning.go)
-	design     *designState // design mode: the board, its structures, links and pen (design.go)
-	startDir   string       // folder sy was started in
-	snip       snippetStops // Tab's stops after an Emmet expansion (web.go)
-	sugg       *suggestions // the suggestion list while a word is typed (suggest.go)
-	learn      *learnState  // the Learn box (AltGr + L), while it shows (learn.go)
-	hintC      hintCache    // the CSS unit hint for the cursor (ghost.go)
+	brickLearningLamp bool                 // brick's training daemon is learning (brick_learning.go)
+	design            *designState         // design mode: the board, its structures, links and pen (design.go)
+	house             *houseFile           // design mode: the rooms and floors (design_rooms.go)
+	rooms             map[int]*designState // the rooms been in or made this time, by ID (the one you are in is design)
+	startDir          string               // folder sy was started in
+	snip              snippetStops         // Tab's stops after an Emmet expansion (web.go)
+	sugg              *suggestions         // the suggestion list while a word is typed (suggest.go)
+	learn             *learnState          // the Learn box (AltGr + L), while it shows (learn.go)
+	hintC             hintCache            // the CSS unit hint for the cursor (ghost.go)
 }
 
 func NewModel(path string, line int) (*Model, error) {
@@ -287,74 +291,26 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			panic(r)
 		}
 	}()
-	if msg = m.pixelMouseIn(msg); msg == nil {
-		return m, nil // a mouse report from before the mouse left pixel mode (design_3d_mouse.go)
-	}
-	traceMsg(msg) // SY_3D_TRACE: timings of the 3D view (design_3d_trace.go)
-	if traceOn() {
-		defer traceSlow(msg, time.Now())
-	}
-	if g, ok := msg.(uv.KittyGraphicsEvent); ok {
-		// kitty's answer to a picture of the 3D room: it has it, the next
-		// may go (design_3d_kitty.go). Nothing changed on the board.
-		if uint32(g.Options.ID) == room3DImageID {
-			kittyPic.ack()
-		}
+	if _, ok := msg.(uv.KittyGraphicsEvent); ok { // kitty's answer about a picture: nothing changed on the board
 		if m.design != nil {
 			m.design.hoverOnly = true
 		}
 		return m, nil
 	}
-	if _, ok := msg.(tea.RawMsg); ok {
-		// An escape code on its way to the terminal (the mouse's pixel
-		// mode, design_3d_mouse.go): nothing changed, so the board is not
-		// drawn again for it.
+	if _, ok := msg.(tea.RawMsg); ok { // an escape code on its way to the terminal: nothing changed
 		if m.design != nil {
 			m.design.hoverOnly = true
 		}
 		return m, nil
 	}
-	defer func() { // the 3D room: drawn sharp once the camera stops; its picture deleted when it goes
-		if c := m.design3DAfter(); c != nil {
-			cmd = tea.Batch(cmd, c)
-		}
-		if c := m.pixelMouseCmd(); c != nil { // the mouse to the pixel while the room is in 3D (design_3d_mouse.go)
-			cmd = tea.Batch(cmd, c)
-		}
-		m.pointerCmd() // the pointer hidden while the room is in 3D (design_3d_pointer.go)
-		m.soundCmd()   // the music played while the room is in 3D (design_3d_sound.go)
-		// The people outside the windows walk on (design_3d_world.go).
-		if c := m.outsideCmd(); c != nil {
+	defer func() {
+		m.soundCmd()                       // the chiptune on the board, when it is on (design_music.go)
+		if c := m.windowsCmd(); c != nil { // the people in the windows walk on (design_town.go)
 			cmd = tea.Batch(cmd, c)
 		}
 	}()
 	if m.design != nil {
 		m.design.hoverOnly = false // set again below if this is only the mouse moving (designHover)
-	}
-	if _, ok := msg.(room3DSharpMsg); ok { // the camera stopped: the room drawn sharp (design_3d.go)
-		if m.design != nil {
-			r := &m.design.room
-			r.sharpTick = false
-			if !r.light || time.Since(r.movedAt) < room3DStill {
-				m.design.hoverOnly = true // sharp already, or still moving (a tick again after)
-			}
-		}
-		return m, nil
-	}
-	if _, ok := msg.(room3DOutsideMsg); ok { // the View after this draws the people outside further on
-		if m.design != nil {
-			m.design.room.world.tick = false
-		}
-		return m, nil
-	}
-	if _, ok := msg.(room3DFrameMsg); ok { // the View after this draws the room with what changed (see drawNow)
-		if m.design != nil {
-			if !m.design.room.frameTick {
-				m.design.hoverOnly = true // drawn already since it was asked for
-			}
-			m.design.room.frameTick = false
-		}
-		return m, nil
 	}
 	if c, ok := m.dndMsg(msg); ok { // kitty's drag and drop (design_dnd.go)
 		return m, tea.Batch(c, m.designFrameCmd(), m.designSaveCmd(), m.dropsCmd())
@@ -376,19 +332,19 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	if _, ok := msg.(designHoldMsg); ok {
 		return m, tea.Batch(m.designHold(), m.designFrameCmd(), m.designSaveCmd())
 	}
-	if _, ok := msg.(room3DWalkMsg); ok { // 3D: moving on while W A S D are held (design_3d.go)
-		return m, m.design3DWalkStep()
-	}
-	if c, ok := m.design3DMouseMsg(msg); ok { // 3D: the look easing, the edge turning, pixel mode (design_3d_mouse.go)
-		return m, c
-	}
 	if _, ok := msg.(designFrameMsg); ok {
 		m.ds().frameTick = false // the View after this draws the board afresh
+		return m, nil
+	}
+	if _, ok := msg.(windowsTickMsg); ok { // the people in the windows take a step (design_town.go)
+		m.windowsTicked()
 		return m, nil
 	}
 	if _, ok := msg.(designAnimMsg); ok { // a door or drawer moves: the next frame (design_anim.go)
 		d := m.ds()
 		d.animTick, d.frameAt = false, time.Time{}
+		m.throughStep() // a door being gone through (design_door.go)
+		m.spinStep()    // turning to another wall (design_walls.go)
 		return m, m.designAnimCmd()
 	}
 	version := m.buf.Version()
@@ -419,7 +375,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.pixelMouseResized() // the mouse's pixels to cells anew, mouse look starting afresh (design_3d_mouse.go)
 		m.input.SetWidth(m.inputWidth())
 		m.ensureVisible()
 		return nil
@@ -512,7 +467,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			m.designSpaceUp()
 			return tea.Batch(m.designFrameCmd(), m.designSaveCmd())
 		}
-		m.design3DKeyUp(msg.Key()) // 3D: W A S D Q E let go (design_3d.go)
 		m.keys.release(msg.Key(), m.altGr.down)
 		return nil
 	case tea.KeyPressMsg:
@@ -650,26 +604,12 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		return m.mouseClick(msg.Mouse())
 	case tea.MouseMotionMsg:
-		if m.inDesign() && m.design != nil && m.design.room.camDrag != camNone {
-			return m.design3DMotion(msg.Mouse()) // 3D: a drag on the empty room looks round (design_3d.go)
-		}
-		if m.inDesign() && m.design != nil && m.design.room.pendOn {
-			return m.design3DPendMotion(msg.Mouse()) // 3D: a container pressed and dragged moves (design_3d_layers.go)
-		}
 		if m.inDesign() && m.design != nil && (m.design.drag != dragNone || m.design.rackPress != nil || m.design.pinPress != nil) {
-			if m.design.room.on() { // 3D: the mouse turns the camera, and what is dragged follows the cross (design_3d.go)
-				_, look := m.design3DLook(msg.Mouse())
-				return tea.Batch(look, m.designMotion(msg.Mouse()))
-			}
 			return m.designMotion(msg.Mouse())
 		}
 		if m.inDesign() && m.design != nil && msg.Mouse().Button == tea.MouseNone {
-			turned, cmd := m.design3DLook(msg.Mouse()) // in 3D the mouse looks round on its own (design_3d.go)
-			m.designHover(msg.Mouse())                 // what is under the mouse, for Space (design_select.go)
-			if turned {
-				m.design.hoverOnly = false // the camera turned: the room is drawn again
-			}
-			return cmd
+			m.designHover(msg.Mouse()) // what is under the mouse, for Space (design_select.go)
+			return nil
 		}
 		if m.dragMargin != "" {
 			m.marginDrag(msg.Mouse().X)
@@ -677,12 +617,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		return m.mouseDrag(msg.Mouse())
 	case tea.MouseReleaseMsg:
-		if m.inDesign() && m.design != nil && m.design.room.camDrag != camNone {
-			return m.design3DRelease(msg.Mouse())
-		}
-		if m.inDesign() && m.design != nil && m.design.room.pendOn {
-			return m.design3DPendRelease() // 3D: a container pressed and let go: a click on it (design_3d_layers.go)
-		}
 		if m.inDesign() && m.design != nil && (m.design.drag != dragNone || m.design.rackPress != nil || m.design.pinPress != nil) {
 			return m.designRelease()
 		}

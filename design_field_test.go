@@ -3,10 +3,6 @@ package main
 import (
 	"strings"
 	"testing"
-
-	tea "charm.land/bubbletea/v2"
-	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/charmbracelet/x/ansi"
 )
 
 // writePage is a Design board with a page being written in, its text s
@@ -208,114 +204,5 @@ func TestDesignFieldWrap(t *testing.T) {
 		if got := strings.Join(parts, "|"); got != c.rowsString || r != c.row || col != c.col {
 			t.Errorf("%q w%d cur %d: rows %q at %d,%d; want %q at %d,%d", c.text, c.w, c.cur, got, r, col, c.rowsString, c.row, c.col)
 		}
-	}
-}
-
-// accentCells are the letters drawn on the accent colour (the cursor) in
-// what boardRows drew.
-func accentCells(m *Model) string {
-	s := strings.Join(boardRows(m), "\n")
-	buf := uv.NewScreenBuffer(m.width, len(strings.Split(s, "\n")))
-	uv.NewStyledString(s).Draw(buf, buf.Bounds())
-	var out strings.Builder
-	for y := range buf.Height() {
-		for x := range buf.Width() {
-			if c := buf.CellAt(x, y); c != nil && c.Style.Bg != nil && colorHex(c.Style.Bg, "") == colorHex(rgbaOf(cAccent), "") {
-				out.WriteString(c.Content)
-			}
-		}
-	}
-	return out.String()
-}
-
-// The flat board draws the cursor where it is: on the letter it is
-// before (and the caret ▏ after the end), in the text and in the title.
-func TestDesignFieldDrawn(t *testing.T) {
-	m, o := writePage(t, "hello world")
-	press(m, "left")
-	if got := accentCells(m); got != "w" {
-		t.Fatalf("the cursor drawn on %q, want w", got)
-	}
-	if rows := strings.Join(boardRows(m), "\n"); !strings.Contains(ansi.Strip(rows), "hello world") {
-		t.Fatal("the text should still read whole with the cursor in it")
-	}
-	m.ds().editing = partHeader
-	typeKeys(m, "Plan")
-	press(m, "ctrl+left")
-	if got := accentCells(m); got != "n" {
-		t.Fatalf("the title's cursor drawn on %q, want n", got)
-	}
-	m.ds().editing = partFooter
-	typeKeys(m, "End")
-	press(m, "ctrl+left")
-	if got := accentCells(m); got != "d" {
-		t.Fatalf("the footer's cursor drawn on %q, want d", got)
-	}
-	_ = o
-	// A container's name, being written: the cursor in it too.
-	for _, kind := range []string{kCabinet, kDrawer, kRack, kBoard, kBox, kOct} {
-		m := designTest(t)
-		d := m.ds()
-		d.camX, d.camY, d.zoom = 0, 0, designZoom100
-		c := d.newKind(kind, 0, 0)
-		c.X, c.Y = 4, 2
-		d.sel, d.editing = c.ID, partHeader
-		typeKeys(m, "Shed")
-		press(m, "ctrl+left")
-		if got := accentCells(m); !strings.Contains(got, "d") {
-			t.Errorf("%s: the name's cursor drawn on %q, want d", kind, got)
-		}
-		press(m, "shift+home")
-		if cur, s, e, _ := d.fieldMarks(c, partHeader); cur != 0 || s != 0 || e != 3 {
-			t.Errorf("%s: Shift+Home: cursor %d, highlight %d–%d", kind, cur, s, e)
-		}
-	}
-}
-
-// In 3D the arrows move the cursor while writing, and the card's words
-// show it, on the letter, as on the flat board.
-func TestDesignField3D(t *testing.T) {
-	m := wordsScene(t, 140, 40)
-	withPixels(t, m, 10, 20)
-	d := m.ds()
-	r := &d.room
-	r.yaw, r.pitch = 20, 10
-	var page *dOct
-	for _, o := range d.octs {
-		if o.Kind == kPage || o.Kind == kNote {
-			page = o
-			break
-		}
-	}
-	if page == nil {
-		t.Fatal("no page in the scene")
-	}
-	d.sel, d.editing = page.ID, partBody
-	page.Body = "Bread and milk"
-	press(m, "end")
-	press(m, "left") // before "milk"
-	if c := cursorAt(m, page); c != 10 {
-		t.Fatalf("Left in 3D while writing: cursor %d, want 10", c)
-	}
-	boardRows(m)
-	accent := hex32(cAccent)
-	found := ""
-	for i := range r.tex {
-		if r.tex[i].bg == accent && r.tex[i].glyph != "" {
-			found += r.tex[i].glyph
-		}
-	}
-	if found != "m" {
-		t.Fatalf("3D: the cursor painted on %q, want m", found)
-	}
-	m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
-	if d.editing != partNone || !r.on() {
-		t.Fatalf("Esc in 3D while writing: editing %d, 3D %v", d.editing, r.on())
-	}
-	d.sel, d.editing = page.ID, partBody
-	m.designAltTap()
-	m.designAltTap()
-	if d.editing != partNone || !r.on() {
-		t.Fatalf("Alt twice in 3D while writing: writing stops, still 3D: editing %d, 3D %v", d.editing, r.on())
 	}
 }

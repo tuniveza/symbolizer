@@ -35,16 +35,10 @@ import (
 // grabState is a structure carried by Alt+Space, and the 3D camera from
 // before a thing was shown big.
 type grabState struct {
-	active   bool
-	in3D     bool     // carried in the room: it follows the cross (else the arrows move it)
-	id       int      // what is carried
-	x, y     int      // where it was taken up
-	layer    int      // and its layer
-	cam      r3camKey // the camera it last followed
-	camSaved bool     // shown big in 3D: the camera to go back to
-	camPos   r3vec
-	camLook  [2]float64
-	camK     float64
+	active bool
+	id     int // what is carried
+	x, y   int // where it was taken up
+	layer  int // and its layer
 }
 
 // maxFill is how much of the screen's width or height a thing shown big
@@ -52,7 +46,6 @@ type grabState struct {
 const maxFill = 0.8
 
 const (
-	grabHint3D = "Carrying it  ·  look or move: it follows the cross  ·  Alt+Space or click: put down  ·  Esc: put back"
 	grabHint2D = "Carrying it  ·  arrows: move  ·  Alt+Space: put down  ·  Esc: put back"
 	maxHint    = "Shown big  ·  Alt+Space, Esc or Alt twice: put back  ·  Tab: the next one  ·  drag: take out"
 )
@@ -67,8 +60,6 @@ func (m *Model) grabStatus() string {
 	switch {
 	case d.grab.active && d.drag == dragMove && d.dropOn >= 0:
 		return "Alt+Space: put it in " + octName(d.byID(d.dropOn)) + "  ·  Esc: put back"
-	case d.grab.active && d.grab.in3D:
-		return grabHint3D
 	case d.grab.active:
 		return grabHint2D
 	case d.opened.active && d.opened.max:
@@ -92,10 +83,6 @@ func (m *Model) designGrabKey(k tea.Key, name string) (bool, tea.Cmd) {
 		m.designRackClose() // shown big: back in its container
 		return true, nil
 	}
-	if d.room.on() {
-		m.grab3DStart()
-		return true, nil
-	}
 	if c, i := m.grab2DItem(); c != nil {
 		m.designMaximize(c, i)
 		return true, nil
@@ -109,26 +96,11 @@ func (m *Model) designGrabKey(k tea.Key, name string) (bool, tea.Cmd) {
 // (it follows the cross), on the flat board the arrows move it. Other keys
 // do nothing, so nothing else happens to the board mid-carry.
 func (m *Model) grabKey(k tea.Key, name string) (bool, tea.Cmd) {
-	d := m.ds()
 	switch {
 	case isGrabKey(name):
 		return true, m.grabDrop()
 	case name == "esc":
 		m.grabCancel()
-		return true, nil
-	case name == "ctrl+f":
-		m.grabCancel() // leaving 3D (or going in) mid-carry: put back first
-		return false, nil
-	}
-	if d.grab.in3D {
-		if walkKey(name) != 0 || name == "m" || name == "shift+m" || name == "=" || name == "-" || name == "0" || name == "minus" {
-			return false, nil // the camera moves; what is carried follows (grabFollow)
-		}
-		switch name {
-		case "left", "right", "up", "down", "shift+left", "shift+right", "shift+up", "shift+down":
-			return false, nil
-		}
-		m.say(grabHint3D)
 		return true, nil
 	}
 	switch name {
@@ -162,73 +134,6 @@ func (m *Model) grabEsc() bool {
 
 // ---- carrying --------------------------------------------------------------------------
 
-// grab3DStart is Alt+Space in 3D: what the cross is on is taken up (a thing
-// in a container is shown big instead), else the structure nearest the
-// middle of the screen.
-func (m *Model) grab3DStart() {
-	d := m.ds()
-	r := &d.room
-	hit := r.pickAim()
-	var o *dOct
-	if hit.ok && hit.own >= 0 {
-		o = d.byID(hit.own)
-	}
-	var lockedB *r3block // locked as chosen (clicked, or moved): it is what is taken up, wherever the cross is
-	if lk := d.byID(d.sel); r.locked && lk != nil && (o == nil || o.ID != lk.ID) {
-		for i := range r.blocks {
-			if r.blocks[i].o == lk {
-				lockedB, o = &r.blocks[i], nil
-			}
-		}
-	}
-	if o != nil && d.opened.active && !d.opened.max && o.ID == d.opened.id {
-		m.grabOpenedBig() // open in a rack: a thing in a container
-		return
-	}
-	if o != nil {
-		if c, i := d.containerItemAt(o, hit.sx, hit.sy); c != nil {
-			m.designMaximize(c, i)
-			return
-		}
-	}
-	pressX, pressY := hit.sx, hit.sy
-	plane := hit.p.z
-	near := false
-	if o == nil {
-		b := lockedB
-		if b == nil {
-			b = r.nearestBlock()
-		}
-		if b == nil {
-			m.say("Nothing to grab: no structure on the screen.")
-			return
-		}
-		o, near = b.o, true
-		plane = b.off + b.dep // its front
-		x, y, w, h := d.rect(o)
-		pressX, pressY = x+w/2, y+h/2 // its middle comes under the cross
-	}
-	if d.opened.active && o.ID == d.opened.rack {
-		m.designRackClose() // a rack with something open: shut first, so it moves whole
-	}
-	d.save() // what came before is a step of its own
-	r.plane = plane
-	r.mapX, r.mapY = pressX, pressY
-	if near {
-		m.design3DThrough(tea.Mouse{}) // where the cross meets its front's plane
-	}
-	m.grabTakeUp(o, pressX, pressY)
-	d.drag, d.dropOn, d.dropSlot = dragMove, -1, -1 // a drag, moved by the camera (designMotion)
-	g := &d.grab
-	g.in3D = true
-	g.cam = r.camKey(m.width, m.boardH())
-	if near {
-		m.designMotion(tea.Mouse{}) // under the cross at once
-	}
-	r.chosenCam = g.cam
-	m.say(kindIcons[o.Kind] + " " + itemTitle(o) + " taken up · it follows the cross · Alt+Space: put down · Esc: put back")
-}
-
 // grab2DStart is Alt+Space on the flat board: the chosen structure is
 // taken up; the arrows move it.
 func (m *Model) grab2DStart() {
@@ -256,35 +161,8 @@ func (m *Model) grabTakeUp(o *dOct, sx, sy int) {
 	d.origX, d.origY, d.origW, d.origH = o.X, o.Y, o.W, o.H
 	d.pressX, d.pressY, d.lastPX, d.lastPY = sx, sy, sx, sy
 	d.origCX, d.origCY = d.camX, d.camY
-	d.grab = grabState{active: true, id: o.ID, x: o.X, y: o.Y, layer: o.Layer,
-		camSaved: d.grab.camSaved, camPos: d.grab.camPos, camLook: d.grab.camLook, camK: d.grab.camK}
+	d.grab = grabState{active: true, id: o.ID, x: o.X, y: o.Y, layer: o.Layer}
 	d.dirty = true
-}
-
-// grabFollow runs after every message in 3D (design3DAfter): what is
-// carried follows the cross when the camera has moved, and stays the
-// chosen one (the middle of the view does not choose meanwhile).
-func (m *Model) grabFollow() {
-	d := m.ds()
-	g := &d.grab
-	if !g.active || !g.in3D {
-		return
-	}
-	r := &d.room
-	o := d.byID(g.id)
-	if o == nil || !r.on() {
-		g.active = false // deleted, or the room is flat: nothing to carry
-		d.drag, d.dropOn = dragNone, -1
-		return
-	}
-	d.drag = dragMove
-	key := r.camKey(m.width, m.boardH())
-	if key != g.cam {
-		g.cam = key
-		m.designMotion(tea.Mouse{})
-	}
-	d.sel = g.id
-	r.chosenCam = key
 }
 
 // grabDrop puts what is carried down where it is: in 3D as a drag let go
@@ -301,21 +179,6 @@ func (m *Model) grabDrop() tea.Cmd {
 	}
 	d.sel = o.ID
 	d.dirty = true
-	if g.in3D {
-		d.room.lockChosen(d) // put down, it stays chosen till clicked off
-		d.drag = dragMove
-		into := d.byID(d.dropOn)
-		if into == nil {
-			m.design3DSettle(o.ID) // its layer now, so the step has it (designRelease settles after its save)
-		}
-		cmd := m.designRelease() // settles its layer, or files it, and saves the step
-		if into != nil && d.byID(g.id) == nil {
-			m.say(kindIcons[o.Kind] + " " + itemTitle(o) + " put in " + octName(into) + ".")
-		} else if m.msg == "" || strings.HasPrefix(m.msg, kindIcons[o.Kind]+" "+itemTitle(o)+" taken up") {
-			m.say(kindIcons[o.Kind] + " " + itemTitle(o) + " put down: " + layerName(o.Layer) + ".")
-		}
-		return cmd
-	}
 	d.drag, d.dropOn = dragNone, -1
 	d.save()
 	m.say(kindIcons[o.Kind] + " " + itemTitle(o) + " put down.")
@@ -334,36 +197,6 @@ func (m *Model) grabCancel() {
 		m.say(kindIcons[o.Kind] + " " + itemTitle(o) + " put back where it was.")
 	}
 	d.dirty = true
-}
-
-// nearestBlock is the block (as last drawn) whose front's middle is
-// nearest the middle of the screen, in front of the camera; nil: none
-// shows.
-func (r *room3D) nearestBlock() *r3block {
-	v, ok := r.nowView()
-	if !ok {
-		return nil
-	}
-	rm := &r.rm
-	var best *r3block
-	bestD := math.Inf(1)
-	for i := range r.blocks {
-		b := &r.blocks[i]
-		mid := r3vec{float64(b.x0+b.x1)/2 - rm.hw, rm.hh - float64(b.y0+b.y1), b.off + b.dep}
-		c := v.toCam(mid)
-		if c.z <= 0.25 {
-			continue // behind the camera
-		}
-		x, y := v.screenAt(c)
-		if x < 0 || y < 0 || x > float64(rm.w) || y > float64(2*rm.h) {
-			continue // off the screen
-		}
-		dx, dy := x-v.px, (y-v.py)/2 // in cells
-		if dd := dx*dx + dy*dy; dd < bestD {
-			best, bestD = b, dd
-		}
-	}
-	return best
 }
 
 // ---- shown big ----------------------------------------------------------------------------
@@ -419,7 +252,7 @@ func (m *Model) grab2DItem() (*dOct, int) {
 		return nil, -1
 	}
 	if o := d.byID(d.sel); o != nil && isContainer(o.Kind) && d.hover == o.ID+1 {
-		c := m.pxm.cell
+		c := m.mouseCell
 		return d.containerItemAt(o, c[0], c[1]-m.boardTop())
 	}
 	return nil, -1
@@ -476,21 +309,6 @@ func (m *Model) designMaximize(c *dOct, i int) {
 	d.clearMulti()
 	d.opened = op
 	d.dirty = true
-	if r := &d.room; r.on() {
-		// In front of everything, the camera square in front of it.
-		it.Layer = min(maxLayer, c.Layer+1)
-		for it.Layer < maxLayer && d.coversOnLayer(it) {
-			it.Layer++
-		}
-		g := &d.grab
-		if !g.camSaved {
-			g.camSaved, g.camPos, g.camLook, g.camK = true, r.pos, r.look, r.freeK
-		}
-		if r.rm.w > 0 {
-			r.area(d, m.width, m.boardH(), d.z()) // its block, for the camera to face (drawn again before it shows)
-			m.design3DFront()
-		}
-	}
 	m.say(kindIcons[it.Kind] + " " + itemTitle(it) + " from " + octName(c) + ", shown big · Alt+Space, Esc or Alt twice: put back")
 }
 
@@ -508,20 +326,6 @@ func (m *Model) grabMaxStep(c *dOct, op rackOpen, step int) {
 	if d.opened.active {
 		it := d.byID(d.opened.id)
 		m.say(kindIcons[it.Kind] + " " + itemTitle(it) + " shown big (" + itoa(next+1) + " of " + itoa(n) + ") · Tab: next · Alt+Space: put back")
-	}
-}
-
-// grabCameraBack puts the 3D camera back where it was before a thing was
-// shown big.
-func (m *Model) grabCameraBack() {
-	d := m.ds()
-	g := &d.grab
-	if !g.camSaved {
-		return
-	}
-	g.camSaved = false
-	if r := &d.room; r.free {
-		r.pos, r.look, r.freeK = g.camPos, g.camLook, g.camK
 	}
 }
 

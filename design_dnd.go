@@ -126,8 +126,7 @@ func (m *Model) designDnd(meta map[string]string, payload string) tea.Cmd {
 		if want == "" || y < m.boardTop() || y >= m.boardTop()+m.boardH() {
 			op = "0" // off the board, or nothing it can take
 		}
-		hx, hy := m.design3DCell(x, y-m.boardTop()) // the room in 3D: the flat board cell under it
-		m.dropHint(hx, hy, op == "1")
+		m.dropHint(x, y-m.boardTop(), op == "1")
 		answer := "t=m:o=" + op
 		if answer == dr.lastAnswer {
 			return nil
@@ -168,7 +167,6 @@ func (m *Model) designDnd(meta map[string]string, payload string) tea.Cmd {
 			m.sayErr("The drop could not be read: " + err.Error())
 			return tea.Raw(oscDnd + "t=r:o=0" + oscEnd)
 		}
-		x, y = m.design3DCell(x, y) // the room in 3D: the flat board cell under it
 		return tea.Batch(done, m.designDropped(mime, string(raw), x, y))
 	case "R": // the terminal could not give the data
 		dr.reading = 0

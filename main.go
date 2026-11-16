@@ -46,17 +46,11 @@ func main() {
 				"  sy -t [FOLDER]     open the text files in FOLDER (or here), subfolders too, as tabs\n" +
 				"  sy FILE +LINE      open FILE at line LINE\n" +
 				"  sy --keys          check which keys reach Symbolizer\n" +
-				"  sy --font          install the shape letters font for Design mode's 3D room (and tell kitty)\n\n" +
+				"\n" +
 				"Inside, press F1 to see every key. Alt+Q quits.")
 			return
 		case a == "--keys":
 			if _, err := tea.NewProgram(&keyCheck{releases: "waiting for the terminal to answer…"}).Run(); err != nil {
-				fmt.Fprintln(os.Stderr, "sy: "+err.Error())
-				os.Exit(1)
-			}
-			return
-		case a == "--font":
-			if err := geoInstall(os.Stdout); err != nil {
 				fmt.Fprintln(os.Stderr, "sy: "+err.Error())
 				os.Exit(1)
 			}
@@ -92,21 +86,10 @@ func main() {
 		m.mode = startMode
 		m.say(modes[startMode].Icon() + "  " + modes[startMode].name + " mode. Alt+M switches modes.")
 	}
-	designFrames, designSaveLater, designAnims, room3DPace, room3DGPU = true, true, true, true, true
-	out := &termOut{File: os.Stdout}                              // Bubble Tea's frames and the 3D room's pictures share it (design_3d_kitty.go)
-	p := tea.NewProgram(m, tea.WithFPS(120), tea.WithOutput(out)) // 120: the most Bubble Tea allows, smoother scrolling
-	if room3DPixels = kittyWanted(os.Getenv); room3DPixels {
-		// The 3D room as a picture: written to kitty between Bubble Tea's frames (design_3d_kitty.go).
-		room3DRemote = kittyRemote(os.Getenv)
-		startKitty(out.WriteString, func() { p.Send(room3DFrameMsg{}) })
-	}
+	designFrames, designSaveLater, designAnims = true, true, true
+	p := tea.NewProgram(m, tea.WithFPS(120)) // 120: the most Bubble Tea allows, smoother scrolling
 	_, err = p.Run()
-	kittyPic.stop(os.Stdout) // the 3D room's picture deleted
-	hyprPtr.show()           // the pointer shown again (design_3d_pointer.go)
-	roomSound.quiet()        // the music stopped (design_3d_sound.go)
-	if room3DPixels {
-		fmt.Print(pixelMouseOff) // the mouse back to cells (design_3d_mouse.go)
-	}
+	roomSound.quiet() // the music stopped (design_music.go)
 	if m.design != nil {
 		m.design.flushSave() // the board's last changes
 	}

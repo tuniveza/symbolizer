@@ -59,13 +59,7 @@ func (m *Model) sayMulti(what string) {
 func (m *Model) designHover(ms tea.Mouse) {
 	d := m.ds()
 	d.hover = 0
-	if d.room.on() { // the room in 3D: the flat cell the mouse is over (design_3d.go)
-		var ok bool
-		if ms, ok = m.design3DHover(ms); !ok {
-			d.hoverOnly = true
-			return
-		}
-	}
+	m.mouseCell = [2]int{ms.X, ms.Y}
 	if sy := ms.Y - m.boardTop(); sy >= 0 && sy < m.boardH() {
 		if o := d.at(ms.X, sy); o != nil {
 			d.hover = o.ID + 1
@@ -80,6 +74,13 @@ func (m *Model) designHover(ms tea.Mouse) {
 // with nothing open opens its first; a board, its chosen pin). On anything
 // else it chooses the whole group (its name plate's).
 func (m *Model) designSpaceTap() {
+	d := m.ds()
+	if o := d.byID(d.hover - 1); d.hover > 0 && doorTo(o) != 0 && !d.opened.active {
+		d.sel = o.ID // the door under the mouse
+	}
+	if !d.opened.active && m.goThrough() { // a door or stairs: through it, as Enter (design_rooms.go)
+		return
+	}
 	if !m.designSpaceOpen() {
 		m.designSpaceGroup()
 	}
@@ -183,8 +184,8 @@ func (m *Model) designSpaceRelease() {
 	if d == nil {
 		return
 	}
-	tap := d.spaceTap && !d.spacePanned
-	d.spaceTap = false
+	tap := d.spaceTap && !d.spacePanned && !d.spaceSwallow
+	d.spaceTap, d.spaceSwallow = false, false
 	if tap && m.inDesign() {
 		m.designSpaceTap()
 	}

@@ -102,7 +102,14 @@ func (m *Model) designGroupName() tea.Cmd {
 			break
 		}
 	}
-	return m.ask(pDesignGroup, "Name plate for "+plural(len(ids), "structure")+" (empty: none): ", same)
+	o := d.byID(d.sel)
+	if o == nil || !d.picked[o.ID] {
+		o = d.byID(ids[0])
+	}
+	o.Plate = same
+	d.groupMode, d.band, d.picked = false, nil, nil
+	m.startTagEdit(o, partPlate, ids) // written on the board (design_tags.go)
+	return nil
 }
 
 // pickedIDs are the picked structures still on the board, in board order.

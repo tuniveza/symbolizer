@@ -22,6 +22,7 @@ func TestMain(m *testing.M) {
 	os.Setenv("XDG_DATA_HOME", filepath.Join(dir, "data"))
 	os.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
 	os.Setenv("SY_NO_NETWORK", "1") // never fetch the weather in tests
+	townShown = false               // the walls' windows: only the tests that look for them (design_walls_test.go)
 	os.Setenv("PATH", "")           // no wl-copy, gio ...: tests never touch the desktop
 	code := m.Run()
 	os.RemoveAll(dir)

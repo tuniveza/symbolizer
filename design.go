@@ -235,6 +235,7 @@ type designState struct {
 	heldAt         time.Time
 	lastArrowAt    time.Time
 	placing        bool           // Alt+N was pressed: the next key says what to place
+	placingRoom    bool           // AltGr+N was pressed: R makes a room, F a floor (design_rooms.go)
 	xAt            time.Time      // when X was pressed: X again soon deletes
 	snapAt         time.Time      // when Alt + arrows last snapped: a held glide stays a moment (design_snap.go)
 	jumpAt         time.Time      // when an arrow last jumped the view to a structure (design_keys.go)
@@ -242,7 +243,7 @@ type designState struct {
 	spaceAt        time.Time      // when Space was last seen (other terminals repeat it while held)
 	spacePanned    bool           // the view moved while Space was held: when it is let go, the view snaps
 	mapCorner      int            // where the mini map is: 0 hidden, 1–4 the corners (design_map.go)
-	walls, floor   int            // the room's finishes in 3D (design_3d_finish.go), kept with the board
+	walls, floor   string         // the old 3D room's finishes: kept in the file as they were
 	altTapAt       time.Time      // when Alt was last tapped on its own: tapped again soon, it is Esc
 	opened         rackOpen       // a rack's thing opened over the view (design_containers.go)
 	multi          map[int]bool   // several chosen together, by ID (design_select.go)
@@ -251,6 +252,7 @@ type designState struct {
 	hover          int            // the structure under the mouse: its ID + 1 (0: none)
 	hoverOnly      bool           // only the mouse moved: the last drawing still stands
 	spaceTap       bool           // Space is down and no arrow was pressed with it (kitty)
+	spaceSwallow   bool           // this Space was Alt, then Space: its letting go does nothing more (design_walls.go)
 	pin            pinSel         // the chosen pin on a board (design_board.go)
 	pinPress       *pinPress      // a pin pressed: a click opens it, a drag moves it
 	rackPress      *rackPress     // a rack row pressed: a click opens it, a drag takes it out
@@ -259,6 +261,8 @@ type designState struct {
 	sect           sectState      // Tab stepping through a container's sections (design_sections.go)
 	boxLayer       map[int]int    // the layer looked at in each box, by ID: 1 top, 2 middle, 3 bottom (none: all)
 	labelMode      bool           // Alt+L: L, C, I, T, G label the chosen structure (design_labels.go)
+	tagGroup       []int          // the others getting the name plate being written (design_tags.go)
+	isFloor        bool           // this board is a room's floor, not a wall (design_walls.go)
 	platesOpen     bool           // AltGr+P: the list of name plates shows
 	groupMode      bool           // Shift+G: picking structures to give one name plate (design_groups.go)
 	picked         map[int]bool   // in group mode: the structures picked, by ID
@@ -269,8 +273,10 @@ type designState struct {
 	inkedLen       int
 	idFor          **dOct // the octs it was made for: its first element and length
 	idLen          int
-	loadedFrom     string // the board's file
-	room           room3D // Ctrl + F: the board as a room in 3D, seen first person (design_3d.go)
+	loadedFrom     string                    // the board's file
+	peek           func(id int) *designState // another room's board, for a door's window (design_door.go)
+	through        *doorThrough              // a door being gone through: it swings open, then the next room (design_door.go)
+	arrive         *doorArrive               // just come in by a door: the view zooms out from it (design_door.go)
 }
 
 type toolSpot struct {
@@ -287,8 +293,11 @@ func (m *Model) inDesign() bool { return m.mode == designMode }
 // ds is the board, loaded the first time it is needed.
 func (m *Model) ds() *designState {
 	if m.design == nil {
-		m.design = loadDesign(designPath())
+		id, wall := m.curBoard()
+		m.design = loadDesign(boardPath(id, wall)) // the wall of the room you are in (design_rooms.go)
+		m.design.isFloor = wall == wallFloor
 	}
+	m.design.peek = m.roomPeek // doors look into the other rooms (design_door.go)
 	if m.height > 0 {
 		// No structure is taller than the screen shows at 100%, less a row
 		// above and below: the whole of it (a picture too) fits on screen.
@@ -338,8 +347,9 @@ func loadDesign(path string) *designState {
 		d.zoom = f.Zoom
 	}
 	d.nextID = max(d.nextID, f.NextID)
-	d.walls, d.floor = finishIndex(wallNames, f.Walls), finishIndex(floorNames, f.Floor)
-	d.detachDrawers() // drawers are containers of their own now (design_containers.go)
+	d.walls, d.floor = f.Walls, f.Floor
+	d.detachDrawers()  // drawers are containers of their own now (design_containers.go)
+	levelWords(d.octs) // doors and stairs from before floors were levels (design_rooms.go)
 	return d.startUndo()
 }
 
@@ -389,11 +399,8 @@ func (d *designState) snapshot() (int, designFile) {
 	// last one, so taking it costs little even on a large board.
 	st := d.state()
 	camX, camY, zoom := d.camX, d.camY, d.zoom
-	if r := &d.room; r.flatSaved { // in 3D the board is at 100%: the flat board's own zoom and place are saved
-		camX, camY, zoom = r.flatCam[0], r.flatCam[1], r.flatZoom
-	}
 	f := designFile{Octs: d.openPutBack(st.octs), Links: st.links, CamX: camX, CamY: camY, Zoom: zoom, NextID: d.nextID,
-		Walls: finishName(wallNames, d.walls), Floor: finishName(floorNames, d.floor),
+		Walls: d.walls, Floor: d.floor,
 		marksMap: st.marks, marksVer: st.marksVer}
 	d.snapGen++
 	d.lastSnap = &f
@@ -763,12 +770,12 @@ func (m *Model) designLinkToggle() {
 }
 
 // stopsWriting: keys that stop writing in a structure and then do their
-// usual work: Alt+N and Alt+L. The arrows, with Shift, Ctrl or Alt, move
+// usual work: Alt+N, AltGr+N and Alt+L. The arrows, with Shift, Ctrl or Alt, move
 // the cursor in the words while writing, as in Text mode (design_field.go);
 // Esc, or Alt tapped twice, stops writing.
 func stopsWriting(name string) bool {
 	switch name {
-	case "alt+n", "alt+l", "alt+shift+l", "alt+L":
+	case "alt+n", "”", "altgr+n", "alt+l", "alt+shift+l", "alt+L", "altgr+r", "altgr+shift+r", "altgr+f", "alt+a":
 		return true
 	}
 	return false
@@ -788,14 +795,32 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 	d := m.ds()
 	defer d.save()
 	name := keyName(k)
+	switch { // AltGr+R and AltGr+F, however the terminal gives them (design_walls.go)
+	case m.isSpinKey(k, name) == 1:
+		name = "altgr+r"
+	case m.isSpinKey(k, name) == -1:
+		name = "altgr+shift+r"
+	case m.isFloorKey(k, name):
+		name = "altgr+f"
+	}
+	if d.through != nil { // going through a door: any key goes straight in (design_door.go)
+		m.finishThrough()
+		return nil
+	}
+	if d.arrive != nil { // just come in: any key, and the view is there at once
+		m.finishArrive()
+	}
+	if isTagPart(d.editing) && !stopsWriting(name) { // a label or name plate being written on the board (design_tags.go)
+		return m.tagKey(k, name)
+	}
+	if m.spin != nil { // turning to another wall: any key, and it is there (design_walls.go)
+		m.finishSpin()
+	}
 	if ok, cmd := m.designGrabKey(k, name); ok { // Alt+Space: grab, or show big (design_grab.go)
 		return cmd
 	}
 	if m.sectionGuard(name) { // Tab stepping through a container: Esc, an arrow, another chosen end it (design_sections.go)
 		return nil
-	}
-	if ok, cmd := m.design3DKey(k, name); ok { // Ctrl + F: 3D; in 3D: its own keys (design_3d.go)
-		return cmd
 	}
 	if (name == "tab" || name == "shift+tab") && !d.placing && !d.opened.max && m.designSectionTab(name == "shift+tab") {
 		return nil // a container: its next section (design_sections.go); shown big by Alt+Space: its next thing (design_grab.go)
@@ -815,6 +840,27 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		}
 		d.editing = partNone // Alt+N, Alt+L: writing stops, and the key does its work
 	}
+	if d.editing == partNone && !d.placing && !d.placingRoom {
+		if dir := m.isSpinKey(k, name); dir != 0 { // AltGr+R: the next wall (design_walls.go)
+			m.spinWall(dir)
+			return nil
+		}
+		if m.isFloorKey(k, name) { // AltGr+F: the floor, and back
+			m.floorToggle()
+			return nil
+		}
+		if name == "space" && !k.IsRepeat && m.altSpace() { // Alt, then Space: one more chosen
+			return nil
+		}
+		if name == "alt+a" { // the chosen together get one name plate
+			m.designAttach()
+			return nil
+		}
+		if (name == "m" || name == "M" || name == "shift+m") && !d.labelMode && !d.groupMode && !d.pin.active { // the chiptune on or off (design_music.go)
+			m.designMusicToggle()
+			return nil
+		}
+	}
 	switch name {
 	case "ctrl+z":
 		m.designUndo()
@@ -825,17 +871,21 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 	}
 	m.msg = ""
 	cx, cy := m.width/2, m.boardH()/2
+	if name == "”" || name == "altgr+n" { // AltGr+N: the next key makes a room, a wall or a level (design_rooms.go)
+		d.placing, d.placingRoom = false, true
+		m.say("Make: R room · W wall · L level (any other key: nothing).")
+		return nil
+	}
+	if d.placingRoom {
+		d.placingRoom = false
+		if !m.houseKey(name, cx, cy) {
+			m.say("Nothing made. AltGr+N, then R room · W wall · L level.")
+		}
+		return nil
+	}
 	if d.placing { // Alt+N was pressed: this key says what to place
 		d.placing = false
 		if kind, ok := placeKeys[name]; ok {
-			if m.design3DPlace(kind) { // in 3D: where the cross is, on its layer (design_3d_layers.go)
-				d.editing = partHeader
-				m.say(newHint(kind))
-				return nil
-			}
-			if sx, sy, ok := m.design3DMiddle(); ok {
-				cx, cy = sx, sy // in 3D: where the middle of the camera looks on the wall
-			}
 			wx, wy := d.world(cx, cy)
 			if o := d.newKind(kind, int(wx), int(wy)); d.clearSpot(o) {
 				m.centreOn(o) // moved off what was there: the view follows it
@@ -845,6 +895,9 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		} else {
 			m.say("Nothing placed. Alt+N, then P page · N note · S shape · C cabinet · D drawer · R rack · B board · O box.")
 		}
+		return nil
+	}
+	if name == "enter" && m.goThrough() { // a door or stairs chosen: to its room (design_rooms.go)
 		return nil
 	}
 	if d.pin.active && d.sel != d.pin.board {
@@ -1027,14 +1080,11 @@ func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 	d := m.ds()
 	defer d.save()
 	m.sectionDrop() // a click ends Tab's stepping through a container (design_sections.go)
-	if ms.Y == m.height-3 && !d.room.passing {
+	if ms.Y == m.height-3 {
 		return m.designToolClick(ms.X)
 	}
-	if d.grab.active && !d.room.passing { // carried by Alt+Space: a click puts it down (design_grab.go)
+	if d.grab.active { // carried by Alt+Space: a click puts it down (design_grab.go)
 		return m.grabDrop()
-	}
-	if ok, cmd := m.design3DPress(ms); ok { // the room in 3D: a look round, or handed on as a flat cell (design_3d.go)
-		return cmd
 	}
 	sx, sy := ms.X, ms.Y-m.boardTop()
 	d.pressX, d.pressY, d.lastPX, d.lastPY = sx, sy, sx, sy
@@ -1207,9 +1257,6 @@ func octName(o *dOct) string {
 
 func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 	d := m.ds()
-	if d.room.on() && !d.room.passing {
-		ms = m.design3DThrough(ms) // the room in 3D: the flat cell the mouse is over (design_3d.go)
-	}
 	sx, sy := ms.X, ms.Y-m.boardTop()
 	z := d.z()
 	dx, dy := float64(sx-d.pressX)/z, float64(sy-d.pressY)/z
@@ -1239,7 +1286,6 @@ func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 			}
 			nx, ny := d.followMouse(o, sx-d.pressX, sy-d.pressY) // under the mouse at every zoom (design_layout.go)
 			o.X, o.Y = d.snapNearest(o, nx, ny)
-			d.keepInRoom(o) // in 3D: inside the room's walls, which keep their place (design_3d_draw.go)
 			d.dropOn, d.dropSlot = -1, -1
 			if d.multiOn(o) {
 				d.dragMulti(o) // the others chosen with it move as much
@@ -1275,9 +1321,6 @@ func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 
 func (m *Model) designRelease() tea.Cmd {
 	d := m.ds()
-	if d.room.on() && d.drag == dragMove {
-		defer m.design3DSettle(d.sel) // in 3D: on the lowest layer where it covers nothing (design_3d_layers.go)
-	}
 	if d.pinPress != nil { // a click on a pin opens it; a drag moved it (design_board.go)
 		m.pinRelease()
 		d.drag, d.dropOn = dragNone, -1
@@ -1309,9 +1352,6 @@ func (m *Model) designRelease() tea.Cmd {
 
 func (m *Model) designWheel(ms tea.Mouse) tea.Cmd {
 	d := m.ds()
-	if ok, cmd := m.design3DWheel(ms); ok { // the room in 3D: the wheel leaves the camera alone
-		return cmd
-	}
 	sx, sy := ms.X, ms.Y-m.boardTop()
 	z := d.z()
 	if o := d.hit(sx, sy).o; o != nil && o.ID == d.sel && o.Kind != kOct && o.Kind != kCabinet &&
@@ -1326,9 +1366,6 @@ func (m *Model) designWheel(ms tea.Mouse) tea.Cmd {
 		d.dirty = true
 		d.save()
 		return nil
-	}
-	if d.room.passing {
-		return nil // handed on from the room in 3D: only a page's text scrolls; the camera is the 3D view's
 	}
 	switch ms.Button {
 	case tea.MouseWheelUp:
@@ -1407,6 +1444,7 @@ func (m *Model) designCanvas() *boardCanvas {
 	}
 	c := d.canvas
 	d.paintBoard(c)
+	m.paintWindows(c) // the windows in this wall, the town outside (design_town.go)
 	seen := make(map[int][]drawnStruct, len(d.drawn))
 	for _, o := range d.octs { // in order: the last one is on top
 		if !d.onScreen(o, m.width, m.boardH()) {
@@ -1481,7 +1519,6 @@ type drawKey struct {
 	linkMode                                bool
 	bg, text, dim, accent, err, bar, stText string
 	stBG, ember                             string
-	pins3D                                  bool // drawn for the 3D picture: turned pins left out (pins3D)
 }
 
 type drawnStruct struct {
@@ -1536,7 +1573,7 @@ func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
 	if o.Image != "" && !picLoaded(filepath.Join(d.imagesDir(), o.Image)) {
 		return drawKey{}, false // a missing picture may turn up: look again each time
 	}
-	if d.moving(o.ID) {
+	if d.moving(o.ID) || (d.through != nil && d.through.id == o.ID) {
 		return drawKey{}, false // opening or shutting: a new drawing each frame (design_anim.go)
 	}
 	_, _, w, h := d.rect(o)
@@ -1545,9 +1582,9 @@ func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
 		image: o.Image, openStack: o.OpenStack, layout: o.Layout, scroll: o.Scroll, drawerOpen: o.DrawerOpen,
 		sel: d.sel == o.ID, source: d.linkMode && d.linkFrom == o.ID, drop: d.dropOn == o.ID, linkMode: d.linkMode,
 		bg: cBG, text: cText, dim: cDim, accent: cAccent, err: cError, bar: cBarBG, stText: cStatusText,
-		stBG: cStatusBG, ember: cEmber, pins3D: pins3D,
+		stBG: cStatusBG, ember: cEmber,
 	}
-	if k.sel {
+	if k.sel && !isTagPart(d.editing) { // (a label or name plate is drawn over it, design_tags.go)
 		k.editing = d.editing
 		k.cur, k.selS, k.selE, _ = d.fieldMarks(o, d.editing)
 	}
@@ -1566,6 +1603,9 @@ func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
 	}
 	if o.Kind == kBox { // where its things are, the layer looked at, the chosen thing (design_box.go)
 		k.opened += d.boxKey(o)
+	}
+	if o.Kind == kDoor || o.Kind == kStairs { // what stands where in the room behind it (design_door.go)
+		k.opened += d.doorKey(o)
 	}
 	if o.Kind == kDrawer { // its drawers, which are out, and which one a drag would go into
 		k.pulled = fmt.Sprint(o.Drawers, o.Pulled, o.Fronts)
@@ -1690,8 +1730,7 @@ type designFrameMsg struct{}
 // designRows draws the board in the text area.
 func (m *Model) designRows(sb *strings.Builder) {
 	d := m.ds()
-	if d.room.on() {
-		m.design3DRows(sb) // turned: the board as a room in 3D (design_3d.go)
+	if m.spinRows(sb) { // turning to another wall (design_walls.go)
 		return
 	}
 	if d.hoverOnly && d.frame != "" && d.frameW == m.width && d.frameH == m.boardH() {
@@ -1869,7 +1908,11 @@ func (d *designState) paintBoard(c *boardCanvas) {
 	put := func(x, y int, mk boardMark) {
 		c.Lines[y][x] = uv.Cell{Content: mk.s, Width: 1, Style: uv.Style{Fg: rgba(mk.fg), Bg: bg}}
 	}
-	d.boardDots(c.Width(), c.Height(), put)
+	if d.isFloor {
+		d.floorBoards(c.Width(), c.Height(), put) // a room's floor: planks, not dots (design_walls.go)
+	} else {
+		d.boardDots(c.Width(), c.Height(), put)
+	}
 	d.linkWalk(c.Width(), c.Height(), func(x, y, _ int, s, fg string) { put(x, y, boardMark{s, fg}) })
 }
 
@@ -2514,12 +2557,22 @@ func (m *Model) designToolbar() string {
 	canUndo, canRedo := len(d.undo) > 0 || (d.undoBase != nil && d.dirty), len(d.redo) > 0
 	put(" ↶ ", st(map[bool]string{true: cStatusText, false: mixHex(cDim, cBarBG, 0.4)}[canUndo], cBarBG).Bold(canUndo), "undo")
 	put(" ↷ ", st(map[bool]string{true: cStatusText, false: mixHex(cDim, cBarBG, 0.4)}[canRedo], cBarBG).Bold(canRedo), "redo")
-	right := bar.Render(fmt.Sprintf("  %d structures · %d links ", len(d.octs), len(d.links)))
-	if m.width-x-lipgloss.Width(right) < 0 { // short, when the long one does not fit
-		right = bar.Render(fmt.Sprintf("  %d %s · %d ⛓ ", len(d.octs), kindIcons[kOct], len(d.links)))
-	}
-	if m.width-x-lipgloss.Width(right) < 0 {
-		right = ""
+	// The room, its wall (or floor) and level, then the counts: the longest
+	// that fits (design_rooms.go).
+	h := m.hs()
+	where, short := h.where(h.Current), h.whereShort(h.Current)
+	n, nl := len(d.octs), len(d.links)
+	right := ""
+	for _, s := range []string{
+		fmt.Sprintf("  %s ·  %d structures · %d links ", where, n, nl),
+		fmt.Sprintf("  %s ·  %d %s · %d ⛓ ", where, n, kindIcons[kOct], nl),
+		fmt.Sprintf("  %s · %d %s · %d ⛓ ", short, n, kindIcons[kOct], nl),
+		fmt.Sprintf("  %s ", short),
+	} {
+		if r := bar.Render(s); m.width-x-lipgloss.Width(r) >= 0 {
+			right = r
+			break
+		}
 	}
 	// All of it in the middle of the row (Design mode centres its text); the
 	// click spots move with it.
@@ -2602,20 +2655,20 @@ func (m *Model) designStatus() string {
 		}
 	case d.sect.on:
 		hint = d.sectionHint() // Tab stepping through a container (design_sections.go)
+	case isTagPart(d.editing):
+		hint = "Writing the " + map[int]string{partLabel: "label", partPlate: "name plate"}[d.editing] + " on the board  ·  keys as in Text mode  ·  Enter, Tab or Esc: done"
 	case d.editing != partNone:
 		part := map[int]string{partHeader: "header", partBody: "text", partFooter: "footer"}[d.editing]
 		if o := d.byID(d.sel); o != nil && o.Kind != kOct {
 			part = map[int]string{partHeader: "title", partBody: "text", partFooter: "footer"}[d.editing]
 		}
 		hint = "Writing the " + part + "  ·  keys as in Text mode  ·  Tab: next part  ·  Esc or Alt twice: done"
-	case d.room.on():
-		hint = d.room.hint()
 	case d.platesOpen:
 		hint = "Name plates  ·  AltGr+P or Alt twice: close"
 	case d.pin.active:
 		hint = "R turn · S size · W H stretch · K J skew · F V flip · Alt+arrows move · T type · Enter open"
 	case len(d.multiIDs()) > 1:
-		hint = itoa(len(d.multiIDs())) + " chosen  ·  drag or Alt+arrows: move all  ·  X X: delete  ·  Shift+G: plate  ·  Esc: let go"
+		hint = itoa(len(d.multiIDs())) + " chosen  ·  drag or Alt+arrows: move all  ·  X X: delete  ·  Alt+A: name plate  ·  Esc: let go"
 	case d.groupMode:
 		hint = "Group mode  ·  click or drag a box: pick  ·  G: pick the chosen one  ·  Enter: name them  ·  Esc: leave"
 	case d.opened.active:

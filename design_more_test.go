@@ -2660,11 +2660,14 @@ func TestDesignLabels(t *testing.T) {
 	m.View()
 
 	// T: the label's own words.
-	press(m, "t")
-	if m.prompt != pDesignLabel {
-		t.Fatal("T did not ask for the words")
+	press(m, "t") // written on the board, not at a prompt (design_tags.go)
+	if m.prompt != pNone || d.editing != partLabel {
+		t.Fatal("T did not start writing the label on the board")
 	}
-	m.input.SetValue("Read me")
+	typeStr(m, "Read me")
+	if !strings.Contains(screenOf(m), "Read me") {
+		t.Fatalf("the label is not written on the board as it is typed:\n%s", screenOf(m))
+	}
 	press(m, "enter")
 	if a.LabelTitle != "Read me" || !strings.Contains(screenOf(m), "Read me") {
 		t.Fatalf("label words: %q", a.LabelTitle)
@@ -2674,10 +2677,10 @@ func TestDesignLabels(t *testing.T) {
 	for _, o := range []*dOct{a, b} {
 		d.sel = o.ID
 		press(m, "g")
-		if m.prompt != pDesignPlate {
-			t.Fatal("G did not ask for a name plate")
+		if m.prompt != pNone || d.editing != partPlate {
+			t.Fatal("G did not start writing the name plate on the board")
 		}
-		m.input.SetValue("Team")
+		typeStr(m, "Team")
 		press(m, "enter")
 	}
 	if a.Plate != "Team" || b.Plate != "Team" || len(d.plates()["Team"]) != 2 {
@@ -2764,10 +2767,13 @@ func TestDesignGroupPick(t *testing.T) {
 	}
 	// Enter asks for one name plate; all four get it.
 	press(m, "enter")
-	if m.prompt != pDesignGroup {
-		t.Fatal("Enter did not ask for a name plate")
+	if m.prompt != pNone || d.editing != partPlate {
+		t.Fatal("Enter did not start writing the name plate on the board")
 	}
-	m.input.SetValue("Crew")
+	typeStr(m, "Crew")
+	if a.Plate != "Crew" || e.Plate != "Crew" {
+		t.Fatalf("each letter should go on all picked: %q %q", a.Plate, e.Plate)
+	}
 	press(m, "enter")
 	for _, o := range []*dOct{a, b, c, e} {
 		if o.Plate != "Crew" {

@@ -650,10 +650,6 @@ func (m *Model) sectionShow(o *dOct) {
 			x, y, w, h = d.rect(o)
 		}
 	})
-	if d.room.on() {
-		m.design3DFaceRect(o, x, y, x+w, y+h, sectionKeep)
-		return
-	}
 	z := d.z()
 	d.camX += (float64(x) + float64(w)/2 - float64(m.width)/2) / z
 	if h > m.boardH()-2 {
