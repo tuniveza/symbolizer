@@ -136,7 +136,7 @@ def built(text, where, by_itself=False):
         return None
 
 
-FLOOR = 40          # how many it read right when the old reader was removed (16 Nov 2026): it may only go up
+FLOOR = 41          # how many it read right when the old reader was removed (16 Nov 2026): it may only go up
 
 
 def test_messy_directions():

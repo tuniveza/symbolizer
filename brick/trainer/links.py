@@ -33,6 +33,9 @@ sys.path.insert(0, os.path.dirname(HERE))
 PATH = os.path.join(HERE, "data", "links.txt")
 ROLES = ["W", "F", "C", "P", "N", "T", "B", "K", "Q", "G", "M", "S", "D", "A", "H", "V", "X"]
 STRETCH = {"W", "M"}          # roles whose words stay together as one stretch
+DICT_ON = 2.5                 # how strongly a dictionary role holds a word the practice hasn't met
+DICT_OFF = 0.0                # the dictionary never rules a role out: a real word can be a slip ("pint" for print)
+MEANING = {"C", "P", "T", "N", "V"}   # roles the dictionary can rule out (a word that is no colour is never one)
 SURE = 1.0                    # how far ahead the best reading must be (on unseen practice: reads ~88%, ~85% right)
 
 
@@ -162,9 +165,35 @@ class Links:
             return math.log(0.5 / (expected + 0.5)) + grown
         return grown
 
+    def met(self, w):
+        """Has the brain met the word often enough in practice to know it from there?"""
+        return self.words.get(w, 0) >= 3
+
+    def known(self, w, node):
+        """How strongly word w links to a role or brick node: from practice when the brain has met the word; else
+        from the dictionary (trainer/dictbrain.py): a form or slip borrows its own word's links ('waited' -> wait),
+        any other word gets the roles and brick its dictionary entry allows."""
+        if self.met(w):
+            return self.s("w:" + w, node)
+        got = dictionary_entry(w)
+        if not got:
+            return self.s("w:" + w, node)
+        roles, brick, base = got
+        if base and self.met(base):
+            return self.s("w:" + base, node)
+        if node.startswith("b:"):
+            return (DICT_ON if node[2:] == brick else -DICT_OFF) if brick else 0.0
+        r = node[2:]
+        if r in roles:
+            return DICT_ON * roles[r]
+        if r == "M" and "W" in roles:                   # a name is words too
+            return DICT_ON * 0.5 * roles["W"]
+        return -DICT_OFF if r in MEANING else 0.0
+
     def word_role(self, words, ws, i, r):
         role = "r:" + r
-        return (self.s("w:" + ws[i], role) + 0.5 * self.s(self.rarity(ws[i]), role) + 0.5 * self.s("before:" + (ws[i - 1] if i else "(start)"), role) +
+        rare = 0.0 if not self.met(ws[i]) and dictionary_entry(ws[i]) else 0.5   # the dictionary knows it: not rare
+        return (self.known(ws[i], role) + rare * self.s(self.rarity(ws[i]), role) + 0.5 * self.s("before:" + (ws[i - 1] if i else "(start)"), role) +
                 0.5 * self.s("after:" + (ws[i + 1] if i + 1 < len(ws) else "(end)"), role) +
                 0.5 * self.s("shape:" + shape(words[i]), role))
 
@@ -187,7 +216,7 @@ class Links:
         def to_brick(i, r):                  # a word links to the brick through itself and its role; chatter doesn't
             if r == "X":
                 return 0.0
-            return self.s("r:" + r, b) + self.s("w:" + ws[i], b) * (2.0 if r == "V" else 1.0)
+            return self.s("r:" + r, b) + self.known(ws[i], b) * (2.0 if r == "V" else 1.0)
         table = [{}]
         for r in ROLES:
             if forbid and r in forbid.get(0, ()):
@@ -213,7 +242,7 @@ class Links:
     def brick_pull(self, ws, roles, brick):
         """How strongly the words, in these roles, pull toward the brick."""
         b = "b:" + brick
-        return sum(self.s("r:" + r, b) + self.s("w:" + w, b) * (2.0 if r == "V" else 1.0)
+        return sum(self.s("r:" + r, b) + self.known(w, b) * (2.0 if r == "V" else 1.0)
                    for w, r in zip(ws, roles) if r != "X")
 
     def practise(self, examples, rounds=4):
@@ -262,6 +291,13 @@ class Links:
                   for i in range(1, len(ws))]
         parts.sort(key=lambda x: -x[1])
         return parts[:3], parts[-2:]
+
+
+def dictionary_entry(w):
+    if os.environ.get("BRICK_DICTBRAIN") == "off":
+        return None
+    from trainer import dictbrain
+    return dictbrain.entry(w)
 
 
 _known = {}
