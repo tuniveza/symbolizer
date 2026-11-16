@@ -49,7 +49,7 @@
     dt: 0.05, SIGMA: 0.6, SYNC: 0.45, T_HOT: 1.0, T_COLD: 0.5, T_REST: 0.2,
     K: 1.6, RELAY: 1.2, DECAY: 1.6, ABSORB: 0.5, REST: 0.25, HEAT: 0.8, THERMAL: 0.6, RADIANT: 0.6,
     GRAVITY: 0.15, ION: 0.12, GAP: 0.18, ELECTRIC: 0.6, CHEM: 0.04, ELASTIC: 0.02, FIELD: 0.08,
-    WORK: 0.35, OSC: 0.5, SHARE: 0.25, SPLIT_GAP: 0.4, MEAN_GAP: 1.0, CO_MIN: 0.15, CO_LINK: 0.1, MIN_GROUP: 2, NOISE: 0.6, LIT_DECAY: 0.4, INBOX_DECAY: 0.015, IMAGINE_EVERY: 20, TRAIN_EVERY: 20,
+    WORK: 0.35, OSC: 0.5, SHARE: 0.25, SPLIT_GAP: 0.4, MEAN_GAP: 1.0, CO_MIN: 0.15, CO_LINK: 0.1, MIN_GROUP: 2, NOISE: 0.6, LIT_DECAY: 0.4, INBOX_DECAY: 0.015, FANOUT: 2, IMAGINE_EVERY: 20, TRAIN_EVERY: 20,
   };
 
   function rng(seed) {                       // mulberry32: same seed, same run
@@ -172,6 +172,18 @@
           const p = Math.min(p0, q0), q = Math.max(p0, q0); if (!done.has(p * n + q)) { pairs.push(p, q); done.add(p * n + q); } }
       }
       const total = pairs ? pairs.length / 2 : n * (n - 1) / 2;
+      // fan-out: what a neuron sends out is its own activation shared among the neurons it reaches; past C.FANOUT
+      // (the sum of coupling x sync over its pairs) each one gets a share, so a neuron with many lines can't multiply
+      // activation (and the heat it turns into) without bound.
+      const fan = new Float64Array(n);
+      for (let pi = 0, i = 0, j = 0; pi < total; pi++) {
+        if (pairs) { i = pairs[2 * pi]; j = pairs[2 * pi + 1]; } else { j++; if (pi === 0) { i = 0; j = 1; } if (j >= n) { i++; j = i + 1; } }
+        const a = N[i], b = N[j], { fsim, s } = this.sync(a, b), l = this.link(a, b);
+        const c = (l ? l.w : 0) + C.FIELD * e.magnetic * fsim;
+        if (c > 0) { fan[i] += c * s; fan[j] += c * s; }
+      }
+      const share = new Float64Array(n);
+      for (let i = 0; i < n; i++) share[i] = fan[i] > C.FANOUT ? C.FANOUT / fan[i] : 1;
       for (let pi = 0, i = 0, j = 0; pi < total; pi++) {
         if (pairs) { i = pairs[2 * pi]; j = pairs[2 * pi + 1]; } else { j++; if (pi === 0) { i = 0; j = 1; } if (j >= n) { i++; j = i + 1; } }
         const a = N[i];
@@ -186,12 +198,12 @@
           }
           // the sync rule: an impact relays only when the two are in sync enough
           if (c > 0 && s > bar(b) && a.E > 0.01) {
-            const imp = C.RELAY * e.kinetic * c * a.amp * a.E * s * dt;
+            const imp = C.RELAY * e.kinetic * c * a.amp * a.E * s * dt * share[i];
             inc[j] += imp; b.inbox.set(a.id, (b.inbox.get(a.id) || 0) + imp); b.stepIn.set(a.id, imp); a.relayed += imp;
             if (l) l.carried += imp;
           }
           if (c > 0 && s > bar(a) && b.E > 0.01) {
-            const imp = C.RELAY * e.kinetic * c * b.amp * b.E * s * dt;
+            const imp = C.RELAY * e.kinetic * c * b.amp * b.E * s * dt * share[j];
             inc[i] += imp; a.inbox.set(b.id, (a.inbox.get(b.id) || 0) + imp); a.stepIn.set(b.id, imp); b.relayed += imp;
             if (l) l.carried += imp;
           }
@@ -968,7 +980,158 @@
       return this.neighbours(r.winner).slice(0, 4).includes(want);
     }
 
+    // ---------- a local sub-network: the part of the brain one moment touches, run on its own ----------
+    // The neurons of `words` (every sense), plus the neurons most strongly coupled to them, out to `hops` hops and at
+    // most `cap` neurons in all. Coupling is what step() itself uses: line weight plus the magnetic field of near
+    // frequencies (a proved "used alike" line counts extra, since speaking reads those lines), and Ni's predictions
+    // both ways. `also`: words whose neurons are kept in too, without their neighbours (chatter, read only for heat).
+    // The result is a real Network with the same neuron ids, state (frequency, rhythm, heat, light, predictions,
+    // what was used together, outputs), lines, clock and phrases, and the archetype's brain (opts.brain, default this
+    // network's). Its dynamics are this network's own; neurons left outside count as they are now: in how warm and
+    // how ordered the personality feels the whole network to be (steer), and in Ni's tables (predIndex, rarity).
+    // This network is only read, never changed.
+    local(words, opts = {}) {
+      const brain = "brain" in opts ? (typeof opts.brain === "string" ? findArchetype(opts.brain) : opts.brain) : this.brain;
+      const lean = brain ? brain.personality.energies : this.e;           // the field as the speaking brain feels it
+      const cap = Math.max(1, opts.cap || 200), hops = opts.hops ?? 2, mag = C.FIELD * lean.magnetic, reach = 1.8 * C.SIGMA;
+      const want = new Set(words.map(w => String(w).toLowerCase())), also = new Set((opts.also || []).map(w => String(w).toLowerCase()));
+      const seeds = this.N.filter(n => want.has(n.word)), extra = this.N.filter(n => also.has(n.word) && !want.has(n.word));
+      const pred = this.predIndex(), byOmega = this.N.slice().sort((a, b) => a.omega - b.omega);
+      const inside = new Set([...seeds, ...extra].map(n => n.id)), score = new Map();
+      let frontier = seeds.map(n => [n, 1]);
+      for (let h = 0; h < hops && frontier.length; h++) {
+        const found = new Map();
+        const offer = (o, v) => { if (o && !inside.has(o.id) && v > (found.get(o.id) || 0)) found.set(o.id, v); };
+        for (const [x, sx] of frontier) {
+          for (const l of this.linksOf(x)) { const o = this.get(l.a === x.id ? l.b : l.a); if (o) offer(o, sx * (l.w + mag * this.sync(x, o).fsim + (l.proved ? 1 : 0))); }
+          for (const [id, v] of x.next) offer(this.get(id), sx * v);
+          for (const [id, v] of pred.get(x.id) || []) offer(this.get(id), sx * v);
+          let lo = 0, hi = byOmega.length;                                 // magnetic: near frequencies, no line needed
+          while (lo < hi) { const m = (lo + hi) >> 1; if (byOmega[m].omega < x.omega - reach) lo = m + 1; else hi = m; }
+          for (let k = lo; k < byOmega.length && byOmega[k].omega < x.omega + reach; k++) if (byOmega[k] !== x) offer(byOmega[k], sx * mag * this.sync(x, byOmega[k]).fsim);
+        }
+        for (const [id, v] of found) if (v > (score.get(id) || 0)) score.set(id, v);
+        frontier = [...found].sort((p, q) => q[1] - p[1]).slice(0, cap).map(([id, v]) => [this.get(id), v]);
+      }
+      for (const [id] of [...score].sort((p, q) => q[1] - p[1])) { if (inside.size >= cap) break; inside.add(id); }
+      const sub = new Network({ neurons: [] }, opts.seed ?? 1, null, brain, { intuition: this.intuition });
+      for (const n of this.N) {                                          // in this network's order: step() works in order
+        if (!inside.has(n.id)) continue;
+        const x = sub.add({ label: n.label, word: n.word, group: n.group, truth: n.truth, omega: n.omega, fixed: n.fixed, seen: n.seen, hidden: n.hidden, x: n.x, y: n.y });
+        Object.assign(x, { id: n.id, omega0: n.omega0, amp: n.amp, E: n.E, T: n.T, lit: n.lit, litBy: inside.has(n.litBy) ? n.litBy : null, role: n.role || null, refined: n.refined });
+        if (n.phrase) { x.phrase = true; x.parts = n.parts; }
+        x.next = new Map(n.next); x.out = new Map(n.out);
+        for (const [k, v] of n.co) if (inside.has(k)) x.co.set(k, v);
+        for (const [k, v] of n.inbox) if (inside.has(k)) x.inbox.set(k, v);
+      }
+      sub.nextId = this.nextId; sub.byIdStale = true;
+      // how ordered the lines left outside are (all lines, worked out once while this network stays as it is, minus
+      // the lines that touch the inside); lines from inside to a neuron left outside are worked out as it runs
+      const stamp = this.links.size + "|" + this.linkVersion + "|" + this.N.length + "|" + this.steps;
+      if (!this._order || this._order.stamp !== stamp) {
+        let s = 0, c = 0;
+        for (const l of this.links.values()) { const a = this.get(l.a), b = this.get(l.b); if (a && b) { s += this.sync(a, b).s; c++; } }
+        this._order = { stamp, s, c };
+      }
+      let outLinks = this._order.c, outOrder = this._order.s;
+      const edge = [];
+      for (const l of this.links.values()) {                             // in this network's order
+        const ia = inside.has(l.a), ib = inside.has(l.b);
+        if (!ia && !ib) continue;
+        const a = this.get(l.a), b = this.get(l.b);
+        if (!a || !b) continue;
+        outOrder -= this.sync(a, b).s; outLinks--;
+        if (ia && ib) sub.links.set(sub.key(a, b), Object.assign({}, l)); else edge.push(ia ? [l.a, b] : [l.b, a]);
+      }
+      sub.linkVersion = (sub.linkVersion || 0) + 1;
+      Object.assign(sub, { t: this.t, steps: this.steps, phrases: new Set(this.phrases || []), banned: new Set(this.banned || []),
+        checked: new Set(this.checked || []), senseCount: Object.assign({}, this.senseCount || {}), sentences: this.sentences, encoded: this.encoded });
+      let outT = 0, outN = 0;
+      for (const n of this.N) if (!inside.has(n.id)) { outT += n.T; outN++; }
+      const full = this;
+      sub.heatNow = function () { return (outT + this.N.reduce((t, n) => t + n.T, 0)) / Math.max(1, outN + this.N.length); };
+      sub.orderNow = function () {
+        let s = outOrder, c = outLinks;
+        for (const l of this.links.values()) { const a = this.get(l.a), b = this.get(l.b); if (a && b) { s += this.sync(a, b).s; c++; } }
+        for (const [id, o] of edge) { const a = this.get(id); if (a) { s += this.sync(a, o).s; c++; } }
+        return c ? s / c : 0;
+      };
+      sub.predIndex = () => full.predIndex();
+      sub.rarityOf = () => full.rarity || (full.rarity = full.rarityOf());
+      return sub;
+    }
+
     // Overall readings for the page.
+    // ---------- speaking: the network says a meaning in its own words (the archetype's way) ----------
+    // pieces: the meaning in pieces (["write"], ["hello there"], ["in", "red"], ...), each word {text, keep}: kept
+    // words carry the meaning (words to show, colours, numbers, places, names, files) and are always said as they are.
+    // The meaning's words are stimulated and the network runs its own dynamics. Then:
+    //   order (Ni): each next piece is the one the network predicts after the last word said, weighed by how hot it is;
+    //     a judging archetype (strict) keeps closer to the order it was given;
+    //   swaps (Ne, radiant): a free word is said as a word it is used alike with, when that one ran hotter;
+    //   economy (Te, Se): a free small word that stayed cold is left out;
+    //   chatter (Fe, Fi): the hottest chatter neuron may be said before or after, more for warm (extraverted) types;
+    //   slips: heat makes the odd letter swap in a free word.
+    //   It runs on a local sub-network (see local()): the stimulated neurons and the neurons most strongly coupled to
+    //   them, with this archetype's brain, so a meaning takes a fraction of a second. opts.local = false: run it on
+    //   this whole network instead (slow, and it changes this network). opts.cap: how many neurons (default 200).
+    speak(pieces, opts = {}) {
+      if (opts.local !== false) {
+        const brain = "brain" in opts ? opts.brain : this.brain;
+        const sub = this.local(pieces.flat().map(t => t.text), { cap: opts.cap, hops: opts.hops, also: opts.chatter, seed: opts.seed, brain });
+        return sub.speak(pieces, Object.assign({}, opts, { local: false }));
+      }
+      const e = this.e, r = this.rand, steps = opts.steps || 30, small = new Set(opts.small || []), chatter = opts.chatter || [];
+      const byWord = new Map();
+      for (const n of this.N) if (!n.hidden) { const k = n.word; if (!byWord.has(k) || n.T > byWord.get(k).T) byWord.set(k, n); }
+      const neuron = w => byWord.get(String(w).toLowerCase()) || null;
+      const words = pieces.flat().map(t => t.text.toLowerCase());
+      this.stimulate(words, 1.5);
+      for (let k = 0; k < steps; k++) this.step();
+      for (const n of this.N) if (!n.hidden) { const k = n.word; if (!byWord.has(k) || n.T > byWord.get(k).T) byWord.set(k, n); }
+      const heat = w => { const n = neuron(w); return n ? n.T + 0.5 * n.lit : 0.2; };
+      const radiant = this.fnPower("Ne"), te = this.fnPower("Te"), fe = this.fnPower("Fe"), fi = this.fnPower("Fi");
+      const warm = this.brain ? this.brain.personality.target.heat : 0.85;
+      const said = t => {
+        if (t.keep) return t.text;
+        const n = neuron(t.text);
+        if (!n) return t.text;
+        let best = null, bestT = n.T;
+        for (const l of this.linksOf(n)) {
+          const o = this.get(l.a === n.id ? l.b : l.a);
+          if (!o || o.word === n.word || o.hidden || /[=@#·]/.test(o.word) || o.word.includes(" ")) continue;
+          const alike = l.kind === "role" || l.proved;
+          if (alike && o.T * (0.6 + 0.4 * radiant) * l.w > bestT) { best = o; bestT = o.T * l.w; }
+        }
+        let w = best && !small.has(t.text.toLowerCase()) ? best.word : t.text;
+        if (w.length > 3 && r() < 0.03 * Math.min(1.5, n.T) * warm) { const i = 1 + Math.floor(r() * (w.length - 2)); w = w.slice(0, i - 1) + w[i] + w[i - 1] + w.slice(i + 1); }
+        return w;
+      };
+      const kept = piece => piece.filter(t => t.keep || !small.has(t.text.toLowerCase()) || heat(t.text) > C.T_COLD * (0.6 + 0.6 * te));
+      const left = pieces.map((p, i) => i), out = [];
+      let last = null;
+      const strict = this.d.strict || 0.5;
+      while (left.length) {
+        let pick = left[0], top = -1e9;
+        for (const i of left) {
+          const first = pieces[i][0], n = neuron(first.text);
+          const ni = last && n ? (last.next.get(n.id) || 0) : 0;
+          const s = heat(first.text) + 1.5 * ni + (i === left[0] ? 2.5 * strict : 0) + 0.6 * (r() - 0.5) * warm;
+          if (s > top) { top = s; pick = i; }
+        }
+        left.splice(left.indexOf(pick), 1);
+        const words = kept(pieces[pick]).map(said);
+        if (words.length) out.push(words.join(" "));
+        const lw = pieces[pick][pieces[pick].length - 1];
+        last = neuron(lw.text) || last;
+      }
+      if (chatter.length && r() < 0.15 + 0.25 * (fe + fi) / 2 * warm) {
+        const hot = chatter.map(w => [w, heat(w) + 0.3 * r()]).sort((a, b) => b[1] - a[1])[0][0];
+        if (r() < 0.6) out.unshift(hot); else out.push(hot);
+      }
+      return out.join(" ");
+    }
+
     stats() {
       const N = this.N;
       let re = 0, im = 0; for (const n of N) { re += Math.cos(n.theta); im += Math.sin(n.theta); }

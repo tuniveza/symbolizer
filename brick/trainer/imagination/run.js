@@ -12,6 +12,14 @@ const S = require("./sim.js");
 const fs = require("fs");
 // --serve: stay running and take one job per line (one answer per line), so callers skip starting node each time.
 // The network is still read from its file for every job, exactly as a fresh run would, so results are identical.
+// (Only speak keeps the saved network between jobs: it only reads it, and reads it again when the file changes.)
+let speakCache = null;
+function savedNetwork(file) {
+  const st = fs.statSync(file), stamp = file + "|" + st.mtimeMs + "|" + st.size;
+  if (!speakCache || speakCache.stamp !== stamp)
+    speakCache = { stamp, net: new S.Network({ neurons: [] }, 1, null, null, { intuition: true }).load(JSON.parse(fs.readFileSync(file, "utf8"))) };
+  return speakCache.net;
+}
 function handle(job, write) {
   if (job.list) { write(JSON.stringify(S.ARCHETYPES.map(a => ({ name: a.name, type: a.type, bias: a.bias, yours: a.yours, line: a.line })))); return; }
   const brain = job.brain ? S.findArchetype(job.brain) : null;
@@ -33,6 +41,28 @@ function handle(job, write) {
     for (const [w, role] of Object.entries(job.roles || {})) for (const n of net.N) if (n.word === w) n.role = role;
     if (job.roles) net.slots(job.roles);
     return { net, fresh: !saved };
+  }
+
+  // The archetype's network says each meaning in its own words (see Network.speak).
+  // Each meaning runs on its own local sub-network, copied from the saved network, which is read once (and kept
+  // while --serve runs, until the file changes); it is never changed. local: false = the old way (slow): the whole
+  // saved network, loaded fresh for each meaning.
+  if (job.task === "speak") {
+    const out = [];
+    let k = 0;
+    if (job.local === false) {
+      const saved = JSON.parse(fs.readFileSync(job.state, "utf8"));
+      for (const pieces of job.meanings || []) {
+        const net = new S.Network({ neurons: [] }, seed + k++, null, brain, { intuition: true }).load(saved);
+        out.push(net.speak(pieces, { small: job.small, chatter: job.chatter, steps: job.steps, local: false }));
+      }
+    } else {
+      const full = savedNetwork(job.state);
+      for (const pieces of job.meanings || [])
+        out.push(full.speak(pieces, { small: job.small, chatter: job.chatter, steps: job.steps, cap: job.cap, hops: job.hops, seed: seed + k++, brain }));
+    }
+    write(JSON.stringify({ said: out }));
+    return;
   }
 
   if (job.task === "learn") {

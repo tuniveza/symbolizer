@@ -1,25 +1,23 @@
-"""The brain decides the details: what each word of a direction is for, and the direction said in brick's words.
+"""The digital brain's Ni, second half: what each word of a direction is for, and the direction said in brick's words.
 
-trainer/picker.py picks the brick (write, set, wait ...). This picks the rest: for every word, its role
+trainer/picker.py picks the brick (write, set, wait ...). This reads the rest: for every word, its role
   W  words to show        C  a colour        P  a place          N  how many times    T  a time
-  F  the frame of words to show ('text that says', 'the words', 'saying')
+  F  the frame of words to show or a name ('text that says', 'the words', 'called', 'as')
   B  the background       K  the console     Q  the text itself ('make the writing red')
-  G  brick's own window   M  a name ('called My Game')                S  a size ('800 by 600')
-  D  a file ('notes.txt')
+  G  brick's own window   M  a name ('called My Game')   S  a size ('800 by 600')   D  a file ('notes.txt')
+  A  an amount or value ('set score to 5', 'count to 10')               H  a button
   V  the action word      X  chatter and small words
-and then says the direction again from those roles, exactly ('after 2 seconds write hi in red at the top 3 times'),
-which brick builds, to check.
+then (Ti) checks the roles hold together and (Ne) tries others when they don't, and says the direction again
+exactly ('after 2 seconds write hi in red at the top 3 times'). trainer/mind.py is where brick asks the brain.
 
-It learns from the scrambler (trainer/scrambler.py): it writes each messy direction from known parts, so it knows
-exactly which word is which. Fresh seeds, never the bench's paragraphs. A structured perceptron (like the cutter):
-each word's role is weighed by the word itself, its neighbours, its shape, the ideas brick's universe knows for it,
-and the role before it; the best roles for the whole direction win (Viterbi). It learns from its own mistakes.
+It learns strictly from its own imagination: the archetypes voice directions in their personalities
+(trainer/voices.py), each keeping its meaning, so each word's role can be read off the meaning. A structured
+perceptron: each word's role is weighed by the word, its neighbours, its shape and the role before it; the best
+roles for the whole direction win (Viterbi), each word only in a role it can fit. It learns from its own mistakes.
 The links are kept in trainer/data/brain-details.txt.
 
-    python3 -m trainer.details learn [count]     learn the roles (about a minute)
+    python3 -m trainer.details learn             learn from the archetypes' practice
     python3 -m trainer.details try "a line"      each word's role, and the direction said again
-    python3 -m trainer.details score [count]     the brain's whole readings against fresh scrambled paragraphs and
-                                                 the bench: same program as the meant one, or not
 """
 
 import os
@@ -32,67 +30,20 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
 LINKS = os.path.join(HERE, "data", "brain-details.txt")
-ROLES = ["W", "F", "C", "P", "N", "T", "B", "K", "Q", "G", "M", "S", "D", "V", "X"]
+ROLES = ["W", "F", "C", "P", "N", "T", "B", "K", "Q", "G", "M", "S", "D", "A", "H", "V", "X"]
 FILE_NAME = re.compile(r"[\w-]+\.(?:txt|csv|md|log|json|dat)$", re.IGNORECASE)
 WINDOW_WORDS = {"window", "windows", "win", "windw"}
 VERBS = {"write", "say", "show", "print", "display", "type", "put", "make", "turn", "set", "paint", "move", "clear",
          "wipe", "cls", "wait", "pause", "sleep", "hold", "add", "open", "create", "start", "pop", "resize", "size",
          "name", "call", "title", "rename", "label", "colour", "color", "close", "shut", "up", "save", "store",
-         "record", "keep", "stash", "away", "append", "load", "read", "get", "delete", "remove", "erase"}
+         "record", "keep", "stash", "away", "append", "load", "read", "get", "delete", "remove", "erase", "ask",
+         "question", "prompt", "let", "plus", "increase", "take", "subtract", "minus", "decrease", "create", "start",
+         "count", "countdown", "beep", "ding", "stop", "quit", "end", "exit", "change"}
 SIDES = {"left", "right", "top", "bottom", "middle", "centre", "center", "top-left", "top-right", "bottom-left",
          "bottom-right"}
 
 
-# ---------------- examples with known roles, from the scrambler ----------------
-
-def words_roles(text, role):
-    """A piece of a direction -> [(word, role)]: inside a mixed piece ('make the bg red') each word gets its own."""
-    out = []
-    for w in text.split():
-        low = w.lower().strip(".,!?")
-        if role != "mixed":
-            out.append((w, role))
-        elif low in SIDES:
-            out.append((w, "P"))
-        elif low in ("bg", "background"):
-            out.append((w, "B"))
-        elif low == "console":
-            out.append((w, "K"))
-        elif low in ("text", "writing"):
-            out.append((w, "Q"))
-        elif re.fullmatch(r"\d+", low):
-            out.append((w, "T"))
-        elif low in VERBS:
-            out.append((w, "V"))
-        else:
-            out.append((w, "C" if low in COLOURS else "X"))
-    return out
-
-
-COLOURS = set()
-
-
-def mess(pairs):
-    """The scrambler's damage (trainer/scrambler.mess), keeping each word's role."""
-    from trainer import scrambler
-    out = []
-    for word, role in pairs:
-        low = word.lower()
-        if role not in ("W", "D"):                      # (words to show and file names stay as typed)
-            if low in ("the", "a", "of") and random.random() < 0.5:
-                continue
-            if low in scrambler.SHORT and random.random() < 0.4:
-                word = scrambler.SHORT[low]
-            if random.random() < 0.04:
-                word = scrambler.typo(word)
-            if random.random() < 0.03:
-                out.append((word, role))
-            word = word.upper() if random.random() < 0.06 else word
-        out.append((word, role))
-    return out
-
-
-# ---------------- brick's own window: practice directions with known parts, like the scrambler's ----------------
+# ---------------- meanings the archetypes are handed to voice (brick's own window, files) ----------------
 
 NAMES = ["Game", "My Game", "Painter", "Hello", "Notes", "Clock", "Snake", "Quiz", "Paint", "Space Race"]
 WINDOW_SIDES = ["left", "right", "top", "bottom", "middle", "top-left", "bottom-right"]
@@ -236,61 +187,222 @@ def file_show():
 FILE_MAKERS = [file_save, file_save, file_add, file_write, file_load, file_delete, file_show]
 
 
+# ---------------- questions, values, lists, counting, buttons, beeps ----------------
+
+QUESTIONS = ["What is your name?", "How old are you?", "Your favourite colour?", "Pick a number", "Ready?",
+             "Where do you live?"]
+ASK_NAMES = ["name", "age", "colour", "guess", "answer", "place"]
+VALUES = ["score", "lives", "level", "speed", "points", "count"]
+LISTS = ["fruits", "names", "pets", "jobs", "colours", "games"]
+ITEMS = ["apple", "pear", "plum", "cat", "dog", "fish", "red", "blue", "Bob", "Ann", "chess", "tennis"]
+BUTTONS = [("go", "Go"), ("start", "Start"), ("quit", "Quit"), ("play", "Play"), ("ok", "OK"), ("next", "Next")]
+
+
+def question():
+    from trainer import scrambler
+    q, n = random.choice(QUESTIONS), random.choice(ASK_NAMES)
+    return scrambler.Part(f'ask "{q}" as {n}', {"verb": ["ask", "ask me", "ask the user"], "words": [f'"{q}"'],
+                                                "as": [f"as {n}"]}, keep=["words"])
+
+
+def value():
+    from trainer import scrambler
+    v, n = random.choice(VALUES), random.randint(0, 20)
+    return scrambler.Part(f"set {v} to {n}", {"verb": ["set", "make", "let"], "name": [v, f"the {v}"],
+                                              "to": [f"to {n}", f"= {n}", f"be {n}"]}, keep=["name"])
+
+
+def change():
+    """'add 3 to score' (after 'set score to 0': it needs the value first)."""
+    from trainer import scrambler
+    v, n = random.choice(VALUES), random.randint(1, 9)
+    up = random.random() < 0.6
+    part = scrambler.Part(f"add {n} to {v}" if up else f"take {n} from {v}",
+                          {"verb": (["add", "plus", "increase"] if up else ["take", "subtract", "minus"]),
+                           "to": [f"{n} to {v}" if up else f"{n} from {v}", f"{n} {'to' if up else 'from'} the {v}"]})
+    part.before = [f"set {v} to {random.randint(10, 20)}"]
+    return part
+
+
+def a_list():
+    from trainer import scrambler
+    n, items = random.choice(LISTS), random.sample(ITEMS, random.randint(0, 3))
+    said = ", ".join(items[:-1]) + (" and " if len(items) > 1 else "") + (items[-1] if items else "")
+    pieces = {"verb": ["make", "create", "start"], "list": [f"a list called {n}", f"a list named {n}", f"list {n}"]}
+    if items:
+        pieces["with"] = [f"with {said}", f"of {said}", f"holding {said}"]
+    return scrambler.Part(f"make a list called {n}" + (f" with {said}" if items else ""), pieces, keep=["list", "with"])
+
+
+def counting():
+    from trainer import scrambler
+    a = random.randint(2, 20)
+    kind = random.choice(["to", "from", "down"])
+    if kind == "to":
+        return scrambler.Part(f"count to {a}", {"verb": ["count", "count up"], "to": [f"to {a}", f"up to {a}"]})
+    if kind == "from":
+        b = a + random.randint(3, 10)
+        return scrambler.Part(f"count from {a} to {b}", {"verb": ["count"], "to": [f"from {a} to {b}"]})
+    return scrambler.Part(f"count down from {a}", {"verb": ["count down", "countdown"], "to": [f"from {a}"]})
+
+
+def button():
+    from trainer import scrambler
+    (n, label), colour = random.choice(BUTTONS), random.choice(scrambler.COLOURS + [None, None])
+    side = random.choice(WINDOW_SIDES + [None, None])
+    tidy = f"make a button called {n} saying {label}" + (f" in {colour}" if colour else "") + \
+        (f" at the {side}" if side else "")
+    pieces = {"verb": ["make", "add", "put", "create"], "button": [f"a button called {n}", f"a button named {n}",
+                                                                 f"button {n}"],
+              "words": [f"saying {label}", f'that says "{label}"', f"with {label} on it", f'"{label}"']}
+    if colour:
+        pieces["colour"] = [f"in {colour}", colour, f"{colour} coloured"]
+    if side:
+        pieces["place"] = [f"at the {side}", side, f"on the {side}"]
+    return scrambler.Part(tidy, pieces, keep=["button", "words"])
+
+
+def plain():
+    from trainer import scrambler
+    tidy, ways = random.choice([("beep", ["beep", "ding", "make a beep", "go ding"]),
+                                ("stop", ["stop", "quit", "end", "exit", "stop the program"]),
+                                ("wait for a key", ["wait for a key", "wait till i press a key", "wait for any key"])])
+    return scrambler.Part(tidy, {"all": ways})
+
+
+PHRASES = [("orange", "juice"), ("red", "wine"), ("black", "hole"), ("green", "tea"), ("blue", "sky"),
+           ("white", "board"), ("gold", "fish"), ("pink", "panther"), ("yellow", "submarine"), ("red", "alert"),
+           ("green", "light"), ("blue", "moon")]
+
+
+def look_alike():
+    """A colour word and a word it makes a known thing with: shown together ('write orange juice at the top'), or
+    the colour of a word ('write juice in orange'): the same words, two meanings, told apart by what links them."""
+    from trainer import scrambler
+    (colour, noun), side = random.choice(PHRASES), random.choice(scrambler.SIDES + [None])
+    where = f" at the {side}" if side else ""
+    if random.random() < 0.5:
+        other = random.choice([c for c in scrambler.COLOURS if c != colour] + [None, None])
+        return scrambler.Part(f"write {colour} {noun}" + (f" in {other}" if other else "") + where,
+                              {"verb": ["write", "show", "type", "put"], "words": [f"{colour} {noun}", f'"{colour} {noun}"',
+                                                                                   f"the words {colour} {noun}"],
+                               **({"colour": [f"in {other}", f"with {other} color"]} if other else {}),
+                               **({"place": [f"at the {side}", side]} if side else {})}, keep=["words"])
+    return scrambler.Part(f"write {noun} in {colour}" + where,
+                          {"verb": ["write", "show", "type", "put"], "words": [noun, f'"{noun}"'],
+                           "colour": [f"in {colour}", f"with {colour} color", f"in the color {colour}"],
+                           **({"place": [f"at the {side}", side]} if side else {})}, keep=["words"])
+
+
+def colour_as_words():
+    """A colour word that is itself the thing to show ('can you write purple', 'write pink in pink')."""
+    from trainer import scrambler
+    word, colour = random.choice(scrambler.COLOURS), random.choice(scrambler.COLOURS + [None, None])
+    side = random.choice(scrambler.SIDES + [None, None])
+    tidy = f"write {word}" + (f" in {colour}" if colour else "") + (f" at the {side}" if side else "")
+    pieces = {"verb": ["write", "say", "show", "type", "can you write", "put"],
+              "words": [word, f"the word {word}", f'"{word}"', f"the text {word}"]}
+    if colour:
+        pieces["colour"] = [f"in {colour}", f"in the color {colour}", f"with {colour} color"]
+    if side:
+        pieces["place"] = [f"at the {side}", f"on the {side} side of the screen", f"at {side} side of screen"]
+    return scrambler.Part(tidy, pieces, keep=["words"])
+
+
+OTHER_MAKERS = [question, question, value, change, change, a_list, counting, button, button, plain,
+                look_alike, look_alike, look_alike, colour_as_words, colour_as_words, colour_as_words]
+
+
 def makers():
     from trainer import scrambler
-    return scrambler.MAKERS + WINDOW_MAKERS + FILE_MAKERS
+    return scrambler.MAKERS + WINDOW_MAKERS + FILE_MAKERS + OTHER_MAKERS
 
 
-def example():
-    """One messy direction (the scrambler's kinds, or brick's own window) with every word's role and its tidy
-    words."""
-    from trainer import scrambler
-    COLOURS.update(scrambler.COLOURS)
-    part = random.choice(makers())()
-    chosen = {name: random.choice(ways) for name, ways in part.pieces.items()}
-    names = list(chosen)
-    random.shuffle(names)
-    pairs = []
-    for name in names:
-        said = chosen[name]
-        if not said:
+# ---------------- the digital brain's own practice: the archetypes' voiced directions ----------------
+
+def voiced_roles(part, tidy):
+    """One direction an archetype voiced (part) and its meaning (tidy) -> [(word, role)], each word's role read off
+    what the meaning keeps: the words to show, the file, colours, places, numbers stay exactly as they were."""
+    from trainer import voices
+    from actions import colour_words
+    words = re.findall(r'"[^"]*"|\S+', part)
+    low = [w.lower().strip(".,!?;:") for w in words]
+    roles = ["X"] * len(words)
+    for shown in voices.shows(tidy):                   # the words to show: quoted, or the same words in a row
+        target = shown.lower().split()
+        for i, w in enumerate(words):
+            if w.startswith('"') and w.strip('"').lower().strip(".,!?;:") == shown.lower():
+                roles[i] = "W"
+                break
+            if low[i:i + len(target)] == target and all(r == "X" for r in roles[i:i + len(target)]):
+                roles[i:i + len(target)] = ["W"] * len(target)
+                break
+    name = re.search(r"(?:called|name the window|^set|^ask \"[^\"]*\" as) (.+?)(?= saying | with | to \d| \d+ by \d+"
+                     r"| in \w+| at the |$)", tidy)
+    if not name and re.match(r"^(add|take) \d+ (to|from) (\w+)$", tidy):
+        name = re.match(r"^(?:add|take) \d+ (?:to|from) (\w+)()$", tidy)
+    load_as = re.search(r" as (\w+)$", tidy)
+    items = re.match(r"^make a list called \w+ with (.+)$", tidy)
+    item_words = {w.lower() for w in re.split(r",\s*|\s+and\s+", items.group(1))} if items else set()
+    tidy_low = tidy.lower()
+    colours, verbs_ = set(colour_words()), VERBS | action_words()
+    for i, w in enumerate(low):
+        if roles[i] != "X":
             continue
-        if name == "words":
-            m = re.match(r'(text that says |the words |saying )?(.*)$', said)
-            frame, shown = m.group(1) or "", m.group(2)
-            pairs += [(w, "F") for w in frame.split()] + \
-                ([(shown, "W")] if shown.startswith('"') else [(w, "W") for w in shown.split()])
-        elif name == "verb":
-            pairs += mess([(w, "V") for w in said.split()])
-        elif name == "colour":
-            pairs += mess([(w, "C" if w in scrambler.COLOURS else "X") for w in said.split()])
-        elif name == "place":
-            pairs += mess([(w, "P" if w in SIDES else "X") for w in said.split()])
-        elif name == "count":
-            pairs += mess([(w, "N" if re.search(r"\d", w) else "X") for w in said.split()])
-        elif name == "later":
-            pairs += mess([(w, "T" if re.search(r"\d", w) else "X") for w in said.split()])
-        elif name == "window":
-            pairs += mess([(w, "G" if w.lower() in WINDOW_WORDS else "X") for w in said.split()])
-        elif name == "name":
-            m = re.match(r"((?:called|named|titled|with title|title|to) )?(.*)$", said)
-            pairs += [(w, "F") for w in (m.group(1) or "").split()] + [(w, "M") for w in m.group(2).split()]
-        elif name == "size":
-            pairs += mess([(w, "S" if re.search(r"\d", w) else "X") for w in said.split()])
-        elif name == "file":
-            pairs += [(w, "D") if FILE_NAME.match(w) else (w, "X") for w in said.split()]
-            pairs = pairs[:len(pairs) - len(said.split())] + mess(pairs[len(pairs) - len(said.split()):]) \
-                if not any(FILE_NAME.match(w) for w in said.split()[:-1]) else pairs
-        elif name == "as":
-            words_ = said.split()
-            pairs += [(words_[0], "F")] + [(w, "M") for w in words_[1:]]
-        else:
-            pairs += mess(words_roles(said, "mixed"))
-    if random.random() < 0.25:
-        pairs = [(w, "X") for w in random.choice(scrambler.CHATTER_BEFORE).split()] + pairs
-    if random.random() < 0.15:
-        pairs += [(w, "X") for w in random.choice(scrambler.CHATTER_AFTER).split()]
-    return pairs, part.tidy
+        if FILE_NAME.match(w) and w in tidy_low:
+            roles[i] = "D"
+        elif w in item_words:
+            roles[i] = "W"
+        elif w in ("button", "btn") and "button" in tidy:
+            roles[i] = "H"
+        elif w in colours and re.search(rf"\b{re.escape(w)}\b", tidy_low):
+            roles[i] = "C"
+        elif w in SIDES and re.search(rf"\b{re.escape(w)}\b", tidy_low):
+            roles[i] = "P"
+        elif re.search(r"\d", w):
+            n = re.search(r"\d+", w).group()
+            if re.search(rf"\b{n} by \d+|\d+ by {n}\b", tidy):
+                roles[i] = "S"
+            elif re.search(rf"\b{n} times\b", tidy):
+                roles[i] = "N"
+            elif re.search(rf"(after|wait) {n} second", tidy):
+                roles[i] = "T"
+            elif re.search(rf"\b{n}\b", tidy):
+                roles[i] = "A"
+        elif name and w in name.group(1).lower().split() or load_as and w == load_as.group(1):
+            roles[i] = "M"
+        elif (w in ("bg", "bkg", "backdrop") or fits(w, "B")) and "background" in tidy:
+            roles[i] = "B"
+        elif (w == "terminal" or fits(w, "K")) and "console" in tidy:
+            roles[i] = "K"
+        elif (w in ("font", "txt") or fits(w, "Q")) and tidy.startswith("set the colour"):
+            roles[i] = "Q"
+        elif fits(w, "G") and "window" in tidy:
+            roles[i] = "G"
+        elif w in ("saying", "says", "that", "words", "called", "named", "titled", "as", "with", "of") and \
+                (i + 1 < len(roles) and (low[i + 1] in ("says", "that", "words") or i + 1 < len(words))):
+            roles[i] = "F" if any(r == "W" or r == "M" for r in roles[i + 1:i + 4]) else "X"
+        elif w in verbs_ or near(w, SLIP_VERBS) and not filler(w):
+            roles[i] = "V"
+        elif w == "as" and load_as:
+            roles[i] = "F"
+    return list(zip(words, roles))
+
+
+def voiced_examples(limit=None):
+    """[(pairs of (word, role), tidy)] from trainer/data/voiced-practice.jsonl (the archetypes' directions)."""
+    import json
+    from trainer import voices
+    found = []
+    if not os.path.isfile(voices.PRACTICE):
+        return found
+    from trainer.picker import NEWEST
+    with open(voices.PRACTICE, encoding="utf-8") as f:
+        for row in [r for r in f if r.strip()][-NEWEST:]:
+            d = json.loads(row)
+            for part, tidy in zip(d["parts"], d["tidy"]):
+                found.append((voiced_roles(part, tidy), tidy))
+    return found[:limit] if limit else found
 
 
 # ---------------- what the brain sees in each word ----------------
@@ -519,7 +631,8 @@ def place_of(words):
 
 
 ALL_BRICKS = ["write", "set", "wait", "clear", "put", "window write in window", "window window open plan",
-              "window window phrase", "save", "add", "load", "delete"]
+              "window window phrase", "save", "add", "load", "delete", "ask", "take", "make", "count", "window make",
+              "beep", "stop"]
 
 
 def key_part(brick, words, roles):
@@ -529,19 +642,26 @@ def key_part(brick, words, roles):
     return {"write": "W" in present or "D" in present, "put": "K" in present or "W" in present,
             "place": "W" in present,
             "set": "C" in present and bool(present & {"B", "Q"}),
-            "wait": "T" in present and "W" not in present,
+            "wait": ("T" in present or any(w.lower().strip(".,!?;:") == "key" for w in words)) and "W" not in present,
             "clear": bool({near(v, {"clear", "wipe", "cls"}) for v in verbs} - {None}),
             "window write in window": "G" in present and "W" in present,
             "window window open plan": "G" in present, "window window phrase": "G" in present,
-            "save": "D" in present and "W" in present, "add": "D" in present and "W" in present,
+            "save": "D" in present and "W" in present,
+            "add": "D" in present and "W" in present or "M" in present and "A" in present,
             "load": "D" in present and "W" not in present, "delete": "D" in present and "W" not in present,
-            "remove": "D" in present and "W" not in present}.get(brick, True)
+            "remove": "D" in present and "W" not in present,
+            "ask": "M" in present, "take": "M" in present and "A" in present,
+            "make": "H" in present or any(w.lower().strip(".,!?;:") == "list" for w in words),
+            "count": "A" in present, "window make": "H" in present,
+            "beep": bool(verbs & {"beep", "ding"}), "stop": bool(verbs & {"stop", "quit", "end", "exit"})}.get(brick, True)
 
 
 USES = {"write": set("WFCPNTV"), "console": set("KPVF"), "set": set("CBQVF"), "clear": set("V"), "wait": set("TV"),
         "window write": set("WFCPNTGV"), "window open": set("GMFSCV"), "window phrase": set("GMFSCV"),
         "file save": set("WDVF"), "file add": set("WDVF"), "file write": set("WDVF"), "file load": set("DMFV"),
-        "file delete": set("DV"), "file show": set("DV")}
+        "file delete": set("DV"), "file show": set("DV"),
+        "ask": set("WFMV"), "value": set("MAVF"), "change": set("MAVF"), "list": set("MWVF"), "count": set("AV"),
+        "button": set("MWFCPHV"), "plain": set("V"), "key": set("V")}
 
 
 def say_again(brick, words, roles):
@@ -558,13 +678,22 @@ def say_again(brick, words, roles):
            "set": {"make", "turn", "set", "paint", "colour", "color", "change"}, "console": {"put", "move", "place"},
            "file save": {"save", "store", "record", "keep", "stash", "put"}, "file add": {"add", "append"},
            "file write": {"write"}, "file load": {"load", "open", "read", "get"},
-           "file delete": {"delete", "remove", "erase"}, "file show": {"show", "display"}}
+           "file delete": {"delete", "remove", "erase"}, "file show": {"show", "display"},
+           "ask": {"ask", "question", "prompt"}, "value": {"set", "make", "let", "change"},
+           "change": {"add", "plus", "increase", "take", "subtract", "minus", "decrease"},
+           "list": {"make", "create", "start"}, "count": {"count", "countdown"},
+           "button": {"make", "add", "put", "create"}, "plain": {"beep", "ding", "stop", "quit", "end", "exit", "make", "go"},
+           "key": {"wait", "press"}}
     file_kind = {"save": "file save", "add": "file add", "write": "file write", "load": "file load",
                  "delete": "file delete", "show": "file show"}
     if any(r == "D" for r in roles):
         kind = file_kind[text.split()[0]]
     else:
-        kind = None
+        kind = ("ask" if text.startswith("ask ") else "list" if text.startswith("make a list") else
+                "button" if text.startswith("make a button") else "count" if text.startswith("count ") else
+                "key" if text == "wait for a key" else "plain" if text in ("beep", "stop") else
+                "change" if re.match(r"^(add|take) \S+ (to|from) ", text) else
+                "value" if re.match(r"^set (?!the )\S+ to ", text) else None)
     kind = kind or ("window write" if text.split(" in the window")[0] != text else "window open" if text.startswith("open")
             else "window phrase" if "the window" in text else "console" if "console" in text
             else "set" if text.startswith("set") else "clear" if text.startswith("clear")
@@ -580,11 +709,33 @@ def say_again(brick, words, roles):
     return text if found <= USES[kind] else None
 
 
+def accounts_for(text, roles):
+    """Does the reading use every word that isn't chatter (a time can't vanish into 'clear the screen')?"""
+    file_kind = {"save": "file save", "add": "file add", "write": "file write", "load": "file load",
+                 "delete": "file delete", "show": "file show"}
+    if any(r == "D" for r in roles):
+        kind = file_kind.get(text.split()[0])
+    else:
+        kind = ("ask" if text.startswith("ask ") else "list" if text.startswith("make a list") else
+                "button" if text.startswith("make a button") else "count" if text.startswith("count ") else
+                "key" if text == "wait for a key" else "plain" if text in ("beep", "stop") else
+                "change" if re.match(r"^(add|take) \S+ (to|from) ", text) else
+                "value" if re.match(r"^set (?!the )\S+ to ", text) else
+                "window write" if " in the window" in text else "window open" if text.startswith("open") else
+                "window phrase" if "the window" in text else "console" if "console" in text else
+                "set" if text.startswith("set") else "clear" if text.startswith("clear") else
+                "wait" if text.startswith("wait") else "write")
+    return kind in USES and {r for r in roles if r != "X"} <= USES[kind]
+
+
 def say_again_parts(brick, words, roles):
     part = {r: [w for w, x in zip(words, roles) if x == r] for r in ROLES}
     later = number(part["T"]) if part["T"] else None
     if part["D"]:
         return say_file(brick, part)
+    other = say_other(brick, part, words)
+    if other:
+        return other
     if part["G"]:
         return say_window(brick, part, later)
     if brick in ("put", "place", "move", "write") and part["K"] and not part["W"]:
@@ -617,6 +768,48 @@ def say_again_parts(brick, words, roles):
 def sizes(words):
     found = [int(n) for w in words for n in re.findall(r"\d+", w)]
     return found if len(found) == 2 else None
+
+
+def say_other(brick, part, words):
+    """Questions, values, lists, counting, buttons, beeps -> text, or None."""
+    low = {w.lower().strip(".,!?;:") for w in words}
+    name = " ".join(part["M"]).strip(".,!?;:")
+    shown = " ".join(part["W"]).strip(".,!?;:").strip('"')
+    amounts = [number([w]) for w in part["A"]]
+    loose = part["C"] or part["P"] or part["N"] or part["T"] or part["G"] or part["K"] or part["B"] or part["S"]
+    if part["H"]:
+        if not (name and shown) or part["N"] or part["T"] or part["G"] or part["S"]:
+            return None
+        colour, place = colour_of(part["C"]) if part["C"] else None, place_of(part["P"]) if part["P"] else None
+        if part["C"] and not colour or part["P"] and not place:
+            return None
+        return f"make a button called {name} saying {shown}" + (f" in {colour}" if colour else "") + \
+            (f" at the {place}" if place else "")
+    if loose:
+        return None
+    if brick == "ask" and name and len(part["M"]) == 1:
+        return f'ask "{shown}" as {name}' if shown else None
+    if brick == "set" and name and len(part["M"]) == 1 and len(amounts) == 1 and not shown:
+        return f"set {name} to {amounts[0]}"
+    if brick in ("add", "take") and name and len(part["M"]) == 1 and len(amounts) == 1 and not shown:
+        return f"add {amounts[0]} to {name}" if brick == "add" else f"take {amounts[0]} from {name}"
+    if brick == "make" and "list" in low and name and len(part["M"]) == 1:
+        items = [w.strip(",.") for w in part["W"] if w.lower().strip(",.") != "and"]
+        said = ", ".join(items[:-1]) + (" and " if len(items) > 1 else "") + (items[-1] if items else "")
+        return f"make a list called {name}" + (f" with {said}" if items else "")
+    if brick == "count" and amounts and not shown and not name:
+        if len(amounts) == 2:
+            return f"count from {amounts[0]} to {amounts[1]}"
+        if len(amounts) == 1:
+            return f"count down from {amounts[0]}" if low & {"down", "countdown"} else f"count to {amounts[0]}"
+    if not (shown or name or amounts):
+        if brick == "beep":
+            return "beep"
+        if brick == "stop":
+            return "stop"
+        if brick == "wait" and "key" in low:
+            return "wait for a key"
+    return None
 
 
 def say_file(brick, part):
@@ -692,7 +885,8 @@ FILLER = {"secs", "sec", "seconds", "second", "s", "times", "time", "screen", "s
           "a", "with", "at", "to", "on", "in", "rn", "thx", "thanks", "pls", "please", "lol", "yeah", "ok", "so", "um",
           "hey", "just", "now", "right", "and", "then", "can", "you", "u", "real", "quick", "also", "&", "x", "for",
           "my", "new", "that", "up", "by", "size", "wide", "high", "inside", "background", "end", "into", "onto",
-          "away", "file", "down"}
+          "away", "file", "down", "list", "key", "any", "program", "till", "until", "i", "press", "me", "user",
+          "plus", "minus", "sound", "go", "make"}
 
 
 def filler(word):
@@ -814,13 +1008,17 @@ def fits(word, role):
             low in ("tet", "txt")
     if role == "F":
         return {low, near} & {"text", "that", "says", "the", "words", "saying", "called", "named", "titled", "title",
-                              "with", "to", "as"} != set()
+                              "with", "to", "as", "of", "holding", "on", "it"} != set()
     if role == "G":
         return {low, near} & WINDOW_WORDS != set() or slip(low, {"window"}) is not None
     if role == "S":
         return bool(re.search(r"\d", low))
     if role == "M":
-        return True
+        return not filler(word) or low in ("name", "count", "colour")
+    if role == "A":
+        return bool(re.search(r"\d", low)) or low in NUMBER_WORDS
+    if role == "H":
+        return {low, near} & {"button", "btn", "buttons"} != set() or slip(low, {"button"}) is not None
     if role == "D":
         return bool(FILE_NAME.match(word.strip(".,!?;:\"'") if not FILE_NAME.match(word) else word))
     if role == "V":
@@ -887,111 +1085,23 @@ def reading(picked, words, roles):
     return None
 
 
-# ---------------- learning and the score ----------------
+# ---------------- learning ----------------
 
-def learn(count=8000, seed=4242):
+def learn(count=None, seed=4242):
+    """The brain learns each word's role strictly from its archetypes' voiced directions."""
     random.seed(seed)
-    examples = [example()[0] for _ in range(count)]
+    examples = [pairs for pairs, _ in voiced_examples(count) if pairs]
     d = Details(path=LINKS)
     d.w = {}
-    print(f"Learning the roles of words from {count} scrambled directions")
+    print(f"Learning the roles of words from {len(examples)} directions the archetypes voiced")
     d.learn(examples)
     d.save()
     print(f"Saved {sum(len(v) for v in d.w.values())} links -> {LINKS}")
 
 
-def build(text, folder, alone):
-    from compiler import Compiler
-    words = os.path.join(folder, "mywords.txt")
-    try:
-        c = Compiler(words, ask_user=lambda question: "no")
-        return c.compile_text(text) if alone else c.compile(text)
-    except Exception:
-        return None
-    finally:
-        if os.path.exists(words):
-            os.remove(words)
-
-
-def score_one(job):
-    messy, meant = job
-    folder = tempfile.mkdtemp(prefix="details-")
-    try:
-        want = build(meant, folder, True)
-        if want is None:
-            return None
-        reading = read(messy)
-        brain = reading is not None and build(reading, folder, True) == want
-        brick = build(messy, folder, False) == want
-        return brain, brick, messy, meant, reading
-    finally:
-        import shutil
-        shutil.rmtree(folder, ignore_errors=True)
-
-
-def paragraph(window_share=0.5, others=None):
-    """A broken paragraph like the scrambler's, with directions about brick's own window (or others) mixed in."""
-    from trainer import scrambler
-    parts = [random.choice((others or WINDOW_MAKERS) if random.random() < window_share else scrambler.MAKERS)()
-             for _ in range(random.randint(2, 4))]
-    mess_text = ""
-    for k, p in enumerate(parts):
-        said = scrambler.say(p)
-        if random.random() < 0.25:
-            said = f"{random.choice(scrambler.CHATTER_BEFORE)} {said}"
-        if random.random() < 0.15:
-            said = f"{said} {random.choice(scrambler.CHATTER_AFTER)}"
-        mess_text += (random.choice(scrambler.JOINS) if k else "") + said
-    if random.random() < 0.3:
-        mess_text = mess_text.lower()
-    return mess_text + random.choice(["", "", ".", "!", "...", " lol", "??"]), [p.tidy for p in parts]
-
-
-def score(count=300, seed=777, workers=10):
-    from multiprocessing import Pool
-    from trainer import scrambler
-    os.environ.setdefault("BRICK_NEURAL", "off")
-    random.seed(seed)
-    fresh = []
-    for _ in range(count):
-        mess_text, _, tidy = scrambler.paragraph()
-        fresh.append((mess_text, " then ".join(tidy)))
-    windows, files = [], []
-    for _ in range(count):
-        mess_text, tidy = paragraph()
-        windows.append((mess_text, " then ".join(tidy)))
-    for _ in range(count):
-        mess_text, tidy = paragraph(others=FILE_MAKERS)
-        files.append((mess_text, " then ".join(tidy)))
-    bench, messy = [], None
-    with open(os.path.join(os.path.dirname(HERE), "tools", "bench40.txt"), encoding="utf-8") as f:
-        for row in f:
-            if row.startswith(("✗ ", "✓ ")):
-                messy = row[2:].strip()
-            elif row.strip().startswith("meant:") and messy:
-                bench.append((messy, row.strip()[6:].strip()))
-                messy = None
-    report = []
-    with Pool(workers) as pool:
-        for name, jobs in (("fresh scrambled paragraphs", fresh), ("with window directions", windows),
-                           ("with file directions", files), ("bench paragraphs", bench)):
-            done = [r for r in pool.map(score_one, jobs, chunksize=4) if r]
-            brain = sum(r[0] for r in done)
-            brick = sum(r[1] for r in done)
-            either = sum(r[0] or r[1] for r in done)
-            print(f"{name}: {len(done)}   brain's own reading: {brain} exact ({100 * brain / len(done):.1f}%)   "
-                  f"brick: {brick} ({100 * brick / len(done):.1f}%)   either: {either}")
-            report += [f"[{name}] brain {'RIGHT' if r[0] else 'WRONG'}  brick {'RIGHT' if r[1] else 'WRONG'}\n"
-                       f"    messy: {r[2]}\n    meant: {r[3]}\n    brain: {r[4]}\n" for r in done if not (r[0] and r[1])]
-    with open(os.path.join(HERE, "data", "brain-details-wrong.txt"), "w", encoding="utf-8") as f:
-        f.write("\n".join(report))
-
-
 def command(args):
     if args[:1] == ["learn"]:
-        return learn(int(args[1]) if args[1:] else 8000)
-    if args[:1] == ["score"]:
-        return score(int(args[1]) if args[1:] else 300)
+        return learn(int(args[1]) if args[1:] else None)
     if args[:1] == ["try"] and args[1:]:
         line = " ".join(args[1:])
         d = Details()

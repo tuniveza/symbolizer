@@ -75,13 +75,27 @@ def pick(archetype=None):
     return random.choice(found) if found else None
 
 
+YOUR_WAY = ("you often say where it goes first ('at the left side of the screen put ...', 'on the top side of the "
+            "screen write ...'); you name what to show with 'the word X', 'the text X' or 'with the words X'; you say "
+            "colours as 'in the color X' or 'put red text ...'; places as 'to the bottom right of screen', 'at left side "
+            "of window', 'on that window'; you ask politely ('can you write X', 'can you write X on the screen'); the "
+            "thing to show can itself be a colour word; lower case, few commas, the odd slip ('wirte', 'winodw')")
+
+
 def manner(archetype):
-    """The archetype's way of typing, in words for the model."""
+    """The archetype's way of typing, in words for the model. Your own archetypes type the way you do."""
     kind = archetype.get("type", "")
     letters = [("chatty, says more than needed" if kind[:1] == "E" else "terse, says as little as it can"),
                ("blunt" if kind[2:3] == "T" else "friendly"),
                ("in a hurry" if kind[3:4] == "P" else "methodical")] if len(kind) == 4 else []
+    if archetype.get("yours"):
+        return YOUR_WAY + "; " + "; ".join(letters)
     return "; ".join([STYLE.get(archetype.get("bias"), "casual")] + letters)
+
+
+def yours():
+    """The archetypes that are yours (the owner's own types)."""
+    return [a for a in archetypes() if a.get("yours")]
 
 
 # ---------------- what a tidy line means ----------------
@@ -89,7 +103,28 @@ def manner(archetype):
 def shows(tidy):
     """The words to show in one tidy line ('write hello there in red at the top 3 times' -> ['hello there'])."""
     colour = "|".join(sorted(COLOURS, key=len, reverse=True))
-    return [m.group(1) for m in re.finditer(rf"\bwrite (.+?)(?= in (?:{colour})\b| at the | \d+ times\b|$)", tidy)]
+    found = [m.group(1) for m in re.finditer(rf"\bwrite (.+?)(?= in the window\b| to [\w-]+\.txt\b| in (?:{colour})\b"
+                                             rf"| at the | \d+ times\b|$)", tidy)]
+    found += [m.group(1) for m in re.finditer(r"^(?:save|add) (.+?) to (?:the end of )?[\w-]+\.txt$", tidy)]
+    found += [m.group(1) for m in re.finditer(r'^ask "(.+?)"', tidy)]
+    found += [m.group(1) for m in re.finditer(rf"^make a button called \w+ saying (.+?)(?= in (?:{colour})\b| at the |$)",
+                                              tidy)]
+    return found
+
+
+def names(tidy):
+    """Names and items a tidy line uses, which every voicing must keep: a value's, a list's, a button's, a question's
+    answer, a list's items."""
+    found = re.findall(r"(?:called|^set|^ask \"[^\"]*\" as) (\w+)", tidy)
+    found += re.findall(r"(?:to|from) (\w+)$", tidy) if re.match(r"^(add|take) \d+ ", tidy) else []
+    items = re.match(r"^make a list called \w+ with (.+)$", tidy)
+    if items:
+        found += [w for w in re.split(r",\s*|\s+and\s+", items.group(1)) if w]
+    return found
+
+
+def files(tidy):
+    return re.findall(r"[\w-]+\.txt", tidy)
 
 
 def without_shows(text, words):
@@ -125,6 +160,16 @@ def problem(said, tidy):
                 return f"new {name}: {', '.join(sorted(set(found_words(rest, choices)) - set(found_words(plain, choices))))}"
     if sorted(re.findall(r"\d+", rest)) != sorted(re.findall(r"\d+", plain)):
         return f"numbers changed: {' '.join(re.findall(r'[0-9]+', rest)) or 'none'} for {' '.join(re.findall(r'[0-9]+', plain))}"
+    for n in names(tidy):                                   # names and items stay
+        if not re.search(rf"(?<![A-Za-z]){re.escape(n)}(?![A-Za-z])", said, re.IGNORECASE):
+            return f"the name '{n}' is missing or changed"
+    for f in files(tidy):                                   # file names stay exactly as they are
+        if f not in said:
+            return f"the file {f} is missing or changed"
+    if files(said) and set(files(said)) != set(files(tidy)):
+        return "new files"
+    if ("window" in tidy) != bool(re.search(r"win+do?w", said, re.IGNORECASE)):
+        return "the window is missing" if "window" in tidy else "a new window"
     others = [w for w in scrambler.WORDS if w not in words and re.search(rf"\b{re.escape(w)}\b", rest)
               and not any(w in k for k in words)]
     if others:
@@ -143,6 +188,8 @@ def ask(tidy, archetype):
             keep += [f"colour: {c}" for c in found_words(without_shows(line, shows(line)), COLOURS)]
             keep += [f"number: {n}" for n in re.findall(r"\d+", without_shows(line, shows(line)))]
             keep += [f"place: {p}" for p in found_words(without_shows(line, shows(line)), PLACES)]
+            keep += [f"file: {f}" for f in files(line)] + (["it's about the window"] if "window" in line else [])
+            keep += [f"name: {n}" for n in names(line)]
             out.append(f"{k}. {line}" + (f"   (keep {'; '.join(keep)})" if keep else ""))
         return "\n".join(out)
 
@@ -159,7 +206,8 @@ def ask(tidy, archetype):
         parts = json.loads(answer.get("message", {}).get("content", "{}")).get("parts", [])
     except Exception:
         return []
-    return [re.sub(r"\s+", " ", p).strip() for p in parts if isinstance(p, str)] if isinstance(parts, list) else []
+    return [re.sub(r"\s+", " ", p).strip() for p in parts if isinstance(p, str) and p.strip()] \
+        if isinstance(parts, list) else []
 
 
 def attempt(tidy, archetype=None):
@@ -197,9 +245,77 @@ def voiced(tidy_lines, archetype=None):
     return (found[0], found[2]) if found else None
 
 
+# ---------------- practice for the brain: many voiced directions, each with its meaning ----------------
+
+PRACTICE = os.path.join(HERE, "trainer", "data", "voiced-practice.jsonl")
+
+
+def practice(count, seed=None, workers=3, say=print):
+    """The archetypes voice count paragraphs (meanings handed over by the scrambler and the window and file
+    makers) -> appended to trainer/data/voiced-practice.jsonl: {mess, parts, tidy, voice}, one per line. Only
+    voicings that keep the meaning exactly are kept."""
+    import json as _json
+    import threading
+    from trainer import details
+    if neural.off() or not neural.ready():
+        say("The language model isn't here or is switched off, so the archetypes can't speak.")
+        return 0
+    rng = random.Random(seed)
+    lock, made, tried = threading.Lock(), [0], [0]
+    turns = []
+
+    def next_voice():
+        """The archetypes take turns: every one practises equally, in its own way (yours twice a round)."""
+        with lock:
+            if not turns:
+                turns.extend(archetypes() + yours())
+                rng.shuffle(turns)
+            return turns.pop() if turns else None
+
+    def one():
+        while True:
+            with lock:
+                if made[0] >= count or tried[0] >= count * 4:
+                    return
+                tried[0] += 1
+                kinds = rng.choice([scrambler.MAKERS, details.WINDOW_MAKERS, details.FILE_MAKERS,
+                                    details.OTHER_MAKERS])
+                tidy = []
+                for _ in range(rng.randint(1, 3)):
+                    part = rng.choice(kinds)()
+                    tidy += getattr(part, "before", []) + [part.tidy]   # ('set score to 10' before 'add 3 to score')
+            found = attempt(tidy, next_voice())       # every archetype in turn, each in its own way
+            if found is None or found[3] and found[3].startswith("0 parts"):   # no answer: the model is down just
+                found = None                                                  # now: wait for it, don't count
+                neural.ready()
+            if found is None:
+                import time
+                with lock:
+                    tried[0] -= 1
+                time.sleep(3)
+                continue
+            if found[3]:
+                continue
+            with lock:
+                with open(PRACTICE, "a", encoding="utf-8") as f:
+                    f.write(_json.dumps({"mess": found[0], "parts": found[1], "tidy": tidy, "voice": found[2]}) + "\n")
+                made[0] += 1
+                if made[0] % 50 == 0:
+                    say(f"  {made[0]} voiced ({tried[0]} asked)", flush=True)
+    threads = [threading.Thread(target=one) for _ in range(workers)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    say(f"The archetypes voiced {made[0]} paragraphs ({tried[0]} asked) -> {PRACTICE}")
+    return made[0]
+
+
 # ---------------- brick trainer voices N ----------------
 
 def main(args):
+    if args[:1] == ["practice"]:
+        return practice(int(args[1]) if args[1:] else 500)
     count = int(args[0]) if args and args[0].isdigit() else 10
     if neural.off() or not neural.ready():
         print("The language model isn't here or is switched off (brick trainer neural setup), so there are no voices.")

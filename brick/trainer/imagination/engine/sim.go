@@ -80,6 +80,7 @@ var (
 	cNOISE       = 0.6
 	cLITDECAY    = 0.4
 	cINBOXDECAY  = 0.015
+	cFANOUT      = 2.0
 	cIMAGINE     = 20.0
 	TrainEvery   = 20.0
 	piVar        = math.Pi
@@ -234,6 +235,7 @@ type Network struct {
 
 	// scratch for step()
 	dTheta, inc, dOmega []float64
+	fan, share          []float64
 	sb                  stepBuf
 	structVer           uint64 // bumped whenever N changes (add, remove, load)
 	items               []spreadItem

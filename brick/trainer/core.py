@@ -577,33 +577,17 @@ class Trainer:
     # ---- practice: scrambled paragraphs with known right answers ----
 
     def practise(self):
-        mess, said, tidy = scrambler.paragraph()
-        voice = None
-        if random.random() < 1 / 3 and not voices.neural.off():       # now and then in an archetype's voice instead
-            found = voices.voice(tidy)
-            if found:
-                mess, said, voice = found
-        how, missed = self.checker.check(mess, said, tidy)
-        if how is None:
+        """The digital brain practises: an archetype voices a paragraph in its own personality (the meaning is
+        handed over, and kept exactly), it joins the brain's practice, and every 100 new ones the brain learns
+        from all of them again (trainer/mind.py)."""
+        made = voices.practice(1, say=lambda *a, **k: None)
+        if not made:
             return
-        self.tally[how] += 1
-        with open(os.path.join(FOLDER, "scrambled.txt"), "a", encoding="utf-8") as f:
-            f.write(f"{'✓' if how == 'right' else '✗'} {mess}\n" + ("" if how == "right" else f"    meant: {' then '.join(tidy)}\n")
-                    + (f"    voice: {voice}\n" if voice else ""))
-        if how == "right":
-            for messy, meant in zip(said, tidy):
-                self.steer(messy, meant)
-        for messy, meant, what in missed:
-            if self.learn_toward(messy, meant) or self.steer(messy, meant, times=3):
-                continue
-            if messy not in self.state["unsure"]:
-                self.state["unsure"].add(messy)
-                outliers.add(messy, "brick refused it" if what == "refused" else "brick read it as something else",
-                             meant=meant, source="the scrambler")
-        if sum(self.tally.values()) % 20 == 0:
-            self.say("practised on 20 scrambled paragraphs: {right} read right, {wrong} misread, {refused} refused"
-                     .format(**self.tally))
-            self.tally = {"right": 0, "wrong": 0, "refused": 0}
+        self.state["voiced"] = self.state.get("voiced", 0) + 1
+        if self.state["voiced"] % 100 == 0:
+            from trainer import mind
+            mind.learn()
+            self.say(f"the brain learned again from its archetypes' practice ({self.state['voiced']} new paragraphs)")
 
     def revisit(self, count=2):
         """Work through what's waiting for a person anyway: a person deciding only makes it faster.
@@ -695,15 +679,14 @@ class Trainer:
         before = sum(1 for _ in open(os.path.join(FOLDER, "log.txt"), encoding="utf-8")) \
             if os.path.isfile(os.path.join(FOLDER, "log.txt")) else 0
         for _ in range(rounds):
-            self.digest("\n".join(self.make()), "the sentence maker")
-            self.practise()
+            self.practise()                           # the archetypes voice practice for the brain
         self.check()
         self.save(final=True)
         with open(os.path.join(FOLDER, "log.txt"), encoding="utf-8") as f:
             news = [line.split("  ", 1)[1].rstrip() for line in list(f)[before:] if "  " in line]
         learned = [n for n in news if n.startswith("learned: ")]
         taken = [n for n in news if n.startswith("took back ")]
-        lines = [f"The dictionary feeder (brick's own): {rounds} made-up directions and {rounds} scrambled paragraphs.",
+        lines = [f"The dictionary feeder: {rounds} paragraphs voiced by the brain's archetypes.",
                  f"Learned {len(learned)} new " + ("word." if len(learned) == 1 else "words.")]
         lines += [f"  {n[len('learned: '):]}" for n in learned]
         lines += [f"Took back: {n[len('took back '):]}" for n in taken]
@@ -715,14 +698,11 @@ class Trainer:
     def round(self, folders):
         if self.brain:
             self.brain.catch_up(folders)              # new lines in the pool, changed files: linked in the brain
-        for line in heard():                          # lines brick fixed (or couldn't) in your real builds
+        for line in heard():                          # lines from your real builds: kept, so the brain is scored on them
             self.add_to_pool([line])
-            self.digest(line, "your programs")
         for path, text in self.new_bricks(folders):
             self.say(f"reading {path}")
             self.add_to_pool(line for line in text.splitlines() if not line.strip().startswith("#"))
-            self.digest(text, os.path.basename(path))
-        self.digest("\n".join(self.make()), "the sentence maker")
         if self.brain:
             changed = symbols.practise()              # each symbol's universe learns a little by itself
             if changed:
@@ -737,7 +717,6 @@ class Trainer:
             if learnt:
                 self.say(f"intuition: {learnt}")
         self.practise()
-        self.revisit()
         self.check()
         self.save()
 

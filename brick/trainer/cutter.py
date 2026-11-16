@@ -221,19 +221,29 @@ def cut(tokens):
 
 # ---------------- learning, from the scrambler's paragraphs ----------------
 
+def voiced_paragraphs():
+    """[[each direction as an archetype voiced it]] from trainer/data/voiced-practice.jsonl: the digital brain's own
+    paragraphs, which know where each direction starts."""
+    import json
+    from trainer import voices
+    if not os.path.isfile(voices.PRACTICE):
+        return []
+    with open(voices.PRACTICE, encoding="utf-8") as f:
+        return [json.loads(r)["parts"] for r in f if r.strip()]
+
+
 def examples(count, seed):
-    """[(pieces of a stretch, the gold cuts)] from fresh scrambled paragraphs."""
+    """[(pieces of a stretch, the gold cuts)] from the archetypes' voiced paragraphs (joined the many ways people
+    join directions)."""
     from trainer import scrambler
     from trainer import universe as u
     random.seed(seed)
     out = []
-    for _ in range(count):
-        from trainer import details                  # the scrambler's kinds, and directions about brick's own window
-        kinds = scrambler.MAKERS * 2 + details.WINDOW_MAKERS
-        parts = [random.choice(kinds)() for _ in range(random.randint(2, 4))]
+    voiced = voiced_paragraphs()
+    for _ in range(count if voiced else 0):
+        said_parts = random.choice(voiced)
         flat = []                                   # (piece, starts a direction?)
-        for k, part in enumerate(parts):
-            said = scrambler.say(part)
+        for k, said in enumerate(said_parts):
             if random.random() < 0.25:
                 said = f"{random.choice(scrambler.CHATTER_BEFORE)} {said}"
             if random.random() < 0.15:
