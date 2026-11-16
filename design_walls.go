@@ -14,12 +14,7 @@ package main
 // The floor is the place for what is not finished: anything you do not
 // want on a wall yet.
 //
-// Also here, choosing several to give one name plate:
-//
-//	Alt, then Space  (Alt tapped, then Space) the chosen structure is
-//	                 added to those chosen together, or taken out
-//	Alt+A            the structures chosen together (two or more) get one
-//	                 name plate, written on the board (design_tags.go)
+// (Choosing several for one name plate is Alt+S now: design_select.go.)
 
 import (
 	"image/color"

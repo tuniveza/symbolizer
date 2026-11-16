@@ -41,6 +41,8 @@ const (
 	pDesignPlate     // Design mode: a name plate
 	pDesignGroup     // Design mode: a name plate for everything picked (design_groups.go)
 	pDesignTransform // Design mode: a pin's transform, as words (design_board.go)
+	pCodexImage      // Codex mode: a picture for the chosen thing (codex_keys.go)
+	pCodexAltImage   // Codex mode: the picture it swaps to when activated
 )
 
 // Model is the whole editor, as Bubble Tea wants it.
@@ -164,6 +166,7 @@ type Model struct {
 
 	brickLearningLamp bool                 // brick's training daemon is learning (brick_learning.go)
 	design            *designState         // design mode: the board, its structures, links and pen (design.go)
+	codex             *codexState          // Codex mode: the library, the open codex (codex.go)
 	house             *houseFile           // design mode: the rooms and floors (design_rooms.go)
 	rooms             map[int]*designState // the rooms been in or made this time, by ID (the one you are in is design)
 	startDir          string               // folder sy was started in
@@ -264,6 +267,9 @@ func (m *Model) Init() tea.Cmd {
 	if m.inBrick() {
 		mgr = tea.Batch(mgr, m.enterBrick()) // started as sy brick
 	}
+	if m.inCodex() {
+		mgr = tea.Batch(mgr, m.enterCodex()) // started as sy codex
+	}
 	return tea.Batch(mgr, checkBrickLamp(), m.tellKittyMode(), m.hl.Want(m.buf.Version(), m.top, m.textHeight()), nextMinute(), loadWeather(), weatherEvery(), m.startLamps(), watchDisk())
 }
 
@@ -331,6 +337,9 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	}
 	if _, ok := msg.(designHoldMsg); ok {
 		return m, tea.Batch(m.designHold(), m.designFrameCmd(), m.designSaveCmd())
+	}
+	if _, ok := msg.(codexTickMsg); ok { // Codex mode: the next frame of what moves (codex.go)
+		return m, m.codexTicked()
 	}
 	if _, ok := msg.(designFrameMsg); ok {
 		m.ds().frameTick = false // the View after this draws the board afresh
@@ -450,6 +459,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if m.inDesign() && !m.help && m.picker == nil {
 			return m.designPaste(msg.Content) // design_paper.go
 		}
+		if m.inCodex() && !m.help && m.picker == nil {
+			return m.codexPaste(msg.Content) // codex_keys.go
+		}
 		return m.pasteText(msg.Content)
 	case designPictureMsg:
 		return m.designPictureDone(msg)
@@ -556,6 +568,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if m.inManager() && !m.help && m.prompt == pNone && m.picker == nil {
 			return m.managerKey(msg.Key()) // manager.go
 		}
+		if m.inCodex() && !m.help && m.prompt == pNone && m.picker == nil && !(m.treeFocus && m.showTree && m.tree != nil) {
+			return m.codexKey(msg.Key()) // codex_keys.go
+		}
 		if m.inDiary() && !(m.help && m.diaryViewer()) {
 			if cmd, done := m.diaryKey(keyName(msg.Key())); done {
 				return cmd
@@ -602,6 +617,10 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if m.designMouseHere(msg.Mouse().Y) {
 			return m.designPress(msg.Mouse())
 		}
+		if m.inCodex() && !m.help && m.prompt == pNone && msg.Mouse().Button == tea.MouseLeft &&
+			msg.Mouse().Y >= m.boardTop() && msg.Mouse().Y < m.boardTop()+m.boardH() {
+			return m.codexClick(msg.Mouse()) // codex_keys.go
+		}
 		return m.mouseClick(msg.Mouse())
 	case tea.MouseMotionMsg:
 		if m.inDesign() && m.design != nil && (m.design.drag != dragNone || m.design.rackPress != nil || m.design.pinPress != nil) {
@@ -610,6 +629,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if m.inDesign() && m.design != nil && msg.Mouse().Button == tea.MouseNone {
 			m.designHover(msg.Mouse()) // what is under the mouse, for Space (design_select.go)
 			return nil
+		}
+		if m.inCodex() && m.codex != nil && m.codex.drawing {
+			return m.codexDrag(msg.Mouse()) // drawing with the mouse (codex_keys.go)
 		}
 		if m.dragMargin != "" {
 			m.marginDrag(msg.Mouse().X)
@@ -640,6 +662,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		if m.designMouseHere(msg.Mouse().Y) {
 			return m.designWheel(msg.Mouse())
+		}
+		if m.inCodex() {
+			return m.codexWheel(n < 0)
 		}
 		if m.diaryViewer() && m.diary != nil {
 			m.diary.turn(n / 3) // the wheel turns pages

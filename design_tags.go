@@ -134,17 +134,29 @@ func (m *Model) endTagEdit(o *dOct) {
 	case o.Plate == "":
 		m.say(octName(o) + " has no name plate now.")
 	default:
-		m.say("Name plate “" + o.Plate + "” on " + plural(n, "structure") + " (" + itoa(len(d.plates()[o.Plate])) + " in the group). Space on one chooses the group.")
+		m.say("Name plate “" + o.Plate + "” on " + plural(n, "structure") + " (" + itoa(len(d.plates()[o.Plate])) + " in the group).")
 	}
 }
 
-// designAttach is Alt+A: the structures chosen together (two or more) get
-// one name plate, written on the board at once.
+// designAttach is Alt+Shift+S (or Alt+A): the structures chosen together
+// (two or more) get one name plate, written on the board at once. With
+// fewer chosen, the chosen one's group (its name plate) is renamed.
 func (m *Model) designAttach() {
 	d := m.ds()
 	ids := d.multiIDs()
 	if len(ids) < 2 {
-		m.say("Alt+A puts a name plate on two or more chosen: tap Alt, then Space, on each to choose it.")
+		o := d.byID(d.sel)
+		if o == nil || o.Plate == "" {
+			m.say("Alt+S on two or more (the arrows choose each) gives them one name plate; Alt+Shift+S renames it.")
+			return
+		}
+		ids = nil
+		for _, p := range d.octs {
+			if p != nil && p.Plate == o.Plate {
+				ids = append(ids, p.ID)
+			}
+		}
+		m.startTagEdit(o, partPlate, ids)
 		return
 	}
 	o := d.byID(d.sel)

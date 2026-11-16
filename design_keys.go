@@ -213,6 +213,10 @@ func (m *Model) viewToPart(o *dOct, p int) {
 	if o == nil {
 		return
 	}
+	if _, _, _, h := d.rect(o); h <= m.boardH()-2 && !isContainer(o.Kind) {
+		m.centreOnWhole(o) // it fits: the whole structure in the middle (the user asked, 16 Nov 2026)
+		return
+	}
 	z := d.z()
 	w, _ := d.size(o)
 	top, bottom := d.partRows(o, p)

@@ -4,7 +4,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -183,48 +182,93 @@ func TestWallsSpinShows(t *testing.T) {
 	}
 }
 
-func TestWallsAltSpaceAndAttach(t *testing.T) {
+// Alt+S: the one the arrows chose joins those chosen (again: leaves);
+// two or more share one name plate at once; Alt+Shift+S renames it. Space,
+// and Alt then Space, no longer choose anything.
+func TestDesignAltSSelect(t *testing.T) {
 	m := designTest(t)
 	d := m.ds()
 	a := d.newKind(kPage, 0, 0)
 	b := d.newKind(kNote, 40, 0)
 	c := d.newKind(kPage, 80, 0)
-	for _, o := range []*dOct{a, b} {
-		d.sel = o.ID
-		tapAlt(m)
-		press(m, "space")
-		m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeySpace}))
+	d.sel = a.ID
+	press(m, "alt+s")
+	if !d.multi[a.ID] || a.Plate != "" {
+		t.Fatalf("Alt+S on A alone: chosen %v, plate %q", d.multi, a.Plate)
 	}
-	if !d.multi[a.ID] || !d.multi[b.ID] || d.multi[c.ID] {
-		t.Fatalf("Alt, then Space on A and B: chosen %v", d.multi)
+	d.sel = b.ID
+	press(m, "alt+s")
+	if !d.multi[a.ID] || !d.multi[b.ID] || a.Plate != "Group 1" || b.Plate != "Group 1" {
+		t.Fatalf("Alt+S on B: chosen %v, plates %q %q", d.multi, a.Plate, b.Plate)
 	}
-	// Space alone (no Alt first) does not add.
+	// Space alone, and Alt tapped then Space, do not choose.
 	d.sel = c.ID
-	d.altTapAt = time.Time{}
 	press(m, "space")
 	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeySpace}))
-	if d.multi[c.ID] {
-		t.Fatal("Space without Alt first should not add to those chosen")
+	tapAlt(m)
+	press(m, "space")
+	m.Update(tea.KeyReleaseMsg(tea.Key{Code: tea.KeySpace}))
+	if d.multi[c.ID] || c.Plate != "" {
+		t.Fatal("Space (or Alt, then Space) should not choose any more")
 	}
-	d.multi = map[int]bool{a.ID: true, b.ID: true}
+	press(m, "alt+s")
+	if !d.multi[c.ID] || c.Plate != "Group 1" {
+		t.Fatalf("Alt+S on C: plate %q", c.Plate)
+	}
+	press(m, "alt+s") // again: C leaves, and its plate goes
+	if d.multi[c.ID] || c.Plate != "" || a.Plate != "Group 1" {
+		t.Fatalf("Alt+S on C again: chosen %v, plates %q %q", d.multi, a.Plate, c.Plate)
+	}
+	// Alt+Shift+S renames the shared plate, written on the board.
 	d.sel = a.ID
-	press(m, "alt+a")
+	press(m, "alt+shift+s")
 	if d.editing != partPlate || m.prompt != pNone {
-		t.Fatalf("Alt+A should start writing a name plate on the board: editing %d, prompt %d", d.editing, m.prompt)
+		t.Fatalf("Alt+Shift+S should start writing the name plate: editing %d", d.editing)
 	}
+	press(m, "ctrl+a")
 	typeStr(m, "Pair")
 	if !strings.Contains(screenOf(m), "Pair") {
 		t.Fatalf("the plate is not written on the board:\n%s", screenOf(m))
 	}
 	press(m, "enter")
 	if a.Plate != "Pair" || b.Plate != "Pair" || c.Plate != "" || d.editing != partNone {
-		t.Fatalf("plates after Alt+A: %q %q %q", a.Plate, b.Plate, c.Plate)
+		t.Fatalf("plates after renaming: %q %q %q", a.Plate, b.Plate, c.Plate)
 	}
-	// Alt+A with one chosen only says how.
-	d.multi = map[int]bool{c.ID: true}
-	press(m, "alt+a")
-	if d.editing != partNone || !strings.Contains(m.msg, "two or more") {
-		t.Fatalf("Alt+A on one: editing %d, said %q", d.editing, m.msg)
+	// Esc lets go of them; the plate stays. Alt+Shift+S on one renames its whole group.
+	press(m, "esc")
+	if len(d.multi) != 0 || a.Plate != "Pair" {
+		t.Fatalf("Esc: chosen %v, plate %q", d.multi, a.Plate)
+	}
+	d.sel = b.ID
+	press(m, "alt+shift+s")
+	press(m, "ctrl+a")
+	typeStr(m, "Duo")
+	press(m, "enter")
+	if a.Plate != "Duo" || b.Plate != "Duo" {
+		t.Fatalf("renaming the group from one: %q %q", a.Plate, b.Plate)
+	}
+	// Shift+G no longer starts group mode.
+	press(m, "shift+g")
+	if d.groupMode {
+		t.Fatal("Shift+G should do nothing now")
+	}
+}
+
+// Writing starts in a structure off to one side: the view centres on it.
+func TestDesignEditCentres(t *testing.T) {
+	m := designTest(t)
+	d := m.ds()
+	d.camX, d.camY, d.zoom = 0, 0, designZoom100
+	o := d.newKind(kNote, 0, 0)
+	o.X, o.Y = 300, 120
+	d.sel = o.ID
+	press(m, "e")
+	if d.editing == partNone {
+		t.Fatal("E did not start writing")
+	}
+	x, y, w, h := d.rect(o)
+	if mx, my := x+w/2, y+h/2; abs(mx-m.width/2) > 2 || abs(my-m.boardH()/2) > 2 {
+		t.Fatalf("not centred: middle at %d,%d, screen middle %d,%d", mx, my, m.width/2, m.boardH()/2)
 	}
 }
 

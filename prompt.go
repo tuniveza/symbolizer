@@ -90,7 +90,7 @@ func (m *Model) promptKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 	case "tab":
-		if m.prompt == pOpen || m.prompt == pSaveAs || m.prompt == pName || m.prompt == pDesignFile {
+		if m.prompt == pOpen || m.prompt == pSaveAs || m.prompt == pName || m.prompt == pDesignFile || m.prompt == pCodexImage || m.prompt == pCodexAltImage {
 			m.completePath()
 			return nil
 		}
@@ -162,6 +162,12 @@ func (m *Model) promptEnter(_ bool) tea.Cmd {
 	case pDesignTransform:
 		m.designSetTransform(value)
 		return nil
+	case pCodexImage, pCodexAltImage:
+		path := expandPath(strings.Trim(strings.TrimSpace(value), `'"`))
+		if path == "" {
+			return nil
+		}
+		return m.codexUseImage(path, kind == pCodexAltImage)
 	case pDesignFile:
 		path := expandPath(strings.Trim(strings.TrimSpace(value), `'"`))
 		if path == "" {

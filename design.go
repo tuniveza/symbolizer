@@ -794,6 +794,7 @@ var placeKeys = map[string]string{
 func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 	d := m.ds()
 	defer d.save()
+	defer m.centreOnEdit(d.editing, d.sel) // writing starts in one: the view centres on it (design_select.go)
 	name := keyName(k)
 	switch { // AltGr+R and AltGr+F, however the terminal gives them (design_walls.go)
 	case m.isSpinKey(k, name) == 1:
@@ -849,10 +850,11 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 			m.floorToggle()
 			return nil
 		}
-		if name == "space" && !k.IsRepeat && m.altSpace() { // Alt, then Space: one more chosen
+		if name == "alt+s" { // the one the arrows chose joins those chosen (again: leaves); they share one name plate (design_select.go)
+			m.designSelectToggle()
 			return nil
 		}
-		if name == "alt+a" { // the chosen together get one name plate
+		if name == "alt+shift+s" || name == "alt+a" { // rename the chosen group's name plate, on the board
 			m.designAttach()
 			return nil
 		}
@@ -887,15 +889,24 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		d.placing = false
 		if kind, ok := placeKeys[name]; ok {
 			wx, wy := d.world(cx, cy)
-			if o := d.newKind(kind, int(wx), int(wy)); d.clearSpot(o) {
+			o := d.newKind(kind, int(wx), int(wy))
+			if d.clearSpot(o) {
 				m.centreOn(o) // moved off what was there: the view follows it
 			}
 			d.editing = partHeader
 			m.say(newHint(kind))
+			if kind == kCodex { // its own codex, opened with Enter (codex_design.go)
+				d.editing = partNone
+				m.codexNewOnBoard(o)
+			}
 		} else {
-			m.say("Nothing placed. Alt+N, then P page · N note · S shape · C cabinet · D drawer · R rack · B board · O box.")
+			m.say("Nothing placed. Alt+N, then P page · N note · S shape · C cabinet · D drawer · R rack · B board · O box · K codex.")
 		}
 		return nil
+	}
+	if o := d.byID(d.sel); o != nil && o.Kind == kCodex && !d.opened.active &&
+		(name == "enter" || name == "e" || name == "E" || name == "shift+e") { // a codex: open it in Codex mode (codex_design.go)
+		return m.codexFromDesign(o, name != "enter")
 	}
 	if name == "enter" && m.goThrough() { // a door or stairs chosen: to its room (design_rooms.go)
 		return nil
@@ -915,9 +926,6 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		if ok, cmd := m.designGroupKey(name); ok {
 			return cmd
 		}
-	} else if name == "G" || name == "shift+g" {
-		m.designGroupMode(true)
-		return nil
 	}
 	if d.labelMode { // L C I T G label the chosen structure
 		if ok, cmd := m.designLabelKey(name); ok {
@@ -945,7 +953,7 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		m.designZoomTo(designZoom100)
 	case "alt+n":
 		d.placing = true
-		m.say("Place: P page · N note · S shape · C cabinet · D drawer · R rack · B board · O box (any other key: nothing).")
+		m.say("Place: P page · N note · S shape · C cabinet · D drawer · R rack · B board · O box · K codex (any other key: nothing).")
 	case "alt+l", "alt+shift+l", "alt+L":
 		m.designLabelMode() // label mode (design_labels.go); a shape's layout: its [¶]
 	case "x":
@@ -1079,7 +1087,8 @@ func (m *Model) designMouseHere(y int) bool {
 func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 	d := m.ds()
 	defer d.save()
-	m.sectionDrop() // a click ends Tab's stepping through a container (design_sections.go)
+	defer m.centreOnEdit(d.editing, d.sel) // a double-click starts writing: the view centres on it
+	m.sectionDrop()                        // a click ends Tab's stepping through a container (design_sections.go)
 	if ms.Y == m.height-3 {
 		return m.designToolClick(ms.X)
 	}
@@ -1207,8 +1216,11 @@ func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 		return nil
 	}
 	if double {
-		d.editing = partAt(o, sy-y, h)
 		d.drag = dragNone
+		if o.Kind == kCodex { // a codex opens in Codex mode (codex_design.go)
+			return m.codexFromDesign(o, false)
+		}
+		d.editing = partAt(o, sy-y, h)
 		return nil
 	}
 	if resizable(o) && sx >= x+w-2 && sy >= y+h-2 {
@@ -1606,6 +1618,9 @@ func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
 	}
 	if o.Kind == kDoor || o.Kind == kStairs { // what stands where in the room behind it (design_door.go)
 		k.opened += d.doorKey(o)
+	}
+	if o.Kind == kCodex { // its codex as it is now (codex_design.go)
+		k.opened += "codex:" + codexStamp(codexIDOf(o))
 	}
 	if o.Kind == kDrawer { // its drawers, which are out, and which one a drag would go into
 		k.pulled = fmt.Sprint(o.Drawers, o.Pulled, o.Fronts)
@@ -2620,8 +2635,11 @@ func (m *Model) designTopBar() string {
 		if _, it := d.chosenPin(); it != nil {
 			right = "Pin: " + itemTitle(it) + " · " + tfText(it.Tf)
 		}
-	case len(d.multiIDs()) > 1 && !d.groupMode:
+	case len(d.multiIDs()) > 0 && !d.groupMode:
 		right = "Chosen: " + plural(len(d.multiIDs()), "structure")
+		if p := d.sharedPlate(d.multiIDs()); p != "" {
+			right += " · “" + p + "”"
+		}
 	case d.groupMode:
 		right = "Group mode · " + plural(len(d.pickedIDs()), "structure") + " picked"
 	case d.labelMode:
@@ -2668,9 +2686,7 @@ func (m *Model) designStatus() string {
 	case d.pin.active:
 		hint = "R turn · S size · W H stretch · K J skew · F V flip · Alt+arrows move · T type · Enter open"
 	case len(d.multiIDs()) > 1:
-		hint = itoa(len(d.multiIDs())) + " chosen  ·  drag or Alt+arrows: move all  ·  X X: delete  ·  Alt+A: name plate  ·  Esc: let go"
-	case d.groupMode:
-		hint = "Group mode  ·  click or drag a box: pick  ·  G: pick the chosen one  ·  Enter: name them  ·  Esc: leave"
+		hint = itoa(len(d.multiIDs())) + " chosen  ·  Alt+S: add / leave out  ·  Alt+Shift+S: rename their plate  ·  Alt+arrows: move all  ·  X X: delete  ·  Esc: let go"
 	case d.opened.active:
 		hint = "In its rack  ·  Tab / Shift+Tab: next / back  ·  its row or Alt twice: put back  ·  drag: take out"
 	case d.labelMode:

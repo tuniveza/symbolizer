@@ -167,6 +167,9 @@ func (d *designState) newKind(kind string, cx, cy int) *dOct {
 	case kRack:
 		o.W, o.H = cabinetNewW, rackLines(1)              // its frame and name, and a row
 		o.Color = hslHex(150+rand.Float64()*30, 0.3, 0.5) // green
+	case kCodex:
+		o.W, o.H = codexBoardW, codexBoardH
+		o.Color = codexPalette[1]
 	case kBox:
 		o.W, o.H = boxNewW, boxNewH
 		o.Color = hslHex(rand.Float64()*360, 0.5, 0.55) // a gift box's paper, a hexagonal box's colour
@@ -234,6 +237,8 @@ func selHint(o *dOct) string {
 		return "Tab: each row  ·  click a row to open it  ·  drag a row out  ·  drop anything in"
 	case kDoor, kStairs:
 		return "Enter or Space: go through  ·  Tab: write  ·  Alt+arrows: move  ·  X X: delete"
+	case kCodex:
+		return "Enter: open  ·  E: edit  ·  Alt+arrows: move  ·  drop it in a container  ·  X X: delete (the codex stays in Codex mode)"
 	case kBox:
 		return "Space: lid  ·  D: design  ·  Tab: each part  ·  PgUp / PgDn: layers  ·  drop anything in"
 	}
@@ -660,6 +665,8 @@ func (d *designState) structLayers(o *dOct) []*lipgloss.Layer {
 		return d.containerLayers(o)
 	case o.Kind == kBox:
 		return d.boxLayers(o) // design_box.go
+	case o.Kind == kCodex:
+		return d.codexLayers(o) // its cover (codex_design.go)
 	case (o.Kind == kDoor || o.Kind == kStairs) && !(d.sel == o.ID && d.editing != partNone && !isTagPart(d.editing)):
 		return d.doorLayers(o) // a door with a window into its room (design_door.go); written in: a card, with the cursor
 	default:
