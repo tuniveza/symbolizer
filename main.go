@@ -103,6 +103,7 @@ func main() {
 		}
 	}
 	m.saveLastOpen()
+	closeIdleSyTerms() // its idle sy term panes go too: the window closes (syterm.go)
 	for _, t := range m.tabs {
 		if t.buf.Draft && fileExists(t.buf.Path) {
 			fmt.Println("Session kept: " + shortPath(t.buf.Path) + "   (sy carries on with it for 24 hours; Alt+L lists all sessions)")
