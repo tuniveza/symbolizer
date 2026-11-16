@@ -1056,6 +1056,7 @@
         for (const [id, o] of edge) { const a = this.get(id); if (a) { s += this.sync(a, o).s; c++; } }
         return c ? s / c : 0;
       };
+      sub.full = full;                                                   // the whole network (its bitstream neurons)
       sub.predIndex = () => full.predIndex();
       sub.rarityOf = () => full.rarity || (full.rarity = full.rarityOf());
       return sub;
@@ -1065,12 +1066,13 @@
     // ---------- speaking: the network says a meaning in its own words (the archetype's way) ----------
     // pieces: the meaning in pieces (["write"], ["hello there"], ["in", "red"], ...), each word {text, keep}: kept
     // words carry the meaning (words to show, colours, numbers, places, names, files) and are always said as they are.
-    // The meaning's words are stimulated and the network runs its own dynamics. Then:
-    //   order (Ni): each next piece is the one the network predicts after the last word said, weighed by how hot it is;
-    //     a judging archetype (strict) keeps closer to the order it was given;
-    //   swaps (Ne, radiant): a free word is said as a word it is used alike with, when that one ran hotter;
-    //   economy (Te, Se): a free small word that stayed cold is left out;
-    //   chatter (Fe, Fi): the hottest chatter neuron may be said before or after, more for warm (extraverted) types;
+    // The meaning's words are stimulated and the network runs its own dynamics. Then it reads how much each neuron
+    // warmed up meanwhile (against the meaning's own neurons) and where each one is in its rhythm (its phase):
+    //   order (Ni): each next piece is the one Ni predicts after the last word said, that warmed most and is readiest;
+    //     a judging archetype (strict) keeps closer to the order it was given, a warm one lets its rhythm count more;
+    //   swaps (Ne, radiant): a free word is said as a used-alike word (proved lines) that warmed and is ready;
+    //   economy (Te): a free small word that is neither warm nor ready is left out, more for Te-led types;
+    //   chatter (Fe, Fi): a ready chatter neuron is said before or after, more for warm, feeling types;
     //   slips: heat makes the odd letter swap in a free word.
     //   It runs on a local sub-network (see local()): the stimulated neurons and the neurons most strongly coupled to
     //   them, with this archetype's brain, so a meaning takes a fraction of a second. opts.local = false: run it on
@@ -1081,53 +1083,79 @@
         const sub = this.local(pieces.flat().map(t => t.text), { cap: opts.cap, hops: opts.hops, also: opts.chatter, seed: opts.seed, brain });
         return sub.speak(pieces, Object.assign({}, opts, { local: false }));
       }
-      const e = this.e, r = this.rand, steps = opts.steps || 30, small = new Set(opts.small || []), chatter = opts.chatter || [];
+      const r = this.rand, steps = opts.steps || 30, small = new Set(opts.small || []), chatter = opts.chatter || [];
       const byWord = new Map();
       for (const n of this.N) if (!n.hidden) { const k = n.word; if (!byWord.has(k) || n.T > byWord.get(k).T) byWord.set(k, n); }
       const neuron = w => byWord.get(String(w).toLowerCase()) || null;
       const words = pieces.flat().map(t => t.text.toLowerCase());
+      const T0 = new Map(this.N.map(n => [n.id, n.T]));                // how warm each neuron was before the meaning
       this.stimulate(words, 1.5);
       for (let k = 0; k < steps; k++) this.step();
       for (const n of this.N) if (!n.hidden) { const k = n.word; if (!byWord.has(k) || n.T > byWord.get(k).T) byWord.set(k, n); }
-      const heat = w => { const n = neuron(w); return n ? n.T + 0.5 * n.lit : 0.2; };
-      const radiant = this.fnPower("Ne"), te = this.fnPower("Te"), fe = this.fnPower("Fe"), fi = this.fnPower("Fi");
+      // What the movements left: how much each neuron warmed up while the meaning ran (absorbed impact, heat and
+      // temperature taken in, light received), measured against the meaning's own neurons (so a cool, resting brain
+      // and a warm one read alike), and where each neuron is in its own rhythm now (cos of its phase: at the peak it
+      // is ready to fire, in the trough it is not).
+      const rise = n => n.T - (T0.get(n.id) ?? n.T) + 0.5 * n.lit;
+      const own = [...new Set(words)].map(neuron).filter(Boolean).map(rise);
+      const mean = own.reduce((a, b) => a + b, 0) / Math.max(1, own.length);
+      const sd = Math.sqrt(own.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, own.length)) || 1e-9;
+      const warmth = n => n ? Math.max(-2, Math.min(2, (rise(n) - mean) / sd)) : -2;
+      const ready = n => n ? Math.cos(n.theta) : -1;
+      const ne = this.fnPower("Ne"), te = this.fnPower("Te"), fe = this.fnPower("Fe"), fi = this.fnPower("Fi");
       const warm = this.brain ? this.brain.personality.target.heat : 0.85;
+      const strict = this.d.strict || 0.5;
+      // swaps (Ne, radiant): of the free word's used-alike words (proved lines; same-role ones must make the same brick)
+      // the warmest and readiest is said instead, when its rhythm and warmth are strong enough for this brain's Ne
+      const brain = this.full || this, bricks = new Map();               // the bitstream neurons (in the whole network)
+      const brick = w => { if (!bricks.has(w)) { const b = brain.brickOf(w); bricks.set(w, b && b.output); } return bricks.get(w); };
+      const sameBrick = (a, b) => !!brick(a) && brick(a) === brick(b);
       const said = t => {
         if (t.keep) return t.text;
         const n = neuron(t.text);
         if (!n) return t.text;
-        let best = null, bestT = n.T;
-        for (const l of this.linksOf(n)) {
+        let best = null, bestLine = null;
+        if (!small.has(t.text.toLowerCase())) for (const l of this.linksOf(n)) {
           const o = this.get(l.a === n.id ? l.b : l.a);
           if (!o || o.word === n.word || o.hidden || /[=@#·]/.test(o.word) || o.word.includes(" ")) continue;
-          const alike = l.kind === "role" || l.proved;
-          if (alike && o.T * (0.6 + 0.4 * radiant) * l.w > bestT) { best = o; bestT = o.T * l.w; }
+          if (!(l.kind === "role" || l.proved)) continue;
+          if (l.proved !== "meaning" && !sameBrick(n.word, o.word)) continue;    // same role only: it must make the same brick
+          if (!best || l.w * (0.5 * warmth(o) + ready(o)) > bestLine.w * (0.5 * warmth(best) + ready(best))) { best = o; bestLine = l; }
         }
-        let w = best && !small.has(t.text.toLowerCase()) ? best.word : t.text;
-        if (w.length > 3 && r() < 0.03 * Math.min(1.5, n.T) * warm) { const i = 1 + Math.floor(r() * (w.length - 2)); w = w.slice(0, i - 1) + w[i] + w[i - 1] + w.slice(i + 1); }
+        let w = t.text;
+        if (best && bestLine.w * ne * (ready(best) + 0.25 * (warmth(best) - warmth(n))) > 0.2) w = best.word;
+        // slips: a word that warmed up more is likelier to come out with two letters swapped
+        if (w.length > 3 && r() < 0.09 * warm * (1 + 0.5 * Math.max(0, warmth(n)))) { const i = 1 + Math.floor(r() * (w.length - 2)); w = w.slice(0, i - 1) + w[i] + w[i - 1] + w.slice(i + 1); }
         return w;
       };
-      const kept = piece => piece.filter(t => t.keep || !small.has(t.text.toLowerCase()) || heat(t.text) > C.T_COLD * (0.6 + 0.6 * te));
+      // economy (Te): a small free word is said only when it is ready (its rhythm and warmth beat this brain's economy)
+      const kept = piece => piece.filter(t => t.keep || !small.has(t.text.toLowerCase()) || ready(neuron(t.text)) + 0.5 * warmth(neuron(t.text)) > te - 1.4);
+      // order (Ni, heat, rhythm): each next piece is the one whose first word Ni predicts after the last word said, that
+      // warmed most and is readiest; the given next piece keeps a pull that is stronger the stricter the judge, and a
+      // warm brain lets its rhythm count for more
       const left = pieces.map((p, i) => i), out = [];
       let last = null;
-      const strict = this.d.strict || 0.5;
       while (left.length) {
         let pick = left[0], top = -1e9;
         for (const i of left) {
-          const first = pieces[i][0], n = neuron(first.text);
+          const n = neuron(pieces[i][0].text);
           const ni = last && n ? (last.next.get(n.id) || 0) : 0;
-          const s = heat(first.text) + 1.5 * ni + (i === left[0] ? 2.5 * strict : 0) + 0.6 * (r() - 0.5) * warm;
+          const s = 0.5 * warmth(n) + 2 * ni + 0.7 * warm * ready(n) + (i === left[0] ? 4 * (strict - 0.3) : 0);
           if (s > top) { top = s; pick = i; }
         }
         left.splice(left.indexOf(pick), 1);
-        const words = kept(pieces[pick]).map(said);
-        if (words.length) out.push(words.join(" "));
+        const ws = kept(pieces[pick]).map(said);
+        if (ws.length) out.push(ws.join(" "));
         const lw = pieces[pick][pieces[pick].length - 1];
         last = neuron(lw.text) || last;
       }
-      if (chatter.length && r() < 0.15 + 0.25 * (fe + fi) / 2 * warm) {
-        const hot = chatter.map(w => [w, heat(w) + 0.3 * r()]).sort((a, b) => b[1] - a[1])[0][0];
-        if (r() < 0.6) out.unshift(hot); else out.push(hot);
+      // chatter (Fe, Fi): when the chatter neuron that warmed most is ready enough for this brain's feeling
+      // and warmth, the readiest warm chatter word is said; rising in its rhythm it comes first, falling it comes last
+      const cs = chatter.map(neuron).filter(Boolean);
+      if (cs.length) {
+        const hot = cs.reduce((a, b) => rise(b) > rise(a) ? b : a);      // the warmest one decides whether to chatter
+        const pull = x => 0.5 * warmth(x) + ready(x), c = cs.reduce((a, b) => pull(b) > pull(a) ? b : a);   // the readiest is said
+        if (ready(hot) > 1.1 - 0.45 * (fe + fi) / 2 * warm) { if (Math.sin(c.theta) > -0.2) out.unshift(c.word); else out.push(c.word); }
       }
       return out.join(" ");
     }
