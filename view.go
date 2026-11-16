@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -26,9 +25,6 @@ func runeWidth(r rune, x int) int {
 }
 
 func (m *Model) View() tea.View {
-	if traceOn() {
-		defer traceSlow("View", time.Now())
-	}
 	var sb strings.Builder
 	sb.Grow(m.width * m.height * 4)
 	switch {
@@ -69,6 +65,19 @@ func (m *Model) View() tea.View {
 		sb.WriteString(paintRow(m.designToolbar(), m.height-3, m.width))
 		sb.WriteByte('\n')
 		sb.WriteString(paintRow(m.designStatus(), m.height-2, m.width))
+		sb.WriteByte('\n')
+		sb.WriteString(m.bottomLine())
+	case m.inCodex():
+		sb.WriteString(paintRow(m.topPanel(), 0, m.width))
+		sb.WriteByte('\n')
+		sb.WriteString(paintRow(m.tabBar(), 1, m.width))
+		sb.WriteByte('\n')
+		sb.WriteString(paintRow(m.codexTopBar(), textTop, m.width))
+		sb.WriteByte('\n')
+		m.codexRows(&sb) // codex_draw.go
+		sb.WriteString(paintRow(m.codexStrip(), m.height-3, m.width))
+		sb.WriteByte('\n')
+		sb.WriteString(paintRow(m.codexStatus(), m.height-2, m.width))
 		sb.WriteByte('\n')
 		sb.WriteString(m.bottomLine())
 	case !modes[m.mode].ready:
@@ -119,7 +128,7 @@ func (m *Model) View() tea.View {
 	if m.learn != nil {
 		content = m.overlay(content, m.learnBox()) // learn.go
 	}
-	if !m.help && m.picker == nil && !m.modesOpen && !m.themeOpen && m.learn == nil && !m.tabMode && !m.diaryViewer() && !m.inDesign() && !m.inManager() && !(m.treeFocus && m.showTree) {
+	if !m.help && m.picker == nil && !m.modesOpen && !m.themeOpen && m.learn == nil && !m.tabMode && !m.diaryViewer() && !m.inDesign() && !m.inManager() && !m.inCodex() && !(m.treeFocus && m.showTree) {
 		content = m.overlaySuggest(content) // suggest.go
 	}
 	content = m.overlayPlate(content)
@@ -138,7 +147,7 @@ func (m *Model) View() tea.View {
 	v.ForegroundColor = hex(cText)
 	name := m.tabName(m.cur) + " — Symbolizer"
 	v.WindowTitle = name
-	if !m.help && m.picker == nil && !m.modesOpen && !m.themeOpen && m.learn == nil && !m.tabMode && modes[m.mode].ready && !m.diaryViewer() && !m.inDesign() && !m.inManager() && !(m.treeFocus && m.showTree && m.prompt == pNone) {
+	if !m.help && m.picker == nil && !m.modesOpen && !m.themeOpen && m.learn == nil && !m.tabMode && modes[m.mode].ready && !m.diaryViewer() && !m.inDesign() && !m.inManager() && !m.inCodex() && !(m.treeFocus && m.showTree && m.prompt == pNone) {
 		v.Cursor = m.cursor()
 	}
 	return v

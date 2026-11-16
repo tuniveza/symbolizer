@@ -55,6 +55,7 @@ from trainer import outliers  # noqa: E402
 from trainer import scrambler  # noqa: E402
 from trainer import synchronicity  # noqa: E402
 from trainer import universe  # noqa: E402
+from trainer import voices  # noqa: E402
 from actions import STARTERS  # noqa: E402
 from compiler import Compiler  # noqa: E402
 from expressions import Problem  # noqa: E402
@@ -576,27 +577,17 @@ class Trainer:
     # ---- practice: scrambled paragraphs with known right answers ----
 
     def practise(self):
-        mess, said, tidy = scrambler.paragraph()
-        how, missed = self.checker.check(mess, said, tidy)
-        if how is None:
+        """The digital brain practises: an archetype voices a paragraph in its own personality (the meaning is
+        handed over, and kept exactly), it joins the brain's practice, and every 100 new ones the brain learns
+        from all of them again (trainer/mind.py)."""
+        made = voices.practice(1, say=lambda *a, **k: None)
+        if not made:
             return
-        self.tally[how] += 1
-        with open(os.path.join(FOLDER, "scrambled.txt"), "a", encoding="utf-8") as f:
-            f.write(f"{'✓' if how == 'right' else '✗'} {mess}\n" + ("" if how == "right" else f"    meant: {' then '.join(tidy)}\n"))
-        if how == "right":
-            for messy, meant in zip(said, tidy):
-                self.steer(messy, meant)
-        for messy, meant, what in missed:
-            if self.learn_toward(messy, meant) or self.steer(messy, meant, times=3):
-                continue
-            if messy not in self.state["unsure"]:
-                self.state["unsure"].add(messy)
-                outliers.add(messy, "brick refused it" if what == "refused" else "brick read it as something else",
-                             meant=meant, source="the scrambler")
-        if sum(self.tally.values()) % 20 == 0:
-            self.say("practised on 20 scrambled paragraphs: {right} read right, {wrong} misread, {refused} refused"
-                     .format(**self.tally))
-            self.tally = {"right": 0, "wrong": 0, "refused": 0}
+        self.state["voiced"] = self.state.get("voiced", 0) + 1
+        if self.state["voiced"] % 100 == 0:
+            from trainer import mind
+            mind.learn()
+            self.say(f"the brain learned again from its archetypes' practice ({self.state['voiced']} new paragraphs)")
 
     def revisit(self, count=2):
         """Work through what's waiting for a person anyway: a person deciding only makes it faster.
@@ -688,15 +679,14 @@ class Trainer:
         before = sum(1 for _ in open(os.path.join(FOLDER, "log.txt"), encoding="utf-8")) \
             if os.path.isfile(os.path.join(FOLDER, "log.txt")) else 0
         for _ in range(rounds):
-            self.digest("\n".join(self.make()), "the sentence maker")
-            self.practise()
+            self.practise()                           # the archetypes voice practice for the brain
         self.check()
         self.save(final=True)
         with open(os.path.join(FOLDER, "log.txt"), encoding="utf-8") as f:
             news = [line.split("  ", 1)[1].rstrip() for line in list(f)[before:] if "  " in line]
         learned = [n for n in news if n.startswith("learned: ")]
         taken = [n for n in news if n.startswith("took back ")]
-        lines = [f"The dictionary feeder (brick's own): {rounds} made-up directions and {rounds} scrambled paragraphs.",
+        lines = [f"The dictionary feeder: {rounds} paragraphs voiced by the brain's archetypes.",
                  f"Learned {len(learned)} new " + ("word." if len(learned) == 1 else "words.")]
         lines += [f"  {n[len('learned: '):]}" for n in learned]
         lines += [f"Took back: {n[len('took back '):]}" for n in taken]
@@ -708,14 +698,11 @@ class Trainer:
     def round(self, folders):
         if self.brain:
             self.brain.catch_up(folders)              # new lines in the pool, changed files: linked in the brain
-        for line in heard():                          # lines brick fixed (or couldn't) in your real builds
+        for line in heard():                          # lines from your real builds: kept, so the brain is scored on them
             self.add_to_pool([line])
-            self.digest(line, "your programs")
         for path, text in self.new_bricks(folders):
             self.say(f"reading {path}")
             self.add_to_pool(line for line in text.splitlines() if not line.strip().startswith("#"))
-            self.digest(text, os.path.basename(path))
-        self.digest("\n".join(self.make()), "the sentence maker")
         if self.brain:
             changed = symbols.practise()              # each symbol's universe learns a little by itself
             if changed:
@@ -730,7 +717,6 @@ class Trainer:
             if learnt:
                 self.say(f"intuition: {learnt}")
         self.practise()
-        self.revisit()
         self.check()
         self.save()
 
@@ -740,15 +726,35 @@ def broken(builder):
     env = dict(os.environ, BRICK_TRAINER="off", BRICK_MEMORY="off")
     from concurrent.futures import ThreadPoolExecutor        # the test files are separate programs: all at once
     tests = sorted(glob.glob(os.path.join(HERE, "tests", "test_*.py")))
+    python = test_python()
+    env["PYTHONPATH"] = HERE + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    has_pytest = subprocess.run([python, "-c", "import pytest"], capture_output=True).returncode == 0
+    run = (lambda t: [python, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", t]) if has_pytest else \
+        (lambda t: [python, t])                          # every test file as the suite runs it
     with ThreadPoolExecutor(max_workers=min(len(tests) or 1, os.cpu_count() or 4)) as pool:
-        codes = list(pool.map(lambda t: subprocess.run([sys.executable, t], env=env, capture_output=True).returncode, tests))
+        codes = list(pool.map(lambda t: subprocess.run(run(t), env=env, cwd=HERE, capture_output=True).returncode, tests))
     found = {t for t, code in zip(tests, codes) if code != 0}
-    for example in glob.glob(os.path.join(EXAMPLES, "*.txt")):
+    from teach import read_definition
+    examples = sorted(glob.glob(os.path.join(EXAMPLES, "*.txt")))
+    taught = []                                              # words the examples teach ('to greet someone means ...')
+    for example in examples:
         with open(example, encoding="utf-8") as f:
-            words = os.path.join(os.path.dirname(example), "mywords.txt")
-            if not isinstance(builder.build(f.read(), words=words), bytes):
-                found.add(example)
+            taught += [line for line in f.read().splitlines() if read_definition(line)]
+    for example in examples:
+        with open(example, encoding="utf-8") as f:
+            text = f.read()
+        words = os.path.join(os.path.dirname(example), "mywords.txt")
+        if not isinstance(builder.build(text, words=words), bytes) and \
+                not (taught and isinstance(builder.build("\n".join(taught) + "\n" + text, words=words), bytes)):
+            found.add(example)                               # (again.txt uses what teach.txt taught)
     return found
+
+
+def test_python():
+    """The Python the tests run with: the shared tools one (it has pytest), else this one."""
+    tools = os.environ.get("AN_TOOLS") or os.path.expanduser("~/an/st/tools")
+    venv = os.path.join(tools, "py", "venv", "bin", "python")
+    return venv if os.access(venv, os.X_OK) else sys.executable
 
 
 def teach(line):

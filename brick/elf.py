@@ -4,6 +4,7 @@ Layout: ELF header | 2 segment headers | code and fixed texts.
 Linux loads the file at FILE_ADDRESS (read + run) and gives an empty,
 writable area at SPACE_ADDRESS for variables, lists and new texts.
 """
+import os
 import struct
 
 FILE_ADDRESS = 0x400000
@@ -12,6 +13,8 @@ HEADERS_SIZE = 64 + 2 * 56
 
 
 def wrap(asm):
+    if os.environ.get("BRICK_PRUNE") != "off":
+        asm.prune()                     # only the library routines the program really uses
     body, space_size = asm.link(FILE_ADDRESS + HEADERS_SIZE, SPACE_ADDRESS)
     file_size = HEADERS_SIZE + len(body)
     elf = struct.pack(

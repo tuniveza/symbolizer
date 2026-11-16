@@ -31,6 +31,24 @@ CACHE = os.path.join(HERE, "trainer", "data", "neural.json")
 SERVER = "http://127.0.0.1:11434"
 MODEL = "qwen2.5:3b"
 patient = True                   # False while brick gui previews as you type: never wait for the model then
+_here = threading.local()        # per request (brick serve answers several at once): impatient() for one thread only
+
+
+def is_patient():
+    return getattr(_here, "patient", patient)
+
+
+class impatient:
+    """with neural.impatient(): this thread never waits for the model (it asks in the background); others still do."""
+    def __enter__(self):
+        self.was = getattr(_here, "patient", None)
+        _here.patient = False
+
+    def __exit__(self, *exc):
+        if self.was is None:
+            del _here.patient
+        else:
+            _here.patient = self.was
 
 GUIDE = """You translate loose, messy English into brick, a tiny programming language written in plain English.
 brick can do only these things, written exactly like this:
@@ -50,6 +68,9 @@ Rules:
 - Use "write", not "make it say", unless something was just shown and the person wants it changed.
 - Keep the words to show exactly as the person wrote them; never add words they didn't write.
 - If the line really is just words to show, the reading is: write THOSE WORDS.
+- A colour said with words to show belongs to that write: "type hi in green" -> write hi in green (never "set the
+  colour to green then write hi"). Use "set the colour to" only when no words to show go with the colour.
+- Never add anything the person didn't ask for: no bold, no times, no place, no colour, no wait.
 Reply with JSON only: {"readings": ["best reading", "second best", "third best"]}"""
 
 EXAMPLES = [
@@ -66,7 +87,7 @@ EXAMPLES = [
     ("on top the words see you soon cyan say after 2 sec", "after 2 seconds write see you soon in cyan at the top"),
     ("bg orange then saying lets go in green bottom", "set the background colour to orange then write lets go in green at the bottom"),
 ]
-VERSION = 2                      # the guide's version: answers to an older guide are asked again
+VERSION = 3                      # the guide's version: answers to an older guide are asked again
 
 
 # ---------------- settings ----------------
@@ -190,13 +211,46 @@ def readings(line, before=""):
         return []
     key = f"{settings()['model']}|{VERSION}|{before.strip()[-200:]}|{line}"
     if key in cache():
-        return cache()[key]
-    if not patient:
+        return [tidy(r, line) for r in cache()[key]]
+    if not is_patient():
         if key not in _asking and not off():
             _asking.add(key)
             threading.Thread(target=ask, args=(line, before, key), daemon=True).start()
         return []
-    return ask(line, before, key)
+    return [tidy(r, line) for r in ask(line, before, key)]
+
+
+def tidy(reading, line):
+    """Put right what small models get wrong however they're told: 'in teal try again' read as 'set the colour to
+    teal then write try again' is 'write try again in teal' (unless the line was about the text's colour)."""
+    got = re.fullmatch(r"set the colou?r to ([a-z ]+?) then (write|say) (.+)", reading.strip(), re.IGNORECASE)
+    if got and not re.search(r"\b(text|writing|font|letters)\b", line, re.IGNORECASE) and " then " not in got.group(3):
+        words, colour = got.group(3), got.group(1)
+        place = re.search(r"\s((?:at|on) the \S+|\d+ times)$", words)
+        rest = words[:place.start()] if place else words
+        return f"write {rest} in {colour}" + (place.group(0) if place else "")
+    got = re.fullmatch(r"(set the colou?r to [a-z ]+?) then write", reading.strip(), re.IGNORECASE)
+    if got:
+        return got.group(1)                               # 'in navy color type': nothing to write
+    return reading
+
+
+def read_pieces(line):
+    """A messy line of several directions, read one direction at a time: brick splits it (universe.analyse), the
+    model reads each piece on its own. Small models read one direction far better than a paragraph (they stop after
+    the first direction), and shown the lines before they repeat them, so no context. -> 'a then b ...' or None."""
+    from trainer import universe
+    pieces = [" ".join(t.spelled[0] if t.spelled and len(t.spelled) == 1 and not t.real and not t.quoted else t.text
+                       for t in p) for p in universe.analyse(line)]   # the model reads the slips spelled right
+    if len(pieces) < 2:
+        found = readings(line)
+        return found[0] if found else None
+    out, changed = [], False
+    for text in pieces:
+        found = readings(text)
+        out.append(found[0] if found else text)
+        changed = changed or bool(found)
+    return " then ".join(out) if changed else None
 
 
 def ask(line, before, key):
@@ -238,7 +292,7 @@ def choose(line, ways, before=""):
     key = f"choose|{settings()['model']}|{VERSION}|{before.strip()[-200:]}|{line}|" + "||".join(ways)
     if key in cache():
         return cache()[key]
-    if not patient:
+    if not is_patient():
         return None
     try:
         if not ready():

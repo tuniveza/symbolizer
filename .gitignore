@@ -13,3 +13,8 @@ __pycache__/
 # the Manager's logs and recent list
 /manager/.logs/
 /manager/.state/
+
+# Wiktionary downloads for brick's lexicon (hundreds of MB): python3 -m trainer.lexicon fetches them
+brick/trainer/data/sources/wiktionary/
+brick/trainer/data/words.sqlite
+brick/trainer/data/words.sqlite.tmp

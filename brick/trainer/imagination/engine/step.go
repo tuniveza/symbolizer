@@ -297,10 +297,32 @@ func (net *Network) Step() {
 		wg.Wait()
 	}
 
-	// phase 2: the pair loop, in sim.js's order
+	// fan-out (sim.js): what a neuron sends out is shared among the neurons it reaches, past cFANOUT
 	potential := e[ePotential]
 	fieldMag := cFIELD * e[eMagnetic]
 	kinetic := e[eKinetic]
+	net.fan, net.share = growF(net.fan, n), growF(net.share, n)
+	fan, share := net.fan, net.share
+	clear(fan)
+	for k := 0; k < np; k++ {
+		w := 0.0
+		if l := sb.lk[k]; l != nil {
+			w = l.W
+		}
+		if c := w + fieldMag*sb.fs[k]; c > 0 {
+			i, j := int(sb.pi[k]), int(sb.pj[k])
+			fan[i] += c * sb.s[k]
+			fan[j] += c * sb.s[k]
+		}
+	}
+	for i := 0; i < n; i++ {
+		share[i] = 1
+		if fan[i] > cFANOUT {
+			share[i] = cFANOUT / fan[i]
+		}
+	}
+
+	// phase 2: the pair loop, in sim.js's order
 	for k := 0; k < np; k++ {
 		i, j := int(sb.pi[k]), int(sb.pj[k])
 		df, fsim, s := sb.df[k], sb.fs[k], sb.s[k]
@@ -316,7 +338,7 @@ func (net *Network) Step() {
 			dTheta[j] -= pull
 			if En[i] > 0.01 && s > cSYNC-0.12*potential*jsMin(T[j], 1.5)/1.5 { // both tests are pure: order is free
 				a, b := N[i], N[j]
-				imp := cRELAY * kinetic * c * Amp[i] * En[i] * s * dt
+				imp := cRELAY * kinetic * c * Amp[i] * En[i] * s * dt * share[i]
 				inc[j] += imp
 				v, _ := b.inbox.Get(a.id)
 				b.inbox.Set(a.id, v+imp)
@@ -328,7 +350,7 @@ func (net *Network) Step() {
 			}
 			if En[j] > 0.01 && s > cSYNC-0.12*potential*jsMin(T[i], 1.5)/1.5 {
 				a, b := N[i], N[j]
-				imp := cRELAY * kinetic * c * Amp[j] * En[j] * s * dt
+				imp := cRELAY * kinetic * c * Amp[j] * En[j] * s * dt * share[j]
 				inc[i] += imp
 				v, _ := a.inbox.Get(b.id)
 				a.inbox.Set(b.id, v+imp)

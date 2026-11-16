@@ -56,6 +56,10 @@ func fieldPtr(o *dOct, p int) *string {
 		return &o.Footer
 	case partThing: // a thing inside a container, reached by Tab: its title (design_sections.go)
 		return &o.Header
+	case partLabel: // written on the board (design_tags.go)
+		return &o.LabelTitle
+	case partPlate:
+		return &o.Plate
 	}
 	return nil
 }
@@ -167,7 +171,7 @@ func (mk bufMark) back(b *Buffer) {
 // line in the text (in a header or footer: the next part), and the rest
 // are Text mode's keys, on the part's words.
 func (m *Model) designWrite(d *designState, o *dOct, k tea.Key, name string) tea.Cmd {
-	if fieldPtr(o, d.editing) == nil || d.editing != partThing && !hasPart(o, d.editing) {
+	if fieldPtr(o, d.editing) == nil || d.editing != partThing && !isTagPart(d.editing) && !hasPart(o, d.editing) {
 		d.editing = partNone
 		return nil
 	}
@@ -304,7 +308,7 @@ func (m *Model) fieldDo(d *designState, o *dOct, fn func(fe *Model) tea.Cmd) tea
 	}
 	if d.editing != partBody && len(b.Lines) > 1 {
 		mk.back(b)
-		m.say("A " + map[int]string{partHeader: "title", partFooter: "footer", partThing: "title"}[d.editing] + " is one line.")
+		m.say("A " + map[int]string{partHeader: "title", partFooter: "footer", partThing: "title", partLabel: "label", partPlate: "name plate"}[d.editing] + " is one line.")
 		return nil
 	}
 	if o.Kind == kNote && d.editing == partBody && !noteFits(text) {
@@ -316,6 +320,12 @@ func (m *Model) fieldDo(d *designState, o *dOct, fn func(fe *Model) tea.Cmd) tea
 	d.dirty = true
 	if d.editing == partThing {
 		return cmd // a thing in a container: the container draws it
+	}
+	if isTagPart(d.editing) { // drawn on the board over the structure (design_tags.go)
+		if d.editing == partPlate {
+			m.tagSpread(o)
+		}
+		return cmd
 	}
 	if m.growToFit(o) { // all of it shows, without resizing by hand
 		m.keepInView(o, d.editing == partBody)

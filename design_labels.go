@@ -107,9 +107,9 @@ func (m *Model) designLabelKey(name string) (bool, tea.Cmd) {
 			m.say("Label icon: the picture " + strings.TrimPrefix(o.LabelIcon, "img:") + ".")
 		}
 	case "t":
-		return true, m.ask(pDesignLabel, "Label words for "+octName(o)+" (empty: its title): ", o.LabelTitle)
+		m.startTagEdit(o, partLabel, nil) // written on the board (design_tags.go)
 	case "g":
-		return true, m.ask(pDesignPlate, "Name plate for "+octName(o)+" (empty: none): ", o.Plate)
+		m.startTagEdit(o, partPlate, nil)
 	}
 	return true, nil
 }
@@ -208,7 +208,7 @@ func (d *designState) plates() map[string][]*dOct {
 			if o == nil {
 				continue
 			}
-			if o.Plate != "" {
+			if o.Plate != "" || (d.sel == o.ID && d.editing == partPlate) {
 				out[o.Plate] = append(out[o.Plate], o)
 			}
 			walk(o.Items)
@@ -246,7 +246,8 @@ func (m *Model) paintLabels(c *boardCanvas) {
 		}
 	}
 	for _, o := range d.octs {
-		if o == nil || (o.LabelStyle == labelNone && o.Plate == "") || !d.onScreen(o, cw, ch) {
+		writing := o != nil && o.ID == d.sel && isTagPart(d.editing)
+		if o == nil || (o.LabelStyle == labelNone && o.Plate == "" && !writing) || !d.onScreen(o, cw, ch) {
 			continue
 		}
 		x, y, w, h := d.rect(o)
@@ -290,6 +291,10 @@ func (d *designState) labelCells(o *dOct, x, y, w, h int, put func(x, y int, cel
 		if pic && showIcon {
 			ly = y - picIconH + 1 // a picture is taller: it rises above the edge
 		}
+		writing := d.sel == o.ID && d.editing == partLabel
+		if writing {
+			words = o.LabelTitle
+		}
 		cx := lx
 		drawIcon := func() {
 			if pic {
@@ -300,9 +305,17 @@ func (d *designState) labelCells(o *dOct, x, y, w, h int, put func(x, y int, cel
 			}
 		}
 		row := ly + boolInt(pic)*(picIconH-1) // the words' row: the edge
+		writeWords := func() {
+			if writing { // being written: with the cursor (design_tags.go)
+				cx = text(cx, row, " ", fg, col, true)
+				cx = d.tagCells(o, partLabel, words, cx, row, fg, col, put)
+				return
+			}
+			cx = text(cx, row, " "+words, fg, col, true)
+		}
 		if o.LabelStyle == labelTitleIcon {
-			if showWords {
-				cx = text(cx, row, " "+words, fg, col, true)
+			if showWords || writing {
+				writeWords()
 			}
 			if showIcon {
 				drawIcon()
@@ -311,13 +324,13 @@ func (d *designState) labelCells(o *dOct, x, y, w, h int, put func(x, y int, cel
 			if showIcon {
 				drawIcon()
 			}
-			if showWords {
-				cx = text(cx, row, " "+words, fg, col, true)
+			if showWords || writing {
+				writeWords()
 			}
 		}
 		text(cx, row, " ", fg, col, false)
 	}
-	if o.Plate != "" {
+	if o.Plate != "" || (d.sel == o.ID && d.editing == partPlate) {
 		// On the bottom edge, at its left (past an octagon's cut corner);
 		// a structure too small for that has it just under it.
 		col := plateColor(o.Plate)
@@ -328,8 +341,15 @@ func (d *designState) labelCells(o *dOct, x, y, w, h int, put func(x, y int, cel
 		if h < 3 || w < 10 {
 			px, py = x, y+h
 		}
+		pfg := mixHex(col, "#101010", 0.85)
+		if d.sel == o.ID && d.editing == partPlate { // being written: all of it, with the cursor (design_tags.go)
+			cx := text(px, py, " ▪ ", pfg, col, true)
+			cx = d.tagCells(o, partPlate, o.Plate, cx, py, pfg, col, put)
+			text(cx, py, " ", pfg, col, true)
+			return
+		}
 		name := " ▪ " + ansi.Truncate(o.Plate, max(4, w-(px-x)-7), "…") + " "
-		text(px, py, name, mixHex(col, "#101010", 0.85), col, true)
+		text(px, py, name, pfg, col, true)
 	}
 }
 

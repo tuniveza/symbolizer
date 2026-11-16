@@ -40,7 +40,7 @@ $ brick game.txt
 ```
 
 That's a reaction-time game, in one sentence.
-`./game` is about 7 KB: no Python inside, no C compiler, no libraries.
+`./game` is a few hundred bytes to a few KB: only the routines it uses go in. No Python inside, no C compiler, no libraries.
 
 <br>
 
@@ -84,6 +84,8 @@ make a canvas called board below go, 400 by 240
 when board is clicked, draw a red dot on board at the mouse x and the mouse y
 ```
 
+Short is fine too: `write red text on window at left side` writes "red text" in red at the window's left.
+
 **Your own words:**
 
 ```text
@@ -108,11 +110,15 @@ Every word is coloured by what brick reads it as. Under it, a panel shows brick'
 
 | Key | |
 |:---:|:---|
-| **F6** | run it |
-| **F7** | check it, and fix missing or misread steps |
-| **F8** | keys to the panel and back |
-| **F9** | next panel: Bricks · Words · Decisions · Imagination · Neurons · Learning |
+| **Alt + R** | run it: the brain checks it first and writes in its fix |
+| **Alt + C** | check it, and fix missing or misread steps |
+| **Alt + P** | keys to the panel and back |
+| **Alt + N** | next panel: Bricks · Words · Decisions · Imagination · Neurons · Learning |
+| **AltGr + D** | learning from your diary on / off |
+| **AltGr + V** | the brains' voices on / off |
 | **F12** | learning on / off, in any Symbolizer mode |
+
+The **Bricks** panel shows every brick in use, live as you type, and what the brain thinks of each line.
 
 <br>
 
@@ -132,11 +138,26 @@ When brick guessed, it tells you how it read the line.
 
 ## 🧠 It learns
 
-brick keeps learning from what you write, by itself.
+brick keeps learning from what you write, by itself. **How a messy line is read is decided by the digital brain
+alone** (`python3 -m trainer.mind "a line"`); brick's own language builds as written.
 
+- **The archetypes make the practice.** Each of the brain's 48 archetypes says directions in its own way, with its
+  own neuronal brain: the meaning's words are stimulated, heat spreads, words used alike light up, Ni's
+  predictions set the order (`python3 -m trainer.speech "write hello in red at the top"`). Your own two archetypes
+  type the way you do. The language model only adds to it now and then. Every saying keeps its meaning exactly.
+- **One universal linkage decides.** Every word, role (words to show, colour, place, time, file ...), action and
+  neighbour is a node; the practice links them, and lines that lead to wrong readings fade. A reading is right
+  when its links hold together: `orange juice` stays together as words, `juice in orange` is a colour
+  (`python3 -m trainer.links "a line"`). Every linked word must be accounted for, and too-close readings are
+  left alone.
+- **Every night at 3am** the archetypes make thousands of new practice lines, practise hardest on your lines it
+  read wrong (each "Not what I meant" answer joins those), and the brain learns again (`brick-imagination.timer`).
 - **Imagination neurons** predict the next word and propose new links. The compiler approves or rejects each one.
 - **New bricks** are made from what it finds, only when they build exactly right.
 - **A daemon** keeps learning in the background, at the lowest priority.
+- **New actions**: a word brick has no action for gets one made of what brick can already do
+  (`to shout something means write something in bold then beep`), proved by building it.
+- **Voices** (off by default): each archetype says out loud what it's learning, in its own voice.
 - **Everything stays on your computer.** Only single words go to a public dictionary.
 
 All it learns is plain text in `trainer/data/`, to read, change or delete.
@@ -154,6 +175,9 @@ All it learns is plain text in `trainer/data/`, to read, change or delete.
 | `brick export game.txt` | everything brick made, as plain text |
 | `brick trainer neurons learn` | learn now (`score`, `repair FILE`, `words 20`) |
 | `brick trainer neurons always` | keep learning in the background (`off`, `status`) |
+| `brick trainer lessons 20` | the language model's readings, taught to the brain |
+| `brick trainer voices 10` | 10 practice lines in the archetypes' voices |
+| `brick trainer narrator on` | the brains' voices (`off`, `status`) |
 | `brick help` | every phrase it knows |
 
 <br>

@@ -413,9 +413,6 @@ func (d *designState) boardLayers(o *dOct) []*lipgloss.Layer {
 		if it == nil {
 			continue
 		}
-		if pins3D && pinCarded(it) {
-			continue // a card of its own in the 3D picture (design_3d_pins.go)
-		}
 		sel := d.pin.active && d.pin.board == o.ID && d.pin.at == j
 		if p := d.pinMapOf(o, it); p.ok {
 			pic := ""

@@ -1975,13 +1975,13 @@ func TestDesignTabMovesView(t *testing.T) {
 	o.X, o.Y, o.W, o.H, o.Header = 300, 200, 30, 18, "Far"
 	d.sel, d.editing = o.ID, partNone
 
+	// It fits on the screen: the whole structure stays in the middle as
+	// Tab moves from part to part (the user asked, 16 Nov 2026).
 	middle := func(p int) {
 		t.Helper()
-		x, y, w, _ := d.rect(o)
-		top, bottom := d.partRows(o, p)
-		mid := y + (top+bottom+1)/2
-		if abs(x+w/2-m.width/2) > 1 || abs(mid-m.boardH()/2) > 1 {
-			t.Fatalf("part %d not in the middle: structure at %d,%d, part middle row %d, screen %d×%d", p, x, y, mid, m.width, m.boardH())
+		x, y, w, h := d.rect(o)
+		if abs(x+w/2-m.width/2) > 1 || abs(y+h/2-m.boardH()/2) > 1 {
+			t.Fatalf("part %d: structure not in the middle: at %d,%d %d×%d, screen %d×%d", p, x, y, w, h, m.width, m.boardH())
 		}
 	}
 	press(m, "tab")
@@ -2660,11 +2660,14 @@ func TestDesignLabels(t *testing.T) {
 	m.View()
 
 	// T: the label's own words.
-	press(m, "t")
-	if m.prompt != pDesignLabel {
-		t.Fatal("T did not ask for the words")
+	press(m, "t") // written on the board, not at a prompt (design_tags.go)
+	if m.prompt != pNone || d.editing != partLabel {
+		t.Fatal("T did not start writing the label on the board")
 	}
-	m.input.SetValue("Read me")
+	typeStr(m, "Read me")
+	if !strings.Contains(screenOf(m), "Read me") {
+		t.Fatalf("the label is not written on the board as it is typed:\n%s", screenOf(m))
+	}
 	press(m, "enter")
 	if a.LabelTitle != "Read me" || !strings.Contains(screenOf(m), "Read me") {
 		t.Fatalf("label words: %q", a.LabelTitle)
@@ -2674,10 +2677,10 @@ func TestDesignLabels(t *testing.T) {
 	for _, o := range []*dOct{a, b} {
 		d.sel = o.ID
 		press(m, "g")
-		if m.prompt != pDesignPlate {
-			t.Fatal("G did not ask for a name plate")
+		if m.prompt != pNone || d.editing != partPlate {
+			t.Fatal("G did not start writing the name plate on the board")
 		}
-		m.input.SetValue("Team")
+		typeStr(m, "Team")
 		press(m, "enter")
 	}
 	if a.Plate != "Team" || b.Plate != "Team" || len(d.plates()["Team"]) != 2 {
@@ -2716,9 +2719,8 @@ func TestDesignLabels(t *testing.T) {
 	}
 }
 
-// Shift+G: group mode. Clicks pick structures, a box dragged on the empty
-// board picks what it touches, G picks the chosen one; Enter gives them
-// all one name plate, and AltGr+P lists it.
+// Alt+S on each gives them one name plate; Alt+Shift+S renames it, written
+// on the board; AltGr+P lists it.
 func TestDesignGroupPick(t *testing.T) {
 	m := designTest(t)
 	d := m.ds()
@@ -2732,51 +2734,32 @@ func TestDesignGroupPick(t *testing.T) {
 	d.sel = -1
 	m.View()
 
-	press(m, "shift+g")
-	if !d.groupMode || len(d.picked) != 0 {
-		t.Fatalf("Shift+G: group mode %v, %d picked", d.groupMode, len(d.picked))
+	for _, o := range []*dOct{a, b, c, e} {
+		d.sel = o.ID
+		press(m, "alt+s")
 	}
-	// A click picks; a second click unpicks; a third picks again.
-	ax, ay, _, _ := d.rect(a)
-	for range 3 {
-		click(m, ax+3, ay+3+m.boardTop(), tea.MouseLeft)
-		m.lastClick = time.Time{}
-		d.lastClick = time.Time{}
+	if len(d.multiIDs()) != 4 || !strings.Contains(screenOf(m), "┏") {
+		t.Fatalf("Alt+S on four: chosen %v, framed? %v", d.multi, strings.Contains(screenOf(m), "┏"))
 	}
-	if !d.picked[a.ID] || len(d.picked) != 1 {
-		t.Fatalf("clicks: picked %v", d.picked)
+	press(m, "alt+shift+s")
+	if m.prompt != pNone || d.editing != partPlate {
+		t.Fatal("Alt+Shift+S did not start writing the name plate on the board")
 	}
-	// A box from the empty board touching B and C picks both, not E.
-	bx, by, _, _ := d.rect(b)
-	cx, cy, _, _ := d.rect(c)
-	dragTo(m, bx-1, by-1+m.boardTop(), cx+2, cy+2+m.boardTop(), tea.MouseLeft)
-	if !d.picked[b.ID] || !d.picked[c.ID] || d.picked[e.ID] || len(d.picked) != 3 {
-		t.Fatalf("the box picked %v", d.picked)
+	press(m, "ctrl+a")
+	typeStr(m, "Crew")
+	if a.Plate != "Crew" || e.Plate != "Crew" {
+		t.Fatalf("each letter should go on all chosen: %q %q", a.Plate, e.Plate)
 	}
-	if s := screenOf(m); !strings.Contains(s, "┏") || !strings.Contains(s, "3 structures picked") {
-		t.Fatalf("the picked ones are not framed, or the count is not said:\n%s", s)
-	}
-	// G picks the chosen one.
-	d.sel = e.ID
-	press(m, "g")
-	if !d.picked[e.ID] || len(d.picked) != 4 {
-		t.Fatalf("G did not pick the chosen one: %v", d.picked)
-	}
-	// Enter asks for one name plate; all four get it.
-	press(m, "enter")
-	if m.prompt != pDesignGroup {
-		t.Fatal("Enter did not ask for a name plate")
-	}
-	m.input.SetValue("Crew")
 	press(m, "enter")
 	for _, o := range []*dOct{a, b, c, e} {
 		if o.Plate != "Crew" {
 			t.Fatalf("%s has plate %q", o.Header, o.Plate)
 		}
 	}
-	if d.groupMode || len(d.plates()["Crew"]) != 4 {
-		t.Fatalf("after naming: group mode %v, %d in Crew", d.groupMode, len(d.plates()["Crew"]))
+	if len(d.plates()["Crew"]) != 4 {
+		t.Fatalf("after naming: %d in Crew", len(d.plates()["Crew"]))
 	}
+	press(m, "esc")
 	// The plate is on A's bottom edge, part of it: a click on it chooses A.
 	ax, ay, _, ah := d.rect(a)
 	rows := strings.Split(screenOf(m), "\n")
@@ -2794,17 +2777,6 @@ func TestDesignGroupPick(t *testing.T) {
 		t.Fatalf("AltGr+P does not list the group:\n%s", s)
 	}
 	m.Update(tea.KeyPressMsg(tea.Key{Code: 'þ', Text: "þ"}))
-
-	// Shift+G with one chosen starts with it picked; Esc leaves, naming nothing.
-	d.sel = a.ID
-	press(m, "shift+g")
-	if !d.picked[a.ID] {
-		t.Fatal("Shift+G did not pick the chosen structure")
-	}
-	press(m, "esc")
-	if d.groupMode || a.Plate != "Crew" {
-		t.Fatalf("Esc: group mode %v, plate %q", d.groupMode, a.Plate)
-	}
 }
 
 // At every zoom, a rack's row opens its thing inside the rack, under its
@@ -2992,8 +2964,7 @@ func TestDesignContainersNoOverlap(t *testing.T) {
 	}
 }
 
-// Choosing several: Space on (or over) a structure with a name plate
-// chooses its whole group; Ctrl + drag on the empty board draws a shaded
+// Choosing several: Alt+S on each; Ctrl + drag on the empty board draws a shaded
 // box and chooses what it touches; Ctrl + click adds or takes one away.
 // Dragging one moves them all, Alt + arrows too; X X deletes them all;
 // Esc lets go.
@@ -3009,25 +2980,24 @@ func TestDesignChooseSeveral(t *testing.T) {
 	a := mk("A", 2, 1, "Crew")
 	b := mk("B", 40, 1, "Crew")
 	c := mk("C", 70, 1, "")
-	e := mk("E", 70, 17, "Band")
+	_ = mk("E", 70, 17, "Band")
 	d.sel = a.ID
 	m.View()
 
-	// Space on A: A and B (the "Crew" group) are chosen.
+	// Space on A no longer chooses its group (Alt+S is the only key that chooses).
 	press(m, "space")
-	if !d.multi[a.ID] || !d.multi[b.ID] || len(d.multiIDs()) != 2 {
-		t.Fatalf("Space did not choose the group: %v", d.multi)
+	if len(d.multiIDs()) != 0 {
+		t.Fatalf("Space should not choose: %v", d.multi)
+	}
+	// Alt+S on A, then on B: both chosen; they keep the plate they share.
+	press(m, "alt+s")
+	d.sel = b.ID
+	press(m, "alt+s")
+	if !d.multi[a.ID] || !d.multi[b.ID] || len(d.multiIDs()) != 2 || a.Plate != "Crew" || b.Plate != "Crew" {
+		t.Fatalf("Alt+S did not choose A and B: %v (plates %q %q)", d.multi, a.Plate, b.Plate)
 	}
 	if s := screenOf(m); !strings.Contains(s, "2 chosen") || strings.Count(s, "┏") < 2 {
 		t.Fatalf("the two chosen are not framed, or the status bar does not say so:\n%s", s)
-	}
-	// The mouse over E (the "Band" group), then Space: E's group instead.
-	ex, ey, _, _ := d.rect(e)
-	m.Update(tea.MouseMotionMsg(tea.Mouse{X: ex + 3, Y: ey + 2 + m.boardTop()}))
-	d.spaceAt = time.Time{}
-	press(m, "space")
-	if !d.multi[e.ID] || len(d.multiIDs()) != 1 || d.sel != e.ID {
-		t.Fatalf("Space over E did not choose E's group: %v", d.multi)
 	}
 	press(m, "esc")
 	if len(d.multi) != 0 {

@@ -10,7 +10,7 @@
 <img src="https://img.shields.io/badge/brick-inside-ff3704?style=for-the-badge&labelColor=161616" alt="brick inside">
 
 ### Your whole workspace, in the terminal.
-Write and code · keep a diary · run your projects · design in 3D · make programs from plain English
+Write and code · keep a diary · run your projects · design rooms · make programs from plain English
 
 Embers on charcoal. It saves by itself.
 
@@ -78,7 +78,7 @@ Hold a key and the arrows change what they do. The status bar always says which.
 | **Diary** | A chapter a day, plain-text pages. **Left / Right** turn pages, **Alt + N** a new one. |
 | **Manager** | All your projects on one screen. Type to search, **F6** run, **F7** build. |
 | **Brick** | Programs written in plain English. [See below](#-brick). |
-| **Design** | A board made of text, flat or as a 3D room. [See below](#-design). |
+| **Design** | A board made of text: rooms with walls, a floor and windows. [See below](#-design). |
 
 <div align="center">
 <img src="docs/media/diary.gif" alt="Diary pages turned one by one, the all-pages view, then the modes box" width="880">
@@ -91,13 +91,30 @@ Hold a key and the arrows change what they do. The status bar always says which.
 [brick](brick/) turns plain English into real Linux programs. It lives in this repo.
 In Brick mode every word is coloured by what brick reads it as.
 
+<img src="docs/media/brick.gif" alt="Brick mode: typing plain English, the bricks in use building up live, the brain inventing a 'splash' action, then Alt + R fixing the line and running the program" width="880">
+
+*Type plain English. The brain checks each line. **Alt + R** writes in its fixes and runs it.*
+
 | Key | |
 |:---:|:---|
-| **F6** | run it |
-| **F7** | check it, and fix missing steps |
-| **F8** | keys to the panel and back |
-| **F9** | next panel |
+| **Alt + R** | run it: built while you type, so it starts at once |
+| **Alt + C** | check every line again |
+| **Alt + P** | pick one of the brain's fixes (**Esc** back) |
+| **Alt, Alt, B** | tap Left Alt twice, then B: brick mode from any mode |
 | **F12** | brick learning on / off, in any mode |
+
+One panel under the text shows the brain's reading of each line, live:
+**✓** read as written · **→** understood as something else · **✗** can't build yet, and why · **?** may not do what you meant, with its fix under it.
+Each line shows how many bytes it builds.
+
+When the brain has a fix, **Alt + R** writes it in before running. **Ctrl + Z** takes it back.
+The brain learned where messy directions end from thousands of scrambled paragraphs, so colours and places stay with the right line.
+On brick's hardest messy-English test (40 run-on paragraphs, `brick/tools/bench.py`) it builds all 40 exactly as meant; on fresh scrambled paragraphs about 95%.
+Every word has its own universe (1.4 million, from WordNet, Wiktionary, ConceptNet and the brain's own links): `python3 -m trainer.words position` shows one.
+It also knows the whole English dictionary (WordNet and Wiktionary): about 1,000 more verbs, each test-built (`holler hello` writes hello), plus colours, places and chatter it never shows.
+The language model teaches the brain: what it reads right is learned, so the brain reads it by itself next time.
+Programs carry only the routines they use: `write hello` is 335 bytes.
+An empty file shows lines to start with. **F1** has the rest.
 
 brick learns from what you write. It stays on your computer.
 Your diary is read only when you switch it on.
@@ -111,7 +128,11 @@ A board you build with text: shapes with pictures, pages, notes, cabinets, drawe
 - **Alt + N** places a new thing. **Drag** to move. **X X** deletes. **Ctrl + Z** undoes.
 - **Arrows** jump between things. **Tab** writes in one.
 - **Drop files** from your file manager onto the board.
-- **Ctrl + F** walks into it as a 3D room, with its own music.
+- Every room has **4 walls** and a **floor**, each a board of its own. **AltGr + R** spins to the next wall; **AltGr + F** looks down at the floor, the place for unfinished things.
+- Each room has a few **windows** with the town outside, and little text people going about.
+- **M** plays chiptune music, on or off.
+- **AltGr + N, then R** adds a room (with a door to it); **W** a wall; **L** a level (with stairs). **Enter** or **Space** on a door or stairs goes through.
+- Labels and name plates are written **on the board**. **Tap Alt, then Space** adds the chosen one to a selection; **Alt + A** gives the selection one name plate.
 
 <div align="center">
 <img src="docs/media/design.gif" alt="A picture in an octagon, its layouts, a cabinet, a page and a note placed and filed" width="880">

@@ -16,6 +16,7 @@ and it stops cleanly between steps. Only one learner runs at a time (a lock), so
 """
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -49,6 +50,8 @@ STATUS = os.path.join(intuition.FOLDER, "daemon-status.json")
 LOG = os.path.join(intuition.FOLDER, "daemon.log")
 PAUSE, BATTERY_PAUSE = 30, 600          # seconds between rounds (on mains, on battery)
 BRICKS_EVERY, WORDS_EVERY = 6, 86400    # rounds between brick making; seconds between dictionary lookups
+TEACH_EVERY = 3                         # rounds between lessons from the language model's readings (trainer/teacher.py)
+SPEAK_EVERY = 10                        # rounds between the narrator's round summaries (when it's switched on)
 stopping = False
 
 
@@ -92,6 +95,17 @@ def read_status():
         return {}
 
 
+def hear(event):
+    """Tell the narrator (trainer/narrator.py) what just happened: it speaks only when switched on, in the background,
+    and nothing it does can stop the daemon."""
+    try:
+        from trainer import narrator
+        if narrator.on():
+            narrator.speak(event)
+    except Exception:
+        pass
+
+
 def nap(seconds):
     end = time.time() + seconds
     while not stopping and time.time() < end:
@@ -107,6 +121,8 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     os.environ.setdefault("BRICK_TRAINER", "off")         # builds inside never start another trainer
+    os.environ["BRICK_NEURAL"] = "off"                    # and never ask the language model (no graphics card in the
+                                                          # background): the teacher reads only its cached readings
     log("started")
     rounds = read_status().get("rounds", 0)
     while not stopping:
@@ -120,6 +136,8 @@ def main():
         rounds += 1
         if said:
             log(said[-1])
+            if rounds % SPEAK_EVERY == 0 or re.search(r": [1-9]\d* kept", said[-1]):
+                hear({"kind": "round", "round": rounds, "text": said[-1]})
         if got:
             status(rounds=rounds, neurons=got.get("neurons"), lines=got.get("settled"), proved=got.get("proved"),
                    ni=got.get("ni"), bits=got.get("bits"), phrases=got.get("phrases"))
@@ -128,12 +146,32 @@ def main():
         if rounds % BRICKS_EVERY == 0 and not on_battery():
             made = intuition.make_bricks(limit=5, say=lambda s: log(s.strip()))
             status(last_bricks=made, bricks_made=read_status().get("bricks_made", 0) + len(made))
+            if made:
+                hear({"kind": "bricks", "lines": made})
+        if rounds % TEACH_EVERY == 0 and not on_battery():
+            try:                                          # the model's readings of your lines, taught to the brain
+                from trainer import teacher
+                began = time.time()
+                got = teacher.teach(5, say=lambda s: log(s.strip()))
+                if got["looked"]:
+                    log(f"lessons: {got['looked']} looked at, {len(got['learned'])} learned, {got['already']} known, "
+                        f"{len(got['not yet'])} not yet, {got['refused']} readings refused "
+                        f"({time.time() - began:.0f}s)")
+                status(taught=read_status().get("taught", 0) + len(got["learned"]))
+                if got["learned"]:
+                    hear({"kind": "say", "text": f"The language model taught me to read '{got['learned'][0]}' by myself."})
+            except Exception as error:
+                log(f"teaching failed: {error}")
         last_words = read_status().get("words_at", 0)
         if time.time() - last_words > WORDS_EVERY and not on_battery():
             try:
                 from trainer import wordfeed
                 fed = wordfeed.feed(20, rounds=0, say=lambda s: log(s.strip()))
                 status(words_at=time.time(), last_words=(fed or {}).get("defined", []))
+                if fed:
+                    hear({"kind": "words", **fed})
+                    if fed.get("bricks"):
+                        hear({"kind": "bricks", "lines": fed["bricks"]})
             except Exception as error:
                 log(f"dictionary lookup failed: {error}")
                 status(words_at=time.time())

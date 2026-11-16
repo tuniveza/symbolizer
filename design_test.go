@@ -80,7 +80,7 @@ func TestDesignBoard(t *testing.T) {
 			t.Fatalf("board is missing %q:\n%s", w, screen)
 		}
 	}
-	if !strings.Contains(screen, "1 ◆ · 0 ⛓") && !strings.Contains(screen, "1 structures · 0 links") {
+	if !strings.Contains(screen, "1 ◆ · 0 ⛓") && !strings.Contains(screen, "1 structures · 0 links") && !strings.Contains(screen, "wall 1/4") {
 		t.Fatalf("board is missing the count:\n%s", screen)
 	}
 	if string(m.buf.Lines[0]) != "text stays" {

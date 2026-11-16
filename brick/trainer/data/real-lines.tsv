@@ -1,0 +1,26 @@
+# Your own lines (from your corrections, heard.txt and Symbolizer), and what each plainly means.
+# The brain is scored on these: python3 -m trainer.mind real
+at the left side of the screen put text in red with the words hello and hi	write hello and hi in red at the left
+at the right side of the screen put text in red with the words hello and hi	write hello and hi in red at the right
+write green in the color green to the bottom right of screen	write green in green at the bottom-right
+write red in the color red to the bottom left of screen	write red in red at the bottom-left
+put red text at the left side of the screen with words like strawberry	write strawberry in red at the left
+put purple text at the left side of the screen with words like strawberry	write strawberry in purple at the left
+write at left side of screen the text pinhole in pink	write pinhole in pink at the left
+write at the right side of the in red the word apple	write apple in red at the right
+write on the top center side of the screen the word pink in pink	write pink in pink at the top
+write on the top side of the screen the word pink in pink	write pink in pink at the top
+write on the bottom side of the screen the word pink in pink	write pink in pink at the bottom
+write hello at the bottom red	write hello in red at the bottom
+can you write orange on the screen	write orange
+can you write purple on the screen	write purple
+can you write pink	write pink
+can you write purple	write purple
+text red say trash	write trash in red
+wirte red text on winodw at left side	write red text in the window at the left in red
+ok so TOP of screen hello there in red;bg blue   then 2 secs wait lol	write hello there in red at the top then set the background colour to blue then wait 2 seconds
+write yellow in yellow on a window	write yellow in the window in yellow
+write hello in brown at window	write hello in the window in brown
+then write crap in brown on that window	write crap in the window in brown
+write at right side of window hello in blue	write hello in the window at the right in blue
+write red text on window at left side	write red text in the window at the left in red

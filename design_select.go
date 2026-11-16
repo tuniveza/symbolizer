@@ -4,18 +4,24 @@ package main
 //
 // Several structures can be chosen together; each has a bright frame:
 //
-//	Space              on (or over, with the mouse) a structure with a name
-//	                   plate: everything with that plate is chosen
+//	Alt + S            the one the arrows chose joins them (again: leaves).
+//	                   Two or more share one name plate at once (a new
+//	                   "Group N", or the plate one of them had already)
+//	Alt + Shift + S    rename that name plate, written on the board
 //	Ctrl + drag        on the empty board: a shaded box; everything it
 //	                   touches is chosen (with what was chosen already)
 //	Ctrl + click       on a structure: chosen too, or no longer
 //
+// Alt + S is the only key that chooses (the user asked, 16 Nov 2026): the
+// old Space-on-a-group, Alt-then-Space and Shift+G group mode are gone.
 // Then dragging one of them, or Alt + arrows, moves them all; X X deletes
-// them all; Shift+G picks them for a name plate; Esc (or a click on the
-// empty board, or on a structure not chosen) lets go of them.
+// them all; Esc (or a click on the empty board, or on a structure not
+// chosen) lets go of them. Their name plate stays.
 
 import (
+	"math"
 	"sort"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -59,13 +65,7 @@ func (m *Model) sayMulti(what string) {
 func (m *Model) designHover(ms tea.Mouse) {
 	d := m.ds()
 	d.hover = 0
-	if d.room.on() { // the room in 3D: the flat cell the mouse is over (design_3d.go)
-		var ok bool
-		if ms, ok = m.design3DHover(ms); !ok {
-			d.hoverOnly = true
-			return
-		}
-	}
+	m.mouseCell = [2]int{ms.X, ms.Y}
 	if sy := ms.Y - m.boardTop(); sy >= 0 && sy < m.boardH() {
 		if o := d.at(ms.X, sy); o != nil {
 			d.hover = o.ID + 1
@@ -80,9 +80,14 @@ func (m *Model) designHover(ms tea.Mouse) {
 // with nothing open opens its first; a board, its chosen pin). On anything
 // else it chooses the whole group (its name plate's).
 func (m *Model) designSpaceTap() {
-	if !m.designSpaceOpen() {
-		m.designSpaceGroup()
+	d := m.ds()
+	if o := d.byID(d.hover - 1); d.hover > 0 && doorTo(o) != 0 && !d.opened.active {
+		d.sel = o.ID // the door under the mouse
 	}
+	if !d.opened.active && m.goThrough() { // a door or stairs: through it, as Enter (design_rooms.go)
+		return
+	}
+	m.designSpaceOpen()
 }
 
 // designSpaceOpen opens or shuts the container Space is on; it says
@@ -183,11 +188,142 @@ func (m *Model) designSpaceRelease() {
 	if d == nil {
 		return
 	}
-	tap := d.spaceTap && !d.spacePanned
-	d.spaceTap = false
+	tap := d.spaceTap && !d.spacePanned && !d.spaceSwallow
+	d.spaceTap, d.spaceSwallow = false, false
 	if tap && m.inDesign() {
 		m.designSpaceTap()
 	}
+}
+
+// ---- Alt + S: one more chosen, and one name plate for them ----------------------------
+
+// designSelectToggle is Alt+S: the structure the arrows chose joins those
+// chosen together, or leaves them. Two or more share one name plate.
+func (m *Model) designSelectToggle() {
+	d := m.ds()
+	o := d.byID(d.sel)
+	if o == nil {
+		m.say("Choose a structure with the arrows first, then press Alt+S.")
+		return
+	}
+	if d.multi == nil {
+		d.multi = map[int]bool{}
+	}
+	d.dirty = true
+	if d.multi[o.ID] { // leaves them, and their name plate
+		delete(d.multi, o.ID)
+		rest := d.multiIDs()
+		plate := d.sharedPlate(append(rest, o.ID))
+		if plate != "" && o.Plate == plate {
+			o.Plate = ""
+		}
+		if len(rest) == 1 && plate != "" && isGroupName(plate) && len(d.plates()[plate]) == 1 {
+			d.byID(rest[0]).Plate = "" // one left alone: a made-up group name goes too
+		}
+		d.save()
+		m.sayMulti(octName(o) + " left out · ")
+		return
+	}
+	before := d.multiIDs()
+	d.multi[o.ID] = true
+	if len(before) == 0 {
+		m.sayMulti(octName(o) + " chosen · arrows to the next, Alt+S again · ")
+		return
+	}
+	plate := d.sharedPlate(before) // the plate those chosen already share,
+	if plate == "" {
+		for _, id := range append(before, o.ID) { // else the first plate one of them has,
+			if p := d.byID(id).Plate; p != "" {
+				plate = p
+				break
+			}
+		}
+	}
+	if plate == "" {
+		plate = d.newGroupName() // else a new one
+	}
+	for _, id := range d.multiIDs() {
+		d.byID(id).Plate = plate
+	}
+	d.save()
+	m.sayMulti("“" + plate + "”: " + octName(o) + " added · Alt+Shift+S renames · ")
+}
+
+// sharedPlate is the name plate every one of ids has, or "".
+func (d *designState) sharedPlate(ids []int) string {
+	plate := ""
+	for i, id := range ids {
+		o := d.byID(id)
+		if o == nil {
+			continue
+		}
+		if i == 0 {
+			plate = o.Plate
+		} else if o.Plate != plate {
+			return ""
+		}
+	}
+	return plate
+}
+
+// newGroupName is "Group N" with the smallest N no name plate has yet.
+func (d *designState) newGroupName() string {
+	have := d.plates()
+	for n := 1; ; n++ {
+		if name := "Group " + itoa(n); len(have[name]) == 0 {
+			return name
+		}
+	}
+}
+
+// isGroupName is whether p is a name newGroupName makes.
+func isGroupName(p string) bool {
+	rest, ok := strings.CutPrefix(p, "Group ")
+	if !ok || rest == "" {
+		return false
+	}
+	for _, r := range rest {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// ---- writing starts: the view centres on it -------------------------------------------
+
+// centreOnEdit centres the view on the chosen structure when writing in it
+// has just started (wasEditing, wasSel: as it was before the key or click).
+// One taller than the screen keeps the view on the part being written.
+func (m *Model) centreOnEdit(wasEditing, wasSel int) {
+	d := m.design
+	if d == nil || !m.inDesign() {
+		return
+	}
+	switch d.editing { // (a label or name plate keeps the view as it is, moving only to show it)
+	case partHeader, partBody, partFooter:
+	default:
+		return
+	}
+	if wasEditing != partNone && wasSel == d.sel {
+		return // was writing in it already: the view follows the cursor
+	}
+	o := d.byID(d.sel)
+	if o == nil {
+		return
+	}
+	if _, _, _, h := d.rect(o); h > m.boardH()-2 {
+		return
+	}
+	m.centreOnWhole(o)
+}
+
+// centreOnWhole is centreOn with the view on whole board cells (half a
+// cell off, the pen would mark two cells for one).
+func (m *Model) centreOnWhole(o *dOct) {
+	d := m.ds()
+	m.centreOn(o)
+	d.camX, d.camY = math.Round(d.camX), math.Round(d.camY)
 }
 
 // ---- Ctrl + drag: a box, Ctrl + click: one more ------------------------------------------
@@ -334,7 +470,7 @@ func (m *Model) designDeleteMulti() tea.Cmd {
 func (m *Model) paintChosen(c *boardCanvas) {
 	d := m.ds()
 	cw, ch := c.Width(), c.Height()
-	if ids := d.multiIDs(); len(ids) > 1 || (len(ids) == 1 && d.drag == dragMarquee) {
+	if ids := d.multiIDs(); len(ids) > 0 {
 		sort.Ints(ids)
 		for _, id := range ids {
 			o := d.byID(id)

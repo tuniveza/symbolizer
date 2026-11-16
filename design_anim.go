@@ -169,7 +169,7 @@ func (d *designState) animating() bool {
 // designAnimCmd asks for the next frame while something moves.
 func (m *Model) designAnimCmd() tea.Cmd {
 	d := m.design
-	if d == nil || d.animTick || !d.animating() {
+	if d == nil || d.animTick || (!d.animating() && d.through == nil && d.arrive == nil && m.spin == nil) { // (a door being gone through: design_door.go)
 		return nil
 	}
 	d.animTick = true

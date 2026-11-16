@@ -220,6 +220,8 @@ class BitWords:
         self.gui_lines = set()                      # lines read as window words (not for the misread checks)
         self.gui_slots = {}
         self.gl_names = set()
+        self.gui_drawn = set()                      # the shapes it draws on canvases (1 box ... 6 dot), for bitwin
+        self.gui_looks = set()                      # "shadow", "texture": looks some style may get, for paint
         self.gui_text_sizes = {16}                  # for paint.add_all: the letters the program needs                       # 3D things the program named ("a red cube called box")
 
     # ---------------- where window words start ----------------
@@ -290,7 +292,28 @@ class BitWords:
     def gui_routines(self):
         if self.uses_gui:
             add_routines(self.a, self.gui_slots, sizes=sorted(self.gui_text_sizes), gl=any(e.kind == GLVIEW for e in self.gui_order) or
-                         getattr(self, "uses_glspace", False))
+                         getattr(self, "uses_glspace", False),
+                         kinds={WINDOW} | {e.kind for e in self.gui_order}, drawn=self.gui_drawn,
+                         looks=self.gui_looks_used())
+
+    def gui_note_looks(self, effects):
+        """Note the looks these style effects may give ("set"/"add" a shadow or texture that isn't 0)."""
+        for e in effects:
+            if e[0] in ("set", "add") and e[2] != 0:
+                if e[1] == S + SHADOW:
+                    self.gui_looks.add("shadow")
+                elif e[1] == S + TEXTURE:
+                    self.gui_looks.add("texture")
+
+    def gui_looks_used(self):
+        """What shapes can look like, for paint.add_all: menus' item lists have a shadow; circles and dots
+        drawn on canvases are round."""
+        looks = set(self.gui_looks)
+        if any(e.kind == MENU for e in self.gui_order):
+            looks.add("shadow")
+        if self.gui_drawn & {2, 6}:
+            looks.add("ellipse")
+        return looks
 
     # ---------------- finding elements ----------------
 
@@ -480,6 +503,10 @@ class BitWords:
                        self.read_thickness):
             if stop_only and reader in (self.read_bare_colour,):
                 continue
+            if stop_only and reader == self.read_texture and self.gui_texture_word(t, i) and \
+                    not t.at(i + self.gui_texture_word(t, i)[1], "texture", "pattern", "effect", "finish", "look"):
+                continue                      # 'saying hello from brick': a bare texture word is one of the words
+                                              # ('with a brick texture', 'in red stripes' still are textures)
             found = reader(t, i, end, ctx)
             if found and found[0] > 0 and i + found[0] <= end:
                 return found
@@ -1299,6 +1326,7 @@ class BitWords:
         """Store the effects in the element's record (and call the runtime for depth, items, text)."""
         a = self.a
         effects = self.gui_resolve(elem.kind, effects)
+        self.gui_note_looks(effects)
         have = False                                    # does rax hold the record's address?
         for e in effects:
             op = e[0]
@@ -1826,6 +1854,7 @@ class BitWords:
         a = self.a
         self.gui_use()
         shape = self.gui_slot("shape", 64)
+        self.gui_drawn.add(kind)
         points = [(self.gui_in_canvas(x, canvas, AX), self.gui_in_canvas(y, canvas, AY)) for x, y in points]
 
         def put(offset, value):
@@ -1859,6 +1888,7 @@ class BitWords:
                 style_block = a.reserve(128, "bww_style")
                 if colour is not None and not any(e[1] == S + FILL for e in style):
                     style = [("set", S + FILL, 1), ("set", S + COLOUR, colour)] + style
+                self.gui_note_looks(style)
                 for e in style:
                     self.gui_emit_value(e[2])
                     a.address(RCX, style_block)
@@ -1933,6 +1963,20 @@ class BitWords:
 
     def write_in_window(self, t):
         ctx = {"creating": True, "kind": TEXTKIND}
+        lead, k = [], 0                     # "red text at left side": the colour in front colours it, and
+        while self.gui_colour(t, k):        # 'text at left side' isn't "text saying 'at left side'"
+            colour, used = self.gui_colour(t, k)
+            lead.append(("colour", colour))
+            k += used
+        if lead and k < t.n and t.w[k] in ("text", "writing", "words", "letters") and \
+                (k + 1 == t.n or self.gui_mod_at(t, k + 1, t.n, ctx, stop_only=True)) and \
+                not any(e[0] == "text" for e in self.gui_mods(t, k + 1, t.n, dict(ctx))):   # 'red text saying hi'
+            said, effects = t.words[:k + 1], lead + self.gui_mods(t, k + 1, t.n, ctx)
+
+            def plan():
+                elem = self.gui_make(TEXTKIND, None, effects)
+                self.gui_apply(elem, [("text", ("textwords", said))])
+            return plan
         j = 0
         while j < t.n and not (j and self.gui_mod_at(t, j, t.n, ctx, stop_only=True)):
             j += 1
@@ -1990,6 +2034,7 @@ class BitWords:
             a = self.a
             self.gui_use()
             shape = self.gui_slot("shape", 64)
+            self.gui_drawn.add(5)                               # text
             x, y = self.gui_in_canvas(point[0], canvas, AX), self.gui_in_canvas(point[1], canvas, AY)
             if isinstance(text_size, int):
                 self.gui_text_sizes.add(text_size)
@@ -2755,71 +2800,74 @@ class BitWords:
 
 # ---------------- routines the window words add ----------------
 
-def add_routines(a, slots, sizes=None, gl=False):
+def add_routines(a, slots, sizes=None, gl=False, kinds=None, drawn=None, looks=None):
     """bww_window (opens the window the first time it's needed), bww_sleep (waiting with a window open),
-    bww_key_text (the last key as text), then the bitwin runtime (bitwin.add_all)."""
-    a.label("bww_window")
-    done = a.new_label("bww_open_done")
-    a.address(RAX, slots["opened"])
-    a.load(RCX, RAX)
-    a.op("test", RCX, RCX)
-    a.jump_if(NOT_EQUAL, done)
-    a.set(RCX, 1)
-    a.store(RAX, 0, RCX)
-    for slot, default, reg in (("title", None, RAX), ("w", 640, RCX), ("h", 480, RDX)):
-        ok = a.new_label("bww_given")
-        a.address(reg, slots[slot])
-        a.load(reg, reg)
-        a.op("test", reg, reg)
-        a.jump_if(NOT_EQUAL, ok)
-        if default is None:
-            a.address(reg, a.text("brick"))
-        else:
-            a.set(reg, default)
-        a.label(ok)
-        if reg == RAX:
-            a.push(RAX)
-        elif reg == RCX:
-            a.push(RCX)
-    a.pop(RCX)
-    a.pop(RAX)
-    a.address(R8, slots["resizable"])
-    a.load(R8, R8)
-    a.call("bw_open")
-    a.label(done)
-    a.ret()
-
-    a.label("bww_sleep")                    # rax = nanoseconds, like sleep
-    a.set(RDX, 0)
-    a.set(RCX, 1_000_000)
-    a.divide(RCX)
-    a.push(RAX)
-    a.call("bww_window")
-    a.pop(RAX)
-    a.call("bw_wait")
-    a.ret()
-
-    a.label("bww_key_text")
-    a.address(RAX, "bw_key")
-    a.load(RAX, RAX)
-    for code, name in ((8, "backspace"), (9, "tab"), (10, "enter"), (13, "enter"), (27, "escape"), (1001, "left"),
-                       (1002, "right"), (1003, "up"), (1004, "down"), (1005, "home"), (1006, "end"), (1007, "delete")):
-        other = a.new_label("bww_key")
-        a.op_n("cmp", RAX, code)
-        a.jump_if(NOT_EQUAL, other)
-        a.address(RAX, a.text(name))
+    bww_key_text (the last key as text), then the bitwin runtime (bitwin.add_all; kinds: the element kinds
+    the program makes, drawn: the shapes it draws on canvases, looks: paint.add_all's; None = not known)."""
+    def window_routines(a):
+        a.label("bww_window")
+        done = a.new_label("bww_open_done")
+        a.address(RAX, slots["opened"])
+        a.load(RCX, RAX)
+        a.op("test", RCX, RCX)
+        a.jump_if(NOT_EQUAL, done)
+        a.set(RCX, 1)
+        a.store(RAX, 0, RCX)
+        for slot, default, reg in (("title", None, RAX), ("w", 640, RCX), ("h", 480, RDX)):
+            ok = a.new_label("bww_given")
+            a.address(reg, slots[slot])
+            a.load(reg, reg)
+            a.op("test", reg, reg)
+            a.jump_if(NOT_EQUAL, ok)
+            if default is None:
+                a.address(reg, a.text("brick"))
+            else:
+                a.set(reg, default)
+            a.label(ok)
+            if reg == RAX:
+                a.push(RAX)
+            elif reg == RCX:
+                a.push(RCX)
+        a.pop(RCX)
+        a.pop(RAX)
+        a.address(R8, slots["resizable"])
+        a.load(R8, R8)
+        a.call("bw_open")
+        a.label(done)
         a.ret()
-        a.label(other)
-    a.push(RAX)
-    a.set(RCX, 16)
-    a.call("alloc")
-    a.pop(RCX)
-    a.set(RDX, 0xFF)
-    a.op("and", RCX, RDX)
-    a.set(RDX, 1)
-    a.store(RAX, 0, RDX)
-    a.store(RAX, 8, RCX)
-    a.ret()
+
+        a.label("bww_sleep")                    # rax = nanoseconds, like sleep
+        a.set(RDX, 0)
+        a.set(RCX, 1_000_000)
+        a.divide(RCX)
+        a.push(RAX)
+        a.call("bww_window")
+        a.pop(RAX)
+        a.call("bw_wait")
+        a.ret()
+
+        a.label("bww_key_text")
+        a.address(RAX, "bw_key")
+        a.load(RAX, RAX)
+        for code, name in ((8, "backspace"), (9, "tab"), (10, "enter"), (13, "enter"), (27, "escape"), (1001, "left"),
+                           (1002, "right"), (1003, "up"), (1004, "down"), (1005, "home"), (1006, "end"), (1007, "delete")):
+            other = a.new_label("bww_key")
+            a.op_n("cmp", RAX, code)
+            a.jump_if(NOT_EQUAL, other)
+            a.address(RAX, a.text(name))
+            a.ret()
+            a.label(other)
+        a.push(RAX)
+        a.set(RCX, 16)
+        a.call("alloc")
+        a.pop(RCX)
+        a.set(RDX, 0xFF)
+        a.op("and", RCX, RDX)
+        a.set(RDX, 1)
+        a.store(RAX, 0, RDX)
+        a.store(RAX, 8, RCX)
+        a.ret()
+    a.piece(window_routines, split=True)            # each left out when nothing uses it (Asm.prune)
 
     try:
         import bitwin
@@ -2829,11 +2877,11 @@ def add_routines(a, slots, sizes=None, gl=False):
         bitwin = None
     if bitwin is not None:
         wayland.add_all(a)
-        paint.add_all(a, sizes)
+        paint.add_all(a, sizes, looks)
         if gl:
             import glspace
             glspace.add_all(a)
-        bitwin.add_all(a)
+        bitwin.add_all(a, kinds, drawn)
     else:
         import os
         if os.environ.get("BRICK_BITWIN_STUB") != "1":

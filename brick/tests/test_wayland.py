@@ -618,7 +618,7 @@ def test_programs_without_windows_are_unchanged():
         runtime.finish(x)
         runtime.add_all(x)
     wayland.add_all(b)
-    assert len(elf.wrap(b)) > len(elf.wrap(a))
+    assert len(elf.wrap(b)) == len(elf.wrap(a))     # routines nothing calls are left out (Asm.prune)
     c = Asm()
     runtime.start(c)
     runtime.finish(c)

@@ -85,6 +85,27 @@ class Universe:
                 self.words.setdefault(entry.key, set()).update(meant)
         for word in STARTERS:                          # ask, count, repeat ...: the universe leaves those alone
             self.words.setdefault(word, {"other action"})
+        self.lexicon()
+
+    def lexicon(self):
+        """Words from the whole English dictionary (trainer/lexicon.py) the universe doesn't know yet: chatter
+        ('erm', 'lmao'), joining words, and slips of its own words ('bg' -> background)."""
+        path = os.path.join(os.path.dirname(PATH), "lexicon.tsv")
+        if not os.path.isfile(path) or os.environ.get("BRICK_LEXICON") == "off":
+            return
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("#") or "\t" not in line:
+                    continue
+                word, what = line.rstrip("\n").split("\t", 1)
+                if word in self.words:
+                    continue
+                if what == "chatter":
+                    self.words[word] = {"chatter"}
+                elif what == "join":
+                    self.words[word] = {"glue"}
+                elif what.startswith("same:") and what[5:] in self.words:
+                    self.words[word] = set(self.words[what[5:]])
 
     def about(self, ideas):
         """The ideas, and every wider idea they're a kind of."""
@@ -102,7 +123,8 @@ _universe, _read_when = None, None
 
 def universe():
     global _universe, _read_when
-    when = [(p, os.path.getmtime(p)) for p in (PATH, dictionary.PATH)]
+    when = [(p, os.path.getmtime(p)) for p in (PATH, dictionary.PATH, dictionary.EXTRA,
+                                                 os.path.join(os.path.dirname(PATH), "lexicon.tsv")) if p and os.path.isfile(p)]
     if _universe is None or when != _read_when:
         _universe, _read_when = Universe(PATH), when
     return _universe
@@ -140,9 +162,26 @@ def analyse(line):
 def read_directions(line):
     """The line as directions, each a list of tokens: a word or phrase with its ideas.
     A direction ends at a comma, semicolon, 'then', a word ending in . ! or ?, a lone '...' or '-', 'and'
-    before a new action, or where a second action starts while one is under way ('wait 3 s the words hi')."""
+    before a new action, or where a second action starts while one is under way ('wait 3 s the words hi').
+    A long messy paragraph is cut where the brain learned directions end (trainer/cutter.py), when it is sure."""
+    tokens = tokens_of(line, gaps=True)
+    from trainer import cutter
+    learned = cutter.cut(tokens)
+    if learned is not None:
+        return tidy_ends(learned)
+    return cut_by_rules([t for t in tokens if "gap" not in t.ideas])
+
+
+GAP = "\u00b6"                                       # two or more spaces between words: a pause the cutter weighs
+
+
+def tokens_of(line, gaps=False):
+    """The line's words and phrases as tokens, each with its ideas; slips, doubled words and filler 'right' dealt
+    with. gaps: two or more spaces between words become a gap token (the cutter learned what such a pause means)."""
     world = universe()
     words = []
+    if gaps:
+        line = re.sub(r"(?<=[^\s\"]) {2,}(?=[^\s\"])", f" {GAP} ", line)
     line = positions(line)
     for w in re.findall(r'"[^"]*"|[^\s,;]+|[,;]', line):
         if w.startswith('"'):
@@ -152,11 +191,17 @@ def read_directions(line):
         if bare in ("...", "..", "-", "--", "–", "—") or not bare.strip(".!?-"):
             words.append(";")                                  # '...' or '-' on its own: a new direction
             continue
+        if bare.lower() == "let" and words and words[-1].lower() in ("at", "the", "to", "on"):
+            bare = "left"                                      # 'at let of screen': a slip for left, never 'let'
         words.append("and" if bare == "&" else bare)
         if w != bare and re.search(r"[.!?]$", w) and not re.fullmatch(r"\d+\.\d+", w):
             words.append(";")                                  # 'yellow.' 'screen!': that direction ends here
     tokens, i = [], 0
     while i < len(words):
+        if words[i] == GAP:
+            tokens.append(Token(GAP, {"gap"}))
+            i += 1
+            continue
         if words[i].startswith('"'):
             tokens.append(Token(words[i], quoted=True))
             i += 1
@@ -196,8 +241,15 @@ def read_directions(line):
             if t.spelled and not t.real and not (merged[-1].spelled and not merged[-1].real):
                 merged[-1] = t
             continue
+        if merged and not t.quoted and not merged[-1].quoted and t.word.startswith(merged[-1].word + " "):
+            merged[-1] = t                    # 'hold hold on 5 seconds': the phrase keeps the doubled word
+            continue
         merged.append(t)
-    tokens = merged
+    return filler_right(merged)
+
+
+def cut_by_rules(tokens):
+    """Cut the tokens into directions at the separators, then where a second action, look, place ... starts."""
     directions, current = [], []
     for k, token in enumerate(tokens):
         after = tokens[k + 1] if k + 1 < len(tokens) else None
@@ -207,15 +259,59 @@ def read_directions(line):
             current = []
         else:
             current.append(token)
+    return tidy_ends([frame for direction in directions + [current] for frame in by_slots(direction)])
+
+
+def tidy_ends(frames):
+    """Chatter, filler and a filler 'right' taken off the ends of each direction; empty ones left out."""
     found = []
-    for d in [frame for direction in directions + [current] for frame in by_slots(direction)]:
+    for d in frames:
         while d and d[0].ideas & {"chatter", "filler", "glue"} and not d[0].quoted:
             d = d[1:]                                         # 'um', 'so yeah' at the start
         while d and d[-1].ideas & {"chatter", "filler", "glue"} and not d[-1].quoted:
             d = d[:-1]                                        # 'lol', 'thanks', 'ok and' at the end
+        if d and d[0].word.lower() == "right" and not d[0].quoted and (len(d) == 1 or not d[1].ideas & {"place"} and
+                                                                      d[1].word.lower() not in ("side", "of") and
+                                                                      any(t.ideas & {"place"} for t in d[1:])):
+            d = d[1:]                         # 'right at the left ...', 'right after 4 secs print at top': a filler
         if d:
             found.append(d)
     return found
+
+
+def filler_right(tokens):
+    """'right' said as a filler ('right, put the console left'), not the place: dropped where it can't be a place:
+    straight before an action ('right put ...', 'right display ...') when no 'at', 'on', 'to', 'the' comes before
+    it, or first in a direction ('right with navy color ... at left side') when that direction has another place."""
+    out = []
+    for k, t in enumerate(tokens):
+        if t.word.lower() == "right" and not t.quoted and k + 1 < len(tokens):
+            before = tokens[k - 1] if k else None
+            after = tokens[k + 1]
+            placed = before is not None and (before.ideas & {"toward", "glue"} or before.word.lower() in
+                                             ("at", "on", "to", "the", "of", "side", "move", "put", "console"))
+            starts = before is None or before.word in ENDS or "end" in before.ideas
+            if not placed and after.ideas & {"action", "other action"} and not after.ideas & {"place"}:
+                rest = []
+                for x in tokens[k + 1:]:
+                    if x.word in ENDS or "end" in x.ideas:
+                        break
+                    rest.append(x)
+                if not (after.ideas & {"placing"} and not any(x.ideas & {"place"} for x in rest[1:])):
+                    continue                  # 'right put all done': put needs a place, and right is the only one
+            if starts and after.word.lower() in ("left", "top", "bottom", "middle"):
+                continue                      # 'right left side console', 'right TOP crimson ...': the second is the place
+            if starts:
+                rest = []
+                for x in tokens[k + 1:]:
+                    if x.word in ENDS or "end" in x.ideas:
+                        break
+                    rest.append(x)
+                if any(x.ideas & {"place"} for x in rest) and not after.ideas & {"place"} and \
+                        after.word.lower() not in ("side", "of"):
+                    continue
+        out.append(t)
+    return out
 
 
 def by_slots(tokens):
@@ -257,6 +353,12 @@ def by_slots(tokens):
             not (kind == "wait" and "time" not in filled and slot == "words") or         # a wait has no words
                                                                                           # (but '2 secnds' may be its time)
             slot in filled and slot not in ("words", "skip", "text", "action") or
+            slot == "text" and kind == "clear" and ("text" in filled or end < len(tokens) and
+                                                    tokens[end].ideas & {"saying"}) or   # 'cls text that says hi'
+            slot == "text" and kind == "colour" and "text" in filled and "look" in filled or   # 'turn text red text that says hi'
+            slot == "text" and "words" in filled and end < len(tokens) and look_at(tokens, end) and \
+            end + (look_at(tokens, end)[0] - end) >= len(tokens) or        # '... see you soon at the bottom text purple'
+        # 'clear screen  text that says hi'
             slot == "action" and "action" in filled and not saying_since_verb(current) or
             slot == "words" and "words" in filled and last != "words" or
             slot == "thing" and "words" in filled or
@@ -277,9 +379,18 @@ def by_slots(tokens):
             continue
         if cut:
             carried = []                      # 'make bg navy x3 display hi': x3 goes with hi
-            while slot == "action" and current and current[-1].ideas & {"count"} or \
+            while slot == "action" and current and current[-1].ideas & {"count"} and \
+                    not tokens[i].ideas & {"clear", "wait"} or \
                     slot == "look" and current and current[-1].ideas & {"text"}:     # 'text crimson'
                 carried.insert(0, current.pop())
+            if slot == "action" and tokens[i].ideas & {"clear"} and current and current[-1].ideas & {"screen"} \
+                    and len(current) > 1:
+                carried = [current.pop()] + carried        # 'make writing blue  screen clear': screen is the clear's
+            if slot == "action" and tokens[i].ideas & {"wait"} and last == "time" and len(current) >= 2 and \
+                    current[-1].ideas & {"time unit"} and current[-2].ideas & {"number"} and \
+                    not (len(current) >= 3 and current[-3].ideas & {"later"}):
+                carried = current[-2:] + carried            # 'try again 1 secs wait': '1 secs' is the wait's
+                current = current[:-2]
             if slot == "thing" and kind not in ("window", None) and "where" in filled:
                 k = len(current)                   # 'text red left side window': 'left side' is the window's
                 while k and (current[k - 1].ideas & {"place", "toward"} or current[k - 1].word in ("the", "of")):
@@ -435,11 +546,14 @@ def piece(tokens, i):
 def stops_words(tokens, k):
     """Do the words to show (after 'saying') stop here, at a look, a place, a time, a count, a verb or quotes?"""
     t = tokens[k]
+    nxt = tokens[k + 1] if k + 1 < len(tokens) else None
     if number_and_unit(tokens, k) or t.ideas & {"wait", "clear"} and (k + 1 == len(tokens) or
-                                                                      number_and_unit(tokens, k + 1)):
+                                                                      number_and_unit(tokens, k + 1) or
+                                                                      nxt.ideas & {"screen"} or nxt.word == "the"):
         return True                           # '... welcome back pause 2 seconds': the words end at pause
     return bool(look_at(tokens, k) or where_at(tokens, k) and (t.ideas & {"toward"} or t.word in SIDES) or
-                t.quoted or "count" in t.ideas or
+                t.quoted or "count" in t.ideas or "saying" in t.ideas or      # 'the words hi the words bye': two sets
+                t.word == "text" and nxt is not None and "saying" in nxt.ideas or
                 "later" in t.ideas and number_and_unit(tokens, k + 1) or
                 "number" in t.ideas and k + 1 < len(tokens) and "times" in tokens[k + 1].ideas or
                 t.ideas & {"show", "placing", "window", "background"})
@@ -458,6 +572,8 @@ def certain(tokens):
             continue
         candidates = t.spelled if t.spelled and not t.real else spelled(t.word, real=True) or []
         wanted = wanted_here(tokens, k)
+        if t.real and "colour" in wanted and k + 2 < len(tokens) and tokens[k + 2].ideas & {"colour"}:
+            wanted = wanted - {"colour"}      # 'welcome back bg blue': blue is the colour, back stays back
         found = [w for w in candidates if world.words.get(w, set()) & wanted]
         if not wanted and any(x.ideas & {"action"} for x in tokens):    # it has its verb: not another one
             verbs = {"action", "other action"}
@@ -468,8 +584,11 @@ def certain(tokens):
             from actions import STARTERS
             found = [w for w in candidates if w in STARTERS and not world.words.get(w)]
         same = len({frozenset(world.words.get(w, ())) for w in found}) == 1    # color / colour: one meaning
+        verbish = {"show", "placing", "make", "clear", "wait", "action", "other action"}
+        at_end_verb = (k == 0 or k == len(tokens) - 1) and any(world.words.get(w, set()) & verbish for w in found)
         if found and same and (not t.real or wanted - {"show", "placing", "make", "clear", "wait"}
-                               or k == 0 or k == len(tokens) - 1):
+                               or at_end_verb):   # a real word first or last only becomes a verb there
+                                                  # ('... welcome back': back stays back, never black)
             t.spelled, t.real = found[:1], False
 
 
@@ -478,6 +597,8 @@ def wanted_here(tokens, k):
     before = tokens[k - 1] if k else None
     after = tokens[k + 1] if k + 1 < len(tokens) else None
     things = {"text", "background"}
+    if before and before.ideas & {"becoming"} and before.ideas & {"toward"}:
+        return {"colour", "place"}                           # 'turn to red', but 'console to letf'
     if after and after.ideas & {"look word"} or before and before.ideas & {"look word", "by means of", "becoming"}:
         return {"colour"}
     if before and "colour" in before.ideas:
@@ -539,7 +660,13 @@ def real_word(word):
             if os.path.isfile(path):
                 with open(path, encoding="utf-8", errors="replace") as f:
                     _real.update(line.split(" ", 1)[0] for line in f if not line.startswith(" "))
-    return word in _real                      # WordNet's everyday words; ConceptNet also knows rare ones ('wite')
+    if word in _real:                         # WordNet's everyday words; ConceptNet also knows rare ones ('wite')
+        return True
+    for end in ("s", "es", "ed", "d", "ing"):   # WordNet lists base forms: 'lets', 'waited', 'showing' are words too
+        stem = word[:-len(end)] if word.endswith(end) and len(word) - len(end) >= 3 else None
+        if stem and (stem in _real or stem + "e" in _real or len(stem) > 3 and stem[-1] == stem[-2] and stem[:-1] in _real):
+            return True
+    return False
 
 
 def spelled(word, real=False):
@@ -551,11 +678,54 @@ def spelled(word, real=False):
     world = universe()
     small = {"filler", "glue", "toward", "becoming", "it", "saying", "chatter"}
     known = {w for w in world.words if " " not in w and len(w) >= 3 and world.words[w] - small} | set(STARTERS)
+    known -= lexicon_words()                  # the whole dictionary's words are read, never guessed for a slip
     most = 1 if len(word) < 7 else 2
     found = [w for w in known if abs(len(w) - len(word)) <= most and apart(word, w) <= most]
+    short = [w for w in known if len(word) >= 3 and devowel(w) == word and w != word]   # 'scrn', 'clr': vowels left out
+    found += [w for w in short if w not in found]
     best = min((apart(word, w) for w in found), default=None)
-    core = core_words()                       # among ties, brick's own words before the dictionary's extras
-    return sorted((w for w in found if apart(word, w) == best), key=lambda w: (w not in core, w))[:4] or None
+    core = core_words()                       # among ties: the usual slips of fast typing first (letters left out,
+                                              # two swapped: 'tal' teal, 'lft' left, 'letf' left), then brick's own
+                                              # words before the dictionary's extras
+    ranked = sorted((w for w in found if apart(word, w) == best or w in short),
+                    key=lambda w: (not usual_slip(word, w), w not in core, w))[:4]
+    usual = [w for w in ranked if usual_slip(word, w)]
+    if len(usual) == 1 and not real_word(word):
+        return usual                          # one usual slip among them: that's the word (never for real words:
+    return ranked or None                     # 'well' stays well, not dwell)
+
+
+_lexicon_words = (None, None)
+
+
+def lexicon_words():
+    """Words the universe has only from the whole-dictionary lexicon (trainer/lexicon.py)."""
+    global _lexicon_words
+    if _lexicon_words[0] is not universe():
+        found = set(dictionary.lexicon_keys())
+        path = os.path.join(os.path.dirname(PATH), "lexicon.tsv")
+        if os.path.isfile(path) and os.environ.get("BRICK_LEXICON") != "off":
+            with open(path, encoding="utf-8") as f:
+                found |= {line.split("\t", 1)[0] for line in f if "\t" in line and not line.startswith("#")}
+        _lexicon_words = (universe(), found - core_words())
+    return _lexicon_words[1]
+
+
+def devowel(word):
+    return word[:1] + re.sub(r"[aeiou]", "", word[1:])
+
+
+def usual_slip(typed, word):
+    """Is 'typed' the word with letters left out ('tal' teal, 'scrn' screen) or two next to each other swapped
+    ('letf' left)? Those are how fast typing slips; a wrong letter ('tan') is rarer."""
+    if len(typed) < len(word):
+        it = iter(word)
+        return all(c in it for c in typed)
+    if len(typed) == len(word):
+        diff = [k for k in range(len(word)) if typed[k] != word[k]]
+        return len(diff) == 2 and diff[1] == diff[0] + 1 and typed[diff[0]] == word[diff[1]] and \
+            typed[diff[1]] == word[diff[0]]
+    return False
 
 
 _core = None
@@ -885,6 +1055,15 @@ def borrowed(word):
     if synchronicity.off():
         return set()
     world, web = universe(), conceptnet.web()
+    from trainer import words as word_universes   # the word's own universe first: its brick, from all its links
+    found = word_universes.brick_of(word)
+    if found and found[1] >= word_universes.SURE:
+        brick = word_universes.canon(found[0])
+        ideas = {"action:write": {"show"}, "action:put": {"placing"}, "action:wait": {"wait"},
+                 "action:clear": {"clear"}, "action:make": {"make"}, "colour": {"colour"}, "place": {"place"},
+                 "time": {"time unit"}, "chatter": {"chatter"}}.get(brick)
+        if ideas:
+            return ideas
     for first, how in web.stands_for(word)[:8]:
         for other, how_again in [(first, how)] + web.stands_for(first)[:4]:
             lends = BORROWABLE if how in conceptnet.SAME and how_again in conceptnet.SAME else THINGS
@@ -937,8 +1116,9 @@ def readings(tokens, follows=False):
         def respelled(k, word):
             return Token(word, world.about(world.words.get(word, {"other action"})))
         sure_slips = [k for k in slips if not tokens[k].real]          # true slips: 'afer', 'pirnt'
-        bases = [dict(zip(sure_slips, combo)) for combo in
-                 itertools.islice(itertools.product(*(tokens[k].spelled for k in sure_slips)), 16)]
+        bases = [{k: w for k, w in zip(sure_slips, combo) if w is not None} for combo in
+                 itertools.islice(itertools.product(*(list(tokens[k].spelled) + [None] for k in sure_slips)), 32)]
+        # each slip respelled, or kept as typed: 'text that says lets go ... 3 tmies' fixes tmies, keeps lets
         choices = [b for b in bases if b]                              # every way the true slips could go,
         choices += [{**b, k: other} for b in bases for k in slips if tokens[k].real   # each with a real word
                     for other in tokens[k].spelled]                    # respelled too: '1 scs wit' = wait 1 sec
@@ -949,7 +1129,9 @@ def readings(tokens, follows=False):
                 found.append(d)               # a real word ('wit') only if that completes it: '1 scs wit'
 
     memory = synchronicity.memory()
-    return sorted(found, key=lambda d: -(memory.fit(d.roles()) - (1.0 if id(d) in demoted else 0)))
+    slipped = lambda d: sum(1 for t in d.content if t.spelled and not t.real and not t.quoted and not real_word(t.word))
+    return sorted(found, key=lambda d: -(memory.fit(d.roles()) - (1.0 if id(d) in demoted else 0) - 2.0 * slipped(d)))
+    # a reading that would print a slip as words to show ('to the riht') comes after one that reads it
 
 
 def describing(line):

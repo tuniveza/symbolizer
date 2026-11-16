@@ -30,6 +30,8 @@ class Asm:
         self.texts = {}        # text -> its data label, so each text is stored once
         self.text_log = []     # every text asked for, in order (so the compiler knows which line used which)
         self.count = 0
+        self.pieces = []       # (start, end) of each library routine: left out of the program when nothing uses it
+        self.stops = set()     # positions right after a ret or a jump that always jumps (nothing runs on into them)
 
     # ---- labels, texts and space ----
 
@@ -217,6 +219,7 @@ class Asm:
 
     def jump(self, label):
         self.jump_to(0xE9, label)
+        self.stops.add(len(self.code))
 
     def jump_if(self, condition, label):
         self.jump_to(bytes([0x0F, 0x80 + condition]), label)
@@ -228,6 +231,7 @@ class Asm:
     def ret(self):
         """RETURN C3"""
         self.emit(0xC3)
+        self.stops.add(len(self.code))
 
     def syscall(self):
         self.emit(0x0F, 0x05)
@@ -241,6 +245,7 @@ class Asm:
     def jump_reg(self, reg):
         """JMP reg (FF /4)."""
         self.reg_reg(0xFF, 4, reg, wide=False)
+        self.stops.add(len(self.code))
 
     def load32(self, reg, base, offset=0):
         """reg = the 4 bytes at [base + offset], zero-extended."""
@@ -338,6 +343,80 @@ class Asm:
         self.reg_reg(b"\x0f\x57", xmm, xmm, wide=False, prefix=b"\x66")
 
     # ---- putting it together ----
+
+    def piece(self, brick, split=False):
+        """Add a library routine (a brick of the runtime) as a piece prune() may leave out.
+        split: the brick writes many routines one after another; each becomes a piece of its own. A routine
+        starts at a label right after a ret or an always-jump, so no code runs on from one into the next."""
+        start = len(self.code)
+        brick(self)
+        end = len(self.code)
+        if end <= start:
+            return
+        cuts = [start]
+        if split:
+            cuts += sorted({at for at in self.labels.values() if start < at < end and at in self.stops})
+        self.pieces += zip(cuts, cuts[1:] + [end])
+
+    def prune(self):
+        """Leave out every library routine nothing in the program can reach, and the fixed texts only they used.
+        The program itself (everything not added with piece()) is the root; a routine is kept when the program,
+        or a routine kept, jumps to, calls or takes the address of one of its labels. Returns the bytes saved."""
+        pieces = sorted(self.pieces)
+        if not pieces:
+            return 0
+
+        def owner(at):
+            lo, hi = 0, len(pieces) - 1
+            while lo <= hi:
+                mid = (lo + hi) // 2
+                s, e = pieces[mid]
+                if at < s:
+                    hi = mid - 1
+                elif at >= e:
+                    lo = mid + 1
+                else:
+                    return mid
+            return None
+
+        refs = {}                                      # piece (or None: the program) -> labels it refers to
+        for at, name in self.jumps + self.addresses:
+            refs.setdefault(owner(at), set()).add(name)
+        home = {name: owner(at) for name, at in self.labels.items()}
+        keep, todo = set(), list(refs.get(None, ()))
+        while todo:
+            p = home.get(todo.pop())
+            if p is not None and p not in keep:
+                keep.add(p)
+                todo.extend(refs.get(p, ()))
+        drop = [pieces[k] for k in range(len(pieces)) if k not in keep]
+        if not drop:
+            return 0
+
+        def gone(at):
+            k = owner(at)
+            return k is not None and k not in keep
+
+        def moved(at):                                 # where a kept position lands once the dropped bytes are out
+            return at - sum(e - s for s, e in drop if e <= at)
+
+        before = len(self.code)
+        code = bytearray()
+        last = 0
+        for s, e in drop:
+            code += self.code[last:s]
+            last = e
+        code += self.code[last:]
+        self.code = code
+        self.labels = {n: moved(at) for n, at in self.labels.items() if not gone(at)}
+        self.jumps = [(moved(at), n) for at, n in self.jumps if not gone(at)]
+        self.addresses = [(moved(at), n) for at, n in self.addresses if not gone(at)]
+        self.pieces = [(moved(s), moved(s) + e - s) for k, (s, e) in enumerate(pieces) if k in keep]
+        used = {n for _, n in self.jumps + self.addresses}
+        saved_data = sum(len(raw) for n, raw in self.data.items() if n not in used)
+        self.data = {n: raw for n, raw in self.data.items() if n in used}
+        self.texts = {t: n for t, n in self.texts.items() if n in used}
+        return before - len(self.code) + saved_data
 
     def link(self, code_address, space_address):
         """Fill in every address and distance. Returns (code + data bytes, size of the space)."""

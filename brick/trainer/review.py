@@ -50,6 +50,24 @@ def keep(line, meant):
     with open(PATH + ".new", "w", encoding="utf-8") as f:
         f.write(HEADING + "".join(f"{said} = {means}\n" for said, means in found.items()))
     os.replace(PATH + ".new", PATH)
+    real_line(line, meant)
+
+
+def real_line(line, meant):
+    """Your line and what it meant also go into your real lines (trainer/data/real-lines.tsv), once: the brain
+    is scored on those, and practises hardest on the ones it reads wrong (python3 -m trainer.mind mistakes)."""
+    line, meant = " ".join(line.split()), " ".join(meant.split())
+    if not line or not meant or line.lower() == meant.lower():
+        return
+    real = os.path.join(HERE, "trainer", "data", "real-lines.tsv")
+    try:
+        with open(real, encoding="utf-8") as f:
+            if any(r.split("\t", 1)[0].strip().lower() == line.lower() for r in f if "\t" in r):
+                return
+    except OSError:
+        pass
+    with open(real, "a", encoding="utf-8") as f:
+        f.write(f"{line}\t{meant}\n")
 
 
 def as_you_said(text):

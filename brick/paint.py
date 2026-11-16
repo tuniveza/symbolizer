@@ -39,10 +39,15 @@ STYLE_FIELDS = [("fill", 0, False), ("c1", 8, True), ("c2", 16, True), ("dir", 2
 class Writer:
     """Small helpers for writing the routines."""
 
-    def __init__(self, a):
+    def __init__(self, a, looks=None):
         self.a = a
         self.vars = {}
         self.consts = {}
+        self.looks = looks
+
+    def has(self, look):
+        """Can a shape have this look ("shadow", "texture", "ellipse")? None = not known: it might."""
+        return self.looks is None or look in self.looks
 
     def v(self, name):
         if name not in self.vars:
@@ -379,14 +384,15 @@ def shape_routine(p):
     a.op("test", RAX, RAX)
     a.jump_if(EQUAL, done)
     a.call("paint_eclip")
-    p.ld(RAX, "shadow")
-    a.op("test", RAX, RAX)
-    no_shadow = p.label("no_shadow")
-    a.jump_if(NOT_GREATER, no_shadow)
-    p.imin_n(RAX, 1024, RCX)
-    p.st("shadow", RAX)
-    a.call("paint_shadow")
-    a.label(no_shadow)
+    if p.has("shadow"):
+        p.ld(RAX, "shadow")
+        a.op("test", RAX, RAX)
+        no_shadow = p.label("no_shadow")
+        a.jump_if(NOT_GREATER, no_shadow)
+        p.imin_n(RAX, 1024, RCX)
+        p.st("shadow", RAX)
+        a.call("paint_shadow")
+        a.label(no_shadow)
     # the part of the box inside the clip
     p.ld(RAX, "X0")
     p.ld(RCX, "ex0")
@@ -520,22 +526,26 @@ def shape_routine(p):
     a.op("sub", RAX, RCX)
     p.st("v", RAX)
     a.call("paint_row_fill")
-    p.ld(RAX, "tex")
-    a.op("test", RAX, RAX)
-    no_tex = p.label("no_tex")
-    a.jump_if(EQUAL, no_tex)
-    a.call("paint_row_texture")
-    a.label(no_tex)
-    p.ld(RAX, "shape")
-    a.op("test", RAX, RAX)
-    box = p.label("row_box")
-    shaped = p.label("shaped")
-    a.jump_if(EQUAL, box)
-    a.call("paint_row_ellipse")
-    a.jump(shaped)
-    a.label(box)
-    a.call("paint_row_box")
-    a.label(shaped)
+    if p.has("texture"):
+        p.ld(RAX, "tex")
+        a.op("test", RAX, RAX)
+        no_tex = p.label("no_tex")
+        a.jump_if(EQUAL, no_tex)
+        a.call("paint_row_texture")
+        a.label(no_tex)
+    if p.has("ellipse"):
+        p.ld(RAX, "shape")
+        a.op("test", RAX, RAX)
+        box = p.label("row_box")
+        shaped = p.label("shaped")
+        a.jump_if(EQUAL, box)
+        a.call("paint_row_ellipse")
+        a.jump(shaped)
+        a.label(box)
+        a.call("paint_row_box")
+        a.label(shaped)
+    else:
+        a.call("paint_row_box")
     a.call("paint_row_blend")
     p.ld(RAX, "py")
     a.op_n("add", RAX, 1)
@@ -2346,25 +2356,21 @@ def glyph_routine(p):
     a.ret()
 
 
-def add_all(a, text_sizes=None):
-    """Add the painting routines (and the letters for text_sizes: a list of px sizes, or None = not known)."""
+def add_all(a, text_sizes=None, looks=None):
+    """Add the painting routines (and the letters for text_sizes: a list of px sizes, or None = not known).
+    looks: what shapes can have ("shadow": a shadow, "texture": a texture, "ellipse": round shapes); the code
+    for the others is left out. None = not known: all of it."""
     a.space.setdefault("gui_target", 32)
     a.space.setdefault("gui_clip", 32)
-    p = Writer(a)
-    clip_routines(p)
-    lerp_routine(p)
-    shape_routine(p)
-    row_fill(p)
-    row_texture(p)
-    edge_routine(p)
-    row_box(p)
-    row_ellipse(p)
-    row_blend(p)
-    shadow_routine(p)
-    line_routine(p)
-    triangle_routine(p)
-    text_routines(p)
-    font.add(a, text_sizes)
+    p = Writer(a, looks)
+    routines = (clip_routines, lerp_routine, shape_routine, row_fill, row_texture, edge_routine, row_box, row_ellipse,
+                row_blend, shadow_routine, line_routine, triangle_routine, text_routines)
+
+    def add_routines(a):
+        for routine in routines:
+            routine(p)
+        font.add(a, text_sizes)
+    a.piece(add_routines, split=True)                  # each routine left out when nothing uses it (Asm.prune)
     a.space["paint_rowc"] = MAXW * 4
     a.space["paint_rowa"] = MAXW
     a.space["paint_rowm"] = MAXW

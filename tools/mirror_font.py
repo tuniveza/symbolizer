@@ -26,7 +26,7 @@ OUT = os.path.join(HERE, "fonts", "SymbolizerMirror.ttf")
 INSTALL = os.path.expanduser("~/.local/share/fonts/SymbolizerMirror.ttf")
 
 # the mode icons (modes.go); keep the two lists the same
-ICONS = [0xF040, 0xF03D8, 0xF0428, 0xF02D, 0xF05DA, 0xF0F49]
+ICONS = [0xF040, 0xF03D8, 0xF0428, 0xF02D, 0xF05DA, 0xF0F49, 0xF07C, 0xF06A9, 0xF14F7]
 
 
 def mirrored(cp):

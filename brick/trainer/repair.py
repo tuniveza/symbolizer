@@ -25,7 +25,7 @@ import re
 import tempfile
 from collections import Counter
 
-from trainer import intuition, neurons
+from trainer import intuition, neural, neurons
 
 ORDER = os.path.join(intuition.FOLDER, "order.json")     # Ni's learned order of output pieces (from programs)
 
@@ -75,6 +75,28 @@ def traced_build(text, words_file=None):
     ran = {k: [p for p in v if p != "=gui_event"] for k, v in ran.items()}   # gui_event runs for every line
     return {"ok": bits is not None, "bits": bits, "lines": {k: list(dict.fromkeys(v)) for k, v in ran.items()},
             "read": read, "problems": problems}
+
+
+# ---- does a reading keep what the line says? ----
+
+def keeps_meaning(line, reading):
+    """A model's reading is only a fix when it keeps what the line says: every place, colour, number and time
+    (teacher.changes_meaning), and every word the line shows ('splash bye in blue' read as 'set the background
+    colour to blue' lost 'bye'). The line's own unknown action word may go (it's what the reading explains)."""
+    from trainer import inventor, teacher, universe
+    if teacher.changes_meaning(line, reading):
+        return False
+    lacking = inventor.unknown_action(line)
+    said = set(re.findall(r"[a-z0-9']+", reading.lower()))
+    for piece in universe.analyse(line):
+        for k, tok in enumerate(piece):
+            word = (tok.word or tok.text or "").lower()
+            if tok.ideas or not re.fullmatch(r"[a-z0-9']+", word) or word == lacking or k == 0 and not tok.quoted:
+                continue                                   # brick's own words, and a first word (the action)
+            forms = {word} | {x.lower() for x in tok.spelled or []}
+            if not forms & said:
+                return False
+    return True
 
 
 # ---- what the brain expects ----
@@ -167,7 +189,7 @@ def judge(text, number, want, base_line):
 def _judge(job):
     text, n, want, line = job
     score, got = judge(text, n, want, line)
-    return score, {"bits": got["bits"]} if score is not None else None
+    return score, {"bits": got["bits"], "made": got["lines"].get(n, [])} if score is not None else None
 
 
 def repair(text, number=None):
@@ -177,21 +199,35 @@ def repair(text, number=None):
     data = order()
     lines = text.split("\n")
     base = traced_build(text)
+    stuck = None                                           # the line brick stopped at, when it doesn't build
+    for p in base["problems"]:
+        m = re.match(r"Line (\d+): ", p)
+        if m:
+            stuck = int(m.group(1))
+            break
     targets = [number] if number else range(1, len(lines) + 1)
     for n in targets:
+        if stuck and n > stuck:
+            break                                          # brick never got this far: nothing built to judge
         line = lines[n - 1].strip()
-        if not line or line.startswith("#"):
-            continue
+        from teach import read_definition, opens_block
+        if not line or line.startswith("#") or read_definition(line) or opens_block(line):
+            continue                                       # a new word being taught is the person's own: never "fixed"
         want = expected(line)
         made = set(base["lines"].get(n, []))
         reread = base["read"].get(n, "")
         missing = [p for p in want if p not in made]
         verbs = [w for w, r in intuition.roles_in(line) if r == "do"]
         changed_verb = reread and verbs and not any(v in reread.lower().split() for v in verbs)
-        if base["ok"] and not missing and not changed_verb:
+        from trainer import inventor
+        built = base["ok"] or (stuck is not None and n < stuck)   # the lines before the one brick stopped at built
+        lacking = inventor.unknown_action(line) if not built or made <= {"=write"} else None
+        if built and not missing and not changed_verb and not lacking:
             continue
-        why = ("brick can't build it" if not base["ok"] else
-               f"brick read it as '{reread}'" if changed_verb else f"its build has no {', '.join(missing)}")
+        why = ("brick can't build it" if not built else
+               f"brick read it as '{reread}'" if changed_verb else
+               f"its build has no {', '.join(missing)}" if missing else
+               f"brick has no action for '{lacking}': it would only show the words")
         tries = []
         indent = re.match(r"\s*", lines[n - 1]).group(0)
         # 1. a missing step before it
@@ -226,25 +262,48 @@ def repair(text, number=None):
         for f_lines, f_change in firsts[:2]:
             for t_lines, t_change in [t for t in tries if not t[1][0].startswith("added")][:4]:
                 tries.append((f_lines[:n - 1 + 1] + t_lines[n - 1:], f_change + t_change))
-        jobs = []
-        for t_lines, change in tries:                       # what the brain expects first (quick), then build them all side by side
-            at = n - 1 + sum(1 for c in change if c.startswith("added"))   # your line moves down past added steps
-            tried_line = t_lines[at] if at < len(t_lines) else line
-            jobs.append(("\n".join(t_lines), at + 1, expected(tried_line) or want, line))
-        results = intuition.pmap(_judge, jobs)
-        judged = []
-        for (t_lines, change), (score, got) in zip(tries, results):
-            t_text = "\n".join(t_lines)
-            if score is None:
-                continue
-            covered, kept = score
-            judged.append({"text": t_text, "changes": change, "covered": covered, "kept": kept,
-                           "bits": got["bits"], "bytes": len(got["bits"])})
+        # 4. the language model's reading of the line, in brick's own words (each direction its own line)
+        before = "\n".join(lines[max(0, n - 3):n - 1])
+        ways = [neural.read_pieces(line)] + neural.readings(line)[:1]
+        for way in dict.fromkeys(w for w in ways if w and keeps_meaning(line, w)):
+            parts = [p.strip() for p in re.split(r"\bthen\b", way) if p.strip()]
+            if parts and [p.lower() for p in parts] != [line.lower()]:
+                tries.append((lines[:n - 1] + [indent + p for p in parts] + lines[n:], [f"read as '{way}'"]))
+
+        def judge_all(tries):
+            jobs = []
+            for t_lines, change in tries:                   # what the brain expects first (quick), then build them all side by side
+                at = n - 1 + sum(1 for c in change if c.startswith(("added", "new action")))   # your line moves down past added lines
+                tried_line = t_lines[at] if at < len(t_lines) else line
+                jobs.append(("\n".join(t_lines), at + 1, expected(tried_line) or want, line))
+            judged = []
+            for (t_lines, change), (score, got) in zip(tries, intuition.pmap(_judge, jobs)):
+                if score is None:
+                    continue
+                covered, kept = score
+                if lacking and set(got["made"]) <= {"=write"}:
+                    continue                                # it asked for an action: a fix that only shows words isn't one
+                judged.append({"text": "\n".join(t_lines), "changes": change, "covered": covered, "kept": kept,
+                               "bits": got["bits"], "bytes": len(got["bits"])})
+            return judged
+        judged = judge_all(tries)
         good = [j for j in judged if j["covered"] and j["kept"]] or [j for j in judged if j["covered"]]
+        if not good:
+            # 5. brick has no action for it: the brain invents one from what brick can already do
+            from trainer import inventor
+            verb = inventor.unknown_action(line) or (verbs[0] if verbs else None)
+            made = [(lines[:n - 1] + [indent + d] + lines[n - 1:], [f"new action: {d}"])
+                    for d in inventor.invent(line, "", verb)]    # no context: shown other lines, small models stray
+            # a definition goes before the first line that uses it; at the top keeps it out of the way
+            made = [([t_lines[n - 1]] + t_lines[:n - 1] + t_lines[n:], change) if n > 1 else (t_lines, change)
+                    for t_lines, change in made]
+            for j in judge_all([(t, c) for t, c in made]):
+                judged.append(j)
+            good = [j for j in judged if j["covered"] and j["kept"]] or [j for j in judged if j["covered"]]
         good.sort(key=lambda j: len(j["changes"]))
         best = [j for j in good if len(j["changes"]) == len(good[0]["changes"])] if good else []
         precise = bool(best) and len({j["bits"] for j in best}) == 1 and \
-            not any("another thing" in c for j in best for c in j["changes"])
+            not any("another thing" in c or c.startswith("new action") for j in best for c in j["changes"])
         return {"line": line, "number": n, "why": why, "precise": precise, "judged": len(judged),
                 "expected": list(want),
                 "fixes": [{"text": j["text"], "changes": j["changes"], "bytes": j["bytes"]} for j in (best or good)[:3]]}

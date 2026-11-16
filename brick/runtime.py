@@ -32,7 +32,7 @@ def add_all(a):
                   letter, split, letters, reverse_text, reverse_list, read_line, read_number, wait_key, sleep, random, now, elapsed, time_text,
                   push, push_front, remove_first, remove_last, item, list_has, list_to_text, list_copy,
                   file_save, file_load, file_delete]:
-        brick(a)
+        a.piece(brick)                 # left out of the program when nothing uses it (Asm.prune)
     screen.add_all(a)
 
 
@@ -1258,7 +1258,7 @@ def add_brain(a):
     a.space["brain_words"] = SYMBOL_LIMIT * 8                   # the symbols of the words being learned
     for brick in [brain_find, brain_add, brain_bump, brain_link, brain_unlink, brain_forget, brain_score,
                   brain_likeness, brain_closest, brain_links, brain_learn, brain_save, brain_load]:
-        brick(a)
+        a.piece(brick)
 
 
 def keep(a, *regs):

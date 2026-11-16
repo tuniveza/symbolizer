@@ -248,7 +248,7 @@ func (d *designState) cabinetLayers(o *dOct) []*lipgloss.Layer {
 	}
 	inside := h - 4 // rows inside on the screen: the cabinet is its board size times the zoom
 	var layers []*lipgloss.Layer
-	p := d.cabinetDrawnOpen(o, d.openness(o)) // opening or shutting, its doors move (design_anim.go)
+	p := d.openness(o) // opening or shutting, its doors move (design_anim.go)
 	if p <= 0 {
 		// Shut: two doors, a knob each by the middle, all the way down.
 		lw := (iw - 1) / 2
