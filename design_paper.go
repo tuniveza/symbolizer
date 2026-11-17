@@ -167,6 +167,8 @@ func (d *designState) newKind(kind string, cx, cy int) *dOct {
 	case kRack:
 		o.W, o.H = cabinetNewW, rackLines(1)              // its frame and name, and a row
 		o.Color = hslHex(150+rand.Float64()*30, 0.3, 0.5) // green
+	case kNotepad:
+		o.W, o.H = notepadW, notepadH
 	case kCodex:
 		o.W, o.H = codexBoardW, codexBoardH
 		o.Color = codexThemeCover()

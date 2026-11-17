@@ -119,6 +119,7 @@ func (m *Model) saveAs(path string) tea.Cmd {
 	if wasDraft && old != "" && old != path {
 		os.Remove(old)
 	}
+	m.noteTouched(path) // a saved .txt is a note in a notepad (notes.go)
 	m.savePaused, m.saveErr = false, ""
 	m.resetHighlighter()
 	m.refreshTree()

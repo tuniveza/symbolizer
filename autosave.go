@@ -149,6 +149,7 @@ func (m *Model) saveNow() bool {
 	m.saveErr = ""
 	if wrote {
 		b.MarkSaved(version, mod)
+		m.noteTouched(b.Path) // a saved .txt is a note in a notepad (notes.go)
 	}
 	return true
 }

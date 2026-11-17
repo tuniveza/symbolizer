@@ -39,7 +39,7 @@ var keyMeaning = map[string]string{
 	"alt+u": "Emmet: highlight the tag around", "alt+d": "delete line", "alt+g": "Emmet: matching tag",
 	"alt+r": "Emmet: remove tag (brick mode: run the program)", "alt+k": "Emmet: split / join tag", "alt+y": "Emmet: update tag",
 	"alt+.": "Emmet: next empty place", "alt+,": "Emmet: previous empty place", "alt+]": "Emmet: next item", "alt+[": "Emmet: previous item",
-	"alt+x": "Emmet: work out the sum", "alt+=": "number up 1", "alt+-": "number down 1", "alt+i": "Emmet: image width and height", "alt+p": "list files that fit the path (brick mode: keys to the panel and back; then 1-7 pick a panel)",
+	"alt+x": "Emmet: work out the sum", "alt+f": "give the note (a saved .txt) a sticker", "alt+=": "number up 1", "alt+-": "number down 1", "alt+i": "Emmet: image width and height", "alt+p": "list files that fit the path (brick mode: keys to the panel and back; then 1-7 pick a panel)",
 	"enter": "new line", "tab": "web files: expand an Emmet abbreviation; else a real Tab (indent)", "backspace": "delete left", "delete": "delete right",
 	"home": "start of line", "end": "end of line", "esc": "clear highlight",
 }

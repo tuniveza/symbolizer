@@ -162,6 +162,8 @@ func (m *Model) promptEnter(_ bool) tea.Cmd {
 	case pDesignTransform:
 		m.designSetTransform(value)
 		return nil
+	case pNoteSticker:
+		return m.stickerEntered(value)
 	case pCodexImage, pCodexAltImage:
 		path := expandPath(strings.Trim(strings.TrimSpace(value), `'"`))
 		if path == "" {

@@ -43,6 +43,7 @@ const (
 	pDesignTransform // Design mode: a pin's transform, as words (design_board.go)
 	pCodexImage      // Codex mode: a picture for the chosen thing (codex_keys.go)
 	pCodexAltImage   // Codex mode: the picture it swaps to when activated
+	pNoteSticker     // Text mode: the open note's sticker (notes.go)
 )
 
 // Model is the whole editor, as Bubble Tea wants it.
@@ -746,6 +747,7 @@ func init() {
 		"alt+o":     func(m *Model) tea.Cmd { return m.openTree(false) },
 		"alt+j":     func(m *Model) tea.Cmd { return m.toggleCentre() },
 		"alt+z":     func(m *Model) tea.Cmd { return m.toggleWrap() },
+		"alt+f":     func(m *Model) tea.Cmd { return m.askSticker() }, // a note's sticker (notes.go)
 		// On a UK keyboard Right Alt+S types ß and Right Alt+O types ø, so
 		// these letters are commands, not text.
 		"ß":      func(m *Model) tea.Cmd { return m.save() },
