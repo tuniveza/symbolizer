@@ -139,6 +139,8 @@ var helpGroups = []helpGroup{
 		{"AltGr + N, then R · W · L", "a new room on this level, with a door to it · a new wall after this one · a new level above the top one, with stairs up to it"},
 		{"Enter or Space on a door or stairs", "go through to its room. The door back is chosen there, so Enter again goes back. A door's title is its room's name"},
 		{"Alt + N, then K", "place a codex: its cover on the board; Enter opens it in Codex mode"},
+		{"Notepads", "every .txt saved with a name in Text mode is a note, 16 to a notepad; each notepad looks different. Enter or double-click on one opens it"},
+		{"  In an open notepad", "  its notes by day, newest first · ↑ ↓ choose · Enter: open in Text mode · F: sticker · / or S: only one sticker's notes (again: the next, then all) · X X: take out of the notepad (the .txt file stays) · PgUp · PgDn: other notepads · Esc: close"},
 		{"Alt + N, then C · D · R · B · O", "place a container: cabinet (two doors, a shelf for each kind) · drawer (one or more drawers, each with a handle; inside, everything small) · rack (a stack: click a row to open it inside the rack; Tab · Shift+Tab: its rows) · board (things pinned on it as cards with their title and text) · box (things in it on three layers: top, middle, bottom; a container in it lies folded, and opens out while chosen)"},
 		{"  Cabinet · drawer", "  click the doors · a drawer's front (or Space, with it chosen) to open or shut it; click a thing inside to take it out"},
 		{"  [ · ]", "  with a drawer unit chosen: one drawer fewer · one more (or its [−] · [+] on its bottom edge)"},

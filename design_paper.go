@@ -243,6 +243,8 @@ func selHint(o *dOct) string {
 		return "Enter: open  ·  E: edit  ·  Alt+arrows: move  ·  drop it in a container  ·  X X: delete (the codex stays in Codex mode)"
 	case kBox:
 		return "Space: lid  ·  D: design  ·  Tab: each part  ·  PgUp / PgDn: layers  ·  drop anything in"
+	case kNotepad:
+		return "Enter or double-click: open its notes  ·  Alt+arrows: move  ·  X X: delete (the notes and files stay)"
 	}
 	return "Tab: write  ·  Alt+arrows: move  ·  X X: delete"
 }
@@ -669,6 +671,8 @@ func (d *designState) structLayers(o *dOct) []*lipgloss.Layer {
 		return d.boxLayers(o) // design_box.go
 	case o.Kind == kCodex:
 		return d.codexLayers(o) // its cover (codex_design.go)
+	case o.Kind == kNotepad && !(d.sel == o.ID && d.editing != partNone && !isTagPart(d.editing)):
+		return d.notepadLayers(o) // seen from the front (design_notepad.go); written in: a card, with the cursor
 	case (o.Kind == kDoor || o.Kind == kStairs) && !(d.sel == o.ID && d.editing != partNone && !isTagPart(d.editing)):
 		return d.doorLayers(o) // a door with a window into its room (design_door.go); written in: a card, with the cursor
 	default:

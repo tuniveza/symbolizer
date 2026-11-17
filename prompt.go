@@ -164,6 +164,8 @@ func (m *Model) promptEnter(_ bool) tea.Cmd {
 		return nil
 	case pNoteSticker:
 		return m.stickerEntered(value)
+	case pPadSticker:
+		return m.padStickerEntered(value)
 	case pCodexImage, pCodexAltImage:
 		path := expandPath(strings.Trim(strings.TrimSpace(value), `'"`))
 		if path == "" {

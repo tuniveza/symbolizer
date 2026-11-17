@@ -812,6 +812,9 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 	if d.arrive != nil { // just come in: any key, and the view is there at once
 		m.finishArrive()
 	}
+	if m.padView != nil { // a notepad open over the board takes every key (design_notepad.go)
+		return m.padViewKey(name)
+	}
 	if isTagPart(d.editing) && !stopsWriting(name) { // a label or name plate being written on the board (design_tags.go)
 		return m.tagKey(k, name)
 	}
@@ -908,6 +911,10 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 	if o := d.byID(d.sel); o != nil && o.Kind == kCodex && !d.opened.active &&
 		(name == "enter" || name == "e" || name == "E" || name == "shift+e") { // a codex: open it in Codex mode (codex_design.go)
 		return m.codexFromDesign(o, name != "enter")
+	}
+	if o := d.byID(d.sel); o != nil && o.Kind == kNotepad && !d.opened.active && name == "enter" { // a notepad: open it (design_notepad.go)
+		m.padViewOpen(notepadOf(o))
+		return nil
 	}
 	if name == "enter" && m.goThrough() { // a door or stairs chosen: to its room (design_rooms.go)
 		return nil
@@ -1097,6 +1104,12 @@ func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 		return m.grabDrop()
 	}
 	sx, sy := ms.X, ms.Y-m.boardTop()
+	if m.padView != nil { // a notepad open over the board: a click on a note chooses it (design_notepad.go)
+		if ms.Button == tea.MouseLeft {
+			return m.padViewClick(sx, sy)
+		}
+		return nil
+	}
 	d.pressX, d.pressY, d.lastPX, d.lastPY = sx, sy, sx, sy
 	d.origCX, d.origCY = d.camX, d.camY
 	switch ms.Button {
@@ -1220,6 +1233,10 @@ func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 		d.drag = dragNone
 		if o.Kind == kCodex { // a codex opens in Codex mode (codex_design.go)
 			return m.codexFromDesign(o, false)
+		}
+		if o.Kind == kNotepad { // a notepad opens over the board (design_notepad.go)
+			m.padViewOpen(notepadOf(o))
+			return nil
 		}
 		d.editing = partAt(o, sy-y, h)
 		return nil
@@ -1364,6 +1381,10 @@ func (m *Model) designRelease() tea.Cmd {
 }
 
 func (m *Model) designWheel(ms tea.Mouse) tea.Cmd {
+	if m.padView != nil { // a notepad open over the board: the note above or below (design_notepad.go)
+		m.padViewWheel(ms.Button == tea.MouseWheelUp)
+		return nil
+	}
 	d := m.ds()
 	sx, sy := ms.X, ms.Y-m.boardTop()
 	z := d.z()
@@ -1484,6 +1505,8 @@ func (m *Model) designCanvas() *boardCanvas {
 	m.paintLabels(c) // labels and name plates (design_labels.go)
 	m.paintMap(c)    // the mini map, over the board (design_map.go)
 	m.paintPlates(c) // AltGr+P: the list of name plates
+
+	m.paintPadView(c) // a notepad open over the board, over everything (design_notepad.go)
 	// Something dragged over the empty board: a ✚ where it would land.
 	if dr := d.drop; dr.over && d.dropOn < 0 {
 		if x, y := dr.x, dr.y-m.boardTop(); x >= 0 && y >= 0 && x < c.Width() && y < c.Height() {
@@ -1622,6 +1645,9 @@ func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
 	}
 	if o.Kind == kCodex { // its codex as it is now (codex_design.go)
 		k.opened += "codex:" + codexStamp(codexIDOf(o))
+	}
+	if o.Kind == kNotepad { // its notes as they are now (design_notepad.go)
+		k.opened += "notepad:" + notepadStamp(notepadOf(o))
 	}
 	if o.Kind == kDrawer { // its drawers, which are out, and which one a drag would go into
 		k.pulled = fmt.Sprint(o.Drawers, o.Pulled, o.Fronts)
@@ -2665,6 +2691,8 @@ func (m *Model) designStatus() string {
 	switch {
 	case d.saveErr != "":
 		hint = "✗ board not saved: " + d.saveErr
+	case m.padView != nil: // a notepad open over the board (design_notepad.go)
+		hint = padViewHint()
 	case m.grabStatus() != "": // carried, or shown big, by Alt+Space (design_grab.go)
 		hint = m.grabStatus()
 	case d.drag == dragMove && d.dropOn >= 0:

@@ -657,6 +657,8 @@ func (m *Model) designAltTap() bool {
 func (m *Model) designEscape() {
 	d := m.ds()
 	switch {
+	case m.padView != nil: // a notepad open over the board: it closes (design_notepad.go)
+		m.padViewClose()
 	case d.sect.on: // Tab stepping through a container: it ends, what it reached stays (design_sections.go)
 		m.sectionEnd(false)
 		d.editing = partNone

@@ -44,6 +44,7 @@ const (
 	pCodexImage      // Codex mode: a picture for the chosen thing (codex_keys.go)
 	pCodexAltImage   // Codex mode: the picture it swaps to when activated
 	pNoteSticker     // Text mode: the open note's sticker (notes.go)
+	pPadSticker      // Design mode: a note's sticker, from its open notepad (design_notepad.go)
 )
 
 // Model is the whole editor, as Bubble Tea wants it.
@@ -167,6 +168,7 @@ type Model struct {
 
 	brickLearningLamp bool                 // brick's training daemon is learning (brick_learning.go)
 	design            *designState         // design mode: the board, its structures, links and pen (design.go)
+	padView           *padViewer           // design mode: the notepad open over the board (design_notepad.go)
 	codex             *codexState          // Codex mode: the library, the open codex (codex.go)
 	house             *houseFile           // design mode: the rooms and floors (design_rooms.go)
 	rooms             map[int]*designState // the rooms been in or made this time, by ID (the one you are in is design)
