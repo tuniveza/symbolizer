@@ -310,9 +310,14 @@ func (m *Model) codexInspector(cv *boardCanvas, w int, now time.Time) {
 	case ceSymbol:
 		def = codexSymColor(e.Symbol)
 	}
-	f.swatch("C", "colour", codexOr(e.Color, def), codexOr(e.Color, "theme"))
+	plain := e.Kind == ceImage || e.Kind == ceDrawing // no colour or lining up for these (the keys say so)
+	if !plain {
+		f.swatch("C", "colour", codexOr(e.Color, def), codexOr(e.Color, "theme"))
+	}
 	f.anim(e.Anim, e.ID, now)
-	f.line("J", "line up", []string{"◫ middle", "◧ left", "◨ right"}[e.Align%3], cText)
+	if !plain {
+		f.line("J", "line up", []string{"◫ middle", "◧ left", "◨ right"}[e.Align%3], cText)
+	}
 	f.line("Alt+←→", "slot", itoa(codexSlotOf(e, p.Layout)+1)+" of "+itoa(len(codexLayouts[p.Layout].slots)), cText)
 	if e.Kind == ceButton {
 		f.line("K", "action", codexActionNames[codexOr(e.Action, caNext)], cAccent)
