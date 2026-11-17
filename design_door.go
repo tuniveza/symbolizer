@@ -78,6 +78,9 @@ func (d *designState) doorLayers(o *dOct) []*lipgloss.Layer {
 	}
 	wood := o.Color
 	frame := mixHex(wood, "#000000", 0.45)
+	if o.Lexicon != "" { // a lexicon door: leather in its codex's colour, gilt (codex_design.go)
+		frame = codexGold()
+	}
 	if selected {
 		frame = cAccent
 	}
@@ -182,6 +185,8 @@ func (d *designState) doorLayers(o *dOct) []*lipgloss.Layer {
 			}
 			set((w-n)/2+i, h-3, s, groove, panel, false)
 		}
+	} else if o.Lexicon != "" {
+		set(w-3, hy, "▥", codexGold(), panel, true) // a book for a handle
 	} else {
 		set(w-3, hy, "●", doorBrass, panel, true)
 		set(w-4, hy, "━", doorBrass, panel, false)

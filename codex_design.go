@@ -12,6 +12,13 @@ package main
 //	double-click    open it
 //
 // In Codex mode's library, P puts the chosen codex on the board.
+//
+// A codex made in Codex mode (not on a board) gets its own room on Design
+// when it is kept (the user asked, 17 Nov 2026): the room holds the codex,
+// and a lexicon door leads to it from the room last used on Design.
+// Lexicon doors are only ever on Design boards; Codex mode edits them by
+// editing the codex: its title names the door and the room, its cover
+// colour is the door's leather.
 
 import (
 	"bytes"
@@ -141,4 +148,116 @@ func (m *Model) codexToBoard(id string) tea.Cmd {
 	d.save()
 	m.say("“" + codexName(cf.Title) + "” is on the board. Enter opens it.")
 	return cmd
+}
+
+// codexHome makes or updates codex id's own room, on closing it: a new one
+// for a codex made in Codex mode (cf.Room -1); for one that has a room, the
+// room's name and its lexicon doors follow the codex's title and colour.
+func (m *Model) codexHome(id string, cf *codexFile) {
+	if cf.Room < 0 && !m.codexOnBoard(id) {
+		if r := m.codexMakeRoom(id, cf); r > 0 {
+			cf.Room = r
+			saveCodex(id, cf)
+			m.cx().saved = ""
+		}
+		return
+	}
+	if cf.Room > 0 {
+		m.codexSyncRoom(id, cf)
+	}
+}
+
+// lexiconLook dresses door o as codex cf's lexicon door.
+func lexiconLook(o *dOct, id string, cf *codexFile) {
+	o.Lexicon = id
+	o.Header = codexName(cf.Title)
+	o.Color = codexOr(cf.Color, codexThemeCover())
+	o.Footer = "▥ Lexicon"
+	o.Body = "A lexicon door to “" + codexName(cf.Title) + "”.\nEnter or Space: go in."
+}
+
+// codexMakeRoom makes codex id's room: the codex in its middle, a door
+// back, and a lexicon door to it in the room last used on Design. It gives
+// the room's number (0: it could not be made).
+func (m *Model) codexMakeRoom(id string, cf *codexFile) int {
+	h := m.hs()
+	here := h.Current
+	hr := h.room(here)
+	nr := houseRoom{ID: h.nextID(), Floor: hr.Floor, Name: codexName(cf.Title)}
+	h.Rooms = append(h.Rooms, nr)
+	if err := h.save(); err != nil {
+		h.Rooms = h.Rooms[:len(h.Rooms)-1]
+		m.sayErr("Its room could not be made: " + err.Error())
+		return 0
+	}
+	hr = h.room(here)
+
+	// The lexicon door, where you were last on Design, on the wall you faced.
+	d := m.boardOf(here, ((hr.Wall%hr.walls())+hr.walls())%hr.walls())
+	wx, wy := d.world(m.width/2, m.boardH()/2)
+	o := d.newKind(kDoor, int(wx), int(wy))
+	if o != nil {
+		ox, oy, ow, oh := o.X, o.Y, o.W, o.H
+		h.makeDoor(o, kDoor, nr.ID, here)
+		lexiconLook(o, id, cf)
+		o.X, o.Y = ox+ow/2-o.W/2, oy+oh/2-o.H/2
+		d.clearSpot(o)
+		d.dirty = true
+		d.save()
+		d.flushSave()
+	}
+
+	// The room: the codex in the middle, a door back beside it.
+	nd := loadDesign(roomPath(nr.ID))
+	nd.walls, nd.floor = d.walls, d.floor
+	bx, by := m.width/2, m.boardH()/2
+	co := nd.newKind(kCodex, bx, by)
+	co.From, co.Header, co.Color = "codex:"+id, codexName(cf.Title), codexOr(cf.Color, codexThemeCover())
+	back := nd.newKind(kDoor, bx-codexBoardW-8, by)
+	h.makeDoor(back, kDoor, here, nr.ID)
+	back.X, back.Y = bx-codexBoardW/2-back.W-6, by-back.H/2
+	nd.clearSpot(back)
+	nd.sel = co.ID
+	nd.dirty = true
+	nd.save()
+	nd.flushSave()
+	if m.rooms == nil {
+		m.rooms = map[int]*designState{}
+	}
+	m.rooms[boardKey(nr.ID, 0)] = nd
+	return nr.ID
+}
+
+// codexSyncRoom: codex id's room is named after it, and its lexicon doors
+// (on any wall of any room) and its covers there show its title and colour.
+func (m *Model) codexSyncRoom(id string, cf *codexFile) {
+	h := m.hs()
+	if r := h.room(cf.Room); r != nil && r.Name != codexName(cf.Title) {
+		r.Name = codexName(cf.Title)
+		h.save()
+	}
+	for _, r := range h.Rooms {
+		for w := 0; w < r.walls(); w++ {
+			b := m.boardOf(r.ID, w)
+			changed := false
+			for _, o := range b.octs {
+				switch {
+				case o.Lexicon == id:
+					if o.Header != codexName(cf.Title) || o.Color != codexOr(cf.Color, codexThemeCover()) {
+						lexiconLook(o, id, cf)
+						changed = true
+					}
+				case codexIDOf(o) == id && r.ID == cf.Room:
+					if o.Header != codexName(cf.Title) {
+						o.Header, changed = codexName(cf.Title), true
+					}
+				}
+			}
+			if changed {
+				b.dirty = true
+				b.save()
+				b.flushSave()
+			}
+		}
+	}
 }

@@ -148,6 +148,7 @@ type codexFile struct {
 	Tall     bool         `json:"tall,omitempty"`
 	Pages    []*codexPage `json:"pages"`
 	NextID   int          `json:"nextID"`
+	Room     int          `json:"room,omitempty"` // made in Codex mode: its own room on Design (-1: one is still to be made)
 }
 
 // codexPalette: the colours C steps through (text, buttons, covers, symbols).
@@ -531,6 +532,9 @@ func (m *Model) codexClose() tea.Cmd {
 			dropped = false
 		}
 		codexPeekDrop(id)
+	}
+	if !dropped && c.cf != nil {
+		m.codexHome(id, c.cf) // its room and lexicon door on Design (codex_design.go)
 	}
 	c.cf, c.id = nil, ""
 	c.lib = codexList()

@@ -83,6 +83,7 @@ type dOct struct {
 	OpenStack  string   `json:"openStack,omitempty"`  // the stack shown open in the drawer or cabinet
 	Scroll     int      `json:"scroll,omitempty"`     // a page: the first line shown
 	From       string   `json:"from,omitempty"`       // where it came from (a diary page, a file)
+	Lexicon    string   `json:"lexicon,omitempty"`    // a lexicon door: the codex whose room it leads to (codex_design.go)
 
 	// Its label (design_labels.go): how it shows (0 none, labelIconTitle …),
 	// its colour, its icon (a symbol, or "img:" and a picture in
@@ -417,7 +418,7 @@ func copyOcts(os []*dOct) []*dOct {
 			continue
 		}
 		c := dOct{X: o.X, Y: o.Y, ID: o.ID, W: o.W, H: o.H, Header: o.Header, Body: o.Body, Footer: o.Footer, Color: o.Color,
-			Kind: o.Kind, Layout: o.Layout, Image: o.Image, DrawerOpen: o.DrawerOpen, OpenStack: o.OpenStack, Scroll: o.Scroll, From: o.From,
+			Kind: o.Kind, Layout: o.Layout, Image: o.Image, DrawerOpen: o.DrawerOpen, OpenStack: o.OpenStack, Scroll: o.Scroll, From: o.From, Lexicon: o.Lexicon,
 			Drawers: o.Drawers, Slot: o.Slot, Pulled: append([]bool(nil), o.Pulled...), Fronts: append([]dFront(nil), o.Fronts...),
 			LabelStyle: o.LabelStyle, LabelColor: o.LabelColor, LabelIcon: o.LabelIcon, LabelTitle: o.LabelTitle, Plate: o.Plate, Layer: o.Layer}
 		c.Items = copyOcts(o.Items)

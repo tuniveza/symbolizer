@@ -157,7 +157,7 @@ func sameOcts(a, b []*dOct) bool {
 func sameOct(a, b *dOct) bool {
 	return a.ID == b.ID && a.X == b.X && a.Y == b.Y && a.W == b.W && a.H == b.H &&
 		a.Header == b.Header && a.Body == b.Body && a.Footer == b.Footer && a.Color == b.Color &&
-		a.Kind == b.Kind && a.Layout == b.Layout && a.Image == b.Image && a.From == b.From &&
+		a.Kind == b.Kind && a.Layout == b.Layout && a.Image == b.Image && a.From == b.From && a.Lexicon == b.Lexicon &&
 		a.LabelStyle == b.LabelStyle && a.LabelColor == b.LabelColor && a.LabelIcon == b.LabelIcon &&
 		a.LabelTitle == b.LabelTitle && a.Plate == b.Plate && a.Layer == b.Layer && sameTf(a.Tf, b.Tf) &&
 		a.Drawers == b.Drawers && a.Slot == b.Slot && slices.Equal(a.Fronts, b.Fronts)

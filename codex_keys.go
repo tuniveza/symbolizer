@@ -121,7 +121,8 @@ func (m *Model) codexLibKey(name string) tea.Cmd {
 			m.sayErr("Could not make a codex: " + err.Error())
 			return nil
 		}
-		_ = cf
+		cf.Room = -1 // made here, not on a Design board: it gets its own room when kept
+		saveCodex(id, cf)
 		c.lib = codexList()
 		if m.codexOpen(id, true) {
 			m.codexStartWrite(codexWriteTitle)
