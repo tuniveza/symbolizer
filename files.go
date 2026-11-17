@@ -465,6 +465,7 @@ func (m *Model) newFile() tea.Cmd {
 
 func (m *Model) quit() tea.Cmd {
 	m.codexLeave() // a codex's words being written are kept and saved (codex.go)
+	m.drawLeave()  // a drawing (or a note's ink) is saved (draw.go)
 	return m.ifUnsaved("Quit anyway?", func(m *Model) tea.Cmd {
 		m.storeTab()
 		for _, t := range m.tabs {

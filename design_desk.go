@@ -603,55 +603,7 @@ func (d *designState) inkCell(c *uv.Cell, mk dMark, wx, wy int, done map[devLook
 	k := devLook{c.Style.Bg, c.Style.Fg, mk.Dev, mk.Ink, mk.Pen, mk.Over, void}
 	r, ok := done[k]
 	if !ok {
-		ink := inkOf(mk)
-		bg, fg := colorHex(c.Style.Bg, cBG), colorHex(c.Style.Fg, cText)
-		var nbg, nfg string
-		switch mk.Dev {
-		case devPen:
-			nbg, nfg = bg, ink
-			if !void {
-				nbg, nfg = mixHex(bg, ink, 0.16), mixHex(fg, ink, 0.6)
-				if mk.Over {
-					nfg = ink
-				}
-			}
-		case devFineliner:
-			nbg, nfg = bg, mixHex(ink, bg, 0.1)
-			if !void {
-				nfg = mixHex(fg, ink, 0.7)
-			}
-		case devPencil:
-			lead := mixHex(ink, "#a0a0a0", 0.5)
-			nbg, nfg = bg, mixHex(bg, lead, 0.75)
-			if !void {
-				nbg, nfg = mixHex(bg, lead, 0.12), fg
-			}
-		case devMarker:
-			nbg = mixHex(bg, ink, 0.82)
-			nfg = nbg
-			if !void {
-				nbg = mixHex(bg, ink, 0.7)
-				nfg = "#f5efe0"
-				if lum(nbg) > 0.5 {
-					nfg = "#1a1210"
-				}
-				if mk.Over {
-					nbg, nfg = mixHex(bg, ink, 0.75), mixHex(fg, ink, 0.5)
-				}
-			}
-		case devBrush:
-			nbg, nfg = mixHex(bg, ink, 0.62), mixHex(bg, ink, 0.9)
-			if !void {
-				nbg, nfg = mixHex(bg, ink, 0.5), fg
-			}
-		case devGlitter:
-			nbg, nfg = mixHex(bg, ink, 0.42), mixHex(ink, "#ffffff", 0.55)
-			if !void {
-				nfg = fg
-			}
-		default:
-			nbg, nfg = mixHex(bg, ink, 0.5), fg
-		}
+		nbg, nfg := inkColours(mk, colorHex(c.Style.Bg, cBG), colorHex(c.Style.Fg, cText), void)
 		r = devResult{hex(nbg), hex(nfg)}
 		done[k] = r
 	}
@@ -667,10 +619,89 @@ func (d *designState) inkCell(c *uv.Cell, mk dMark, wx, wy int, done map[devLook
 	}
 }
 
+// inkColours are the colours mark mk (not a highlighter's) gives a cell of
+// colours bg and fg, empty (void) or with a letter on it. Design's board
+// and Draw mode (draw.go) both use it, so a device looks the same in both.
+func inkColours(mk dMark, bg, fg string, void bool) (nbg, nfg string) {
+	ink := inkOf(mk)
+	switch mk.Dev {
+	case devPen:
+		nbg, nfg = bg, ink
+		if !void {
+			nbg, nfg = mixHex(bg, ink, 0.16), mixHex(fg, ink, 0.6)
+			if mk.Over {
+				nfg = ink
+			}
+		}
+	case devFineliner:
+		nbg, nfg = bg, mixHex(ink, bg, 0.1)
+		if !void {
+			nfg = mixHex(fg, ink, 0.7)
+		}
+	case devPencil:
+		lead := mixHex(ink, "#a0a0a0", 0.5)
+		nbg, nfg = bg, mixHex(bg, lead, 0.75)
+		if !void {
+			nbg, nfg = mixHex(bg, lead, 0.12), fg
+		}
+	case devMarker:
+		nbg = mixHex(bg, ink, 0.82)
+		nfg = nbg
+		if !void {
+			nbg = mixHex(bg, ink, 0.7)
+			nfg = "#f5efe0"
+			if lum(nbg) > 0.5 {
+				nfg = "#1a1210"
+			}
+			if mk.Over {
+				nbg, nfg = mixHex(bg, ink, 0.75), mixHex(fg, ink, 0.5)
+			}
+		}
+	case devBrush:
+		nbg, nfg = mixHex(bg, ink, 0.62), mixHex(bg, ink, 0.9)
+		if !void {
+			nbg, nfg = mixHex(bg, ink, 0.5), fg
+		}
+	case devGlitter:
+		nbg, nfg = mixHex(bg, ink, 0.42), mixHex(ink, "#ffffff", 0.55)
+		if !void {
+			nfg = fg
+		}
+	default:
+		nbg, nfg = mixHex(bg, ink, 0.5), fg
+	}
+	return nbg, nfg
+}
+
+// highlightColours are the colours a highlighter's mark mk gives a cell of
+// colours bg and fg: under the words, a wash; over them, the words take
+// its colour too, and an empty cell is shaded (░). Shared with Draw mode.
+func highlightColours(mk dMark, bg, fg string, void bool) (nbg, nfg string, shade bool) {
+	pen := inkOf(mk)
+	switch {
+	case !mk.Over:
+		return mixHex(bg, pen, 0.5), fg, false
+	case void:
+		nbg = mixHex(bg, pen, 0.38)
+		return nbg, mixHex(nbg, pen, 0.55), true
+	}
+	return mixHex(bg, pen, 0.38), mixHex(fg, pen, 0.45), false
+}
+
 // inkGlyph is the letter an empty cell under mark mk shows: a line's
 // piece, joined to its neighbours (pen, fineliner, pencil), a brush's
 // bristle streaks, or glitter's sparkles; "" keeps the cell as it is.
 func (d *designState) inkGlyph(mk dMark, wx, wy int) string {
+	return inkGlyphFor(mk, wx, wy, d.desk.twinkle, func(x, y int) bool {
+		n, ok := d.marks[[2]int{x, y}]
+		return ok && lineDev(n.Dev)
+	})
+}
+
+// inkGlyphFor is inkGlyph for any drawing: twinkle is glitter's sparkle
+// frame, and on says whether cell (x, y) has a line device's ink (nil:
+// none does).
+func inkGlyphFor(mk dMark, wx, wy, twinkle int, on func(x, y int) bool) string {
 	switch mk.Dev {
 	case devBrush:
 		return []string{"▓", "▒", " ", "▓", "▒"}[inkHash(wx, wy)%5]
@@ -679,14 +710,13 @@ func (d *designState) inkGlyph(mk dMark, wx, wy int) string {
 		if h%3 != 0 {
 			return ""
 		}
-		return []string{"✦", "✧", "·", "⋆"}[(int(h/3)+d.desk.twinkle)%4]
+		return glitterSparks[(int(h/3)+twinkle)%len(glitterSparks)]
 	}
 	if !lineDev(mk.Dev) {
 		return ""
 	}
-	on := func(x, y int) bool {
-		n, ok := d.marks[[2]int{x, y}]
-		return ok && lineDev(n.Dev)
+	if on == nil {
+		on = func(int, int) bool { return false }
 	}
 	conn := 0
 	if on(wx, wy-1) {
@@ -725,6 +755,9 @@ func (d *designState) inkGlyph(mk dMark, wx, wy int) string {
 	}
 	return "·"
 }
+
+// glitterSparks are glitter ink's sparkles, in the order they twinkle.
+var glitterSparks = []string{"✦", "✧", "·", "⋆"}
 
 // ---- drawing a desk --------------------------------------------------------------------------
 

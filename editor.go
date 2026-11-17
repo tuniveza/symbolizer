@@ -170,6 +170,7 @@ type Model struct {
 	design            *designState         // design mode: the board, its structures, links and pen (design.go)
 	padView           *padViewer           // design mode: the notepad open over the board (design_notepad.go)
 	codex             *codexState          // Codex mode: the library, the open codex (codex.go)
+	draw              *drawState           // Draw mode: the start screen, the drawing or note open (draw.go)
 	house             *houseFile           // design mode: the rooms and floors (design_rooms.go)
 	rooms             map[int]*designState // the rooms been in or made this time, by ID (the one you are in is design)
 	startDir          string               // folder sy was started in
@@ -273,6 +274,9 @@ func (m *Model) Init() tea.Cmd {
 	if m.inCodex() {
 		mgr = tea.Batch(mgr, m.enterCodex()) // started as sy codex
 	}
+	if m.inDraw() {
+		mgr = tea.Batch(mgr, m.enterDraw()) // started as sy draw
+	}
 	return tea.Batch(mgr, checkBrickLamp(), m.tellKittyMode(), m.hl.Want(m.buf.Version(), m.top, m.textHeight()), nextMinute(), loadWeather(), weatherEvery(), m.startLamps(), watchDisk())
 }
 
@@ -321,6 +325,9 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		if c := m.glitterCmd(); c != nil { // glitter ink twinkles while it shows (design_desk.go)
 			cmd = tea.Batch(cmd, c)
 		}
+		if c := m.drawGlitterCmd(); c != nil { // and in Draw mode (draw_paint.go)
+			cmd = tea.Batch(cmd, c)
+		}
 	}()
 	if m.design != nil {
 		m.design.hoverOnly = false // set again below if this is only the mouse moving (designHover)
@@ -347,6 +354,10 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	}
 	if _, ok := msg.(codexTickMsg); ok { // Codex mode: the next frame of what moves (codex.go)
 		return m, m.codexTicked()
+	}
+	if _, ok := msg.(drawTickMsg); ok { // Draw mode: glitter's sparkles move on (draw_paint.go)
+		m.drawTicked()
+		return m, nil
 	}
 	if _, ok := msg.(designFrameMsg); ok {
 		m.ds().frameTick = false // the View after this draws the board afresh
@@ -582,6 +593,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if m.inCodex() && !m.help && m.prompt == pNone && m.picker == nil && !(m.treeFocus && m.showTree && m.tree != nil) {
 			return m.codexKey(msg.Key()) // codex_keys.go
 		}
+		if m.inDraw() && !m.help && m.prompt == pNone && m.picker == nil && !(m.treeFocus && m.showTree && m.tree != nil) {
+			return m.drawKey(msg.Key()) // draw_keys.go
+		}
 		if m.inDiary() && !(m.help && m.diaryViewer()) {
 			if cmd, done := m.diaryKey(keyName(msg.Key())); done {
 				return cmd
@@ -632,6 +646,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			msg.Mouse().Y >= m.boardTop() && msg.Mouse().Y < m.boardTop()+m.boardH() {
 			return m.codexClick(msg.Mouse()) // codex_keys.go
 		}
+		if m.inDraw() && !m.help && m.prompt == pNone && msg.Mouse().Y >= m.boardTop() && msg.Mouse().Y < m.boardTop()+m.boardH() {
+			return m.drawPress(msg.Mouse()) // draw_keys.go
+		}
 		return m.mouseClick(msg.Mouse())
 	case tea.MouseMotionMsg:
 		if m.inDesign() && m.design != nil && (m.design.drag != dragNone || m.design.rackPress != nil || m.design.pinPress != nil) {
@@ -644,6 +661,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if m.inCodex() && m.codex != nil && m.codex.drawing {
 			return m.codexDrag(msg.Mouse()) // drawing with the mouse (codex_keys.go)
 		}
+		if m.inDraw() && m.draw != nil && m.draw.drawing {
+			return m.drawMotion(msg.Mouse()) // a stroke (draw_keys.go)
+		}
 		if m.dragMargin != "" {
 			m.marginDrag(msg.Mouse().X)
 			return nil
@@ -655,6 +675,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		if m.dragMargin != "" {
 			return m.marginRelease()
+		}
+		if m.inDraw() && m.draw != nil && m.draw.drawing {
+			return m.drawRelease(msg.Mouse()) // the stroke ends and is kept (draw_keys.go)
 		}
 		m.dragging = false
 		if m.buf.Anchor != nil && *m.buf.Anchor == m.buf.Cursor {
@@ -676,6 +699,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		if m.inCodex() {
 			return m.codexWheel(n < 0)
+		}
+		if m.inDraw() {
+			return m.drawWheel(n < 0)
 		}
 		if m.diaryViewer() && m.diary != nil {
 			m.diary.turn(n / 3) // the wheel turns pages
