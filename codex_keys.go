@@ -30,9 +30,10 @@ package main
 //	W · O         paper colour · pages wide or upright
 //	Alt+P         a new page after this one          X X   delete the thing (none chosen: the page)
 //	Space         try activating it                  Ctrl+Z · Ctrl+Y   undo · redo
-//	E · Esc       back to reading
+//	E             back to reading          Esc   close it (back to the board, if from there)
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -58,6 +59,7 @@ func (m *Model) codexKeyIn(k tea.Key) tea.Cmd {
 	if c.turn != nil {
 		c.turn = nil // a key during a turn: it is there at once
 	}
+	c.newPic = nil // a key here: the picture prompt is gone (chosen, or cancelled)
 	if c.cf == nil {
 		return m.codexLibKey(name)
 	}
@@ -225,7 +227,7 @@ func (m *Model) codexReadKey(name string) tea.Cmd {
 				c.sel = p.Els[0].ID
 			}
 		}
-		m.say("Edit mode. Alt+N adds · arrows choose · T: activation table · E: read again · F1: all keys.")
+		m.say("Edit mode. Alt+N adds · arrows choose · T: activation table · E: read again · Esc: close · F1: all keys.")
 	case "esc":
 		return m.codexClose()
 	}
@@ -274,13 +276,19 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 	case "ctrl+y", "ctrl+shift+z":
 		m.codexUndo(true)
 		return nil
-	case "e", "E", "shift+e", "esc":
+	case "e", "E", "shift+e":
 		c.edit = false
 		c.states = map[int]*codexElState{}
 		m.codexSave()
 		m.say("Reading. E edits again · Esc closes.")
 		return nil
+	case "esc":
+		return m.codexClose()
 	case "pgdown":
+		if c.page+1 >= len(c.cf.Pages) {
+			m.say("The last page. Alt+P adds a page.")
+			return nil
+		}
 		m.codexShowPage(c.page + 1)
 		return nil
 	case "pgup":
@@ -419,6 +427,10 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 			if e.On.Do != "" {
 				c.state(e.ID).on, c.state(e.ID).at = true, time.Now()
 			}
+			if (e.Action == caNext || e.Action == "") && c.page+1 >= len(c.cf.Pages) {
+				m.say("Pressed while reading, it goes to the next page, but this is the last page. Alt+P adds a page.")
+				return nil
+			}
 			m.say("Pressed while reading, it will " + codexButtonSays(c, e) + ".")
 			return nil
 		}
@@ -452,6 +464,10 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 		m.codexSave()
 		m.say("Font: " + codexFonts[e.Font] + ".")
 	case "c", "C", "shift+c":
+		if e.Kind == ceImage || e.Kind == ceDrawing {
+			m.say("Colour is for texts, buttons and symbols. A drawing's colours are its ink (Enter draws).")
+			return nil
+		}
 		m.codexStep()
 		e.Color = codexNext(codexPalette, e.Color, name == "c")
 		m.codexSave()
@@ -462,11 +478,19 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 		m.codexSave()
 		m.say("Animation: " + codexAnims[e.Anim] + ".")
 	case "+", "=", "plus", "shift+=", "kp+":
+		if e.Kind != ceText && e.Kind != ceSymbol {
+			m.say("Size is for texts and symbols.")
+			return nil
+		}
 		m.codexStep()
 		e.Size = min(max(e.Size, 1)+1, codexSizes)
 		m.codexSave()
 		m.say("Size " + itoa(e.Size) + " of " + itoa(codexSizes) + ".")
 	case "-", "minus", "kp-":
+		if e.Kind != ceText && e.Kind != ceSymbol {
+			m.say("Size is for texts and symbols.")
+			return nil
+		}
 		m.codexStep()
 		e.Size = max(max(e.Size, 1)-1, 1)
 		m.codexSave()
@@ -481,6 +505,10 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 		m.codexSave()
 		m.say("Symbol: " + codexSymbols[e.Symbol].Name + ".")
 	case "j", "J", "shift+j":
+		if e.Kind == ceImage || e.Kind == ceDrawing {
+			m.say("Lining up is for texts, buttons and symbols. A picture or drawing fills its slot.")
+			return nil
+		}
 		m.codexStep()
 		e.Align = codexCycle(e.Align, 3, name == "j")
 		m.codexSave()
@@ -665,46 +693,107 @@ func (m *Model) codexPlace(name string) tea.Cmd {
 		m.say("Nothing added. Alt+N, then T text · B button · I picture · S symbol · D drawing.")
 		return nil
 	}
-	m.codexStep()
-	slot := 0
-	at := len(p.Els)
-	if e := c.el(c.sel); e != nil {
-		slot = codexSlotOf(e, p.Layout)
-		for i, x := range p.Els {
-			if x == e {
-				at = i + 1
-			}
-		}
-	} else { // the first empty slot
-		for s := range codexLayouts[p.Layout].slots {
-			if len(elsIn(p, s)) == 0 {
-				slot = s
-				break
-			}
+	// The first empty slot; all full: after the chosen thing, in its slot.
+	slot, at := -1, len(p.Els)
+	for s := range codexLayouts[p.Layout].slots {
+		if len(elsIn(p, s)) == 0 {
+			slot = s
+			break
 		}
 	}
+	if slot < 0 {
+		slot = 0
+		if e := c.el(c.sel); e != nil {
+			slot = codexSlotOf(e, p.Layout)
+			for i, x := range p.Els {
+				if x == e {
+					at = i + 1
+				}
+			}
+		} else if len(p.Els) > 0 {
+			slot = codexSlotOf(p.Els[len(p.Els)-1], p.Layout)
+		}
+	}
+	if kind == ceImage { // added once a picture is chosen: cancelled, nothing is left behind
+		c.newPic = &codexNewPic{slot: slot, at: at, from: c.sel}
+		return m.ask(pCodexImage, "Picture (any format) for the new picture: ", "")
+	}
+	m.codexStep()
 	e := c.newEl(kind, slot)
 	if kind == ceButton && c.page+1 >= len(c.cf.Pages) && c.page > 0 {
 		e.Text, e.Action = "Back", caPrev
 	}
+	if kind == ceText && slot == 0 && codexTitleSlot[p.Layout] {
+		e.Size = 2 // a title
+	}
 	p.Els = append(p.Els[:at], append([]*codexEl{e}, p.Els[at:]...)...)
+	c.added, c.addedUndo, c.addedFrom = 0, len(c.undo), c.sel
 	c.sel = e.ID
 	m.codexSave()
 	switch kind {
 	case ceText:
+		c.added = e.ID
 		m.codexStartWrite(codexWriteEl)
 		m.say("New text. Type it (Enter: a new line) · Esc: done.")
 	case ceButton:
+		c.added = e.ID
 		m.codexStartWrite(codexWriteEl)
-		m.say("New button. Type its label · Enter: done · then K: its action.")
-	case ceImage:
-		return m.ask(pCodexImage, "Picture (any format) for the new picture: ", "")
+		c.fresh = true
+		m.say("New button. Type its label (it replaces “" + e.Text + "”) · Enter: done · then K: its action.")
 	case ceDrawing:
+		c.added = e.ID
 		m.codexStartDraw()
 	case ceSymbol:
 		m.say("New symbol: " + codexSymbols[e.Symbol].Name + ". S / Shift+S: another · + −: size · C: colour.")
 	}
 	return nil
+}
+
+// codexTitleSlot: layouts whose first slot is a title or header (a new text there is big).
+var codexTitleSlot = map[int]bool{1: true, 4: true, 12: true}
+
+// codexDropAdded takes away thing id, just added by Alt+N, if it was left
+// empty (a text with no words, a drawing with no ink, a picture with no
+// file), with the undo step that added it if nothing changed since. It
+// says whether it did.
+func (m *Model) codexDropAdded(id int) bool {
+	c := m.cx()
+	e, p := c.el(id), c.pageOf()
+	if e == nil || p == nil {
+		return false
+	}
+	switch e.Kind {
+	case ceText:
+		if strings.TrimSpace(e.Text) != "" {
+			return false
+		}
+	case ceDrawing:
+		if len(e.Ink) > 0 {
+			return false
+		}
+	case ceImage:
+		if e.Image != "" {
+			return false
+		}
+	default:
+		return false
+	}
+	for i, x := range p.Els {
+		if x == e {
+			p.Els = append(p.Els[:i], p.Els[i+1:]...)
+			break
+		}
+	}
+	if len(c.undo) > 0 && len(c.undo) == c.addedUndo {
+		c.undo = c.undo[:len(c.undo)-1] // adding it was no step after all
+	}
+	c.sel = 0
+	if c.el(c.addedFrom) != nil {
+		c.sel = c.addedFrom
+	} else if len(p.Els) > 0 {
+		c.sel = p.Els[len(p.Els)-1].ID
+	}
+	return true
 }
 
 // codexAim steps a button's target: the next page, or the next thing.
@@ -831,6 +920,8 @@ func (c *codexState) multiline() bool {
 
 func (m *Model) codexWriteKey(k tea.Key, name string) {
 	c := m.cx()
+	fresh := c.fresh // a new button's label: typing replaces it; other keys keep it
+	c.fresh = false
 	switch name {
 	case "esc":
 		m.codexEndWrite()
@@ -887,10 +978,18 @@ func (m *Model) codexWriteKey(k tea.Key, name string) {
 			c.words = append(c.words[:c.cur], c.words[c.cur+1:]...)
 		}
 	case "space":
+		if fresh {
+			c.words, c.cur = nil, 0
+		}
 		m.codexInsert(" ")
 	default:
 		if k.Text != "" && !k.Mod.Contains(tea.ModCtrl) && !k.Mod.Contains(tea.ModAlt) {
+			if fresh {
+				c.words, c.cur = nil, 0
+			}
 			m.codexInsert(k.Text)
+		} else if fresh {
+			c.fresh = true // a key that does nothing: the label is still new
 		}
 	}
 }
@@ -939,12 +1038,17 @@ func (m *Model) codexInsert(s string) {
 }
 
 // codexEndWrite puts the words where they belong.
+// Ctrl+Z gets a step only if something changed; a thing just added and
+// written is one step (the one adding it); a new text left empty is taken
+// away again.
 func (m *Model) codexEndWrite() {
 	c := m.cx()
 	what := c.writing
-	c.writing = 0
+	c.writing, c.fresh = 0, false
 	words := string(c.words)
-	m.codexStep()
+	added := c.added
+	c.added = 0
+	before, _ := json.Marshal(c.cf)
 	switch what {
 	case codexWriteTitle:
 		c.cf.Title = strings.TrimSpace(words)
@@ -964,8 +1068,22 @@ func (m *Model) codexEndWrite() {
 		c.table = true
 	}
 	c.words = nil
+	if what == codexWriteEl && added != 0 && added == c.sel && m.codexDropAdded(added) {
+		m.codexSave()
+		m.say("Nothing written, so no text was added.")
+		return
+	}
+	after, _ := json.Marshal(c.cf)
+	changed := string(after) != string(before)
+	if changed && added == 0 {
+		c.codexPushUndo(string(before))
+	}
 	m.codexSave()
-	m.say("Saved.")
+	if changed || added != 0 {
+		m.say("Saved.")
+	} else {
+		m.say("No change.")
+	}
 }
 
 // codexPaste: text pasted while writing goes in at the cursor.
@@ -976,6 +1094,9 @@ func (m *Model) codexPaste(s string) tea.Cmd {
 	}
 	if !c.multiline() {
 		s = strings.ReplaceAll(s, "\n", " ")
+	}
+	if c.fresh {
+		c.words, c.cur, c.fresh = nil, 0, false
 	}
 	m.codexInsert(s)
 	return nil
@@ -1043,13 +1164,27 @@ func (m *Model) codexDrawKey(name string) {
 	case "ctrl+z":
 		m.codexUndo(false)
 	case "enter", "esc":
-		c.drawing, c.penDown = false, false
-		m.codexSave()
-		m.say("Drawing kept.")
+		m.codexEndDraw()
 	}
 	if moved && c.penDown {
 		m.codexDab()
 	}
+}
+
+// codexEndDraw stops drawing. A drawing just added and left with no ink is
+// taken away again.
+func (m *Model) codexEndDraw() {
+	c := m.cx()
+	c.drawing, c.penDown = false, false
+	added := c.added
+	c.added = 0
+	if added != 0 && added == c.sel && m.codexDropAdded(added) {
+		m.codexSave()
+		m.say("Nothing drawn, so no drawing was added.")
+		return
+	}
+	m.codexSave()
+	m.say("Drawing kept.")
 }
 
 // codexDab puts the brush's colour (or the rubber) where the brush is.
@@ -1158,7 +1293,13 @@ func (m *Model) codexTableChange(e *codexEl, fwd bool) {
 	}
 	i, do := codexDoOf(e.On.Do)
 	if c.tableCol == 0 {
-		e.On.Do = codexDos[codexCycle(i, len(codexDos), fwd)].key
+		for range codexDos { // only what does something for this kind of thing
+			i = codexCycle(i, len(codexDos), fwd)
+			if codexDoFits(e.Kind, codexDos[i].key) {
+				break
+			}
+		}
+		e.On.Do = codexDos[i].key
 		_, do = codexDoOf(e.On.Do)
 		// A sensible value to start with.
 		switch do.value {
@@ -1197,6 +1338,23 @@ func (m *Model) codexTableChange(e *codexEl, fwd bool) {
 			e.On.Alt = itoa(codexCycle(n, len(codexSymbols), fwd))
 		}
 	}
+}
+
+// codexDoFits is whether activation do changes a thing of this kind: a font
+// is only for words, a size for words and symbols, a colour not for a
+// picture, swapping not for a drawing.
+func codexDoFits(kind, do string) bool {
+	switch do {
+	case "font":
+		return kind == ceText || kind == ceButton
+	case "grow":
+		return kind == ceText || kind == ceSymbol
+	case "colour":
+		return kind != ceImage
+	case "swap":
+		return kind != ceDrawing
+	}
+	return true
 }
 
 // codexTableValue says the value column of e's row.
@@ -1306,15 +1464,20 @@ func codexOr(s, or string) string {
 // chosen thing (alt: as the picture it swaps to).
 func (m *Model) codexUseImage(path string, alt bool) tea.Cmd {
 	c := m.cx()
+	pic := c.newPic // Alt+N, I: the new picture is only added now
+	c.newPic = nil
+	if alt {
+		pic = nil
+	}
 	e := c.el(c.sel)
-	if c.cf == nil || e == nil {
+	if c.cf == nil || (e == nil && pic == nil) || (pic != nil && c.pageOf() == nil) {
 		return nil
 	}
 	if alt {
 		c.table = true
 	}
 	if _, ok := loadPicture(path); !ok {
-		m.sayErr("That is not a picture sy can show (PNG, JPEG, GIF, WebP…).")
+		m.sayErr("That is not a picture sy can show (PNG, JPEG, GIF, WebP…). Nothing changed.")
 		return nil
 	}
 	name, err := codexCopyIn(c.id, path)
@@ -1323,6 +1486,13 @@ func (m *Model) codexUseImage(path string, alt bool) tea.Cmd {
 		return nil
 	}
 	m.codexStep()
+	if pic != nil {
+		p := c.pageOf()
+		e = c.newEl(ceImage, pic.slot)
+		at := min(max(pic.at, 0), len(p.Els))
+		p.Els = append(p.Els[:at], append([]*codexEl{e}, p.Els[at:]...)...)
+		c.sel = e.ID
+	}
 	if alt {
 		e.On.Alt = name
 	} else {
@@ -1377,6 +1547,7 @@ func codexIn(r [4]int, x, y int) bool {
 // codexClick is a click at (x, y) on the screen.
 func (m *Model) codexClick(ms tea.Mouse) tea.Cmd {
 	c := m.cx()
+	c.newPic = nil
 	x, y := ms.X, ms.Y-m.boardTop()
 	if c.cf == nil {
 		for i := range c.lib {
@@ -1403,8 +1574,7 @@ func (m *Model) codexClick(ms tea.Mouse) tea.Cmd {
 			m.codexMouseDab(r, x, y)
 			return nil
 		}
-		c.drawing = false
-		m.codexSave()
+		m.codexEndDraw()
 	}
 	if c.page < 0 {
 		if r, ok := c.box["cover"]; ok && codexIn(r, x, y) && !c.edit {
@@ -1566,9 +1736,9 @@ func (m *Model) codexStatus() string {
 	case c.placing:
 		hint = "Add: T text · B button · I picture · S symbol · D drawing"
 	case c.edit && c.page < 0:
-		hint = "Cover · Enter title · Tab subtitle · C colour · S symbol · W paper · PgDn pages · E read"
+		hint = "Cover · Enter title · Tab subtitle · C colour · S symbol · W paper · PgDn pages · E read · Esc close"
 	case c.edit:
-		hint = "Alt+N add · arrows choose · Enter write · L layout · F C A + − font colour anim size · T table · Alt+P page · E read"
+		hint = "Alt+N add · arrows choose · Enter write · L layout · F C A + − font colour anim size · T table · Alt+P page · E read · Esc close"
 	case c.page < 0:
 		hint = "→ or Enter: open · E edit · Esc close"
 	default:

@@ -52,6 +52,7 @@ func TestCodexMakeAndRead(t *testing.T) {
 	if len(p.Els) != 1 || p.Els[0].Text != "Hello\nthere" {
 		t.Fatalf("the text: %+v", p.Els)
 	}
+	press(m, "-") // it went into the title slot, big: back to normal size, so its words show as typed
 	press(m, "alt+n")
 	press(m, "b")
 	press(m, "esc") // keeps the label it has
@@ -321,8 +322,7 @@ func TestCodexOnDesignBoard(t *testing.T) {
 	}
 	typeStr(m, "Atlas")
 	press(m, "enter")
-	press(m, "esc") // reading
-	press(m, "esc") // closed: back to the board
+	press(m, "esc") // edit mode: Esc closes it, back to the board
 	if !m.inDesign() || d.sel != o.ID || o.Header != "Atlas" {
 		t.Fatalf("back on the board: design %v, chosen %d, header %q", m.inDesign(), d.sel, o.Header)
 	}

@@ -14,6 +14,10 @@ package main
 // In Codex mode's library, P puts the chosen codex on the board.
 
 import (
+	"bytes"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -89,6 +93,34 @@ func (m *Model) codexFromDesign(o *dOct, edit bool) tea.Cmd {
 		m.say("Type the codex's title, then Enter (Tab: a subtitle) · Esc twice: back to the board.")
 	}
 	return tea.Batch(cmd, m.codexTickCmd())
+}
+
+// codexOnBoard is whether any Design board (in any room, on any wall)
+// shows codex id: the board open now, and the boards' files.
+func (m *Model) codexOnBoard(id string) bool {
+	if id == "" {
+		return false
+	}
+	if m.design != nil {
+		for _, o := range m.design.octs {
+			if codexIDOf(o) == id {
+				return true
+			}
+		}
+	}
+	want := []byte(`"codex:` + id + `"`)
+	found := false
+	filepath.WalkDir(filepath.Dir(designPath()), func(p string, de fs.DirEntry, err error) error {
+		if err != nil || de.IsDir() || !strings.HasSuffix(p, ".json") {
+			return nil
+		}
+		if b, err := os.ReadFile(p); err == nil && bytes.Contains(b, want) {
+			found = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return found
 }
 
 // codexToBoard puts codex id on the Design board, in the middle of the view.
