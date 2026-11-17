@@ -42,3 +42,26 @@ func TestNotesFillNotepads(t *testing.T) {
 		t.Fatalf("the sticker: %+v", r)
 	}
 }
+
+// A note saved by the background autosave is a note too; a sticker given to
+// a note never saved before puts its new notepad on the board.
+func TestNotesFromAutosaveAndSticker(t *testing.T) {
+	m := newTest(t, "text stays")
+	dir := t.TempDir()
+	p := filepath.Join(dir, "auto.txt")
+	os.WriteFile(p, []byte("x"), 0o644)
+	m.finishSave(saveDone{path: p, wrote: true})
+	if notesLoad().note(p) == nil {
+		t.Fatal("an autosaved .txt should be a note")
+	}
+	notesCache = nil
+	os.Remove(notesPath())
+	m.buf.Path = filepath.Join(dir, "stick.txt")
+	os.WriteFile(m.buf.Path, []byte("y"), 0o644)
+	m.askSticker()
+	m.stickerEntered("idea")
+	nf := notesLoad()
+	if r := nf.note(m.buf.Path); r == nil || r.Sticker != "idea" || nf.pad(r.Pad) == nil || nf.pad(r.Pad).Room == 0 {
+		t.Fatalf("the sticker's note and its notepad on a board: %+v %+v", r, nf.Pads)
+	}
+}

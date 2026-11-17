@@ -211,7 +211,7 @@ func (m *Model) codexMakeRoom(id string, cf *codexFile) int {
 	nd := loadDesign(roomPath(nr.ID))
 	nd.walls, nd.floor = d.walls, d.floor
 	bx := m.width / 2
-	by := max(m.boardH()/2, windowTop+windowH+2+max(codexBoardH, doorH)/2) // under the town windows
+	by := underWindows(bx, m.boardH()/2, 2*codexBoardW, max(codexBoardH, doorH)) // not in front of the town windows
 	co := nd.newKind(kCodex, bx, by)
 	co.From, co.Header, co.Color = "codex:"+id, codexName(cf.Title), codexOr(cf.Color, codexThemeCover())
 	back := nd.newKind(kDoor, bx-codexBoardW-8, by)

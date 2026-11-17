@@ -95,6 +95,9 @@ func (m *Model) startSave() tea.Cmd {
 
 func (m *Model) finishSave(msg saveDone) {
 	m.saving = false
+	if msg.wrote && msg.err == nil {
+		m.noteTouched(msg.path) // a saved .txt is a note in a notepad (notes.go), even if another file is open now
+	}
 	if msg.path != m.buf.Path {
 		return // a different file is open now
 	}

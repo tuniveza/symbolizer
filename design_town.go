@@ -171,3 +171,17 @@ func (m *Model) windowsTicked() {
 		m.design.frameAt = time.Time{}
 	}
 }
+
+// underWindows moves y (a structure h tall whose middle is at x, w wide)
+// down below the town windows' row if it would stand in front of where
+// windows can be (up to 4, around windowMid); elsewhere it stays.
+func underWindows(x, y, w, h int) int {
+	span := (4*windowW + 3*windowGap) / 2
+	if x+w/2 < windowMid-span-2 || x-w/2 > windowMid+span+2 {
+		return y
+	}
+	if y-h/2 > windowTop+windowH || y+h/2 < windowTop {
+		return y
+	}
+	return windowTop + windowH + 2 + h/2
+}

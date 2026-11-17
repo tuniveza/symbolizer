@@ -175,13 +175,11 @@ func (m *Model) askSticker() tea.Cmd {
 		return nil
 	}
 	m.saveNow()
-	nf := notesLoad()
-	r := nf.note(b.Path)
-	if r == nil {
-		r, _ = nf.noteSaved(b.Path, time.Now())
+	now := ""
+	if r := notesLoad().note(b.Path); r != nil {
+		now = r.Sticker
 	}
-	cmd := m.ask(pNoteSticker, "Sticker for “"+filepath.Base(b.Path)+"” (empty: none): ", r.Sticker)
-	return cmd
+	return m.ask(pNoteSticker, "Sticker for “"+filepath.Base(b.Path)+"” (empty: none): ", now)
 }
 
 // stickerEntered gives the open note sticker s.
@@ -238,7 +236,7 @@ func (m *Model) placeNotepad(n int) {
 		d = m.boardOf(room, ((r.Wall%r.walls())+r.walls())%r.walls())
 	}
 	wx, wy := d.world(m.width/2, m.boardH()/2)
-	x, y := int(wx), max(int(wy), windowTop+windowH+2+notepadH/2) // under the town windows
+	x, y := int(wx), underWindows(int(wx), int(wy), notepadW, notepadH) // not in front of the town windows
 	if near != nil {
 		x, y = near.X+near.W+notepadW/2+3, near.Y+near.H/2
 	}
