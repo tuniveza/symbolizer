@@ -169,7 +169,7 @@ func (d *designState) newKind(kind string, cx, cy int) *dOct {
 		o.Color = hslHex(150+rand.Float64()*30, 0.3, 0.5) // green
 	case kCodex:
 		o.W, o.H = codexBoardW, codexBoardH
-		o.Color = codexPalette[1]
+		o.Color = codexThemeCover()
 	case kBox:
 		o.W, o.H = boxNewW, boxNewH
 		o.Color = hslHex(rand.Float64()*360, 0.5, 0.55) // a gift box's paper, a hexagonal box's colour

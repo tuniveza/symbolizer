@@ -149,13 +149,16 @@ type codexFile struct {
 }
 
 // codexPalette: the colours C steps through (text, buttons, covers, symbols).
+// They are Emberistal's warm colours (the user asked, 16 Nov 2026). "" is
+// the theme's own colour for that thing (codexTheme…).
 var codexPalette = []string{
-	"#2b2118", "#7a2e1d", "#c0392b", "#e67e22", "#d4a017", "#6b8e23", "#2e8b57", "#16a085",
-	"#2c7fb8", "#3949ab", "#7b3fa0", "#c2185b", "#8d6e63", "#607d8b", "#fffaf0", "#111111",
+	"#ff6600", "#ff3704", "#ff4518", "#ff8a1a", "#ffb400", "#ffc14d", "#ffa66b", "#ffb870",
+	"#fff0d6", "#d84017", "#d74a00", "#983818", "#8e3c1a", "#5a2214", "#2a1610", "#161616",
 }
 
 // codexPapers: the paper colours W steps through.
-var codexPapers = []string{"#f4ead5", "#fdf6e3", "#ffffff", "#e8f0f7", "#efe6f5", "#e9f3e4", "#2a2420", "#1d2733"}
+// "" is the theme's paper: warm charcoal in Emberistal.
+var codexPapers = []string{"", "#1b1614", "#24120b", "#2a1610", "#161616", "#0f0b0a", "#3a1c10", "#fff0d6", "#f4ead5"}
 
 // ---- the 16 layouts ---------------------------------------------------------------------
 
@@ -213,7 +216,7 @@ func codexFilePath(id string) string { return filepath.Join(codexDir(id), "codex
 
 func newCodexFile(title string) *codexFile {
 	return &codexFile{
-		Title: title, Color: codexPalette[1], Symbol: 3, Paper: codexPapers[0],
+		Title: title, Symbol: 3,
 		Pages: []*codexPage{{Layout: 1}}, NextID: 1,
 	}
 }
@@ -233,11 +236,13 @@ func loadCodex(id string) (*codexFile, error) {
 
 // tidy makes a file read from disk safe to use.
 func (cf *codexFile) tidy() {
-	if cf.Color == "" {
-		cf.Color = codexPalette[1]
+	// The first look's colours (cream paper, a red cover, blue buttons) are
+	// the theme's now: Emberistal (16 Nov 2026).
+	if cf.Color == "#7a2e1d" {
+		cf.Color = ""
 	}
-	if cf.Paper == "" {
-		cf.Paper = codexPapers[0]
+	if cf.Paper == "#f4ead5" {
+		cf.Paper = ""
 	}
 	if len(cf.Pages) == 0 {
 		cf.Pages = []*codexPage{{Layout: 1}}
@@ -250,12 +255,30 @@ func (cf *codexFile) tidy() {
 		}
 		keep := p.Els[:0]
 		for _, e := range p.Els {
-			if e != nil {
-				keep = append(keep, e)
-				top = max(top, e.ID)
+			if e != nil && e.Kind == ceButton && e.Color == "#2c7fb8" {
+				e.Color = ""
 			}
+			if e == nil {
+				continue
+			}
+			if _, ok := codexKindNames[e.Kind]; !ok {
+				e.Kind = ceText
+			}
+			e.Font = ((e.Font % 16) + 16) % 16
+			e.Anim = ((e.Anim % 16) + 16) % 16
+			e.Align = ((e.Align % 3) + 3) % 3
+			e.Size = max(0, min(e.Size, codexSizes))
+			if n := len(codexSymbols); n > 0 {
+				e.Symbol = ((e.Symbol % n) + n) % n
+			}
+			keep = append(keep, e)
+			top = max(top, e.ID)
 		}
 		p.Els = keep
+		p.Layout = ((p.Layout % len(codexLayouts)) + len(codexLayouts)) % len(codexLayouts)
+	}
+	if n := len(codexSymbols); n > 0 {
+		cf.Symbol = ((cf.Symbol % n) + n) % n
 	}
 	cf.NextID = max(cf.NextID, top+1)
 }
@@ -397,11 +420,16 @@ type codexState struct {
 	tableRow, tableCol int
 
 	undo, redo []string // the codex as it was, as JSON
+	saved      string   // the codex as last saved, as JSON
 	xAt        time.Time
+	xWhole     bool // the first X was Shift+X: the whole page
 	err        string
 
 	fromDesign bool // opened from the Design board: Esc goes back there
 	designID   int  // the structure it was opened from
+
+	shadeKey string // what the no-shader note says (codex_shade.go)
+	shadeTop int    // 0 not known, 1 sy's pane is not the top of its window, 2 it is
 
 	tick  bool              // a frame tick is coming
 	rects map[int][4]int    // where each thing was drawn last, on the screen: x, y, w, h
@@ -450,6 +478,8 @@ func (m *Model) codexOpen(id string, edit bool) bool {
 	}
 	c := m.cx()
 	c.id, c.cf, c.edit = id, cf, edit
+	b, _ := json.Marshal(cf)
+	c.saved = string(b)
 	c.page, c.sel, c.focus = -1, 0, 0
 	c.undo, c.redo = nil, nil
 	c.writing, c.drawing, c.table, c.placing = 0, false, false, false
@@ -502,12 +532,16 @@ func (m *Model) codexSave() {
 	if c.cf == nil || c.id == "" {
 		return
 	}
+	b, _ := json.Marshal(c.cf)
+	if string(b) == c.saved { // nothing changed: reading must not make it "changed now"
+		return
+	}
 	if err := saveCodex(c.id, c.cf); err != nil {
 		c.err = err.Error()
 		m.sayErr("Not saved: " + c.err)
 		return
 	}
-	c.err = ""
+	c.saved, c.err = string(b), ""
 }
 
 // codexStep notes the codex as it is, before a change, for Ctrl+Z.
@@ -546,6 +580,12 @@ func (m *Model) codexUndo(redo bool) {
 	c.page = min(c.page, len(c.cf.Pages)-1)
 	if c.el(c.sel) == nil {
 		c.sel = 0
+		if p := c.pageOf(); p != nil && len(p.Els) > 0 {
+			c.sel = p.Els[len(p.Els)-1].ID
+		}
+	}
+	if e := c.el(c.sel); c.drawing && (e == nil || e.Kind != ceDrawing) {
+		c.drawing, c.penDown = false, false // what was being drawn is gone
 	}
 	m.codexSave()
 	m.say(map[bool]string{false: "Undone.", true: "Redone."}[redo])
@@ -646,18 +686,12 @@ func (c *codexState) newEl(kind string, slot int) *codexEl {
 	switch kind {
 	case ceText:
 		e.Text = ""
-		e.On.Do = "flash"
 	case ceButton:
 		e.Text = "Next"
 		e.Action = caNext
-		e.Color = codexPalette[8]
 	case ceSymbol:
 		e.Symbol = int(e.ID) % max(len(codexSymbols), 1)
 		e.Size = 2
-		e.On.Do = "colour"
-		e.On.Color = codexPalette[2]
-	case ceImage, ceDrawing:
-		e.On.Do = "flash"
 	}
 	return e
 }
@@ -681,7 +715,11 @@ func (c *codexState) interactive() []*codexEl {
 		return nil
 	}
 	var out []*codexEl
+	now := time.Now()
 	for _, e := range p.Els {
+		if !c.edit && c.look(e, now).hidden { // a hidden thing must not give itself away
+			continue
+		}
 		if e.Kind == ceButton || e.On.Do != "" {
 			out = append(out, e)
 		}
@@ -699,7 +737,7 @@ func (m *Model) codexActivate(e *codexEl, depth int) {
 		return
 	}
 	s := c.state(e.ID)
-	if e.Kind == ceButton {
+	if e.Kind == ceButton && !(depth > 0 && e.On.Do != "") { // aimed at: a button with an effect only changes
 		s.at = time.Now() // it lights up as pressed
 		switch e.Action {
 		case caNext, "":
@@ -737,8 +775,8 @@ func (m *Model) codexActivate(e *codexEl, depth int) {
 	}
 	s.on = !s.on
 	s.at = time.Now()
-	if e.On.Do == "flash" {
-		s.on = true // a flash plays each time
+	if e.On.Do == "flash" || c.edit {
+		s.on = true // a flash plays each time; editing, trying shows the change each time
 	}
 }
 
@@ -755,6 +793,7 @@ type codexLook struct {
 	symbol int
 	invert bool
 	hidden bool
+	ghost  bool    // editing: hidden until activated, so drawn faint
 	flash  float64 // 0 … 1: how bright a flash is just now
 }
 
@@ -769,6 +808,9 @@ func (c *codexState) look(e *codexEl, now time.Time) codexLook {
 	switch e.On.Do {
 	case "show":
 		l.hidden = !on
+		if on && s != nil {
+			l.animAt = s.at // its entrance animation plays as it appears
+		}
 	case "hide":
 		l.hidden = on
 	case "animate":
@@ -812,7 +854,7 @@ func (c *codexState) look(e *codexEl, now time.Time) codexLook {
 		l.flash = max(l.flash, 1-now.Sub(s.at).Seconds()/0.3)
 	}
 	if c.edit && l.hidden {
-		l.hidden = false // edit mode shows everything
+		l.hidden, l.ghost = false, true // edit mode shows everything, the hidden faint
 	}
 	return l
 }
@@ -822,8 +864,11 @@ func (c *codexState) moving(now time.Time) bool {
 	if c.cf == nil {
 		return false
 	}
-	if c.turn != nil || c.page == -1 {
-		return true // the cover's symbol moves
+	if c.turn != nil || c.page == -1 || c.placing {
+		return true // the cover's symbol moves; the add menu's symbol too
+	}
+	if e := c.el(c.sel); c.edit && e != nil && (e.Anim > 0 || e.Kind == ceSymbol) {
+		return true // the inspector plays its animation
 	}
 	p := c.pageOf()
 	if p == nil {
@@ -842,6 +887,9 @@ func (c *codexState) moving(now time.Time) bool {
 		}
 		if s := c.states[e.ID]; s != nil && now.Sub(s.at) < time.Second {
 			return true
+		}
+		if s := c.states[e.ID]; c.edit && s != nil && s.on && now.Sub(s.at) < 3200*time.Millisecond {
+			return true // a tried change goes back after 3 s
 		}
 	}
 	return false
@@ -872,4 +920,24 @@ func (m *Model) codexTicked() tea.Cmd {
 		c.turn = nil
 	}
 	return m.codexTickCmd()
+}
+
+// codexPagesMoved keeps "go to page" buttons on their page when a page is
+// added at index at (delta 1) or the page at index at is deleted (delta -1).
+// A button aimed at a deleted page aims at the page that took its place.
+func (cf *codexFile) codexPagesMoved(at, delta int) {
+	for _, p := range cf.Pages {
+		for _, e := range p.Els {
+			if e.Kind != ceButton || e.Action != caGoto || e.Target < 1 {
+				continue
+			}
+			switch {
+			case delta > 0 && e.Target >= at+1:
+				e.Target++
+			case delta < 0 && e.Target > at+1:
+				e.Target--
+			}
+			e.Target = min(e.Target, len(cf.Pages))
+		}
+	}
 }

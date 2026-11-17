@@ -202,8 +202,14 @@ func (m *Model) codexReadKey(name string) tea.Cmd {
 		e := c.el(c.focus)
 		if e == nil {
 			if list := c.interactive(); len(list) > 0 {
-				c.focus = list[0].ID
 				e = list[0]
+				for _, x := range list { // a button first: Enter is for going on
+					if x.Kind == ceButton {
+						e = x
+						break
+					}
+				}
+				c.focus = e.ID
 			}
 		}
 		if e == nil {
@@ -301,6 +307,7 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 		}
 		at := c.page + 1
 		c.cf.Pages = append(c.cf.Pages[:at], append([]*codexPage{{Layout: lay}}, c.cf.Pages[at:]...)...)
+		c.cf.codexPagesMoved(at, 1)
 		m.codexShowPage(at)
 		m.codexSave()
 		m.say("New page " + itoa(at+1) + " of " + itoa(len(c.cf.Pages)) + ". Alt+N adds things · L changes its layout.")
@@ -354,8 +361,12 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 		m.codexSave()
 		return nil
 	case "x", "X", "shift+x":
-		if c.xAt.IsZero() || time.Since(c.xAt) > xTwice {
-			c.xAt = time.Now()
+		whole := name != "x" // Shift+X X: the whole page
+		if whole {
+			e = nil
+		}
+		if c.xAt.IsZero() || time.Since(c.xAt) > xTwice || c.xWhole != whole {
+			c.xAt, c.xWhole = time.Now(), whole
 			if e != nil {
 				m.say("Press X again to delete " + codexElName(e) + ".")
 			} else {
@@ -370,6 +381,8 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 			m.say("Deleted. Ctrl+Z brings it back.")
 		} else if len(c.cf.Pages) > 1 {
 			c.cf.Pages = append(c.cf.Pages[:c.page], c.cf.Pages[c.page+1:]...)
+			c.cf.codexPagesMoved(c.page, -1)
+			c.sel = 0
 			m.codexShowPage(min(c.page, len(c.cf.Pages)-1))
 			m.say("Page deleted. Ctrl+Z brings it back.")
 		} else {
@@ -401,10 +414,15 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 		}
 		return nil
 	case "space":
-		m.codexActivate(e, 0)
-		if e.Kind == ceButton {
-			m.say("Tried it. (Its action works while reading too.)")
+		if e.Kind == ceButton { // editing: show the press, don't leave the page
+			c.state(e.ID).at = time.Now()
+			if e.On.Do != "" {
+				c.state(e.ID).on, c.state(e.ID).at = true, time.Now()
+			}
+			m.say("Pressed while reading, it will " + codexButtonSays(c, e) + ".")
+			return nil
 		}
+		m.codexActivate(e, 0)
 		return nil
 	case "alt+left", "alt+right":
 		m.codexStep()
@@ -474,6 +492,7 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 		}
 		m.codexStep()
 		e.Action = codexNext(codexActions, e.Action, name == "k")
+		c.codexActionTarget(e)
 		m.codexSave()
 		m.say("The button: " + codexButtonSays(c, e) + ".")
 	case "g", "G", "shift+g":
@@ -692,12 +711,7 @@ func (m *Model) codexPlace(name string) tea.Cmd {
 func (m *Model) codexAim(e *codexEl, fwd bool) {
 	c := m.cx()
 	if e.Action == caGoto {
-		n := len(c.cf.Pages)
-		t := e.Target
-		if t < 1 {
-			t = 0
-		}
-		e.Target = codexCycle(t-1, n, fwd) + 1
+		e.Target = codexCycle(max(e.Target, 0), len(c.cf.Pages)+1, fwd) // 0 the cover, then the pages
 		return
 	}
 	var ids []int
@@ -1136,6 +1150,7 @@ func (m *Model) codexTableChange(e *codexEl, fwd bool) {
 	if e.Kind == ceButton { // a button's row: its action, and what it aims at
 		if c.tableCol == 0 {
 			e.Action = codexNext(codexActions, e.Action, fwd)
+			c.codexActionTarget(e)
 		} else if e.Action == caGoto || e.Action == caActivate {
 			m.codexAim(e, fwd)
 		}
@@ -1149,7 +1164,7 @@ func (m *Model) codexTableChange(e *codexEl, fwd bool) {
 		switch do.value {
 		case "colour":
 			if e.On.Color == "" {
-				e.On.Color = codexPalette[2]
+				e.On.Color = codexPalette[8]
 			}
 		case "anim":
 			if e.On.Anim == 0 {
@@ -1297,6 +1312,10 @@ func (m *Model) codexUseImage(path string, alt bool) tea.Cmd {
 	}
 	if alt {
 		c.table = true
+	}
+	if _, ok := loadPicture(path); !ok {
+		m.sayErr("That is not a picture sy can show (PNG, JPEG, GIF, WebP…).")
+		return nil
 	}
 	name, err := codexCopyIn(c.id, path)
 	if err != nil {
@@ -1560,4 +1579,15 @@ func (m *Model) codexStatus() string {
 		style = st(cError, cStatusBG)
 	}
 	return centreBar(style.Render(hint), m.width, stStatus)
+}
+
+// codexActionTarget gives a button a target that fits its new action: the
+// next page for "go to", nothing yet for "activate".
+func (c *codexState) codexActionTarget(e *codexEl) {
+	switch e.Action {
+	case caGoto:
+		e.Target = min(c.page+2, len(c.cf.Pages))
+	default:
+		e.Target = 0
+	}
 }

@@ -62,7 +62,7 @@ func (m *Model) codexNewOnBoard(o *dOct) {
 	}
 	o.From = "codex:" + id
 	o.Header = codexName(cf.Title)
-	o.Color = cf.Color
+	o.Color = codexOr(cf.Color, codexThemeCover())
 	m.say("New codex on the board. Enter opens it · E edits it (its title first).")
 }
 
@@ -102,7 +102,7 @@ func (m *Model) codexToBoard(id string) tea.Cmd {
 	d := m.ds()
 	wx, wy := d.world(m.width/2, m.boardH()/2)
 	o := d.newKind(kCodex, int(wx), int(wy))
-	o.From, o.Header, o.Color = "codex:"+id, codexName(cf.Title), cf.Color
+	o.From, o.Header, o.Color = "codex:"+id, codexName(cf.Title), codexOr(cf.Color, codexThemeCover())
 	d.clearSpot(o)
 	d.sel, d.editing = o.ID, partNone
 	m.centreOn(o)

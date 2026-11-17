@@ -413,3 +413,62 @@ func TestCodexPageTurn(t *testing.T) {
 		t.Fatal("after the turn: the new page")
 	}
 }
+
+// Editing on a wide screen: the inspector shows the chosen thing's options;
+// Alt+N shows the add menu; a button's target and pressable things are marked.
+func TestCodexSeeable(t *testing.T) {
+	m := codexTest(t)
+	id, cf, _ := createCodex("See")
+	txt := &codexEl{ID: 1, Kind: ceText, Text: "Hello", On: codexOn{Do: "flash"}}
+	hid := &codexEl{ID: 3, Kind: ceText, Text: "Secret", Slot: 1, On: codexOn{Do: "show"}}
+	btn := &codexEl{ID: 2, Kind: ceButton, Text: "Go", Slot: 1, Action: caActivate, Target: 1}
+	cf.Pages[0].Els = []*codexEl{txt, btn, hid}
+	cf.NextID = 4
+	saveCodex(id, cf)
+	m.Update(tea.WindowSizeMsg{Width: 140, Height: 40})
+	m.codexOpen(id, true)
+	press(m, "pgdown")
+	c := m.cx()
+	c.sel = 1
+	s := screenOf(m)
+	for _, w := range []string{"Inspector", "font", "size", "colour", "animation", "activated", "flashes", "layout"} {
+		if !strings.Contains(s, w) {
+			t.Fatalf("the inspector should show %q:\n%s", w, s)
+		}
+	}
+	if !strings.Contains(s, "hidden until activated") {
+		t.Fatal("a thing hidden at first should say so while editing")
+	}
+	c.sel = 2
+	if s := screenOf(m); !strings.Contains(s, "◎ target") || !strings.Contains(s, "action") {
+		t.Fatalf("the button's target should be marked:\n%s", s)
+	}
+	press(m, "alt+n")
+	if s := screenOf(m); !strings.Contains(s, "Add to this page") || !strings.Contains(s, "drawing") {
+		t.Fatalf("Alt+N should show the add menu:\n%s", s)
+	}
+	press(m, "esc")
+	press(m, "e") // reading
+	if s := screenOf(m); !strings.Contains(s, "◈") || strings.Contains(s, "Inspector") {
+		t.Fatalf("reading: pressable things marked, no inspector:\n%s", s)
+	}
+	press(m, "tab")
+	if !strings.Contains(screenOf(m), "↵ press") {
+		t.Fatal("the thing Tab reached should say ↵ press")
+	}
+	// A narrow screen has no room for the inspector.
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	press(m, "e")
+	if strings.Contains(screenOf(m), "Inspector") {
+		t.Fatal("no inspector on a narrow screen")
+	}
+}
+
+// The first look's colours (cream paper, red cover, blue buttons) become the theme's.
+func TestCodexOldColoursBecomeTheme(t *testing.T) {
+	cf := &codexFile{Color: "#7a2e1d", Paper: "#f4ead5", Pages: []*codexPage{{Els: []*codexEl{{ID: 1, Kind: ceButton, Color: "#2c7fb8"}}}}}
+	cf.tidy()
+	if cf.Color != "" || cf.Paper != "" || cf.Pages[0].Els[0].Color != "" {
+		t.Fatalf("old colours kept: %q %q %q", cf.Color, cf.Paper, cf.Pages[0].Els[0].Color)
+	}
+}

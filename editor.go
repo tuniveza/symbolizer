@@ -297,6 +297,7 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			panic(r)
 		}
 	}()
+	defer m.codexShadeSync() // Codex mode up: no desktop shader over its view (codex_shade.go)
 	if _, ok := msg.(uv.KittyGraphicsEvent); ok { // kitty's answer about a picture: nothing changed on the board
 		if m.design != nil {
 			m.design.hoverOnly = true

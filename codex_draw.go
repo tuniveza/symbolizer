@@ -12,7 +12,18 @@ import (
 
 const codexTurnFor = 300 * time.Millisecond // a page turning
 
-const codexGold = "#e3c26b"
+// ---- the theme's colours (Emberistal unless another sy theme is on) ----
+
+func codexDesk() string        { return mixHex(cBG, "#000000", 0.35) }
+func codexThemePaper() string  { return mixHex(cBG, cCurrentLine, 0.55) }
+func codexThemeCover() string  { return mixHex(cBG, cEmber, 0.16) }
+func codexThemeButton() string { return cEmber }
+func codexGold() string        { return cAccent }
+
+// codexSymColor is a symbol's own colour: the theme's ember gradient.
+func codexSymColor(i int) string {
+	return cGradient[(i%3+3)%3]
+}
 
 // codexMarquee is the animation whose cells wrap round inside the thing.
 const codexMarquee = 6
@@ -90,9 +101,9 @@ func lum(hex string) float64 {
 // codexInkOn is a colour that reads on bg.
 func codexInkOn(bg string) string {
 	if lum(bg) > 0.55 {
-		return "#2b2118"
+		return "#2b1608"
 	}
-	return "#fdf6e3"
+	return cStatusText
 }
 
 func (c *codexState) paper(p *codexPage) string {
@@ -102,7 +113,7 @@ func (c *codexState) paper(p *codexPage) string {
 	if c.cf != nil && c.cf.Paper != "" {
 		return c.cf.Paper
 	}
-	return codexPapers[0]
+	return codexThemePaper()
 }
 
 // codexPageSize is the page's size on a w×h screen: wide (about 16:10) or upright.
@@ -162,7 +173,7 @@ func (m *Model) codexCanvas() *boardCanvas {
 	c := m.cx()
 	w, h := m.width, m.boardH()
 	cv := newBoardCanvas(w, h)
-	desk := mixHex(boardBG(), "#000000", 0.15)
+	desk := codexDesk()
 	cvFill(cv, 0, 0, w, h, desk)
 	c.rects = map[int][4]int{}
 	c.box = map[string][4]int{}
@@ -171,8 +182,9 @@ func (m *Model) codexCanvas() *boardCanvas {
 		m.codexLibrary(cv, desk, now)
 		return cv
 	}
-	pw, ph := codexPageSize(w, h, c.cf.Tall)
-	px, py := (w-pw)/2, (h-ph)/2
+	top := m.codexTop() // editing: the inspector band above the page (codex_panel.go)
+	pw, ph := codexPageSize(w, h-top, c.cf.Tall)
+	px, py := (w-pw)/2, top+(h-top-ph)/2
 	// The page shadow.
 	cvFill(cv, px+1, py+1, pw, ph, mixHex(desk, "#000000", 0.4))
 	if c.page < 0 {
@@ -186,11 +198,17 @@ func (m *Model) codexCanvas() *boardCanvas {
 	dim := mixHex(desk, cText, 0.45)
 	if c.page >= 0 {
 		cvSet(cv, px-3, py+ph/2, "‹", dim, desk, uv.AttrBold)
-		c.box["prev"] = [4]int{0, 0, px, h}
+		c.box["prev"] = [4]int{0, top, px, h - top}
 	}
 	if c.page < len(c.cf.Pages)-1 {
 		cvSet(cv, px+pw+2, py+ph/2, "›", dim, desk, uv.AttrBold)
-		c.box["next"] = [4]int{px + pw + 1, 0, w - px - pw - 1, h}
+		c.box["next"] = [4]int{px + pw + 1, top, w - px - pw - 1, h - top}
+	}
+	if top > 0 {
+		m.codexInspector(cv, w, pw, now)
+	}
+	if c.placing {
+		m.codexAddMenu(cv, now)
 	}
 	if c.table {
 		m.codexTableDraw(cv)
@@ -221,9 +239,9 @@ func codexCover(cf *codexFile, w, h int, t float64, chosen bool) *boardCanvas {
 	cv := newBoardCanvas(max(w, 1), max(h, 1))
 	col := cf.Color
 	if col == "" {
-		col = codexPalette[1]
+		col = codexThemeCover()
 	}
-	gold := codexGold
+	gold := codexGold()
 	if lum(col) > 0.6 {
 		gold = "#5a3a10" // a pale cover: dark gilding
 	}
@@ -312,8 +330,7 @@ func codexCover(cf *codexFile, w, h int, t float64, chosen bool) *boardCanvas {
 		block = len(titleRows) + map[bool]int{true: 1 + len(sub), false: 0}[len(sub) > 0]
 	}
 	y := y0 + 1 + max((y1-y0-1-block)/2, 0)
-	symCol := codexSymbols[(cf.Symbol%len(codexSymbols)+len(codexSymbols))%len(codexSymbols)].Color
-	symCol = mixHex(symCol, gold, 0.5)
+	symCol := mixHex(codexSymColor(cf.Symbol), gold, 0.4)
 	for _, r := range sym {
 		cvMiddleOn(cv, ix, y, iw, r, symCol, uv.AttrBold)
 		y++
@@ -440,8 +457,17 @@ func (m *Model) codexPage(cv *boardCanvas, p *codexPage, px, py, pw, ph int, now
 	for y := py; y < py+ph; y++ {
 		cvSet(cv, px, y, "▏", mixHex(paper, ink, 0.18), paper, 0)
 	}
-	num := "— " + itoa(c.page+1) + " —"
-	cvMiddle(cv, px, py+ph-1, pw, num, mixHex(paper, ink, 0.45), paper, 0)
+	// An ember rule along the top and bottom edges, with gilt corners.
+	rule := mixHex(paper, cEmber, 0.3)
+	for x := px + 1; x < px+pw-1; x++ {
+		cvSet(cv, x, py, "─", rule, paper, 0)
+		cvSet(cv, x, py+ph-1, "─", rule, paper, 0)
+	}
+	for _, q := range [][2]int{{px, py}, {px + pw - 1, py}, {px, py + ph - 1}, {px + pw - 1, py + ph - 1}} {
+		cvSet(cv, q[0], q[1], "◆", mixHex(paper, cAccent, 0.6), paper, 0)
+	}
+	num := " " + itoa(c.page+1) + " "
+	cvMiddle(cv, px, py+ph-1, pw, num, mixHex(paper, ink, 0.6), paper, 0)
 	ix, iy, iw, ih := codexInner(px, py, pw, ph)
 	c.inner = [4]int{ix, iy, iw, ih}
 	slots := codexSlotRects(p.Layout, iw, ih)
@@ -481,6 +507,7 @@ func (m *Model) codexPage(cv *boardCanvas, p *codexPage, px, py, pw, ph int, now
 			cvSet(cv, p.x, p.y, p.g, col, cvBG(cv, p.x, p.y, paper), uv.AttrBold)
 		}
 	}
+	m.codexMarks(cv, p, paper, now) // pressable things, a button's target (codex_panel.go)
 }
 
 // codexSlot lays the things of one slot out one under another, and draws them.
@@ -566,10 +593,10 @@ func codexTextRows(l codexLook, w int) []string {
 // codexEl draws thing e (as it looks: l) in the w×h box at (x, y).
 func (m *Model) codexEl(cv *boardCanvas, e *codexEl, l codexLook, x, y, w, h int, paper, ink string, now time.Time) {
 	c := m.cx()
-	c.rects[e.ID] = [4]int{x, y, w, h}
 	if l.hidden {
-		return
+		return // no click box either: a click on empty paper must not find it
 	}
+	c.rects[e.ID] = [4]int{x, y, w, h}
 	fg := l.color
 	if fg == "" {
 		fg = ink
@@ -607,6 +634,10 @@ func (m *Model) codexEl(cv *boardCanvas, e *codexEl, l codexLook, x, y, w, h int
 		if p.Fade > 0 {
 			cfg = mixHex(cfg, under, p.Fade)
 			cbg = mixHex(cbg, under, p.Fade)
+		}
+		if l.ghost {
+			cfg = mixHex(cfg, under, 0.6)
+			cbg = mixHex(cbg, under, 0.6)
 		}
 		if tx < 0 || ty < 0 || tx >= ew+2 || ty >= eh+1 { // not far outside its box
 			return
@@ -653,7 +684,7 @@ func (m *Model) codexEl(cv *boardCanvas, e *codexEl, l codexLook, x, y, w, h int
 		bx := codexAlign(e.Align, w, bw)
 		col := l.color
 		if col == "" {
-			col = codexPalette[8]
+			col = codexThemeButton()
 		}
 		txt := codexInkOn(col)
 		edge := mixHex(col, "#000000", 0.3)
@@ -697,7 +728,7 @@ func (m *Model) codexEl(cv *boardCanvas, e *codexEl, l codexLook, x, y, w, h int
 		rows := codexSymbolBig(l.symbol, now.Sub(c.pageAt).Seconds(), l.size)
 		col := l.color
 		if col == "" {
-			col = codexSymbols[(l.symbol%len(codexSymbols)+len(codexSymbols))%len(codexSymbols)].Color
+			col = codexSymColor(l.symbol)
 		}
 		for ry, r := range rows {
 			if ry >= h {
