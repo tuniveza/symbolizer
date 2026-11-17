@@ -685,8 +685,9 @@ func (m *Model) designEscape() {
 	case d.linkMode:
 		m.designLinkToggle()
 	case d.pen >= 0:
-		d.pen = -1
-		m.say("Pen put down.")
+		m.penDown() // a desk's pen goes back in its holder (design_desk.go)
+	case d.desk.pick.active && d.desk.pick.desk == d.sel: // choosing in a desk: done (design_desk.go)
+		d.desk.pick = deskSel{}
 	default:
 		d.sel = -1
 	}

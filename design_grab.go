@@ -204,7 +204,7 @@ func (m *Model) grabCancel() {
 // actItem is the index in its container's Items of the thing a hit act
 // stands for ("item:3", "open:3", "pin:3", "boxthing:3", "del:3"), or -1.
 func actItem(act string) int {
-	for _, p := range []string{"item:", "open:", "pin:", "boxthing:", "del:"} {
+	for _, p := range []string{"item:", "open:", "pin:", "boxthing:", "del:", "desk:"} {
 		if strings.HasPrefix(act, p) {
 			if n, err := strconv.Atoi(act[len(p):]); err == nil {
 				return n
