@@ -318,6 +318,9 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		if c := m.windowsCmd(); c != nil { // the people in the windows walk on (design_town.go)
 			cmd = tea.Batch(cmd, c)
 		}
+		if c := m.glitterCmd(); c != nil { // glitter ink twinkles while it shows (design_desk.go)
+			cmd = tea.Batch(cmd, c)
+		}
 	}()
 	if m.design != nil {
 		m.design.hoverOnly = false // set again below if this is only the mouse moving (designHover)
@@ -351,6 +354,10 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	}
 	if _, ok := msg.(windowsTickMsg); ok { // the people in the windows take a step (design_town.go)
 		m.windowsTicked()
+		return m, nil
+	}
+	if _, ok := msg.(glitterTickMsg); ok { // glitter ink's sparkles move on (design_desk.go)
+		m.glitterTicked()
 		return m, nil
 	}
 	if _, ok := msg.(designAnimMsg); ok { // a door or drawer moves: the next frame (design_anim.go)

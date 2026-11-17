@@ -77,6 +77,10 @@ func minSize(kind string) (int, int) {
 	switch kind {
 	case kOct:
 		return octMinW, octMinH
+	case kDesk: // (design_desk.go)
+		return deskW, deskH
+	case kPen:
+		return penW, penH
 	case kNote:
 		return noteW, noteH
 	case kCabinet:
@@ -118,6 +122,10 @@ func (d *designState) size(o *dOct) (int, int) {
 		w, h = max(o.W, pinW+4), max(o.H, pinH+4)
 	case kBox:
 		w, h = boxBoardSize(o)
+	case kDesk: // always the same size (design_desk.go)
+		w, h = deskW, deskH
+	case kPen:
+		w, h = penW, penH
 	case kOct:
 	default:
 		h = max(o.H, pageMinH) // older, shorter pages get room for their footer
@@ -169,6 +177,10 @@ func (d *designState) newKind(kind string, cx, cy int) *dOct {
 		o.Color = hslHex(150+rand.Float64()*30, 0.3, 0.5) // green
 	case kNotepad:
 		o.W, o.H = notepadW, notepadH
+	case kDesk:
+		d.deskNew(o) // its wood, and a few pens in its holder (design_desk.go)
+	case kPen:
+		o.W, o.H, o.Layout, o.Color, o.Header = penW, penH, devPen, penInks[0].hex, devNames[devPen]
 	case kCodex:
 		o.W, o.H = codexBoardW, codexBoardH
 		o.Color = codexThemeCover()
@@ -245,6 +257,10 @@ func selHint(o *dOct) string {
 		return "Space: lid  ·  D: design  ·  Tab: each part  ·  PgUp / PgDn: layers  ·  drop anything in"
 	case kNotepad:
 		return "Enter or double-click: open its notes  ·  Alt+arrows: move  ·  X X: delete (the notes and files stay)"
+	case kDesk:
+		return "Enter: choose a thing in it  ·  click a pen: draw  ·  P: new pen  ·  drop notepads, notes, pens in  ·  X X: delete"
+	case kPen:
+		return "Enter: draw with it  ·  C / D: colour / kind  ·  drop it in a desk's holder  ·  X X: delete"
 	}
 	return "Tab: write  ·  Alt+arrows: move  ·  X X: delete"
 }
@@ -255,7 +271,7 @@ func partsOf(o *dOct) []int {
 	switch {
 	case o.Kind == kOct:
 		return []int{partHeader, partBody, partFooter}
-	case isContainer(o.Kind):
+	case isContainer(o.Kind), o.Kind == kPen: // (a pen has only its name: design_desk.go)
 		return []int{partHeader}
 	}
 	return []int{partHeader, partBody, partFooter} // pages, notes and the other sheets
@@ -669,6 +685,10 @@ func (d *designState) structLayers(o *dOct) []*lipgloss.Layer {
 		return d.containerLayers(o)
 	case o.Kind == kBox:
 		return d.boxLayers(o) // design_box.go
+	case o.Kind == kDesk:
+		return d.deskLayers(o) // design_desk.go
+	case o.Kind == kPen:
+		return d.penLayers(o) // design_desk.go
 	case o.Kind == kCodex:
 		return d.codexLayers(o) // its cover (codex_design.go)
 	case o.Kind == kNotepad && !(d.sel == o.ID && d.editing != partNone && !isTagPart(d.editing)):
@@ -772,6 +792,13 @@ func (d *designState) hit(sx, sy int) hitInfo {
 			}
 			return hitInfo{o, hitBody, ""}
 		}
+		if o.Kind == kDesk { // a thing in it, its holder (design_desk.go)
+			act := d.deskHit(o, sx-x, sy-y, w, h)
+			if strings.HasPrefix(act, "desk:") {
+				return hitInfo{o, hitRow, act}
+			}
+			return hitInfo{o, hitBody, act}
+		}
 		if o.Kind == kBox { // a thing in it, its lid, its layers (design_box.go)
 			if act := d.boxHit(o, sx-x, sy-y, w, h); act != "" {
 				return hitInfo{o, hitRow, act}
@@ -856,6 +883,10 @@ func (m *Model) designRow(o *dOct, act string, sx, sy int) tea.Cmd {
 		}
 		d.pin = pinSel{board: o.ID, at: j, active: true}
 		d.pinPress = &pinPress{board: o.ID, at: j, sx: sx, sy: sy, origX: o.Items[j].X, origY: o.Items[j].Y}
+	case strings.HasPrefix(act, "desk:"): // a thing in a desk: a click chooses it (a pen: picked up), a drag takes it out (design_desk.go)
+		var i int
+		fmt.Sscanf(act, "desk:%d", &i)
+		d.rackPress = &rackPress{rack: o.ID, at: i, sx: sx, sy: sy}
 	case strings.HasPrefix(act, "pull:"): // a drawer's front: pull it out or push it in (design_drawer.go)
 		var i int
 		fmt.Sscanf(act, "pull:%d", &i)
@@ -1004,8 +1035,15 @@ func (m *Model) designFileInto(it, to *dOct) {
 		}
 		it.Slot = slot
 	}
+	if to.Kind == kDesk { // the part that takes its kind (design_desk.go)
+		it.Slot = max(0, deskPartFor(it.Kind))
+	}
 	to.Items = append(to.Items, it)
 	d.dirty = true
+	if to.Kind == kDesk {
+		m.say(kindIcons[it.Kind] + " " + itemTitle(it) + " put in " + deskName(to) + "'s " + deskPartNames[it.Slot] + ".")
+		return
+	}
 	if to.Kind == kBox {
 		m.boxPut(to, it, bx, by)
 		return

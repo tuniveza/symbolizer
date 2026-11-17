@@ -1059,3 +1059,11 @@ func paintPadPreview(p padPen, s padStyle, r *noteRec, x0, x1, y0, y1 int) {
 		line(l, s.Ink, false)
 	}
 }
+
+// A notepad kept in a desk's rack opens the same way as one on the board.
+func init() {
+	openNotepadHook = func(m *Model, desk, pad *dOct) tea.Cmd {
+		m.padViewOpen(notepadOf(pad))
+		return nil
+	}
+}

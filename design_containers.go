@@ -31,19 +31,21 @@ import (
 const structureDrawers = false
 
 func isContainer(kind string) bool {
-	return kind == kCabinet || kind == kDrawer || kind == kRack || kind == kBoard || kind == kBox
+	return kind == kCabinet || kind == kDrawer || kind == kRack || kind == kBoard || kind == kBox || kind == kDesk
 }
 
 // accepts is whether container c takes o: a cabinet its kinds of sheet, a
 // drawer or rack anything but another container, a box anything (a
 // container lies folded in it: design_box_fold.go).
 func accepts(c, o *dOct) bool {
-	if c == nil || o == nil || c == o || isContainer(o.Kind) && c.Kind != kBox {
-		return false
+	if c == nil || o == nil || c == o || isContainer(o.Kind) && c.Kind != kBox || o.Kind == kDesk {
+		return false // (a desk is furniture: it goes in nothing)
 	}
 	switch c.Kind {
 	case kCabinet:
 		return textual(o.Kind)
+	case kDesk: // notepads in its racks, sheets on its metal board, pens in its holder (design_desk.go)
+		return deskPartFor(o.Kind) >= 0
 	case kDrawer, kRack, kBoard, kBox:
 		return true
 	}

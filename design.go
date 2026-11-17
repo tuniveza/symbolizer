@@ -111,8 +111,10 @@ type dLink struct {
 }
 
 type dMark struct {
-	Pen  int8 `json:"pen"`
-	Over bool `json:"over"`
+	Pen  int8   `json:"pen"`
+	Over bool   `json:"over"`
+	Dev  int8   `json:"dev,omitempty"` // the device that drew it (design_desk.go): 0 a highlighter
+	Ink  string `json:"ink,omitempty"` // its colour, when not one of penColors
 }
 
 type dMarkAt struct {
@@ -195,9 +197,10 @@ type designState struct {
 	editing  int     // the part being written in (partNone: none)
 	field    fieldEd // that part's words as Text mode's buffer: its cursor, highlight and undo (design_field.go)
 	linkMode bool
-	linkFrom int  // in link mode: the structure the next click links to, or -1
-	pen      int  // the pen in hand (0–7, rubber), or -1
-	over     bool // the pen colours over the text instead of under it
+	linkFrom int       // in link mode: the structure the next click links to, or -1
+	pen      int       // the pen in hand (0–7, rubber), or -1
+	over     bool      // the pen colours over the text instead of under it
+	desk     deskState // the pen picked up from a desk, the thing chosen in one (design_desk.go)
 
 	drag           dragKind
 	pressX, pressY int // where the drag started, on the screen
@@ -710,12 +713,16 @@ func (d *designState) mark(sx, sy int, rub bool) {
 	x1 := max(x0, int(math.Ceil(d.camX+float64(sx+1)/z))-1)
 	y0 := int(math.Floor(d.camY + float64(sy)/z))
 	y1 := max(y0, int(math.Ceil(d.camY+float64(sy+1)/z))-1)
+	if !rub {
+		x0, x1, y0, y1 = d.penSpread(x0, x1, y0, y1) // a marker is thick, a brush swells (design_desk.go)
+	}
+	ink := d.inkMark()
 	for wy := y0; wy <= y1; wy++ {
 		for wx := x0; wx <= x1; wx++ {
 			if rub || d.pen == rubber {
 				delete(d.marks, [2]int{wx, wy})
 			} else {
-				d.marks[[2]int{wx, wy}] = dMark{int8(d.pen), d.over}
+				d.marks[[2]int{wx, wy}] = ink
 			}
 		}
 	}
@@ -904,7 +911,7 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 				m.codexNewOnBoard(o)
 			}
 		} else {
-			m.say("Nothing placed. Alt+N, then P page · N note · S shape · C cabinet · D drawer · R rack · B board · O box · K codex.")
+			m.say("Nothing placed. Alt+N, then P page · N note · S shape · C cabinet · D drawer · R rack · B board · O box · K codex · T desk.")
 		}
 		return nil
 	}
@@ -926,6 +933,9 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		if ok, cmd := m.designPinKey(name); ok {
 			return cmd
 		}
+	}
+	if ok, cmd := m.designDeskKey(name); ok { // a desk or a pen chosen: Enter, the arrows, P C D (design_desk.go)
+		return cmd
 	}
 	if ok, cmd := m.designBoxKey(name); ok { // a box chosen: D, Tab, PgUp / PgDn, its chosen thing (design_box.go)
 		return cmd
@@ -961,7 +971,7 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 		m.designZoomTo(designZoom100)
 	case "alt+n":
 		d.placing = true
-		m.say("Place: P page · N note · S shape · C cabinet · D drawer · R rack · B board · O box · K codex (any other key: nothing).")
+		m.say("Place: P page · N note · S shape · C cabinet · D drawer · R rack · B board · O box · K codex · T desk (any other key: nothing).")
 	case "alt+l", "alt+shift+l", "alt+L":
 		m.designLabelMode() // label mode (design_labels.go); a shape's layout: its [¶]
 	case "x":
@@ -1066,6 +1076,9 @@ func (m *Model) designKey(k tea.Key) (cmd tea.Cmd) {
 
 func (m *Model) designPen(p int) {
 	d := m.ds()
+	if d.desk.held != 0 && d.pen >= 0 { // a desk's pen in hand: the highlighter takes its place
+		d.pen, d.desk.held, d.desk.from = -1, 0, 0
+	}
 	if d.pen == p {
 		d.pen = -1
 		m.say("Pen put down.")
@@ -1131,6 +1144,20 @@ func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 		d.lastClick = time.Time{} // a third click starts again
 	}
 	if d.pen >= 0 {
+		if _, _, ok := d.device(); ok { // a desk's pen in hand: a click on a holder puts it back, or takes the pen clicked (design_desk.go)
+			if h := d.hit(sx, sy); h.o != nil && h.o.Kind == kDesk {
+				if h.act == "deskholder" {
+					m.penDown()
+					d.drag = dragNone
+					return nil
+				}
+				if i := actItem(h.act); i >= 0 && i < len(h.o.Items) && h.o.Items[i] != nil && h.o.Items[i].Kind == kPen {
+					d.drag = dragNone
+					d.sel = h.o.ID
+					return m.deskUse(h.o, i)
+				}
+			}
+		}
 		d.drag = dragPaint
 		d.mark(sx, sy, false)
 		return nil
@@ -1238,6 +1265,10 @@ func (m *Model) designPress(ms tea.Mouse) tea.Cmd {
 			m.padViewOpen(notepadOf(o))
 			return nil
 		}
+		if o.Kind == kPen { // a loose pen: picked up (design_desk.go)
+			m.penPickUp(o, nil)
+			return nil
+		}
 		d.editing = partAt(o, sy-y, h)
 		return nil
 	}
@@ -1325,6 +1356,10 @@ func (m *Model) designMotion(ms tea.Mouse) tea.Cmd {
 				d.dropOn = t.ID
 				d.dropSlot = d.drawerSlotAt(t, sx, sy) // a drawer unit: the drawer under the mouse
 			}
+			d.desk.refuse = 0
+			if desk := d.deskUnder(o, sx, sy); desk != nil && d.dropOn < 0 { // a desk that does not take it (design_desk.go)
+				d.desk.refuse = desk.ID
+			}
 		}
 	case dragResize:
 		if o := d.byID(d.sel); o != nil {
@@ -1359,16 +1394,22 @@ func (m *Model) designRelease() tea.Cmd {
 	}
 	if rp := d.rackPress; rp != nil { // a click on a rack's row: open it over the view
 		d.rackPress = nil
-		if r := d.byID(rp.rack); r != nil {
+		var cmd tea.Cmd
+		if r := d.byID(rp.rack); r != nil && r.Kind == kDesk {
+			cmd = m.deskClick(r, rp.at) // a thing in a desk: chosen, a pen picked up (design_desk.go)
+		} else if r != nil {
 			m.designRackOpen(r, rp.at)
 		}
 		d.drag, d.dropOn = dragNone, -1
 		d.save()
-		return nil
+		return cmd
 	}
 	if d.drag == dragMove && d.dropOn >= 0 {
 		m.designFileInto(d.byID(d.sel), d.byID(d.dropOn))
+	} else if d.drag == dragMove && d.desk.refuse != 0 {
+		m.deskRefused(d.byID(d.sel), d.byID(d.desk.refuse))
 	}
+	d.desk.refuse = 0
 	if d.drag == dragBand {
 		m.bandPick()
 	}
@@ -1648,6 +1689,9 @@ func (d *designState) drawKeyOf(o *dOct) (drawKey, bool) {
 	}
 	if o.Kind == kNotepad { // its notes as they are now (design_notepad.go)
 		k.opened += "notepad:" + notepadStamp(notepadOf(o))
+	}
+	if o.Kind == kDesk || o.Kind == kPen { // what is in it, the chosen thing, the pen in hand (design_desk.go)
+		k.opened += d.deskKey(o)
 	}
 	if o.Kind == kDrawer { // its drawers, which are out, and which one a drag would go into
 		k.pulled = fmt.Sprint(o.Drawers, o.Pulled, o.Fronts)
@@ -2490,6 +2534,8 @@ func (d *designState) tint(c *boardCanvas) {
 		shade  bool // a blank cell gets the ░ shading
 	}
 	done := map[look]result{}
+	devDone := map[devLook]devResult{}
+	d.desk.glitterOn = false
 	for y := range c.Height() {
 		wy := int(math.Floor(d.camY + (float64(y)+0.5)/z))
 		if !inked[wy] {
@@ -2505,10 +2551,14 @@ func (d *designState) tint(c *boardCanvas) {
 			if cell.Width == 0 {
 				continue
 			}
+			if mk.Dev != devHighlighter { // a desk's pen: each kind its own stroke (design_desk.go)
+				d.inkCell(cell, mk, wx, wy, devDone)
+				continue
+			}
 			k := look{cell.Style.Bg, cell.Style.Fg, mk.Pen, mk.Over, strings.TrimSpace(cell.Content) == ""}
 			r, ok := done[k]
 			if !ok {
-				pen := penColors[mk.Pen]
+				pen := inkOf(mk)
 				bg, fg := colorHex(cell.Style.Bg, cBG), colorHex(cell.Style.Fg, cText)
 				switch {
 				case !mk.Over:
@@ -2559,16 +2609,24 @@ func (m *Model) designToolbar() string {
 	put(" ", bar, "")
 	for i, c := range penColors {
 		label := fmt.Sprintf(" %d ", i+1)
-		if d.pen == i {
+		on := d.pen == i && d.desk.held == 0
+		if on {
 			label = fmt.Sprintf("[%d]", i+1)
 		}
-		put(label, st("#141010", mixHex(cBarBG, c, 0.85)).Bold(d.pen == i), fmt.Sprintf("pen%d", i))
+		put(label, st("#141010", mixHex(cBarBG, c, 0.85)).Bold(on), fmt.Sprintf("pen%d", i))
 	}
 	rub := " ⌫ "
 	if d.pen == rubber {
 		rub = "[⌫]"
 	}
 	put(rub, st(cStatusText, mixHex(cBarBG, cText, 0.25)).Bold(d.pen == rubber), "pen8")
+	if dev, ink, ok := d.device(); ok { // a desk's pen in hand (design_desk.go)
+		fg := "#f5efe0"
+		if lum(ink) > 0.5 {
+			fg = "#141010"
+		}
+		put(" ✒ "+devNames[dev]+" ", st(fg, ink).Bold(true), "")
+	}
 	put(" ", bar, "")
 	if d.over {
 		put("░ over ", st(cAccent, cBarBG).Bold(true), "over")
@@ -2724,10 +2782,14 @@ func (m *Model) designStatus() string {
 		hint = "Link mode  ·  click structures to link them  ·  ⛓ link: leave"
 	case d.linkMode:
 		hint = "Link mode  ·  click the first structure  ·  ⛓ link: leave"
+	case d.pen >= 0 && d.desk.held != 0:
+		hint = d.deskPenHint() // a desk's pen in hand (design_desk.go)
 	case d.pen == rubber:
 		hint = "Rubber  ·  drag to rub out  ·  ⌫ again: put down"
 	case d.pen >= 0:
 		hint = "Pen " + penNames[d.pen] + "  ·  drag to colour  ·  " + fmt.Sprint(d.pen+1) + " again: put down"
+	case d.desk.pick.active && d.desk.pick.desk == d.sel && d.byID(d.sel) != nil:
+		hint = "Desk  ·  arrows: choose  ·  Enter: use it (a pen: draw · a notepad: open)  ·  C / D: a pen's colour / kind  ·  drag it out  ·  Esc: done"
 	case d.sel >= 0 && d.byID(d.sel) != nil:
 		hint = selHint(d.byID(d.sel))
 	default:
