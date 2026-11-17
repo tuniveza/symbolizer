@@ -182,8 +182,9 @@ func (m *Model) codexCanvas() *boardCanvas {
 		m.codexLibrary(cv, desk, now)
 		return cv
 	}
-	top := m.codexTop() // editing: the inspector band above the page (codex_panel.go)
-	pw, ph := codexPageSize(w, h-top, c.cf.Tall)
+	top := m.codexTop()   // editing: the inspector band above the page (codex_panel.go)
+	room := m.codexRoom() // kept reading too, so the page keeps its size
+	pw, ph := codexPageSize(w, h-room, c.cf.Tall)
 	px, py := (w-pw)/2, top+(h-top-ph)/2
 	// The page shadow.
 	cvFill(cv, px+1, py+1, pw, ph, mixHex(desk, "#000000", 0.4))
@@ -195,7 +196,7 @@ func (m *Model) codexCanvas() *boardCanvas {
 		m.codexPage(cv, c.cf.Pages[c.page], px, py, pw, ph, now)
 	}
 	// Arrows either side: click to turn.
-	dim := mixHex(desk, cText, 0.45)
+	dim := mixHex(desk, cText, 0.65)
 	if c.page >= 0 {
 		cvSet(cv, px-3, py+ph/2, "‹", dim, desk, uv.AttrBold)
 		c.box["prev"] = [4]int{0, top, px, h - top}
@@ -205,7 +206,7 @@ func (m *Model) codexCanvas() *boardCanvas {
 		c.box["next"] = [4]int{px + pw + 1, top, w - px - pw - 1, h - top}
 	}
 	if top > 0 {
-		m.codexInspector(cv, w, pw, now)
+		m.codexInspector(cv, w, now)
 	}
 	if c.placing {
 		m.codexAddMenu(cv, now)

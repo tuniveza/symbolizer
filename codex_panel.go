@@ -25,41 +25,50 @@ import (
 )
 
 const (
-	codexBandRows  = 7  // rows of options in the inspector band
-	codexBandH     = 10 // the band: a rule, the rows, a rule, a gap below
+	codexBandRows  = 6  // rows of options in the inspector band
+	codexBandH     = 8  // the band: a rule, the rows, a rule
 	codexColMinW   = 28 // narrower columns than this: no band
-	codexColMaxW   = 44 // wider than this only spreads things out
+	codexColMaxW   = 40 // wider than this only spreads things out
 	codexBandMinW  = 3*codexColMinW + 4
-	codexBandMinBH = 26 // board rows needed for the band and a usable page
+	codexBandMinBH = 24 // board rows needed for the band and a usable page
 )
 
-// codexTop is how many rows the inspector band takes at the top (0: none).
-func (m *Model) codexTop() int {
-	c := m.cx()
-	if c.cf == nil || !c.edit || m.width < codexBandMinW+2 || m.boardH() < codexBandMinBH {
+// codexBandFits says whether the screen has room for the inspector band.
+func (m *Model) codexBandFits() bool {
+	return m.width >= codexBandMinW+2 && m.boardH() >= codexBandMinBH
+}
+
+// codexRoom is how many rows at the top are kept for the band. It is the
+// same reading and editing, so the page keeps its size and its words wrap
+// the same in both (what you edit is what you read).
+func (m *Model) codexRoom() int {
+	if c := m.cx(); c.cf == nil || !m.codexBandFits() {
 		return 0
 	}
 	return codexBandH
 }
 
-// codexBandCols gives the band's columns, their width and the band's width,
-// lined up with the page (pw wide) below it: 4 columns when they get room
-// for their values, else 3 (the keys, also in the bar below, go first).
-func (m *Model) codexBandCols(pw int) (n, cw, bw int) {
-	bw = min(max(pw, codexBandMinW), m.width-2)
-	n = 4
-	if (bw-4)/n < 32 {
-		n = 3
+// codexTop is how many rows the band takes just now (0: none shown).
+func (m *Model) codexTop() int {
+	if !m.cx().edit {
+		return 0
 	}
-	cw = min((bw-4)/n, codexColMaxW)
-	if cw < codexColMinW {
+	return m.codexRoom()
+}
+
+// codexBandCols gives the band's columns, their width and the band's width:
+// 3 columns (the page, and the chosen thing in two), and a 4th for the keys
+// when the screen is wide enough for 4 roomy ones.
+func (m *Model) codexBandCols() (n, cw, bw int) {
+	if !m.codexBandFits() {
 		return 0, 0, 0
 	}
-	bw = n*cw + 4
-	if pw > bw && pw-bw < n && pw <= m.width-2 { // what rounding left: the band's edges on the page's
-		bw = pw
+	n = 4
+	if (m.width-4)/n < 34 {
+		n = 3
 	}
-	return n, cw, bw
+	cw = min((m.width-4)/n, codexColMaxW)
+	return n, cw, n*cw + 4
 }
 
 // keyCap draws key k as a small cap at (x, y); it gives the cell after it.
@@ -190,11 +199,10 @@ func (f *inspFlow) anim(anim, seed int, now time.Time) {
 	cvText(f.cv, vx+n+1, y, codexClip(codexAnims[anim%16], room-n-1), cText, f.bg, 0)
 }
 
-// codexInspector draws the inspector band at the top of the w-wide canvas,
-// as wide as the pw-wide page below it.
-func (m *Model) codexInspector(cv *boardCanvas, w, pw int, now time.Time) {
+// codexInspector draws the inspector band, centred at the top of the w-wide canvas.
+func (m *Model) codexInspector(cv *boardCanvas, w int, now time.Time) {
 	c := m.cx()
-	n, cw, bw := m.codexBandCols(pw)
+	n, cw, bw := m.codexBandCols()
 	if n == 0 {
 		return
 	}
@@ -246,12 +254,12 @@ func (m *Model) codexInspector(cv *boardCanvas, w, pw int, now time.Time) {
 	f.head("Page " + itoa(c.page+1) + " of " + itoa(len(c.cf.Pages)))
 	f.line("L", "layout", itoa(p.Layout+1)+"/16 "+codexLayouts[p.Layout].name, cText)
 	// The layout as a little map: the chosen thing's slot lit.
-	if mx, my, ok := f.next(4); ok {
+	if mx, my, ok := f.next(3); ok {
 		lit := -1
 		if e != nil {
 			lit = codexSlotOf(e, p.Layout)
 		}
-		mw, mh := cw-4, 4
+		mw, mh := cw-4, 3
 		paper := c.paper(p)
 		cvFill(cv, mx, my, mw, mh, paper)
 		for si, s := range codexSlotRects(p.Layout, mw-2, mh) {
@@ -327,7 +335,7 @@ func (m *Model) codexAddMenu(cv *boardCanvas, now time.Time) {
 	kinds := []struct{ key, kind, look string }{
 		{"T", ceText, "Aa"}, {"B", ceButton, "╭──╮"}, {"I", ceImage, "▨▨"}, {"S", ceSymbol, ""}, {"D", ceDrawing, "✎~"},
 	}
-	tw, th := 14, 6
+	tw, th := max(min((cv.Width()-5)/len(kinds)-1, 14), 8), 6 // narrower tiles on a small screen
 	w := len(kinds)*(tw+1) + 3
 	h := th + 4
 	top := m.codexTop()
