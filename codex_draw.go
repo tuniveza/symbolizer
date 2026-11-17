@@ -3,6 +3,7 @@ package main
 // ---- drawing a codex: its cover, its pages, the library ----------------------------------
 
 import (
+	"math"
 	"path/filepath"
 	"strings"
 	"time"
@@ -14,8 +15,10 @@ const codexTurnFor = 300 * time.Millisecond // a page turning
 
 // ---- the theme's colours (Emberistal unless another sy theme is on) ----
 
-func codexDesk() string        { return mixHex(cBG, "#000000", 0.35) }
-func codexThemePaper() string  { return mixHex(cBG, cCurrentLine, 0.55) }
+// The desk is darker than the theme's background and the paper a little
+// warmer, so a page stands out from the desk.
+func codexDesk() string        { return mixHex(cBG, "#000000", 0.5) }
+func codexThemePaper() string  { return mixHex(cBG, cEmber, 0.08) }
 func codexThemeCover() string  { return mixHex(cBG, cEmber, 0.16) }
 func codexThemeButton() string { return cEmber }
 func codexGold() string        { return cAccent }
@@ -24,6 +27,9 @@ func codexGold() string        { return cAccent }
 func codexSymColor(i int) string {
 	return cGradient[(i%3+3)%3]
 }
+
+// codexReadW is how wide a block of normal text gets at most: wider lines are hard to read.
+const codexReadW = 72
 
 // codexMarquee is the animation whose cells wrap round inside the thing.
 const codexMarquee = 6
@@ -98,12 +104,46 @@ func lum(hex string) float64 {
 	return (0.299*float64(r) + 0.587*float64(g) + 0.114*float64(b)) / 255
 }
 
-// codexInkOn is a colour that reads on bg.
+// relLum is a colour's relative luminance (WCAG).
+func relLum(hex string) float64 {
+	r, g, b := rgb(hex)
+	lin := func(v int) float64 {
+		c := float64(v) / 255
+		if c <= 0.03928 {
+			return c / 12.92
+		}
+		return math.Pow((c+0.055)/1.055, 2.4)
+	}
+	return 0.2126*lin(r) + 0.7152*lin(g) + 0.0722*lin(b)
+}
+
+// contrastOf is the WCAG contrast ratio of two colours, 1 … 21.
+func contrastOf(a, b string) float64 {
+	la, lb := relLum(a), relLum(b)
+	if la < lb {
+		la, lb = lb, la
+	}
+	return (la + 0.05) / (lb + 0.05)
+}
+
+// codexInkOn is a colour that reads on bg: a dark ink or the theme's light
+// one, whichever stands out more.
 func codexInkOn(bg string) string {
-	if lum(bg) > 0.55 {
-		return "#2b1608"
+	dark := "#2b1608"
+	if contrastOf(dark, bg) > contrastOf(cStatusText, bg) {
+		return dark
 	}
 	return cStatusText
+}
+
+// codexAtLeast is fg, moved towards the ink that reads on bg until the two
+// have at least contrast ratio least.
+func codexAtLeast(fg, bg string, least float64) string {
+	ink := codexInkOn(bg)
+	for i := 1; i <= 10 && contrastOf(fg, bg) < least; i++ {
+		fg = mixHex(fg, ink, 0.1*float64(i))
+	}
+	return fg
 }
 
 func (c *codexState) paper(p *codexPage) string {
@@ -134,6 +174,12 @@ func codexPageSize(w, h int, tall bool) (int, int) {
 func (m *Model) codexRows(sb *strings.Builder) {
 	c := m.cx()
 	cv := m.codexCanvas()
+	// Writing the title or subtitle: the cover shows the words as they are typed.
+	if r, ok := c.box["cover"]; ok && c.cf != nil && c.page < 0 &&
+		(c.writing == codexWriteTitle || c.writing == codexWriteSubtitle) {
+		t := time.Since(c.pageAt).Seconds()
+		cvPaste(cv, codexCoverW(c.cf, r[2], r[3], t, false, c.writing, c.words, c.cur), r[0], r[1])
+	}
 	if c.turn != nil {
 		if p := float64(time.Since(c.turn.at)) / float64(codexTurnFor); p < 1 && c.turn.from != nil &&
 			c.turn.from.Width() == cv.Width() && c.turn.from.Height() == cv.Height() {
@@ -236,6 +282,13 @@ func cvPaste(cv, src *boardCanvas, x, y int) {
 // codexCover draws codex cf's cover, w×h, t seconds into its symbol's
 // animation. chosen: a bright frame (the library).
 func codexCover(cf *codexFile, w, h int, t float64, chosen bool) *boardCanvas {
+	return codexCoverW(cf, w, h, t, chosen, 0, nil, 0)
+}
+
+// codexCoverW is codexCover while the title or subtitle is being written
+// (what: codexWriteTitle or codexWriteSubtitle): it shows words, with the
+// cursor at cur.
+func codexCoverW(cf *codexFile, w, h int, t float64, chosen bool, what int, words []rune, cur int) *boardCanvas {
 	cv := newBoardCanvas(max(w, 1), max(h, 1))
 	col := cf.Color
 	if col == "" {
@@ -304,30 +357,43 @@ func codexCover(cf *codexFile, w, h int, t float64, chosen bool) *boardCanvas {
 		size = 2
 	}
 	sym := codexSymbolBig(cf.Symbol, t, size)
-	tsize := 1
-	if big := codexBig(title, 2); h >= 13 && len(big) > 0 && codexWidth(big[0]) <= iw {
-		tsize = 2
+	// The title: in big letters when they fit (one line, or two on a tall
+	// cover), else up to two lines of normal letters.
+	titleWords := []rune(title)
+	titleCur := -1
+	if what == codexWriteTitle {
+		titleWords, titleCur = words, cur
 	}
-	var titleRows []string
-	if tsize == 2 {
-		titleRows = codexBig(title, 2)
-	} else {
-		titleRows = codexWrap(title, iw)
-		if len(titleRows) > 2 {
-			titleRows = titleRows[:2]
+	tsize, tmax := 1, 0
+	if h >= 13 {
+		tsize, tmax = 2, 3
+		if h >= 22 {
+			tmax = 6
 		}
 	}
-	sub := codexWrap(strings.TrimSpace(cf.Subtitle), iw)
-	if len(sub) > 2 {
-		sub = sub[:2]
+	tl := codexLay(titleWords, 0, tsize, iw, iw, tmax)
+	if tl.size == 1 {
+		tl.lines = codexLinesAt(tl.lines, titleCur, 2, iw)
 	}
-	block := len(sym) + 1 + len(titleRows)
-	if len(sub) > 0 {
-		block += 1 + len(sub)
+	subWords := []rune(strings.TrimSpace(cf.Subtitle))
+	subCur := -1
+	if what == codexWriteSubtitle {
+		subWords, subCur = words, cur
+	}
+	sl := codexLay(subWords, 0, 1, iw, iw, 0)
+	sl.lines = codexLinesAt(sl.lines, subCur, 2, iw)
+	subRows := len(sl.lines)
+	if len(subWords) == 0 && subCur < 0 {
+		subRows = 0
+	}
+	titleRows := tl.rows()
+	block := len(sym) + 1 + titleRows
+	if subRows > 0 {
+		block += 1 + subRows
 	}
 	if block > y1-y0-1 { // no room for the symbol
 		sym = nil
-		block = len(titleRows) + map[bool]int{true: 1 + len(sub), false: 0}[len(sub) > 0]
+		block = titleRows + map[bool]int{true: 1 + subRows, false: 0}[subRows > 0]
 	}
 	y := y0 + 1 + max((y1-y0-1-block)/2, 0)
 	symCol := mixHex(codexSymColor(cf.Symbol), gold, 0.4)
@@ -338,16 +404,11 @@ func codexCover(cf *codexFile, w, h int, t float64, chosen bool) *boardCanvas {
 	if len(sym) > 0 {
 		y++
 	}
-	for _, r := range titleRows {
-		cvMiddleOn(cv, ix, y, iw, r, gold, uv.AttrBold)
+	y += codexDrawLines(cv, ix, y, iw, tl.lines, tl.size, 0, 0, gold, uv.AttrBold, titleCur, gold)
+	if subRows > 0 {
 		y++
-	}
-	if len(sub) > 0 {
-		y++
-		for _, r := range sub {
-			cvMiddleOn(cv, ix, y, iw, r, mixHex(gold, col, 0.35), uv.AttrItalic)
-			y++
-		}
+		subCol := mixHex(gold, col, 0.35)
+		y += codexDrawLines(cv, ix, y, iw, sl.lines, 1, 0, 0, subCol, uv.AttrItalic, subCur, gold)
 	}
 	if n := len(cf.Pages); h >= 9 {
 		cvMiddleOn(cv, ix, y1, iw, " "+plural(n, "page")+" ", mixHex(gold, col, 0.3), 0)
@@ -463,6 +524,10 @@ func (m *Model) codexPage(cv *boardCanvas, p *codexPage, px, py, pw, ph int, now
 		cvSet(cv, x, py, "─", rule, paper, 0)
 		cvSet(cv, x, py+ph-1, "─", rule, paper, 0)
 	}
+	// A thin edge down the outer side too, so the page's shape reads on the desk.
+	for y := py + 1; y < py+ph-1; y++ {
+		cvSet(cv, px+pw-1, y, "▕", rule, paper, 0)
+	}
 	for _, q := range [][2]int{{px, py}, {px + pw - 1, py}, {px, py + ph - 1}, {px + pw - 1, py + ph - 1}} {
 		cvSet(cv, q[0], q[1], "◆", mixHex(paper, cAccent, 0.6), paper, 0)
 	}
@@ -471,24 +536,36 @@ func (m *Model) codexPage(cv *boardCanvas, p *codexPage, px, py, pw, ph int, now
 	ix, iy, iw, ih := codexInner(px, py, pw, ph)
 	c.inner = [4]int{ix, iy, iw, ih}
 	slots := codexSlotRects(p.Layout, iw, ih)
+	card := (p.Layout%16+16)%16 == 15 // "a card in the middle"
+	showSlots := c.edit && c.writing == 0
+	if showSlots && !card { // the slots show while editing: marks at their corners, outside them
+		edge := mixHex(paper, ink, 0.35)
+		arms := map[[2]int]uint8{}
+		for _, s := range slots {
+			x0, y0, x1, y1 := ix+s[0]-1, iy+s[1]-1, ix+s[0]+s[2], iy+s[1]+s[3]
+			arms[[2]int{x0, y0}] |= armR | armD
+			arms[[2]int{x1, y0}] |= armL | armD
+			arms[[2]int{x0, y1}] |= armR | armU
+			arms[[2]int{x1, y1}] |= armL | armU
+		}
+		for q, a := range arms {
+			codexBoxMark(cv, q[0], q[1], a, edge)
+		}
+	}
 	for si, s := range slots {
 		sx, sy, sw, sh := ix+s[0], iy+s[1], s[2], s[3]
 		els := elsIn(p, si)
-		if c.edit && c.writing == 0 { // the slots show while editing
-			edge := mixHex(paper, ink, 0.22)
-			for x := sx; x < sx+sw; x++ {
-				if (x-sx)%2 == 0 {
-					cvSet(cv, x, sy, "┈", edge, paper, 0)
-					cvSet(cv, x, sy+sh-1, "┈", edge, paper, 0)
-				}
-			}
-			if len(els) == 0 {
-				cvMiddle(cv, sx, sy+sh/2, sw, "slot "+itoa(si+1)+" · Alt+N adds", mixHex(paper, ink, 0.4), paper, uv.AttrItalic)
-			}
+		slotPaper := paper
+		if card {
+			slotPaper = codexCard(cv, sx, sy, sw, sh, paper, py, ph)
 		}
-		m.codexSlot(cv, els, sx, sy, sw, sh, paper, ink, now)
+		if showSlots && len(els) == 0 {
+			cvMiddle(cv, sx, sy+sh/2, sw, "slot "+itoa(si+1)+" · Alt+N adds", mixHex(slotPaper, ink, 0.55), slotPaper, uv.AttrItalic)
+		}
+		m.codexSlot(cv, els, sx, sy, sw, sh, slotPaper, ink, now)
 	}
-	// The chosen thing (editing) or the one Tab reached (reading): corners round it.
+	// The chosen thing (editing) or the one Tab reached (reading): its cells
+	// tinted, and corners round it where the paper is empty.
 	mark := c.focus
 	if c.edit {
 		mark = c.sel
@@ -498,13 +575,22 @@ func (m *Model) codexPage(cv *boardCanvas, p *codexPage, px, py, pw, ph int, now
 		if lum(paper) > 0.55 {
 			col = mixHex(cAccent, "#000000", 0.25)
 		}
+		for y := r[1]; y < r[1]+r[3]; y++ {
+			for x := r[0]; x < r[0]+r[2]; x++ {
+				if x >= 0 && y >= 0 && x < cv.Width() && y < cv.Height() {
+					cell := &cv.Lines[y][x]
+					cell.Style.Bg = rgbaOf(mixHex(colorHex(cell.Style.Bg, paper), cAccent, 0.16))
+				}
+			}
+		}
 		x0, y0, x1, y1 := r[0]-1, r[1]-1, r[0]+r[2], r[1]+r[3]
-		y0, y1 = max(y0, py), min(y1, py+ph-1)
 		for _, p := range []struct {
 			x, y int
 			g    string
 		}{{x0, y0, "┏"}, {x1, y0, "┓"}, {x0, y1, "┗"}, {x1, y1, "┛"}} {
-			cvSet(cv, p.x, p.y, p.g, col, cvBG(cv, p.x, p.y, paper), uv.AttrBold)
+			if p.y > py && p.y < py+ph-1 && codexBlank(cv, p.x, p.y, 1) && !c.inOther(mark, x0, x1, p.y) {
+				cvSet(cv, p.x, p.y, p.g, col, cvBG(cv, p.x, p.y, paper), uv.AttrBold)
+			}
 		}
 	}
 	m.codexMarks(cv, p, paper, now) // pressable things, a button's target (codex_panel.go)
@@ -521,10 +607,10 @@ func (m *Model) codexSlot(cv *boardCanvas, els []*codexEl, x, y, w, h int, paper
 	fixed, flex := 0, 0
 	for i, e := range els {
 		looks[i] = c.look(e, now)
-		if c.writing == codexWriteEl && c.sel == e.ID {
+		if c.writingIn(e) {
 			looks[i].hidden = false
 		}
-		heights[i] = c.elHeight(e, looks[i], w, now)
+		heights[i] = c.elHeight(e, looks[i], w, h, now)
 		if heights[i] < 0 {
 			flex++
 		} else {
@@ -541,23 +627,84 @@ func (m *Model) codexSlot(cv *boardCanvas, els []*codexEl, x, y, w, h int, paper
 			heights[i] = max(left/max(flex, 1), 3)
 		}
 	}
+	want := append([]int(nil), heights...) // what each would like
 	total := gap * (len(els) - 1)
 	for _, hh := range heights {
 		total += hh
 	}
+	// Too tall for the slot: things give up rows, one at a time, so every
+	// thing keeps a place: pictures and drawings first, then texts (a text
+	// then picks a smaller size or is cut), symbols, buttons last; the
+	// tallest of a kind first.
+	give := map[string]int{ceImage: 0, ceDrawing: 0, ceText: 1, ceSymbol: 2, ceButton: 3}
+	for total > h {
+		ti := -1
+		for i, hh := range heights {
+			if hh <= 1 {
+				continue
+			}
+			if ti < 0 || give[els[i].Kind] < give[els[ti].Kind] ||
+				give[els[i].Kind] == give[els[ti].Kind] && hh > heights[ti] {
+				ti = i
+			}
+		}
+		if ti < 0 {
+			break
+		}
+		heights[ti]--
+		total--
+	}
 	yy := y + max((h-total)/2, 0)
+	missing, cut := 0, false
 	for i, e := range els {
 		eh := min(heights[i], y+h-yy)
 		if eh <= 0 {
-			break
+			missing++
+			continue
+		}
+		if eh < want[i] && want[i] > 0 {
+			cut = true
 		}
 		m.codexEl(cv, e, looks[i], x, yy, w, eh, paper, ink, now)
 		yy += heights[i] + gap
 	}
+	// Editing: say so when not everything fits.
+	if c.edit && c.writing == 0 && (missing > 0 || cut) {
+		s := " ▾ cut off "
+		if missing > 0 {
+			s = " ▾ " + itoa(missing) + " more "
+		}
+		if codexWidth(s) > w { // a narrow slot: the short way
+			s = "▾"
+			if missing > 0 {
+				s += itoa(missing)
+			}
+		}
+		s = codexClip(s, w)
+		fg := codexAtLeast(cAccent, paper, 3)
+		cvText(cv, x+w-codexWidth(s), y+h-1, s, fg, mixHex(paper, cAccent, 0.18), uv.AttrBold)
+	}
 }
 
-// elHeight is how many rows thing e needs at width w (-1: it takes what is left).
-func (c *codexState) elHeight(e *codexEl, l codexLook, w int, now time.Time) int {
+// writingIn is whether the words of thing e are being written (its own, or
+// the other words it swaps to).
+func (c *codexState) writingIn(e *codexEl) bool {
+	return (c.writing == codexWriteEl || c.writing == codexWriteAlt) && c.sel == e.ID &&
+		(e.Kind == ceText || e.Kind == ceButton)
+}
+
+// codexWriteFont is the font words are written in: upside down turns lines
+// back to front, so it is written plainly.
+func codexWriteFont(font int) int {
+	if font == fxFontUpsideDown {
+		return fxFontPlain
+	}
+	return font
+}
+
+// elHeight is how many rows thing e needs at width w, in a slot maxH tall
+// (-1: it takes what is left).
+func (c *codexState) elHeight(e *codexEl, l codexLook, w, maxH int, now time.Time) int {
 	switch e.Kind {
 	case ceButton:
 		return 3
@@ -566,28 +713,221 @@ func (c *codexState) elHeight(e *codexEl, l codexLook, w int, now time.Time) int
 	case ceImage, ceDrawing:
 		return -1
 	}
-	if c.writing == codexWriteEl && c.sel == e.ID {
-		return max(len(writeLines(c.words, w)), 1)
+	if c.writingIn(e) {
+		return max(codexLay(c.words, codexWriteFont(l.font), l.size, w, min(w, codexReadW), maxH).rows(), 1)
 	}
-	return max(len(codexTextRows(l, w)), 1)
+	rows, _, _ := codexTextRows(l, w, maxH)
+	return max(len(rows), 1)
 }
 
-// codexTextRows are a text's rows as they show: in its font, wrapped, or
-// in big letters.
-func codexTextRows(l codexLook, w int) []string {
-	text := l.text
-	if l.size <= 1 {
-		return codexWrap(codexFont(text, l.font), w)
+// codexTextRows are a text's rows as they show at width w (and at most maxH
+// rows, if it can: 0 any): in its font, wrapped by words, in big letters at
+// the biggest size up to its own that fits. It also gives back the size it
+// took and how wide the block of rows may be (normal text: codexReadW).
+func codexTextRows(l codexLook, w, maxH int) ([]string, int, int) {
+	lay := codexLay([]rune(l.text), l.font, l.size, w, min(w, codexReadW), maxH)
+	if lay.size <= 1 {
+		return codexWrap(codexFont(l.text, l.font), lay.w), 1, lay.w
 	}
 	var rows []string
-	for _, line := range strings.Split(text, "\n") {
-		big := codexBig(line, l.size)
-		if len(big) > 0 && codexWidth(big[0]) > w && l.size > 2 { // too wide: a size smaller
-			big = codexBig(line, 2)
-		}
-		rows = append(rows, big...)
+	for _, ln := range lay.lines {
+		rows = append(rows, codexBig(string(trimSpaces(ln.s)), lay.size)...)
 	}
-	return rows
+	return rows, lay.size, lay.w
+}
+
+// ---- laying words out -----------------------------------------------------------------------
+
+// writeLine is one line of laid-out words, with where it starts in them.
+type writeLine struct {
+	s     []rune
+	start int
+}
+
+// codexLaid is words laid out: the size they took, their lines, how wide
+// the block of lines is.
+type codexLaid struct {
+	size  int
+	lines []writeLine
+	w     int
+}
+
+// rows is how many screen rows the lines take.
+func (l codexLaid) rows() int { return len(l.lines) * codexRowsPer(l.size) }
+
+// codexRowsPer is how many screen rows one line of size size takes.
+func codexRowsPer(size int) int {
+	if size <= 1 {
+		return 1
+	}
+	return 3 * (size - 1)
+}
+
+// trimSpaces is rs without the spaces at its end.
+func trimSpaces(rs []rune) []rune {
+	for len(rs) > 0 && rs[len(rs)-1] == ' ' {
+		rs = rs[:len(rs)-1]
+	}
+	return rs
+}
+
+// codexMeasure is how many cells rs takes in font at size.
+func codexMeasure(rs []rune, font, size int) int {
+	if size <= 1 {
+		return codexWidth(codexFont(string(rs), font))
+	}
+	k := size - 1
+	n := 0
+	for i, r := range rs {
+		if i > 0 {
+			n += k // the gap between letters
+		}
+		n += len([]rune(fxPixGlyph(r)[0])) * k
+	}
+	return n
+}
+
+// codexLay lays words out at the biggest size, from size down to 1, at
+// which every word fits on a line w wide (w1 for normal letters) and the
+// lines fit in maxH rows (0: any). Size 1 always fits: a word too long for
+// its line is cut.
+func codexLay(words []rune, font, size, w, w1, maxH int) codexLaid {
+	for s := min(max(size, 1), codexSizes); s >= 1; s-- {
+		ww := w
+		if s == 1 {
+			ww = w1
+		}
+		lines, ok := codexWrapRunes(words, ww, func(rs []rune) int { return codexMeasure(rs, font, s) })
+		l := codexLaid{s, lines, max(ww, 1)}
+		if s == 1 || ok && (maxH <= 0 || l.rows() <= maxH) {
+			return l
+		}
+	}
+	return codexLaid{1, []writeLine{{words, 0}}, max(w1, 1)}
+}
+
+// codexWrapRunes breaks words into lines at most w wide (as width measures
+// them), at spaces; a line break in words always breaks. A word too long
+// for a line is cut (ok: false). The spaces a line breaks at stay at its
+// end, so a cursor there has a place.
+func codexWrapRunes(words []rune, w int, width func([]rune) int) (out []writeLine, ok bool) {
+	ok = true
+	w = max(w, 1)
+	for start := 0; start <= len(words); {
+		end := start
+		for end < len(words) && words[end] != '\n' {
+			end++
+		}
+		para := words[start:end]
+		ls, pos := 0, 0
+		for pos < len(para) {
+			j := pos
+			for j < len(para) && para[j] != ' ' {
+				j++
+			}
+			wordEnd := j
+			for j < len(para) && para[j] == ' ' {
+				j++
+			}
+			if pos > ls && width(para[ls:wordEnd]) > w { // the word goes on the next line
+				out = append(out, writeLine{para[ls:pos], start + ls})
+				ls = pos
+			}
+			for pos == ls && wordEnd > pos && width(para[pos:wordEnd]) > w { // too long for any line
+				ok = false
+				n := 1
+				for n < wordEnd-pos && width(para[pos:pos+n+1]) <= w {
+					n++
+				}
+				out = append(out, writeLine{para[pos : pos+n], start + pos})
+				pos += n
+				ls = pos
+			}
+			pos = j
+		}
+		out = append(out, writeLine{para[ls:], start + ls})
+		start = end + 1
+	}
+	return out, ok
+}
+
+// codexCurLine is the line the cursor cur is on (-1: none).
+func codexCurLine(lines []writeLine, cur int) int {
+	at := -1
+	for i, l := range lines {
+		if cur >= l.start && cur <= l.start+len(l.s) {
+			at = i
+		}
+	}
+	return at
+}
+
+// codexLinesAt keeps at most n of lines: those round the cursor cur, or,
+// with no cursor (cur < 0), the first n, the last ending in "…" when some
+// are left out (w: the width it must fit).
+func codexLinesAt(lines []writeLine, cur, n, w int) []writeLine {
+	if len(lines) <= n {
+		return lines
+	}
+	if cur >= 0 {
+		first := max(codexCurLine(lines, cur)-n+1, 0)
+		return lines[first : first+n]
+	}
+	out := append([]writeLine(nil), lines[:n]...)
+	last := &out[n-1]
+	last.s = []rune(codexClip(string(trimSpaces(last.s))+"…", w))
+	return out
+}
+
+// codexDrawLines draws laid-out lines from row y, each placed in the row
+// from x to x+w as align says, on whatever is there. cur >= 0: the cursor
+// is drawn there too, on curBG. It gives back how many rows it took.
+func codexDrawLines(cv *boardCanvas, x, y, w int, lines []writeLine, size, font, align int, fg string, attrs uint8, cur int, curBG string) int {
+	per := codexRowsPer(size)
+	cl := -1
+	if cur >= 0 {
+		cl = codexCurLine(lines, cur)
+	}
+	for i, ln := range lines {
+		ty := y + i*per
+		tr := trimSpaces(ln.s)
+		var rows []string
+		if size <= 1 {
+			rows = []string{codexFont(string(tr), font)}
+		} else {
+			rows = codexBig(string(tr), size)
+		}
+		ox := x + codexAlign(align, w, codexMeasure(tr, font, size))
+		for ry, r := range rows {
+			cx := ox
+			for _, ch := range r {
+				g := string(ch)
+				if g != " " {
+					cvSet(cv, cx, ty+ry, g, fg, cvBG(cv, cx, ty+ry, cBG), attrs)
+				}
+				cx += max(codexWidth(g), 1)
+			}
+		}
+		if i != cl {
+			continue
+		}
+		at := min(max(cur-ln.start, 0), len(ln.s))
+		cx := ox + codexMeasure(ln.s[:at], font, size)
+		if size > 1 && at == 0 {
+			cx-- // before the first letter
+		}
+		cx = min(max(cx, x-1), x+w)
+		for ry := 0; ry < per; ry++ {
+			g := " "
+			if size <= 1 && cx >= 0 && cx < cv.Width() && ty >= 0 && ty < cv.Height() {
+				if cell := cv.Lines[ty][cx]; cell.Content != "" {
+					g = cell.Content
+				}
+			}
+			cvSet(cv, cx, ty+ry, g, cvBG(cv, cx, ty+ry, cBG), curBG, 0)
+		}
+	}
+	return len(lines) * per
 }
 
 // codexEl draws thing e (as it looks: l) in the w×h box at (x, y).
@@ -639,8 +979,11 @@ func (m *Model) codexEl(cv *boardCanvas, e *codexEl, l codexLook, x, y, w, h int
 			cfg = mixHex(cfg, under, 0.6)
 			cbg = mixHex(cbg, under, 0.6)
 		}
-		if tx < 0 || ty < 0 || tx >= ew+2 || ty >= eh+1 { // not far outside its box
-			return
+		moves := p.DX != 0 || p.DY != 0 || l.anim == codexMarquee
+		if tx < 0 || ty < 0 || tx >= ew || ty >= eh { // outside its box: only a moving thing, a little
+			if !moves || tx < 0 || ty < 0 || tx >= ew+2 || ty >= eh+1 {
+				return
+			}
 		}
 		if !c.insideInner(x+tx, y+ty) {
 			return
@@ -649,35 +992,41 @@ func (m *Model) codexEl(cv *boardCanvas, e *codexEl, l codexLook, x, y, w, h int
 	}
 	switch e.Kind {
 	case ceText:
-		if c.writing == codexWriteEl && c.sel == e.ID {
-			m.codexWriting(cv, x, y, w, h, fg, paper)
+		if c.writingIn(e) {
+			m.codexWriting(cv, l, e.Align, x, y, w, h, fg, paper)
 			return
 		}
-		rows := codexTextRows(l, w)
+		rows, _, bw := codexTextRows(l, w, h)
 		if len(rows) == 0 && c.edit {
-			cvMiddle(cv, x, y, w, "text · Enter: write", mixHex(paper, ink, 0.4), paper, uv.AttrItalic)
+			cvMiddle(cv, x, y, w, "text · Enter: write", mixHex(paper, ink, 0.55), paper, uv.AttrItalic)
 			return
 		}
-		attrs := uint8(0)
-		if l.size <= 1 && l.font == 0 {
-			attrs = 0
-		}
+		// Normal text keeps to a block at most codexReadW wide, in the middle
+		// of a wide slot; its rows are placed in the block as it is aligned.
+		bx := (w - bw) / 2
+		minX, maxX := w, 0
 		for ry, r := range rows {
 			if ry >= h {
 				break
 			}
 			rw := codexWidth(r)
-			ox := codexAlign(e.Align, w, rw)
+			ox := bx + codexAlign(e.Align, bw, rw)
+			if strings.TrimSpace(r) != "" {
+				minX, maxX = min(minX, ox), max(maxX, ox+rw)
+			}
 			cx := ox
 			for _, ch := range r {
 				g := string(ch)
-				put(cx, ry, g, fg, "", attrs, w, h)
+				put(cx, ry, g, fg, "", 0, w, h)
 				cx += max(codexWidth(g), 1)
 			}
 		}
+		if maxX > minX { // its box: where its words are
+			c.rects[e.ID] = [4]int{x + minX, y, maxX - minX, min(len(rows), h)}
+		}
 	case ceButton:
 		label := codexFont(l.text, l.font)
-		if c.writing == codexWriteEl && c.sel == e.ID {
+		if c.writingIn(e) {
 			label = string(c.words)
 		}
 		bw := min(max(codexWidth(label)+4, 8), w)
@@ -691,8 +1040,12 @@ func (m *Model) codexEl(cv *boardCanvas, e *codexEl, l codexLook, x, y, w, h int
 		if !c.edit && c.focus == e.ID {
 			edge = cAccent
 		}
-		c.rects[e.ID] = [4]int{x + bx, y, bw, min(3, h)}
 		rows := []string{"╭" + strings.Repeat("─", bw-2) + "╮", "│" + strings.Repeat(" ", bw-2) + "│", "╰" + strings.Repeat("─", bw-2) + "╯"}
+		labelRow := 1
+		if h < 3 { // no room for its frame: one row, the label between its sides
+			rows, labelRow = rows[1:2], 0
+		}
+		c.rects[e.ID] = [4]int{x + bx, y, bw, len(rows)}
 		for ry, r := range rows {
 			if ry >= h {
 				break
@@ -712,23 +1065,29 @@ func (m *Model) codexEl(cv *boardCanvas, e *codexEl, l codexLook, x, y, w, h int
 				cx++
 			}
 		}
-		if h >= 2 {
-			label = codexClip(label, bw-4)
-			cx := bx + (bw-codexWidth(label))/2
-			for _, ch := range label {
-				g := string(ch)
-				put(cx, 1, g, txt, col, uv.AttrBold, w, h)
-				cx += max(codexWidth(g), 1)
-			}
-			if c.writing == codexWriteEl && c.sel == e.ID {
-				cvSet(cv, x+cx, y+1, " ", col, txt, 0) // the cursor
-			}
+		label = codexClip(label, bw-4)
+		cx := bx + (bw-codexWidth(label))/2
+		for _, ch := range label {
+			g := string(ch)
+			put(cx, labelRow, g, txt, col, uv.AttrBold, w, h)
+			cx += max(codexWidth(g), 1)
+		}
+		if c.writingIn(e) {
+			cvSet(cv, x+cx, y+labelRow, " ", col, txt, 0) // the cursor
 		}
 	case ceSymbol:
 		rows := codexSymbolBig(l.symbol, now.Sub(c.pageAt).Seconds(), l.size)
 		col := l.color
-		if col == "" {
-			col = codexSymColor(l.symbol)
+		if col == "" { // the theme's colour, made to read on light paper too
+			col = codexAtLeast(codexSymColor(l.symbol), paper, 3)
+		}
+		sw := 0
+		for _, r := range rows {
+			sw = max(sw, codexWidth(r))
+		}
+		if sw > 0 { // its box: where it is drawn
+			sx := codexAlign(e.Align, w, sw)
+			c.rects[e.ID] = [4]int{x + sx, y, min(sw, w-sx), min(len(rows), h)}
 		}
 		for ry, r := range rows {
 			if ry >= h {
@@ -776,6 +1135,100 @@ func codexAlign(align, w, rw int) int {
 func (c *codexState) insideInner(x, y int) bool {
 	in := c.inner
 	return x >= in[0]-1 && y >= in[1] && x < in[0]+in[2]+1 && y < in[1]+in[3]
+}
+
+// The arms of a thin box-drawing letter: which sides its lines go out to.
+const (
+	armU uint8 = 1 << iota
+	armD
+	armL
+	armR
+)
+
+var codexArmGlyph = map[uint8]string{
+	armL | armR: "─", armU | armD: "│", armR | armD: "┌", armL | armD: "┐", armR | armU: "└", armL | armU: "┘",
+	armU | armD | armR: "├", armU | armD | armL: "┤", armL | armR | armD: "┬", armL | armR | armU: "┴",
+	armU | armD | armL | armR: "┼",
+}
+
+// codexBoxMark draws a thin corner with arms a at (x, y): joined with a
+// thin line already there, else only on empty paper.
+func codexBoxMark(cv *boardCanvas, x, y int, a uint8, fg string) {
+	if x < 0 || y < 0 || x >= cv.Width() || y >= cv.Height() {
+		return
+	}
+	have := cv.Lines[y][x].Content
+	if have != " " && have != "" {
+		found := false
+		for k, g := range codexArmGlyph {
+			if g == have {
+				a |= k
+				found = true
+				break
+			}
+		}
+		if !found {
+			return
+		}
+		fg = colorHex(cv.Lines[y][x].Style.Fg, fg)
+	}
+	if g, ok := codexArmGlyph[a]; ok {
+		cvSet(cv, x, y, g, fg, cvBG(cv, x, y, cBG), 0)
+	}
+}
+
+// inOther is whether row y, from column x0 to x1, has a thing other than id
+// on it (a letter's width beside it counts too).
+func (c *codexState) inOther(id, x0, x1, y int) bool {
+	for oid, r := range c.rects {
+		if oid != id && y >= r[1] && y < r[1]+r[3] && x1 >= r[0]-1 && x0 <= r[0]+r[2] {
+			return true
+		}
+	}
+	return false
+}
+
+// codexBlank is whether the n cells from (x, y) on cv are empty.
+func codexBlank(cv *boardCanvas, x, y, n int) bool {
+	if y < 0 || y >= cv.Height() || x < 0 || x+n > cv.Width() {
+		return false
+	}
+	for i := 0; i < n; i++ {
+		if cv.Lines[y][x+i].Content != " " {
+			return false
+		}
+	}
+	return true
+}
+
+// codexCard draws the card of layout "a card in the middle" round the slot
+// at (x, y), w×h, on a page at row py, ph tall, and gives back its colour.
+func codexCard(cv *boardCanvas, x, y, w, h int, paper string, py, ph int) string {
+	card := mixHex(paper, cEmber, 0.08)
+	if lum(paper) > 0.55 {
+		card = mixHex(paper, "#ffffff", 0.5)
+	}
+	edge := mixHex(paper, cEmber, 0.35)
+	x0, y0, x1, y1 := x-2, max(y-1, py+1), x+w+1, min(y+h, py+ph-2)
+	for yy := y0 + 1; yy <= y1+1 && yy < py+ph-1; yy++ { // its shadow
+		cvSet(cv, x1+1, yy, " ", paper, mixHex(paper, "#000000", 0.3), 0)
+	}
+	for xx := x0 + 1; xx <= x1+1 && y1+1 < py+ph-1; xx++ {
+		cvSet(cv, xx, y1+1, " ", paper, mixHex(paper, "#000000", 0.3), 0)
+	}
+	cvFill(cv, x0, y0, x1-x0+1, y1-y0+1, card)
+	for xx := x0 + 1; xx < x1; xx++ {
+		cvSet(cv, xx, y0, "─", edge, card, 0)
+		cvSet(cv, xx, y1, "─", edge, card, 0)
+	}
+	for yy := y0 + 1; yy < y1; yy++ {
+		cvSet(cv, x0, yy, "│", edge, card, 0)
+		cvSet(cv, x1, yy, "│", edge, card, 0)
+	}
+	for _, q := range [][3]any{{x0, y0, "╭"}, {x1, y0, "╮"}, {x0, y1, "╰"}, {x1, y1, "╯"}} {
+		cvSet(cv, q[0].(int), q[1].(int), q[2].(string), edge, card, 0)
+	}
+	return card
 }
 
 func (m *Model) codexPlaceholder(cv *boardCanvas, x, y, w, h int, s, paper, ink string) {
@@ -852,89 +1305,65 @@ func (m *Model) codexDrawing(cv *boardCanvas, e *codexEl, l codexLook, x, y, w, 
 	}
 }
 
-// writeLines are the words being written, broken at w (by letters, so the
-// cursor can be found), with where each line starts in the words.
-type writeLine struct {
-	s     []rune
-	start int
-}
-
-func writeLines(words []rune, w int) []writeLine {
-	w = max(w, 1)
-	var out []writeLine
-	start := 0
-	line := []rune{}
-	for i, r := range words {
-		if r == '\n' {
-			out = append(out, writeLine{line, start})
-			line, start = []rune{}, i+1
-			continue
-		}
-		if len(line) >= w {
-			out = append(out, writeLine{line, start})
-			line, start = []rune{}, i
-		}
-		line = append(line, r)
-	}
-	out = append(out, writeLine{line, start})
-	return out
-}
-
-// codexWriting draws the words being written plainly, with the cursor.
-func (m *Model) codexWriting(cv *boardCanvas, x, y, w, h int, fg, paper string) {
+// codexWriting draws the words being written as they will show: wrapped by
+// words, in the thing's font, size and alignment, on a light band, with the
+// cursor.
+func (m *Model) codexWriting(cv *boardCanvas, l codexLook, align, x, y, w, h int, fg, paper string) {
 	c := m.cx()
-	lines := writeLines(c.words, w)
-	first := 0
-	curLine := 0
-	for i, l := range lines {
-		if c.cur >= l.start && c.cur <= l.start+len(l.s) {
-			curLine = i
-		}
+	font := codexWriteFont(l.font)
+	lay := codexLay(c.words, font, l.size, w, min(w, codexReadW), h)
+	per := codexRowsPer(lay.size)
+	lines := lay.lines
+	if n := max(h/per, 1); len(lines) > n { // the lines round the cursor
+		first := max(codexCurLine(lines, c.cur)-n+1, 0)
+		lines = lines[first:min(first+n, len(lines))]
 	}
-	if curLine >= h {
-		first = curLine - h + 1
-	}
+	bx := x + (w-lay.w)/2
 	hl := mixHex(paper, cAccent, 0.15)
-	for ry := 0; ry < h && first+ry < len(lines); ry++ {
-		l := lines[first+ry]
-		cvFill(cv, x, y+ry, w, 1, hl)
-		for i, r := range l.s {
-			cvSet(cv, x+i, y+ry, string(r), fg, hl, 0)
-		}
-		if first+ry == curLine {
-			cx := c.cur - l.start
-			g := " "
-			if cx < len(l.s) {
-				g = string(l.s[cx])
-			}
-			cvSet(cv, x+cx, y+ry, g, hl, cAccent, 0)
-		}
-	}
+	cvFill(cv, bx, y, lay.w, min(max(len(lines)*per, 1), h), hl)
+	codexDrawLines(cv, bx, y, lay.w, lines, lay.size, font, align, fg, 0, c.cur, cAccent)
 }
 
 // ---- the library ------------------------------------------------------------------------------
 
-const codexTileW, codexTileH = 26, 12
+// A library tile is codexTileW … codexTileMaxW wide, and at least codexTileH tall.
+const codexTileW, codexTileH, codexTileMaxW = 30, 12, 40
 
 // codexLibrary draws every codex as its cover, side by side.
 func (m *Model) codexLibrary(cv *boardCanvas, desk string, now time.Time) {
 	c := m.cx()
 	w, h := cv.Width(), cv.Height()
-	dim := mixHex(desk, cText, 0.5)
+	dim := codexAtLeast(mixHex(desk, cText, 0.75), desk, 3.5)
 	if len(c.lib) == 0 {
 		cvMiddle(cv, 0, h/2-1, w, "No codexes yet.", cText, desk, uv.AttrBold)
 		cvMiddle(cv, 0, h/2+1, w, "Alt+N makes one: a book of pages with text, pictures, drawings, moving symbols and buttons.", dim, desk, 0)
 		return
 	}
+	// As many columns as tiles of the smallest width fit (as the keys count
+	// them: codexLibCols), each tile as wide as the screen then allows.
 	cols := max(1, (w-2)/(codexTileW+3))
-	rows := max(1, (h-1)/(codexTileH+2))
+	tw := min(max((w-2)/cols-3, codexTileW), codexTileMaxW)
+	th := max(int(math.Round(float64(tw)*0.46)), codexTileH)
+	allRows := (len(c.lib) + cols - 1) / cols
+	rows := max(1, (h-1)/(th+2))
+	if rows < allRows && rows < 2 && (h-2)/2-2 >= 9 { // a low screen: smaller tiles, two rows
+		th, rows = (h-2)/2-2, 2
+	}
+	more := rows < allRows
+	if more { // a row says what is not shown
+		rows = max(1, (h-2)/(th+2))
+	}
 	first := 0
 	if r := c.libSel / cols; r >= rows {
 		first = (r - rows + 1) * cols
 	}
-	gridW := cols*(codexTileW+3) - 3
+	gridW := min(cols, len(c.lib))*(tw+3) - 3 // a short library sits in the middle too
 	x0 := (w - gridW) / 2
-	y0 := max((h-min(rows, (len(c.lib)+cols-1)/cols)*(codexTileH+2))/2, 0)
+	shown := min(rows, allRows)
+	y0 := max((h-shown*(th+2))/2, 0)
+	if more {
+		y0 = max((h-1-shown*(th+2))/2, 0)
+	}
 	t := now.Sub(c.pageAt).Seconds()
 	for i := first; i < len(c.lib) && i < first+rows*cols; i++ {
 		e := c.lib[i]
@@ -943,20 +1372,30 @@ func (m *Model) codexLibrary(cv *boardCanvas, desk string, now time.Time) {
 			continue
 		}
 		col, row := (i-first)%cols, (i-first)/cols
-		tx, ty := x0+col*(codexTileW+3), y0+row*(codexTileH+2)
+		tx, ty := x0+col*(tw+3), y0+row*(th+2)
 		chosen := i == c.libSel
 		ct := 0.0
 		if chosen {
 			ct = t
 		}
-		cvFill(cv, tx+1, ty+1, codexTileW, codexTileH, mixHex(desk, "#000000", 0.4))
-		cvPaste(cv, codexCover(cf, codexTileW, codexTileH, ct, chosen), tx, ty)
-		c.box["lib:"+itoa(i)] = [4]int{tx, ty, codexTileW, codexTileH}
+		cvFill(cv, tx+1, ty+1, tw, th, mixHex(desk, "#000000", 0.4))
+		cvPaste(cv, codexCover(cf, tw, th, ct, chosen), tx, ty)
+		c.box["lib:"+itoa(i)] = [4]int{tx, ty, tw, th}
 		label := "changed " + e.at.Format("2 Jan 15:04")
 		fg := dim
 		if chosen {
 			fg = cAccent
 		}
-		cvMiddle(cv, tx, ty+codexTileH, codexTileW, label, fg, desk, 0)
+		cvMiddle(cv, tx, ty+th, tw, label, fg, desk, 0)
+	}
+	if more {
+		var parts []string
+		if first > 0 {
+			parts = append(parts, "↑ "+itoa(first)+" above")
+		}
+		if n := len(c.lib) - first - rows*cols; n > 0 {
+			parts = append(parts, "↓ "+itoa(n)+" more")
+		}
+		cvMiddle(cv, 0, min(y0+shown*(th+2), h-1), w, strings.Join(parts, " · "), dim, desk, uv.AttrBold)
 	}
 }
