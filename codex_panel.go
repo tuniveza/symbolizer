@@ -293,6 +293,7 @@ func (m *Model) codexInspector(cv *boardCanvas, w int, now time.Time) {
 		f.line("F", "font", codexFont("Aa Bb 12", e.Font)+"  "+codexFonts[e.Font%16], cText)
 	case ceImage:
 		f.line("↵", "picture", codexOr(e.Image, "choose a file"), cText)
+		f.line("+ −", "size", map[bool]string{false: "fills its box", true: "whole picture"}[e.Whole], cAccent)
 	case ceDrawing:
 		f.line("↵", "draw", plural(len(e.Ink), "dot"), cText)
 	case ceSymbol:
@@ -309,16 +310,26 @@ func (m *Model) codexInspector(cv *boardCanvas, w int, now time.Time) {
 		def = codexThemeButton()
 	case ceSymbol:
 		def = codexSymColor(e.Symbol)
+	case ceImage, ceDrawing: // the border's own colour
+		def = codexAtLeast(cAccent, c.paper(p), 2.5)
 	}
-	plain := e.Kind == ceImage || e.Kind == ceDrawing // no colour or lining up for these (the keys say so)
-	if !plain {
-		f.swatch("C", "colour", codexOr(e.Color, def), codexOr(e.Color, "theme"))
+	plain := e.Kind == ceImage || e.Kind == ceDrawing // no colour for these (the keys say so)
+	if !plain || e.Border > 0 {
+		f.swatch("C", map[bool]string{false: "colour", true: "border colour"}[plain], codexOr(e.Color, def), codexOr(e.Color, "theme"))
 	}
 	f.anim(e.Anim, e.ID, now)
-	if !plain {
+	if codexSlides(e) {
 		f.line("J", "line up", []string{"◫ middle", "◧ left", "◨ right"}[e.Align%3], cText)
 	}
-	f.line("Alt+←→", "slot", itoa(codexSlotOf(e, p.Layout)+1)+" of "+itoa(len(codexLayouts[p.Layout].slots)), cText)
+	where := "slot " + itoa(codexSlotOf(e, p.Layout)+1) + "/" + itoa(len(codexLayouts[p.Layout].slots))
+	if codexSlides(e) {
+		where += " " + []string{"left", "middle", "right"}[codexAlignPos(e.Align)]
+	}
+	f.line("Alt+←→↑↓", "move", where, cText)
+	f.line("B", "border", codexBorderName(e.Border), cText)
+	if e.Kind == ceButton {
+		f.line("Y", "look", itoa(e.Style%16+1)+"/16 "+codexButtonStyles[(e.Style%16+16)%16].name, cAccent)
+	}
 	if e.Kind == ceButton {
 		f.line("K", "action", codexActionNames[codexOr(e.Action, caNext)], cAccent)
 		if e.Action == caGoto || e.Action == caActivate {

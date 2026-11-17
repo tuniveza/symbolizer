@@ -130,6 +130,9 @@ type codexEl struct {
 	Action string     `json:"action,omitempty"` // a button: codexActions
 	Target int        `json:"target,omitempty"` // go to page: its number (1 the first); activate: the thing's ID
 	On     codexOn    `json:"on,omitempty"`
+	Border int        `json:"border,omitempty"` // 0 none, else codexBorders[Border-1] (codex_frames.go)
+	Style  int        `json:"style,omitempty"`  // a button's look: codexButtonStyles
+	Whole  bool       `json:"whole,omitempty"`  // a picture: shown whole (else it fills its box, cut at the edges)
 }
 
 type codexPage struct {

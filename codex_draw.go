@@ -611,10 +611,12 @@ func (m *Model) codexSlot(cv *boardCanvas, els []*codexEl, x, y, w, h int, paper
 		if c.writingIn(e) {
 			looks[i].hidden = false
 		}
-		heights[i] = c.elHeight(e, looks[i], w, h, now)
+		pl, pt, pr, pb := codexBorderFits(e, w, h)
+		heights[i] = c.elHeight(e, looks[i], w-pl-pr, h-pt-pb, now)
 		if heights[i] < 0 {
 			flex++
 		} else {
+			heights[i] += pt + pb
 			fixed += heights[i]
 		}
 	}
@@ -666,7 +668,29 @@ func (m *Model) codexSlot(cv *boardCanvas, els []*codexEl, x, y, w, h int, paper
 		if eh < want[i] && want[i] > 0 {
 			cut = true
 		}
-		m.codexEl(cv, e, looks[i], x, yy, w, eh, paper, ink, now)
+		pl, pt, pr, pb := codexBorderFits(e, w, eh)
+		if eh-pt-pb < 1 {
+			pl, pt, pr, pb = 0, 0, 0, 0
+		}
+		m.codexEl(cv, e, looks[i], x+pl, yy+pt, w-pl-pr, eh-pt-pb, paper, ink, now)
+		if f, ok := codexBorderOf(e); ok && pt > 0 && !looks[i].hidden {
+			// The border goes round where the thing was drawn, and is its box.
+			r := c.rects[e.ID]
+			sh := pb - pt
+			x0 := max(r[0]-pl, x)
+			x1 := min(r[0]+r[2]-1+pr-sh, x+w-1-sh)
+			y0, y1 := r[1]-pt, r[1]+r[3]-1+pb-sh
+			box := [4]int{x0, y0, x1 - x0 + 1, y1 - y0 + 1}
+			col := looks[i].color
+			if col == "" {
+				col = codexAtLeast(cAccent, paper, 2.5)
+				if e.Kind == ceButton {
+					col = codexThemeButton()
+				}
+			}
+			m.codexDrawBorder(cv, f, box, col, paper, looks[i])
+			c.rects[e.ID] = box
+		}
 		yy += heights[i] + gap
 	}
 	// Editing: say so when not everything fits.
@@ -1036,45 +1060,44 @@ func (m *Model) codexEl(cv *boardCanvas, e *codexEl, l codexLook, x, y, w, h int
 		if col == "" {
 			col = codexThemeButton()
 		}
-		txt := codexInkOn(col)
-		edge := mixHex(col, "#000000", 0.3)
-		if !c.edit && c.focus == e.ID {
-			edge = cAccent
-		}
-		rows := []string{"╭" + strings.Repeat("─", bw-2) + "╮", "│" + strings.Repeat(" ", bw-2) + "│", "╰" + strings.Repeat("─", bw-2) + "╯"}
-		labelRow := 1
+		st := codexButtonStyleOf(e)
+		fillBG := codexButtonFill(st, col)
+		txt := codexButtonInk(st, col, paper)
+		focus := !c.edit && c.focus == e.ID
+		nrows, labelRow := 3, 1
 		if h < 3 { // no room for its frame: one row, the label between its sides
-			rows, labelRow = rows[1:2], 0
+			nrows, labelRow = 1, 0
 		}
-		c.rects[e.ID] = [4]int{x + bx, y, bw, len(rows)}
-		for ry, r := range rows {
-			if ry >= h {
-				break
-			}
-			cx := bx
-			for _, ch := range r {
-				g := string(ch)
-				bg := col
-				if ch != ' ' {
-					bg = ""
+		c.rects[e.ID] = [4]int{x + bx, y, bw, nrows}
+		for ry := 0; ry < nrows && ry < h; ry++ {
+			for rx := 0; rx < bw; rx++ {
+				g, gc, bg, skip := codexButtonCell(st, nrows, ry, rx, bw, col, paper, focus)
+				if skip {
+					continue
 				}
-				gc := edge
-				if ch == ' ' {
-					gc = txt
-				}
-				put(cx, ry, g, gc, bg, 0, w, h)
-				cx++
+				put(bx+rx, ry, g, gc, bg, 0, w, h)
 			}
 		}
 		label = codexClip(label, bw-4)
 		cx := bx + (bw-codexWidth(label))/2
 		for _, ch := range label {
 			g := string(ch)
-			put(cx, labelRow, g, txt, col, uv.AttrBold, w, h)
+			put(cx, labelRow, g, txt, fillBG, uv.AttrBold, w, h)
 			cx += max(codexWidth(g), 1)
 		}
+		if focus && st.fill == 0 { // an unfilled button: Tab's mark is its label lit
+			for xx := bx + 1; xx < bx+bw-1; xx++ {
+				put(xx, labelRow, " ", txt, mixHex(paper, cAccent, 0.22), 0, w, h)
+			}
+			cx = bx + (bw-codexWidth(label))/2
+			for _, ch := range label {
+				g := string(ch)
+				put(cx, labelRow, g, codexAtLeast(txt, mixHex(paper, cAccent, 0.22), 3), mixHex(paper, cAccent, 0.22), uv.AttrBold, w, h)
+				cx += max(codexWidth(g), 1)
+			}
+		}
 		if c.writingIn(e) {
-			cvSet(cv, x+cx, y+labelRow, " ", col, txt, 0) // the cursor
+			cvSet(cv, x+cx, y+labelRow, " ", codexOr(fillBG, paper), txt, 0) // the cursor
 		}
 	case ceSymbol:
 		rows := codexSymbolBig(l.symbol, now.Sub(c.pageAt).Seconds(), l.size)
@@ -1110,11 +1133,24 @@ func (m *Model) codexEl(cv *boardCanvas, e *codexEl, l codexLook, x, y, w, h int
 			}
 			return
 		}
-		pc := pictureCanvas(filepath.Join(codexDir(c.id), "images", l.image), w, h, paper)
-		for ry := 0; ry < min(h, pc.Height()); ry++ {
-			for rx := 0; rx < min(w, pc.Width()); rx++ {
+		path := filepath.Join(codexDir(c.id), "images", l.image)
+		// It fills its box (cut at the edges), or shows whole (-), lined up in it.
+		ox, oy, pw, ph := 0, 0, w, h
+		var pc *boardCanvas
+		if e.Whole {
+			if tw, th, ok := pictureCells(path, w, h); ok {
+				pw, ph = tw, th
+				ox, oy = codexAlign(e.Align, w, tw), (h-th)/2
+			}
+			pc = pictureCanvas(path, pw, ph, paper)
+		} else {
+			pc = pictureCanvasFilled(path, w, h, paper)
+		}
+		c.rects[e.ID] = [4]int{x + ox, y + oy, pw, ph}
+		for ry := 0; ry < min(ph, pc.Height()); ry++ {
+			for rx := 0; rx < min(pw, pc.Width()); rx++ {
 				cell := pc.Lines[ry][rx]
-				put(rx, ry, cell.Content, colorHex(cell.Style.Fg, paper), colorHex(cell.Style.Bg, paper), 0, w, h)
+				put(ox+rx, oy+ry, cell.Content, colorHex(cell.Style.Fg, paper), colorHex(cell.Style.Bg, paper), 0, w, h)
 			}
 		}
 	case ceDrawing:

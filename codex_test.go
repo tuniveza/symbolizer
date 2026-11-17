@@ -371,10 +371,18 @@ func TestCodexEditKeys(t *testing.T) {
 		press(m, "l")
 	}
 	e := c.el(c.sel)
+	// Alt+Right: middle → right of slot 1, then slot 2 left, middle, right, then slot 3.
+	for i, want := range [][2]int{{0, 2}, {1, 1}, {1, 0}, {1, 2}, {2, 1}} {
+		press(m, "alt+right")
+		if e.Slot != want[0] || e.Align != want[1] {
+			t.Fatalf("Alt+Right %d: slot %d align %d, want %v", i+1, e.Slot, e.Align, want)
+		}
+	}
 	press(m, "alt+right")
 	press(m, "alt+right")
-	if e.Slot != 2 {
-		t.Fatalf("Alt+Right twice: slot %d", e.Slot)
+	press(m, "alt+right")
+	if e.Slot != 2 || e.Align != 2 || !strings.Contains(m.msg, "as far right") {
+		t.Fatalf("Alt+Right at the right edge should stay: slot %d, %q", e.Slot, m.msg)
 	}
 	press(m, "x")
 	press(m, "x")

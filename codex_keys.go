@@ -437,23 +437,24 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 		}
 		m.codexActivate(e, 0)
 		return nil
-	case "alt+left", "alt+right":
-		m.codexStep()
-		n := len(codexLayouts[p.Layout].slots)
-		s := codexSlotOf(e, p.Layout)
-		if name == "alt+left" {
-			s = (s - 1 + n) % n
-		} else {
-			s = (s + 1) % n
-		}
-		e.Slot = s
-		m.codexSave()
-		m.say(codexElName(e) + " is in slot " + itoa(s+1) + " of " + itoa(n) + ".")
+	case "alt+left", "alt+right", "alt+up", "alt+down":
+		m.codexMove(e, name[len("alt+"):]) // codex_frames.go
 		return nil
-	case "alt+up", "alt+down":
+	case "b", "B", "shift+b":
 		m.codexStep()
-		m.codexReorder(e, name == "alt+up")
+		e.Border = codexCycle(e.Border, len(codexBorders)+1, name == "b")
 		m.codexSave()
+		m.say("Border " + itoa(e.Border) + " of " + itoa(len(codexBorders)) + ": " + codexBorderName(e.Border) + ". B next · Shift+B back.")
+		return nil
+	case "y", "Y", "shift+y":
+		if e.Kind != ceButton {
+			m.say("Y changes a button's look. B gives any thing a border.")
+			return nil
+		}
+		m.codexStep()
+		e.Style = codexCycle(e.Style, len(codexButtonStyles), name == "y")
+		m.codexSave()
+		m.say("Button look " + itoa(e.Style+1) + " of " + itoa(len(codexButtonStyles)) + ": " + codexButtonStyles[e.Style].name + ".")
 		return nil
 	case "f", "F", "shift+f":
 		if e.Kind != ceText && e.Kind != ceButton {
@@ -465,8 +466,8 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 		m.codexSave()
 		m.say("Font: " + codexFonts[e.Font] + ".")
 	case "c", "C", "shift+c":
-		if e.Kind == ceImage || e.Kind == ceDrawing {
-			m.say("Colour is for texts, buttons and symbols. A drawing's colours are its ink (Enter draws).")
+		if (e.Kind == ceImage || e.Kind == ceDrawing) && e.Border == 0 {
+			m.say("Colour is for texts, buttons, symbols and borders (B gives this one a border). A drawing's colours are its ink (Enter draws).")
 			return nil
 		}
 		m.codexStep()
@@ -478,6 +479,18 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 		c.pageAt = time.Now() // it starts from the beginning
 		m.codexSave()
 		m.say("Animation: " + codexAnims[e.Anim] + ".")
+	case "+", "=", "plus", "shift+=", "kp+", "-", "minus", "kp-":
+		if e.Kind == ceImage {
+			if whole := name == "-" || name == "minus" || name == "kp-"; whole != e.Whole {
+				m.codexStep()
+				e.Whole = whole
+				m.codexSave()
+			}
+			m.say(map[bool]string{false: "The picture fills its box (cut at the edges). − shows it whole.", true: "The picture shows whole. + makes it fill its box."}[e.Whole])
+			return nil
+		}
+	}
+	switch name {
 	case "+", "=", "plus", "shift+=", "kp+":
 		if e.Kind != ceText && e.Kind != ceSymbol {
 			m.say("Size is for texts and symbols.")
@@ -506,8 +519,8 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 		m.codexSave()
 		m.say("Symbol: " + codexSymbols[e.Symbol].Name + ".")
 	case "j", "J", "shift+j":
-		if e.Kind == ceImage || e.Kind == ceDrawing {
-			m.say("Lining up is for texts, buttons and symbols. A picture or drawing fills its slot.")
+		if !codexSlides(e) {
+			m.say(map[bool]string{true: "A picture that fills its box can't line up. − shows it whole first.", false: "A drawing fills its slot, so it can't line up."}[e.Kind == ceImage])
 			return nil
 		}
 		m.codexStep()
@@ -1746,7 +1759,7 @@ func (m *Model) codexStatus() string {
 	case c.edit && c.page < 0:
 		hint = "Cover · Enter title · Tab subtitle · C colour · S symbol · W paper · PgDn pages · E read · Esc close"
 	case c.edit:
-		hint = "Alt+N add · arrows choose · Enter write · L layout · F C A + − font colour anim size · T table · Alt+P page · E read · Esc close"
+		hint = "Alt+N add · arrows choose · Enter write · L layout · F C A + − font colour anim size · B border · Alt+arrows move · T table · Alt+P page · E read · Esc close"
 	case c.page < 0:
 		hint = "→ or Enter: open · E edit · Esc close"
 	default:
