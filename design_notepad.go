@@ -15,6 +15,7 @@ package main
 //
 //	↑ ↓ · Home · End   choose a note
 //	Enter              open it in Text mode
+//	D                  draw on it in Draw mode: its ink is a layer, the file is never changed (draw.go)
 //	F                  give it a sticker (or change it)
 //	/ · S              show only one sticker's notes (each press: the next, then all)
 //	X X                take it out of the notepad (its .txt file stays)
@@ -149,8 +150,21 @@ func notepadStamp(n int) string {
 	var sb strings.Builder
 	for _, r := range notesLoad().inPad(n) {
 		sb.WriteString(r.Path + "\x00" + r.Sticker + "\n")
+		if noteHasInk(r.Path) {
+			sb.WriteString("ink\n") // drawn on: the ✎ mark shows (draw.go)
+		}
 	}
 	return sb.String()
+}
+
+// padHasInk: has any of these notes been drawn on in Draw mode?
+func padHasInk(notes []*noteRec) bool {
+	for _, r := range notes {
+		if noteHasInk(r.Path) {
+			return true
+		}
+	}
+	return false
 }
 
 // noteTitle is a note's name: its file name without .txt.
@@ -518,6 +532,9 @@ func notepadFront(n int, name string, w, h int, chosen bool) *boardCanvas {
 			p.text(tx, pageTop+1, words, room, mixHex(s.Ink, s.Paper, 0.4), s.Paper, false)
 		}
 	}
+	if padHasInk(notes) && right-left >= 12 { // a note in it was drawn on in Draw mode (draw.go)
+		p.text(right-4, pageTop, "✎", 1, cEmber, s.Paper, true)
+	}
 	if stickers := padStickers(notes); len(stickers) > 0 && pageEnd-pageTop >= 3 {
 		x := tx
 		for _, st := range stickers {
@@ -660,7 +677,7 @@ func (m *Model) padViewClose() {
 
 // padViewHint is the status bar while a notepad is open.
 func padViewHint() string {
-	return "↑↓ choose  ·  Enter: open in Text mode  ·  F: sticker  ·  / or S: filter  ·  X X: take out  ·  PgUp / PgDn: other notepads  ·  Esc: close"
+	return "↑↓ choose  ·  Enter: open in Text mode  ·  D: draw on it  ·  F: sticker  ·  / or S: filter  ·  X X: take out  ·  PgUp / PgDn: other notepads  ·  Esc: close"
 }
 
 // padViewKey is a key while a notepad is open over the board.
@@ -689,6 +706,8 @@ func (m *Model) padViewKey(name string) tea.Cmd {
 		m.padViewTurn(1)
 	case "enter":
 		return m.padViewOpenNote()
+	case "d", "D", "shift+d":
+		return m.padViewDraw()
 	case "f", "F", "shift+f":
 		return m.padViewSticker()
 	case "/", "s", "S", "shift+s":
@@ -740,6 +759,27 @@ func (m *Model) padViewOpenNote() tea.Cmd {
 	m.ds().save()
 	cmd := m.setMode(0)
 	return tea.Batch(cmd, m.openPath(r.Path))
+}
+
+// padViewDraw opens the chosen note in Draw mode, to draw on it. The
+// notepad stays open: Esc in Draw mode comes back to it.
+func (m *Model) padViewDraw() tea.Cmd {
+	r := m.padView.chosen()
+	if r == nil {
+		m.say("No note to draw on.")
+		return nil
+	}
+	if !fileExists(r.Path) {
+		m.sayErr(filepath.Base(r.Path) + " is missing: the file is not at " + shortPath(r.Path) + " any more. X X takes the note out.")
+		return nil
+	}
+	m.ds().save()
+	cmd := m.setMode(drawMode)
+	if !m.drawOpenNote(r) {
+		return cmd
+	}
+	m.dw().fromDesign = true
+	return cmd
 }
 
 // padViewSticker asks for the chosen note's sticker.
@@ -1007,7 +1047,12 @@ func paintPadList(p padPen, s padStyle, v *padViewer, notes []*noteRec, lw int) 
 		if !fileExists(r.Path) {
 			words, wfg = "missing", mixHex(cError, s.Ink, 0.25)
 		}
-		p.text(x, y, words, lw-1-x, wfg, bg, false)
+		end := lw - 1
+		if noteHasInk(r.Path) && end-x > 12 { // drawn on in Draw mode (draw.go)
+			end -= 6
+			p.text(end, y, "✎ ink", 5, mixHex(cEmber, fg, 0.25), bg, true)
+		}
+		p.text(x, y, words, end-1-x, wfg, bg, false)
 	}
 	if v.top > 0 {
 		p.text(lw-3, top, "▲", 1, dim, s.Paper, false)
@@ -1055,8 +1100,12 @@ func paintPadPreview(p padPen, s padStyle, r *noteRec, x0, x1, y0, y1 int) {
 		p.fill(x0, x1, y, "┄", mixHex(s.Paper, s.Rule, 0.7), s.Paper)
 	}
 	y++
+	textY := y
 	for _, l := range noteHead(r.Path, 10) {
 		line(l, s.Ink, false)
+	}
+	if f := noteInk(r.Path); f != nil && textY < y1 { // its ink from Draw mode, over its first lines (draw.go)
+		drawInkOver(p.c, f, p.x0+x0, p.y0+textY, p.x0+x0, p.y0+textY, room, y1-textY, 0)
 	}
 }
 

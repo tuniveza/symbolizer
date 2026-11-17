@@ -2558,16 +2558,11 @@ func (d *designState) tint(c *boardCanvas) {
 			k := look{cell.Style.Bg, cell.Style.Fg, mk.Pen, mk.Over, strings.TrimSpace(cell.Content) == ""}
 			r, ok := done[k]
 			if !ok {
-				pen := inkOf(mk)
 				bg, fg := colorHex(cell.Style.Bg, cBG), colorHex(cell.Style.Fg, cText)
-				switch {
-				case !mk.Over:
-					r = result{bg: hex(mixHex(bg, pen, 0.5)), fg: cell.Style.Fg}
-				case k.void:
-					nbg := mixHex(bg, pen, 0.38)
-					r = result{bg: hex(nbg), fg: hex(mixHex(nbg, pen, 0.55)), shade: true}
-				default:
-					r = result{bg: hex(mixHex(bg, pen, 0.38)), fg: hex(mixHex(fg, pen, 0.45))}
+				nbg, nfg, shade := highlightColours(mk, bg, fg, k.void) // design_desk.go
+				r = result{bg: hex(nbg), fg: hex(nfg), shade: shade}
+				if !mk.Over {
+					r.fg = cell.Style.Fg // under the words: they keep their own colour exactly
 				}
 				done[k] = r
 			}

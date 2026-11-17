@@ -25,7 +25,7 @@ var modes = []mode{
 	{"\U000f0428", "▤", "Slides", "make and show slides made of text, one screen at a time", false},
 	{"\uf02d", "▣", "Diary", "a diary: writing kept by date, a chapter a day, one page in focus", true},
 	{"\U000f05da", "▥", "Book", "write books: chapters, pages and so on", false},
-	{"\U000f0f49", "✐", "Draw", "draw with the terminal itself as the drawing tool", false},
+	{"\U000f0f49", "✐", "Draw", "draw with the terminal itself: pens, glitter pens, brushes on a blank drawing, or as a layer over a note", true},
 	{"\uf07c", "▦", "Manager", "all of ~/an at a glance: every category, project and folder, with what it is, its size and its last change", true},
 	{"\U000f06a9", "⧈", "Brick", "write programs in plain English: brick builds them, colours every word by what it reads, and keeps learning", true},
 	{"\U000f14f7", "▥", "Codex", "books you can play, like HyperCard: pages of text, pictures, drawings, moving symbols and buttons, behind a cover", true},
@@ -142,6 +142,9 @@ func (m *Model) setMode(i int) tea.Cmd {
 	if m.mode == codexMode {
 		m.codexLeave() // words being written are kept and saved (codex.go)
 	}
+	if m.mode == drawMode {
+		m.drawLeave() // a stroke ends and the drawing is saved (draw.go)
+	}
 	m.mode = i
 	if i == brickMode {
 		m.say(modes[i].Icon() + "  Brick mode. Write plain English · Alt+R runs it · Alt+C checks again · Alt+P the brain's fixes · F1 help.")
@@ -157,6 +160,9 @@ func (m *Model) setMode(i int) tea.Cmd {
 	}
 	if i == codexMode {
 		return tea.Batch(m.enterCodex(), m.tellKittyMode()) // codex.go
+	}
+	if i == drawMode {
+		return tea.Batch(m.enterDraw(), m.tellKittyMode()) // draw.go
 	}
 	if i == designMode {
 		m.ds()
