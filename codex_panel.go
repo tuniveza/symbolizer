@@ -371,15 +371,57 @@ func (m *Model) codexAddMenu(cv *boardCanvas, now time.Time) {
 // ---- marks on the page --------------------------------------------------------------------------
 
 // codexMarks draws what helps see a page: pressable things while reading,
-// a button's target and things hidden until activated while editing.
+// a button's target and things hidden until activated while editing. Its
+// tags go on empty paper next to a thing (below, above or beside it), kept
+// inside the page's writing area.
 func (m *Model) codexMarks(cv *boardCanvas, p *codexPage, paper string, now time.Time) {
 	c := m.cx()
-	if c.writing != 0 || c.drawing {
+	if c.drawing {
 		return
 	}
+	in := c.inner
+	left, right := in[0]-1, in[0]+in[2]+1 // the columns a tag may use
+	top, bottom := in[1], in[1]+in[3]     // the rows (the empty row under the area too)
 	tag := func(x, y int, s, fg string) {
+		fg = codexAtLeast(fg, paper, 3)
 		bg := mixHex(paper, fg, 0.18)
 		cvText(cv, x, y, " "+s+" ", fg, bg, uv.AttrBold)
+	}
+	// spot is a place to try for a tag: clamp moves it sideways into the area.
+	type spot struct {
+		x, y  int
+		clamp bool
+	}
+	// place puts tag s at the first spot that is inside the area and on
+	// empty paper; with none, at the last spot, kept inside the area.
+	place := func(s, fg string, spots ...spot) {
+		tw := codexWidth(s) + 2
+		fit := func(q spot) (int, bool) {
+			x := q.x
+			if q.clamp {
+				x = min(max(x, left), right-tw)
+			}
+			return x, x >= left && x+tw <= right && q.y >= top && q.y <= bottom
+		}
+		for _, q := range spots {
+			if x, ok := fit(q); ok && codexBlank(cv, x, q.y, tw) {
+				tag(x, q.y, s, fg)
+				return
+			}
+		}
+		q := spots[len(spots)-1]
+		x := min(max(q.x, left), right-tw)
+		tag(x, min(max(q.y, top), bottom), s, fg)
+	}
+	// Below the thing, then above it, then (forced) on its last row.
+	near := func(r [4]int, s, fg string) {
+		place(s, fg, spot{r[0], r[1] + r[3], true}, spot{r[0], r[1] - 1, true}, spot{r[0], r[1] + r[3] - 1, true})
+	}
+	if c.writing != 0 {
+		if r, ok := c.rects[c.sel]; ok && c.writing == codexWriteAlt {
+			near(r, "the other words · Esc: done", cAccent)
+		}
+		return
 	}
 	if !c.edit {
 		for _, e := range c.interactive() {
@@ -388,11 +430,26 @@ func (m *Model) codexMarks(cv *boardCanvas, p *codexPage, paper string, now time
 				continue
 			}
 			if e.ID == c.focus {
-				tag(r[0]+r[2]-8, r[1]+r[3], "↵ press", cAccent)
+				s := "↵ press"
+				tw := codexWidth(s) + 2
+				x, dy := r[0]+r[2]-tw, 0
+				if tw > r[2] { // wider than the thing: under its corner marks
+					x, dy = r[0]+r[2]-tw+1, 1
+				}
+				place(s, cAccent, spot{x, r[1] + r[3] + dy, true}, spot{x, r[1] + r[3], true}, spot{x, r[1] - 1, true},
+					spot{x, r[1] + r[3], true})
 				continue
 			}
 			if e.Kind != ceButton { // a button looks pressable already
-				cvSet(cv, r[0]+r[2], r[1], "◈", mixHex(paper, cAccent, 0.75), cvBG(cv, r[0]+r[2], r[1], paper), uv.AttrBold)
+				col := codexAtLeast(mixHex(paper, cAccent, 0.75), paper, 3)
+				x := r[0] + r[2] + 1
+				if x >= right || !codexBlank(cv, x, r[1], 1) {
+					x = r[0] - 2
+				}
+				if x < left || !codexBlank(cv, x, r[1], 1) {
+					x = min(r[0]+r[2], right-1)
+				}
+				cvSet(cv, x, r[1], "◈", col, cvBG(cv, x, r[1], paper), uv.AttrBold)
 			}
 		}
 		return
@@ -403,7 +460,7 @@ func (m *Model) codexMarks(cv *boardCanvas, p *codexPage, paper string, now time
 			continue
 		}
 		if e.On.Do == "show" {
-			tag(r[0], r[1]+r[3]-1, "hidden until activated", mixHex(paper, codexInkOn(paper), 0.6))
+			near(r, "hidden until activated", mixHex(paper, codexInkOn(paper), 0.6))
 		}
 	}
 	e := c.el(c.sel)
@@ -411,36 +468,46 @@ func (m *Model) codexMarks(cv *boardCanvas, p *codexPage, paper string, now time
 		return
 	}
 	r := c.rects[e.ID]
+	// A button's tag: beside it (right, then left), else below or above.
+	side := func(s string) {
+		tw := codexWidth(s) + 2
+		mid := r[1] + r[3]/2 // the label's row
+		place(s, cEmber, spot{r[0] + r[2] + 1, mid, false}, spot{r[0] - tw - 1, mid, false},
+			spot{r[0], r[1] + r[3], true}, spot{r[0], r[1] - 1, true}, spot{r[0], r[1] + r[3], true})
+	}
 	switch e.Action {
 	case caActivate:
 		t, pi := c.find(e.Target)
 		if t == nil {
-			tag(r[0]+r[2], r[1]+1, "→ G: aim it", cEmber)
+			side("→ G: aim it")
 			return
 		}
 		if pi != c.page {
-			tag(r[0]+r[2], r[1]+1, "→ page "+itoa(pi+1), cEmber)
+			side("→ page " + itoa(pi+1))
 			return
 		}
 		if tr, ok := c.rects[t.ID]; ok {
+			col := codexAtLeast(cEmber, paper, 3)
 			for _, q := range []struct {
 				x, y int
 				g    string
 			}{{tr[0] - 1, tr[1] - 1, "╭"}, {tr[0] + tr[2], tr[1] - 1, "╮"}, {tr[0] - 1, tr[1] + tr[3], "╰"}, {tr[0] + tr[2], tr[1] + tr[3], "╯"}} {
-				cvSet(cv, q.x, q.y, q.g, cEmber, cvBG(cv, q.x, q.y, paper), uv.AttrBold)
+				if codexBlank(cv, q.x, q.y, 1) && q.y >= top && q.y <= bottom {
+					cvSet(cv, q.x, q.y, q.g, col, cvBG(cv, q.x, q.y, paper), uv.AttrBold)
+				}
 			}
-			tag(tr[0], tr[1]-1, "◎ target", cEmber)
-			tag(r[0]+r[2], r[1]+1, "→ ◎", cEmber)
+			place("◎ target", cEmber, spot{tr[0], tr[1] - 1, true}, spot{tr[0], tr[1] + tr[3], true}, spot{tr[0], tr[1] - 1, true})
+			side("→ ◎")
 		}
 	case caGoto:
 		to := "→ the cover"
 		if e.Target >= 1 {
 			to = "→ page " + itoa(e.Target)
 		}
-		tag(r[0]+r[2], r[1]+1, to, cEmber)
+		side(to)
 	case caPrev:
-		tag(r[0]+r[2], r[1]+1, "← page before", cEmber)
+		side("← page before")
 	default:
-		tag(r[0]+r[2], r[1]+1, "→ next page", cEmber)
+		side("→ next page")
 	}
 }
