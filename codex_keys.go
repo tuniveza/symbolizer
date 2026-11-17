@@ -694,11 +694,18 @@ func (m *Model) codexPlace(name string) tea.Cmd {
 		return nil
 	}
 	// The first empty slot; all full: after the chosen thing, in its slot.
+	// A button goes to the button bar, if the layout has one.
 	slot, at := -1, len(p.Els)
-	for s := range codexLayouts[p.Layout].slots {
+	lay := codexLayouts[p.Layout]
+	if kind == ceButton && strings.Contains(lay.name, "button bar") {
+		slot = len(lay.slots) - 1
+	}
+	for s := range lay.slots {
+		if slot >= 0 {
+			break
+		}
 		if len(elsIn(p, s)) == 0 {
 			slot = s
-			break
 		}
 	}
 	if slot < 0 {
