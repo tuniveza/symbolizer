@@ -218,8 +218,10 @@ func codexDir(id string) string { return filepath.Join(codexRoot(), id) }
 func codexFilePath(id string) string { return filepath.Join(codexDir(id), "codex.json") }
 
 // codexFileV is the codex file's version. 2: the old colours are moved to
-// the theme's (once; a colour chosen after that is kept).
-const codexFileV = 2
+// the theme's (once; a colour chosen after that is kept). 3: every text and
+// button is centred (once; the user asked, 17 Nov 2026 — J can still line
+// one up left or right after that).
+const codexFileV = 3
 
 func newCodexFile(title string) *codexFile {
 	return &codexFile{
@@ -255,6 +257,15 @@ func (cf *codexFile) tidy() {
 	}
 	if len(cf.Pages) == 0 {
 		cf.Pages = []*codexPage{{Layout: 1}}
+	}
+	if cf.V < 3 { // all words in the middle
+		for _, p := range cf.Pages {
+			for _, e := range p.Els {
+				if e != nil && (e.Kind == ceText || e.Kind == ceButton) {
+					e.Align = 0
+				}
+			}
+		}
 	}
 	top := 0
 	for i, p := range cf.Pages {
@@ -760,8 +771,7 @@ func (c *codexState) newEl(kind string, slot int) *codexEl {
 	c.cf.NextID++
 	switch kind {
 	case ceText:
-		e.Text = ""
-		e.Align = 1 // words line up on the left; buttons and symbols in the middle
+		e.Text = "" // in the middle, like everything in a codex (J lines it up left or right)
 	case ceButton:
 		e.Text = "Next"
 		e.Action = caNext

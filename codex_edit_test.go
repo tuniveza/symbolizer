@@ -56,8 +56,8 @@ func TestCodexNewThingsFillSlots(t *testing.T) {
 		if title.Size != 2 || max(body.Size, 1) != 1 {
 			t.Fatalf("%v: sizes %d, %d: the title should be big, the text normal", size, title.Size, body.Size)
 		}
-		if title.Align != 1 || body.Align != 1 {
-			t.Fatalf("%v: texts should line up left: %d %d", size, title.Align, body.Align)
+		if title.Align != 0 || body.Align != 0 {
+			t.Fatalf("%v: texts should be in the middle: %d %d", size, title.Align, body.Align)
 		}
 		if s := screenOf(m); !strings.Contains(s, "Body words") && size[0] > 100 {
 			t.Fatalf("%v: the text should show:\n%s", size, s)
@@ -462,4 +462,18 @@ func TestCodexNothingStuck(t *testing.T) {
 		t.Fatal("still open")
 	}
 	_ = screenOf(m)
+}
+
+// Codex files from before version 3 have every text and button centred once.
+func TestCodexOldTextCentred(t *testing.T) {
+	cf := &codexFile{V: 2, Pages: []*codexPage{{Els: []*codexEl{{ID: 1, Kind: ceText, Align: 1}, {ID: 2, Kind: ceButton, Align: 2}}}}}
+	cf.tidy()
+	if cf.Pages[0].Els[0].Align != 0 || cf.Pages[0].Els[1].Align != 0 || cf.V != codexFileV {
+		t.Fatalf("not centred: %+v", cf.Pages[0].Els)
+	}
+	cf.Pages[0].Els[0].Align = 1 // lined up left later: kept
+	cf.tidy()
+	if cf.Pages[0].Els[0].Align != 1 {
+		t.Fatal("a later choice must stay")
+	}
 }
