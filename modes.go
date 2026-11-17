@@ -139,6 +139,9 @@ func (m *Model) setMode(i int) tea.Cmd {
 	if m.mode == brickMode {
 		m.leaveBrick()
 	}
+	if m.mode == codexMode {
+		m.codexLeave() // words being written are kept and saved (codex.go)
+	}
 	m.mode = i
 	if i == brickMode {
 		m.say(modes[i].Icon() + "  Brick mode. Write plain English · Alt+R runs it · Alt+C checks again · Alt+P the brain's fixes · F1 help.")

@@ -30,6 +30,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -138,6 +139,7 @@ type codexPage struct {
 }
 
 type codexFile struct {
+	V        int          `json:"v,omitempty"` // the file's version (codexFileV): old files are brought up to date once
 	Title    string       `json:"title"`
 	Subtitle string       `json:"subtitle,omitempty"`
 	Color    string       `json:"color"`  // the cover
@@ -214,9 +216,13 @@ func codexDir(id string) string { return filepath.Join(codexRoot(), id) }
 
 func codexFilePath(id string) string { return filepath.Join(codexDir(id), "codex.json") }
 
+// codexFileV is the codex file's version. 2: the old colours are moved to
+// the theme's (once; a colour chosen after that is kept).
+const codexFileV = 2
+
 func newCodexFile(title string) *codexFile {
 	return &codexFile{
-		Title: title, Symbol: 3,
+		V: codexFileV, Title: title, Symbol: 3,
 		Pages: []*codexPage{{Layout: 1}}, NextID: 1,
 	}
 }
@@ -237,11 +243,13 @@ func loadCodex(id string) (*codexFile, error) {
 // tidy makes a file read from disk safe to use.
 func (cf *codexFile) tidy() {
 	// The first look's colours (cream paper, a red cover, blue buttons) are
-	// the theme's now: Emberistal (16 Nov 2026).
-	if cf.Color == "#7a2e1d" {
+	// the theme's now: Emberistal (16 Nov 2026). Only once, for files from
+	// before (version under 2): cream paper chosen later must stay.
+	old := cf.V < 2
+	if old && cf.Color == "#7a2e1d" {
 		cf.Color = ""
 	}
-	if cf.Paper == "#f4ead5" {
+	if old && cf.Paper == "#f4ead5" {
 		cf.Paper = ""
 	}
 	if len(cf.Pages) == 0 {
@@ -255,7 +263,7 @@ func (cf *codexFile) tidy() {
 		}
 		keep := p.Els[:0]
 		for _, e := range p.Els {
-			if e != nil && e.Kind == ceButton && e.Color == "#2c7fb8" {
+			if old && e != nil && e.Kind == ceButton && e.Color == "#2c7fb8" {
 				e.Color = ""
 			}
 			if e == nil {
@@ -281,6 +289,7 @@ func (cf *codexFile) tidy() {
 		cf.Symbol = ((cf.Symbol % n) + n) % n
 	}
 	cf.NextID = max(cf.NextID, top+1)
+	cf.V = max(cf.V, codexFileV)
 }
 
 func saveCodex(id string, cf *codexFile) error {
@@ -419,6 +428,12 @@ type codexState struct {
 	table              bool // the activation table is open
 	tableRow, tableCol int
 
+	added     int          // the thing Alt+N just added, while it is first written or drawn (0: none)
+	addedUndo int          // how long undo was just after adding it (nothing changed since: equal)
+	addedFrom int          // what was chosen before it was added
+	fresh     bool         // a new button's label: the first key typed replaces it
+	newPic    *codexNewPic // Alt+N, I: where the picture goes, once one is chosen
+
 	undo, redo []string // the codex as it was, as JSON
 	saved      string   // the codex as last saved, as JSON
 	xAt        time.Time
@@ -436,6 +451,11 @@ type codexState struct {
 	inner [4]int            // the page's writing area on the screen
 	slots map[int][][4]int  // the page's slots on the screen, by page
 	box   map[string][4]int // other click spots: "cover", "prev", "next"
+}
+
+// codexNewPic is where a new picture goes: it is only added once a picture is chosen.
+type codexNewPic struct {
+	slot, at, from int
 }
 
 const (
@@ -483,10 +503,11 @@ func (m *Model) codexOpen(id string, edit bool) bool {
 	c.page, c.sel, c.focus = -1, 0, 0
 	c.undo, c.redo = nil, nil
 	c.writing, c.drawing, c.table, c.placing = 0, false, false, false
+	c.added, c.fresh, c.newPic = 0, false, nil
 	c.turn = nil
 	m.codexShowPage(-1)
 	if edit {
-		m.say("Editing “" + cf.Title + "”. Enter writes the title · PgDn: the pages · E: read it · F1: all keys.")
+		m.say("Editing “" + cf.Title + "”. Enter writes the title · PgDn: the pages · E: read it · Esc: close · F1: all keys.")
 	} else {
 		m.say("“" + cf.Title + "”. → opens it · ← → turn pages · Tab · Enter: buttons · E: edit · Esc: close.")
 	}
@@ -497,10 +518,19 @@ func (m *Model) codexOpen(id string, edit bool) bool {
 // from there, else to the library.
 func (m *Model) codexClose() tea.Cmd {
 	c := m.cx()
-	m.codexSave()
+	m.codexLeave()
 	id, title := c.id, ""
 	if c.cf != nil {
 		title = c.cf.Title
+	}
+	// A codex made and left empty (no title, no subtitle, nothing on any
+	// page) is not kept, unless the Design board shows it.
+	dropped := c.cf != nil && codexEmpty(c.cf) && !c.fromDesign && !m.codexOnBoard(id)
+	if dropped {
+		if err := os.RemoveAll(codexDir(id)); err != nil {
+			dropped = false
+		}
+		codexPeekDrop(id)
 	}
 	c.cf, c.id = nil, ""
 	c.lib = codexList()
@@ -523,8 +553,43 @@ func (m *Model) codexClose() tea.Cmd {
 		m.say("Back on the board.")
 		return cmd
 	}
+	if dropped {
+		m.say("Closed. It was empty, so it was not kept. Alt+N makes a codex.")
+		return nil
+	}
 	m.say("Closed. Enter opens a codex · Alt+N makes one.")
 	return nil
+}
+
+// codexEmpty: no title, no subtitle and nothing on any page.
+func codexEmpty(cf *codexFile) bool {
+	if strings.TrimSpace(cf.Title) != "" || strings.TrimSpace(cf.Subtitle) != "" {
+		return false
+	}
+	for _, p := range cf.Pages {
+		if p != nil && len(p.Els) > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// codexLeave keeps everything as it is when the codex is left (closed,
+// another mode, sy quits): words being written are kept, a drawing ends,
+// and it is saved.
+func (m *Model) codexLeave() {
+	c := m.codex
+	if c == nil || c.cf == nil {
+		return
+	}
+	if c.writing != 0 {
+		m.codexEndWrite()
+	}
+	if c.drawing {
+		m.codexEndDraw()
+	}
+	c.placing, c.newPic = false, nil
+	m.codexSave()
 }
 
 func (m *Model) codexSave() {
@@ -551,7 +616,12 @@ func (m *Model) codexStep() {
 		return
 	}
 	b, _ := json.Marshal(c.cf)
-	c.undo = append(c.undo, string(b))
+	c.codexPushUndo(string(b))
+}
+
+// codexPushUndo notes was (the codex as JSON, before a change) for Ctrl+Z.
+func (c *codexState) codexPushUndo(was string) {
+	c.undo = append(c.undo, was)
 	if len(c.undo) > 200 {
 		c.undo = c.undo[1:]
 	}
@@ -587,6 +657,7 @@ func (m *Model) codexUndo(redo bool) {
 	if e := c.el(c.sel); c.drawing && (e == nil || e.Kind != ceDrawing) {
 		c.drawing, c.penDown = false, false // what was being drawn is gone
 	}
+	c.added, c.newPic = 0, nil // undo decides what is there now
 	m.codexSave()
 	m.say(map[bool]string{false: "Undone.", true: "Redone."}[redo])
 }
@@ -686,6 +757,7 @@ func (c *codexState) newEl(kind string, slot int) *codexEl {
 	switch kind {
 	case ceText:
 		e.Text = ""
+		e.Align = 1 // words line up on the left; buttons and symbols in the middle
 	case ceButton:
 		e.Text = "Next"
 		e.Action = caNext
@@ -743,6 +815,8 @@ func (m *Model) codexActivate(e *codexEl, depth int) {
 		case caNext, "":
 			if c.page+1 < len(c.cf.Pages) {
 				m.codexTurnTo(c.page + 1)
+			} else if c.edit {
+				m.say("The last page. Alt+P adds a page.")
 			} else {
 				m.say("The last page.")
 			}
