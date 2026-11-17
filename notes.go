@@ -238,7 +238,7 @@ func (m *Model) placeNotepad(n int) {
 		d = m.boardOf(room, ((r.Wall%r.walls())+r.walls())%r.walls())
 	}
 	wx, wy := d.world(m.width/2, m.boardH()/2)
-	x, y := int(wx), int(wy)
+	x, y := int(wx), max(int(wy), windowTop+windowH+2+notepadH/2) // under the town windows
 	if near != nil {
 		x, y = near.X+near.W+notepadW/2+3, near.Y+near.H/2
 	}
