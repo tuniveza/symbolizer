@@ -25,12 +25,12 @@ import (
 )
 
 const (
-	codexBandRows  = 6  // rows of options in the inspector band
-	codexBandH     = 8  // the band: a rule, the rows, a rule
+	codexBandRows  = 7  // rows of options in the inspector band
+	codexBandH     = 9  // the band: a rule, the rows, a rule
 	codexColMinW   = 28 // narrower columns than this: no band
 	codexColMaxW   = 40 // wider than this only spreads things out
 	codexBandMinW  = 3*codexColMinW + 4
-	codexBandMinBH = 24 // board rows needed for the band and a usable page
+	codexBandMinBH = 25 // board rows needed for the band and a usable page
 )
 
 // codexBandFits says whether the screen has room for the inspector band.
@@ -237,6 +237,7 @@ func (m *Model) codexInspector(cv *boardCanvas, w int, now time.Time) {
 	if c.page < 0 { // the cover
 		f.head("The cover")
 		f.line("↵", "title", codexName(c.cf.Title), cText)
+		f.line("F", "title font", map[bool]string{true: "big letters", false: codexFont("Aa Bb", c.cf.TitleFont) + "  " + codexFonts[c.cf.TitleFont%16]}[c.cf.TitleFont == 0], cText)
 		f.line("Tab", "subtitle", codexOr(c.cf.Subtitle, "—"), cText)
 		f.swatch("C", "colour", codexOr(c.cf.Color, codexThemeCover()), codexOr(c.cf.Color, "theme"))
 		sym := codexSymbols[(c.cf.Symbol%len(codexSymbols)+len(codexSymbols))%len(codexSymbols)]
@@ -246,6 +247,15 @@ func (m *Model) codexInspector(cv *boardCanvas, w int, now time.Time) {
 		f.head("Pages")
 		f.line("PgDn", "pages", plural(len(c.cf.Pages), "page"), cText)
 		f.line("O", "pages lie", map[bool]string{false: "wide ▭", true: "upright ▯"}[c.cf.Tall], cText)
+		pb := "none"
+		if c.cf.PageBorder > 0 {
+			pb = codexPageBorders[c.cf.PageBorder-1].name
+		}
+		f.line("B", "border", pb+" (all)", cAccent)
+		f.line("V", "opening", itoa(c.cf.coverTurn()+1)+"/16 "+codexTurns16[c.cf.coverTurn()], cAccent)
+		f.line("H", "header", codexOr(c.cf.Header, "—"), cText)
+		f.line("U", "footer", codexOr(c.cf.Footer, "—"), cText)
+		f.line("Alt+F", "hf font", codexFont("Aa Bb", c.cf.HFFont)+"  "+codexFonts[c.cf.HFFont%16], cText)
 		keys([][2]string{{"Alt+P", "add a page"}, {"E", "read it"}})
 		return
 	}
@@ -254,12 +264,12 @@ func (m *Model) codexInspector(cv *boardCanvas, w int, now time.Time) {
 	f.head("Page " + itoa(c.page+1) + " of " + itoa(len(c.cf.Pages)))
 	f.line("L", "layout", itoa(p.Layout+1)+"/16 "+codexLayouts[p.Layout].name, cText)
 	// The layout as a little map: the chosen thing's slot lit.
-	if mx, my, ok := f.next(3); ok {
+	if mx, my, ok := f.next(2); ok {
 		lit := -1
 		if e != nil {
 			lit = codexSlotOf(e, p.Layout)
 		}
-		mw, mh := cw-4, 3
+		mw, mh := cw-4, 2
 		paper := c.paper(p)
 		cvFill(cv, mx, my, mw, mh, paper)
 		for si, s := range codexSlotRects(p.Layout, mw-2, mh) {
@@ -278,12 +288,15 @@ func (m *Model) codexInspector(cv *boardCanvas, w int, now time.Time) {
 		}
 	}
 	f.swatch("W", "paper", c.paper(p), codexOr(p.Paper, "theme"))
+	f.line("Alt+B", "border", c.cf.pageBorderName(p), cAccent)
+	f.line("V", "turn", itoa(p.Turn+1)+"/16 "+codexTurns16[p.Turn%16], cAccent)
 	f.newCol()
+	pageKeys := [][2]string{{"H", "header"}, {"U", "footer"}, {"Alt+H", "hide h+f"}, {"Alt+V", "turn → all"}}
 	if e == nil {
 		f.head("Nothing chosen")
 		f.line("Alt+N", "add", "a thing here", cText)
 		f.line("←→↑↓", "choose", "a thing", cText)
-		keys([][2]string{{"Alt+N", "add"}, {"Alt+P", "page"}, {"E", "read"}})
+		keys(append([][2]string{{"Alt+N", "add"}, {"Alt+P", "page"}, {"E", "read"}}, pageKeys...))
 		return
 	}
 	f.head(codexKindIcons[e.Kind] + " " + strings.ToUpper(codexKindNames[e.Kind][:1]) + codexKindNames[e.Kind][1:])
@@ -299,6 +312,9 @@ func (m *Model) codexInspector(cv *boardCanvas, w int, now time.Time) {
 	case ceSymbol:
 		sym := codexSymbols[(e.Symbol%len(codexSymbols)+len(codexSymbols))%len(codexSymbols)]
 		f.line("S", "symbol", codexSymbolFrame(e.Symbol, now.Sub(c.pageAt).Seconds())+"  "+sym.Name, codexOr(e.Color, codexSymColor(e.Symbol)))
+	}
+	if e.Kind == ceText {
+		f.line("1 2 3", "heading", codexHeadNames[min(max(e.Head, 0), 3)]+map[bool]string{true: " · 0 body", false: ""}[e.Head > 0], cAccent)
 	}
 	if e.Kind == ceText || e.Kind == ceSymbol {
 		k := max(e.Size, 1)
@@ -316,6 +332,11 @@ func (m *Model) codexInspector(cv *boardCanvas, w int, now time.Time) {
 	plain := e.Kind == ceImage || e.Kind == ceDrawing // no colour for these (the keys say so)
 	if !plain || e.Border > 0 {
 		f.swatch("C", map[bool]string{false: "colour", true: "border colour"}[plain], codexOr(e.Color, def), codexOr(e.Color, "theme"))
+	}
+	if e.FillBy > 0 {
+		f.swatch("D M", "fill", codexFillColor(e, c.paper(p)), codexFills[e.FillBy%16]+" · "+codexOr(e.Fill, "theme"))
+	} else {
+		f.line("D M", "fill", "none", cText)
 	}
 	f.anim(e.Anim, e.ID, now)
 	if codexSlides(e) {
@@ -341,7 +362,7 @@ func (m *Model) codexInspector(cv *boardCanvas, w int, now time.Time) {
 	if do.value != "" {
 		f.line("", "  to", codexTableValue(c, e), cText)
 	}
-	keys([][2]string{{"Space", "try it"}, {"X X", "delete"}, {"Alt+N", "add"}, {"Alt+P", "page"}, {"E", "read"}})
+	keys(append([][2]string{{"Space", "try it"}, {"X X", "delete"}, {"Alt+N", "add"}, {"Alt+P", "page"}, {"E", "read"}}, pageKeys...))
 }
 
 // ---- Alt+N: the add menu ----------------------------------------------------------------------
@@ -349,7 +370,7 @@ func (m *Model) codexInspector(cv *boardCanvas, w int, now time.Time) {
 // codexAddMenu draws the five kinds to add, as tiles, over the page.
 func (m *Model) codexAddMenu(cv *boardCanvas, now time.Time) {
 	kinds := []struct{ key, kind, look string }{
-		{"T", ceText, "Aa"}, {"B", ceButton, "╭──╮"}, {"I", ceImage, "▨▨"}, {"S", ceSymbol, ""}, {"D", ceDrawing, "✎~"},
+		{"T", ceText, "Aa"}, {"H", "heading", "H₁━"}, {"B", ceButton, "╭──╮"}, {"I", ceImage, "▨▨"}, {"S", ceSymbol, ""}, {"D", ceDrawing, "✎~"},
 	}
 	tw, th := max(min((cv.Width()-5)/len(kinds)-1, 14), 8), 6 // narrower tiles on a small screen
 	w := len(kinds)*(tw+1) + 3
@@ -372,7 +393,7 @@ func (m *Model) codexAddMenu(cv *boardCanvas, now time.Time) {
 			look = codexSymbolFrame(3, float64(now.UnixMilli()%60000)/1000)
 		}
 		cvMiddle(cv, tx, ty+1, tw, look, cAccent, tile, uv.AttrBold)
-		cvMiddle(cv, tx, ty+3, tw, codexKindNames[k.kind], cText, tile, 0)
+		cvMiddle(cv, tx, ty+3, tw, codexOr(codexKindNames[k.kind], k.kind), cText, tile, 0)
 		kx := tx + (tw-3)/2
 		keyCap(cv, kx, ty+5, k.key, tile)
 	}

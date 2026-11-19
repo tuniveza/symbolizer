@@ -133,12 +133,18 @@ type codexEl struct {
 	Border int        `json:"border,omitempty"` // 0 none, else codexBorders[Border-1] (codex_frames.go)
 	Style  int        `json:"style,omitempty"`  // a button's look: codexButtonStyles
 	Whole  bool       `json:"whole,omitempty"`  // a picture: shown whole (else it fills its box, cut at the edges)
+	Head   int        `json:"head,omitempty"`   // a text: 0 body text, 1–3 a heading (codex_look.go)
+	Fill   string     `json:"fill,omitempty"`   // the fill's colour ("" the theme's)
+	FillBy int        `json:"fillBy,omitempty"` // the fill's look: 0 none, else codexFills (codex_look.go)
 }
 
 type codexPage struct {
 	Layout int        `json:"layout"`
 	Paper  string     `json:"paper,omitempty"` // "" the codex's paper
 	Els    []*codexEl `json:"els"`
+	Turn   int        `json:"turn,omitempty"`   // how the page comes in: codexTurns16 (codex_turns.go)
+	Border int        `json:"border,omitempty"` // 0 the codex's page border, 1…16 its own, -1 none
+	Plain  bool       `json:"plain,omitempty"`  // no header or footer on this page
 }
 
 type codexFile struct {
@@ -152,14 +158,28 @@ type codexFile struct {
 	Pages    []*codexPage `json:"pages"`
 	NextID   int          `json:"nextID"`
 	Room     int          `json:"room,omitempty"` // made in Codex mode: its own room on Design (-1: one is still to be made)
+
+	CoverTurn  int    `json:"coverTurn,omitempty"`  // how the cover opens: 0 the page turn, else codexTurns16[CoverTurn-1]
+	PageBorder int    `json:"pageBorder,omitempty"` // every page's border: 0 none, else codexPageBorders[PageBorder-1]
+	Header     string `json:"header,omitempty"`     // words at the top of every page ({page} {pages} {title})
+	Footer     string `json:"footer,omitempty"`     // words at the bottom of every page
+	TitleFont  int    `json:"titleFont,omitempty"`  // the cover title's font (0: big letters when they fit)
+	HFFont     int    `json:"hfFont,omitempty"`     // the header's and footer's font
 }
 
 // codexPalette: the colours C steps through (text, buttons, covers, symbols).
-// They are Emberistal's warm colours (the user asked, 16 Nov 2026). "" is
+// The first 16 are Emberistal's warm colours (the user asked, 16 Nov 2026); 16 more warm and 16 cool ones follow (19 Nov). "" is
 // the theme's own colour for that thing (codexTheme…).
 var codexPalette = []string{
 	"#ff6600", "#ff3704", "#ff4518", "#ff8a1a", "#ffb400", "#ffc14d", "#ffa66b", "#ffb870",
 	"#fff0d6", "#d84017", "#d74a00", "#983818", "#8e3c1a", "#5a2214", "#2a1610", "#161616",
+	// More shades (19 Nov 2026, the user asked for more colour variations):
+	// still warm, from pale sand and rose to deep wine and plum.
+	"#ffe08a", "#ffd6a5", "#f6c28b", "#e8a87c", "#ff8f8f", "#ff6b6b", "#e85d75", "#c9184a",
+	"#a4133c", "#800f2f", "#9d4edd", "#6a3d9a", "#b08968", "#7f5539", "#ddb892", "#ede0d4",
+	// Cool colours (19 Nov 2026, the user asked): sky to navy, teal, greens, lilac and slate.
+	"#bde0fe", "#7cc6fe", "#3a86ff", "#1d4ed8", "#1e3a8a", "#0b1d3a", "#a5f3fc", "#22d3ee",
+	"#0e9f9a", "#115e59", "#b7e4c7", "#52b788", "#2d6a4f", "#c8b6ff", "#7b8cde", "#64748b",
 }
 
 // codexPapers: the paper colours W steps through.
@@ -291,6 +311,8 @@ func (cf *codexFile) tidy() {
 			e.Anim = ((e.Anim % 16) + 16) % 16
 			e.Align = ((e.Align % 3) + 3) % 3
 			e.Size = max(0, min(e.Size, codexSizes))
+			e.Head = max(0, min(e.Head, 3))
+			e.FillBy = ((e.FillBy % len(codexFills)) + len(codexFills)) % len(codexFills)
 			if n := len(codexSymbols); n > 0 {
 				e.Symbol = ((e.Symbol % n) + n) % n
 			}
@@ -299,7 +321,13 @@ func (cf *codexFile) tidy() {
 		}
 		p.Els = keep
 		p.Layout = ((p.Layout % len(codexLayouts)) + len(codexLayouts)) % len(codexLayouts)
+		p.Turn = ((p.Turn % 16) + 16) % 16
+		p.Border = max(-1, min(p.Border, len(codexPageBorders)))
 	}
+	cf.CoverTurn = max(0, min(cf.CoverTurn, 16))
+	cf.PageBorder = max(0, min(cf.PageBorder, len(codexPageBorders)))
+	cf.TitleFont = ((cf.TitleFont % 16) + 16) % 16
+	cf.HFFont = ((cf.HFFont % 16) + 16) % 16
 	if n := len(codexSymbols); n > 0 {
 		cf.Symbol = ((cf.Symbol % n) + n) % n
 	}
@@ -466,6 +494,9 @@ type codexState struct {
 	inner [4]int            // the page's writing area on the screen
 	slots map[int][][4]int  // the page's slots on the screen, by page
 	box   map[string][4]int // other click spots: "cover", "prev", "next"
+
+	pageRect [4]int     // the page (or cover) on the screen, as last drawn
+	pick     *codexPick // the font list (F): open while choosing (codex_look.go)
 }
 
 // codexNewPic is where a new picture goes: it is only added once a picture is chosen.
@@ -478,12 +509,16 @@ const (
 	codexWriteTitle
 	codexWriteSubtitle
 	codexWriteAlt
+	codexWriteHeader
+	codexWriteFooter
 )
 
 type codexTurn struct {
 	from  *boardCanvas // the view before
 	at    time.Time
 	ahead bool
+	anim  int    // which of the 16 turns (codex_turns.go)
+	rect  [4]int // the page on the screen: the turn happens there
 }
 
 func (m *Model) cx() *codexState {
@@ -765,7 +800,9 @@ func (m *Model) codexTurnTo(i int) {
 		m.codexShowPage(i)
 		return
 	}
-	c.turn = &codexTurn{from: m.codexCanvas(), at: time.Now(), ahead: i > c.page}
+	from, rect := m.codexCanvas(), c.pageRect
+	anim := c.cf.turnBetween(c.page, i)
+	c.turn = &codexTurn{from: from, at: time.Now(), ahead: i > c.page, anim: anim, rect: rect}
 	m.codexShowPage(i)
 }
 
@@ -1001,13 +1038,17 @@ func (m *Model) codexTickCmd() tea.Cmd {
 		return nil
 	}
 	c.tick = true
-	return tea.Tick(codexFrame, func(time.Time) tea.Msg { return codexTickMsg{} })
+	frame := codexFrame
+	if c.turn != nil {
+		frame = codexTurnFrame // a turn: smoother
+	}
+	return tea.Tick(frame, func(time.Time) tea.Msg { return codexTickMsg{} })
 }
 
 func (m *Model) codexTicked() tea.Cmd {
 	c := m.cx()
 	c.tick = false
-	if c.turn != nil && time.Since(c.turn.at) > codexTurnFor {
+	if c.turn != nil && time.Since(c.turn.at) > codexTurnDur(c.turn.anim) {
 		c.turn = nil
 	}
 	return m.codexTickCmd()

@@ -410,12 +410,12 @@ func TestCodexPageTurn(t *testing.T) {
 	if c.turn == nil || c.page != 0 {
 		t.Fatal("the page should be turning")
 	}
-	c.turn.at = time.Now().Add(-codexTurnFor / 2)
+	c.turn.at = time.Now().Add(-codexTurnDur(c.turn.anim) / 2)
 	half := screenOf(m)
 	if !strings.Contains(half, "═") { // the cover's frame, half covered
 		t.Fatalf("half way: the cover should still show in part:\n%s", half)
 	}
-	c.turn.at = time.Now().Add(-2 * codexTurnFor)
+	c.turn.at = time.Now().Add(-2 * codexTurnDur(c.turn.anim))
 	m.codexTicked()
 	if c.turn != nil || !strings.Contains(screenOf(m), "Inside words") {
 		t.Fatal("after the turn: the new page")

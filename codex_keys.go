@@ -74,6 +74,10 @@ func (m *Model) codexKeyIn(k tea.Key) tea.Cmd {
 	if c.table {
 		return m.codexTableKey(name)
 	}
+	if c.pick != nil {
+		m.codexPickKey(name)
+		return nil
+	}
 	if c.placing {
 		c.placing = false
 		return m.codexPlace(name)
@@ -306,7 +310,7 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 			m.codexShowPage(0)
 		}
 		c.placing = true
-		m.say("Add: T text · B button · I picture · S symbol · D drawing (any other key: nothing).")
+		m.say("Add: T text · H heading · B button · I picture · S symbol · D drawing (any other key: nothing).")
 		return nil
 	case "alt+p":
 		m.codexStep()
@@ -346,11 +350,83 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 		m.say("Activation table: ↑↓ things · ←→ change · Tab: next column · Enter: write words · Esc: close.")
 		return nil
 	}
+	switch name {
+	case "h", "H", "shift+h", "u", "U", "shift+u":
+		if cover {
+			m.codexShowPage(0) // the header and footer show on the pages
+		}
+		if strings.HasSuffix(strings.ToLower(name), "h") {
+			m.codexStartWrite(codexWriteHeader)
+			m.say("The header, on every page · {page} {pages} {title} fill themselves in · Enter: done.")
+		} else {
+			m.codexStartWrite(codexWriteFooter)
+			m.say("The footer, on every page · {page} {pages} {title} fill themselves in · Enter: done.")
+		}
+		return nil
+	case "alt+f":
+		m.codexPickFont(pickHF)
+		return nil
+	case "v", "V", "shift+v":
+		m.codexStep()
+		fwd := name == "v"
+		if cover {
+			cur := c.cf.coverTurn()
+			next := codexCycle(cur, 16, fwd)
+			c.cf.CoverTurn = next + 1
+			m.codexSave()
+			m.codexCoverShow(next)
+			m.say("The cover opens with: " + itoa(next+1) + "/16 " + codexTurns16[next] + ". V next · Shift+V back.")
+			return nil
+		}
+		pg := c.pageOf()
+		pg.Turn = codexCycle(pg.Turn, 16, fwd)
+		m.codexSave()
+		m.codexTurnShow(pg.Turn)
+		m.say("Page " + itoa(c.page+1) + " comes in with: " + itoa(pg.Turn+1) + "/16 " + codexTurns16[pg.Turn] + ". V next · Alt+V: every page.")
+		return nil
+	case "alt+v":
+		if cover {
+			m.say("Alt+V gives every page this page's turn. On the cover, V chooses how it opens.")
+			return nil
+		}
+		m.codexStep()
+		t := c.pageOf().Turn
+		for _, pg := range c.cf.Pages {
+			pg.Turn = t
+		}
+		m.codexSave()
+		m.say("Every page comes in with: " + codexTurns16[t] + ".")
+		return nil
+	}
 	if cover {
 		return m.codexCoverKey(name)
 	}
 	p := c.pageOf()
 	switch name {
+	case "alt+b", "alt+B", "alt+shift+b":
+		m.codexStep()
+		// Its own borders 1 … 16, then none on this page, then as every page.
+		order := []int{0}
+		for i := 1; i <= len(codexPageBorders); i++ {
+			order = append(order, i)
+		}
+		order = append(order, -1)
+		at := 0
+		for i, v := range order {
+			if v == p.Border {
+				at = i
+			}
+		}
+		p.Border = order[codexCycle(at, len(order), name == "alt+b")]
+		m.codexSave()
+		m.say("Page border: " + c.cf.pageBorderName(p) + ". Alt+B next · Alt+Shift+B back · B on the cover: every page.")
+		return nil
+	case "alt+h":
+		m.codexStep()
+		p.Plain = !p.Plain
+		m.codexSave()
+		m.say(map[bool]string{true: "No header or footer on this page.", false: "This page shows the header and footer."}[p.Plain])
+		return nil
 	case "left", "right", "up", "down":
 		m.codexChoose(name)
 		return nil
@@ -461,10 +537,37 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 			m.say("Fonts are for texts and buttons.")
 			return nil
 		}
+		if name == "f" {
+			m.codexPickFont(pickThing)
+			return nil
+		}
 		m.codexStep()
-		e.Font = codexCycle(e.Font, 16, name == "f")
+		e.Font = codexCycle(e.Font, 16, false)
 		m.codexSave()
-		m.say("Font: " + codexFonts[e.Font] + ".")
+		m.say("Font: " + codexFonts[e.Font] + ". F: the list of fonts.")
+	case "1", "2", "3", "0":
+		if e.Kind != ceText {
+			m.say("1 2 3 make a text a heading (0 body text).")
+			return nil
+		}
+		m.codexStep()
+		e.Head = int(name[0] - '0')
+		e.Size = codexHeadSize(e.Head)
+		m.codexSave()
+		m.say(strings.ToUpper(codexHeadNames[e.Head][:1]) + codexHeadNames[e.Head][1:] + ". 1 2 3 headings · 0 body text · + − size.")
+	case "d", "D", "shift+d":
+		m.codexStep()
+		e.FillBy = codexCycle(e.FillBy, len(codexFills), name == "d")
+		m.codexSave()
+		m.say("Fill " + itoa(e.FillBy) + " of " + itoa(len(codexFills)-1) + ": " + codexFills[e.FillBy] + ". D next · M fill colour.")
+	case "m", "M", "shift+m":
+		m.codexStep()
+		if e.FillBy == 0 {
+			e.FillBy = 1 // a colour wants a fill to show in
+		}
+		e.Fill = codexNext(codexPalette, e.Fill, name == "m")
+		m.codexSave()
+		m.say("Fill colour " + codexOr(e.Fill, "theme") + " · " + codexFills[e.FillBy] + ". M next · D fill look.")
 	case "c", "C", "shift+c":
 		if (e.Kind == ceImage || e.Kind == ceDrawing) && e.Border == 0 {
 			m.say("Colour is for texts, buttons, symbols and borders (B gives this one a border). A drawing's colours are its ink (Enter draws).")
@@ -572,8 +675,19 @@ func (m *Model) codexCoverKey(name string) tea.Cmd {
 		c.cf.Paper = codexNext(codexPapers, c.cf.Paper, name == "w")
 		m.codexSave()
 		m.say("The pages' paper changed.")
+	case "f", "F", "shift+f":
+		m.codexPickFont(pickTitle)
+	case "b", "B", "shift+b":
+		m.codexStep()
+		c.cf.PageBorder = codexCycle(c.cf.PageBorder, len(codexPageBorders)+1, name == "b")
+		m.codexSave()
+		what := "none"
+		if c.cf.PageBorder > 0 {
+			what = itoa(c.cf.PageBorder) + "/16 " + codexPageBorders[c.cf.PageBorder-1].name
+		}
+		m.say("Every page's border: " + what + ". (Alt+B on a page gives just that page its own.)")
 	default:
-		m.say("The cover: Enter title · Tab subtitle · C colour · S symbol · W paper · PgDn: the pages.")
+		m.say("The cover: Enter title · Tab subtitle · F title font · C colour · S symbol · W paper · B page border · V opening · H U header footer.")
 	}
 	return nil
 }
@@ -701,10 +815,11 @@ func (m *Model) codexDeleteEl(e *codexEl) {
 // codexPlace adds a thing of the kind the key after Alt+N says.
 func (m *Model) codexPlace(name string) tea.Cmd {
 	c := m.cx()
-	kind := map[string]string{"t": ceText, "b": ceButton, "i": ceImage, "s": ceSymbol, "d": ceDrawing}[strings.ToLower(strings.TrimPrefix(name, "shift+"))]
+	key := strings.ToLower(strings.TrimPrefix(name, "shift+"))
+	kind := map[string]string{"t": ceText, "h": ceText, "b": ceButton, "i": ceImage, "s": ceSymbol, "d": ceDrawing}[key]
 	p := c.pageOf()
 	if kind == "" || p == nil {
-		m.say("Nothing added. Alt+N, then T text · B button · I picture · S symbol · D drawing.")
+		m.say("Nothing added. Alt+N, then T text · H heading · B button · I picture · S symbol · D drawing.")
 		return nil
 	}
 	// The first empty slot; all full: after the chosen thing, in its slot.
@@ -746,6 +861,9 @@ func (m *Model) codexPlace(name string) tea.Cmd {
 	}
 	if kind == ceText && slot == 0 && codexTitleSlot[p.Layout] {
 		e.Size = 2 // a title
+	}
+	if key == "h" {
+		e.Head, e.Size = 1, codexHeadSize(1)
 	}
 	p.Els = append(p.Els[:at], append([]*codexEl{e}, p.Els[at:]...)...)
 	c.added, c.addedUndo, c.addedFrom = 0, len(c.undo), c.sel
@@ -892,15 +1010,15 @@ func codexElName(e *codexEl) string {
 func codexElHint(e *codexEl) string {
 	switch e.Kind {
 	case ceText:
-		return "Enter write · F font · C colour · A animation · + − size"
+		return "Enter write · F font · 1 2 3 heading · C colour · D M fill · A animation · + − size"
 	case ceButton:
-		return "Enter label · K action · G aim · C colour"
+		return "Enter label · K action · G aim · F font · C colour · D M fill"
 	case ceImage:
-		return "Enter picture · A animation"
+		return "Enter picture · D M fill · A animation"
 	case ceSymbol:
-		return "S symbol · + − size · C colour · A animation"
+		return "S symbol · + − size · C colour · D M fill · A animation"
 	case ceDrawing:
-		return "Enter draw · A animation"
+		return "Enter draw · D M fill · A animation"
 	}
 	return ""
 }
@@ -923,6 +1041,10 @@ func (m *Model) codexStartWrite(what int) {
 		if e := c.el(c.sel); e != nil {
 			c.words = []rune(e.On.Alt)
 		}
+	case codexWriteHeader:
+		c.words = []rune(c.cf.Header)
+	case codexWriteFooter:
+		c.words = []rune(c.cf.Footer)
 	}
 	c.cur = len(c.words)
 	if what == codexWriteEl || what == codexWriteAlt {
@@ -1075,6 +1197,10 @@ func (m *Model) codexEndWrite() {
 		c.cf.Title = strings.TrimSpace(words)
 	case codexWriteSubtitle:
 		c.cf.Subtitle = strings.TrimSpace(words)
+	case codexWriteHeader:
+		c.cf.Header = strings.TrimSpace(strings.ReplaceAll(words, "\n", " "))
+	case codexWriteFooter:
+		c.cf.Footer = strings.TrimSpace(strings.ReplaceAll(words, "\n", " "))
 	case codexWriteEl:
 		if e := c.el(c.sel); e != nil {
 			e.Text = strings.TrimRight(words, " \n")
@@ -1754,12 +1880,14 @@ func (m *Model) codexStatus() string {
 		hint = "Drawing · arrows brush · Space pen " + map[bool]string{true: "up", false: "down"}[c.penDown] + " · 1–9 0 colour · R rubber · B size · Esc done"
 	case c.table:
 		hint = "Activation table · ↑↓ · ←→ change · Tab column · Esc close"
+	case c.pick != nil:
+		hint = "Fonts · ↑↓ choose (it shows at once) · Enter keep · Esc back"
 	case c.placing:
-		hint = "Add: T text · B button · I picture · S symbol · D drawing"
+		hint = "Add: T text · H heading · B button · I picture · S symbol · D drawing"
 	case c.edit && c.page < 0:
-		hint = "Cover · Enter title · Tab subtitle · C colour · S symbol · W paper · PgDn pages · E read · Esc close"
+		hint = "Cover · Enter title · Tab subtitle · F font · C colour · S symbol · W paper · B page border · V opening · H U header footer · E read"
 	case c.edit:
-		hint = "Alt+N add · arrows choose · Enter write · L layout · F C A + − font colour anim size · B border · Alt+arrows move · T table · Alt+P page · E read · Esc close"
+		hint = "Alt+N add · Enter write · F font · 1 2 3 heading · C colour · D M fill · A anim · B border · Alt+B page border · V turn · H U header footer · L layout · E read"
 	case c.page < 0:
 		hint = "→ or Enter: open · E edit · Esc close"
 	default:

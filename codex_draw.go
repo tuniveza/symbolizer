@@ -180,38 +180,18 @@ func (m *Model) codexRows(sb *strings.Builder) {
 		t := time.Since(c.pageAt).Seconds()
 		cvPaste(cv, codexCoverW(c.cf, r[2], r[3], t, false, c.writing, c.words, c.cur), r[0], r[1])
 	}
-	if c.turn != nil {
-		if p := float64(time.Since(c.turn.at)) / float64(codexTurnFor); p < 1 && c.turn.from != nil &&
-			c.turn.from.Width() == cv.Width() && c.turn.from.Height() == cv.Height() {
-			codexTurnBlend(cv, c.turn.from, p, c.turn.ahead)
+	if t := c.turn; t != nil {
+		if p := float64(time.Since(t.at)) / float64(codexTurnDur(t.anim)); p < 1 && t.from != nil &&
+			t.from.Width() == cv.Width() && t.from.Height() == cv.Height() {
+			r := t.rect
+			if r[2] <= 0 || r != c.pageRect { // the page moved (the screen changed size): the whole view
+				r = [4]int{0, 0, cv.Width(), cv.Height()}
+			}
+			codexTurnApply(cv, t.from, t.anim, p, t.ahead, r)
+			codexTurnFix(cv, [4]int{0, r[1], cv.Width(), r[3]})
 		}
 	}
 	cv.renderTo(sb)
-}
-
-// codexTurnBlend lays the page before over the new one, uncovering it from
-// the right (ahead) or the left, with a shadow at the edge.
-func codexTurnBlend(cv, from *boardCanvas, p float64, ahead bool) {
-	e := p * p * (3 - 2*p) // starts and ends gently
-	w := cv.Width()
-	cut := int(float64(w) * (1 - e))
-	if !ahead {
-		cut = int(float64(w) * e)
-	}
-	for y := 0; y < cv.Height(); y++ {
-		for x := 0; x < w; x++ {
-			old := ahead && x < cut || !ahead && x >= cut
-			if old {
-				cv.Lines[y][x] = from.Lines[y][x]
-				continue
-			}
-			if d := abs(x - cut); d < 3 { // the edge's shadow
-				cell := cv.Lines[y][x]
-				cell.Style.Bg = rgbaOf(mixHex(colorHex(cell.Style.Bg, cBG), "#000000", 0.35-0.1*float64(d)))
-				cv.Lines[y][x] = cell
-			}
-		}
-	}
 }
 
 // codexCanvas draws Codex mode: the library, or the open codex.
@@ -232,6 +212,7 @@ func (m *Model) codexCanvas() *boardCanvas {
 	room := m.codexRoom() // kept reading too, so the page keeps its size
 	pw, ph := codexPageSize(w, h-room, c.cf.Tall)
 	px, py := (w-pw)/2, top+(h-top-ph)/2
+	c.pageRect = [4]int{px, py, pw, ph}
 	// The page shadow.
 	cvFill(cv, px+1, py+1, pw, ph, mixHex(desk, "#000000", 0.4))
 	if c.page < 0 {
@@ -259,6 +240,9 @@ func (m *Model) codexCanvas() *boardCanvas {
 	}
 	if c.table {
 		m.codexTableDraw(cv)
+	}
+	if c.pick != nil {
+		m.codexPickDraw(cv)
 	}
 	return cv
 }
@@ -308,32 +292,38 @@ func codexCoverW(cf *codexFile, w, h int, t float64, chosen bool, what int, word
 		cvText(cv, 0, 0, codexClip("▥"+title, w), gold, col, uv.AttrBold)
 		return cv
 	}
-	// Leather: the colour with a faint grain.
+	// The front of the book (the user asked, 19 Nov 2026: a front, not a
+	// side): leather with a faint grain, the board's bevel catching the light
+	// at the top and left and in shadow at the bottom and right, gilt corner
+	// pieces, and a double gilt frame with ornaments.
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			g := float64(fxHash(x, y, 7)%100) / 100
-			cvSet(cv, x, y, " ", col, mixHex(col, "#000000", 0.04+0.06*g), 0)
+			bg := mixHex(col, "#000000", 0.04+0.06*g)
+			switch {
+			case y == 0 || x == 0:
+				bg = mixHex(col, "#ffffff", 0.10)
+			case y == h-1 || x == w-1:
+				bg = mixHex(col, "#000000", 0.30)
+			}
+			cvSet(cv, x, y, " ", col, bg, 0)
 		}
 	}
-	// The spine, with gilt bands.
-	spine := mixHex(col, "#000000", 0.35)
-	for y := 0; y < h; y++ {
-		for x := 0; x < 3; x++ {
-			cvSet(cv, x, y, " ", spine, spine, 0)
-		}
-		cvSet(cv, 3, y, "▏", mixHex(spine, "#000000", 0.4), cvBG(cv, 3, y, col), 0)
-	}
-	for _, y := range []int{1, h - 2} {
-		for x := 0; x < 3; x++ {
-			cvSet(cv, x, y, "═", gold, spine, 0)
-		}
+	for _, q := range []struct {
+		x, y int
+		g    string
+	}{{0, 0, "◤"}, {w - 1, 0, "◥"}, {0, h - 1, "◣"}, {w - 1, h - 1, "◢"}} {
+		cvSet(cv, q.x, q.y, q.g, mixHex(gold, col, 0.1), cvBG(cv, q.x, q.y, col), 0)
 	}
 	// The gilt frame.
 	frame := mixHex(gold, col, 0.15)
 	if chosen {
 		frame = cAccent
 	}
-	x0, y0, x1, y1 := 5, 1, w-3, h-2
+	x0, y0, x1, y1 := 3, 1, w-4, h-2
+	if w < 20 {
+		x0, x1 = 2, w-3
+	}
 	if x1-x0 >= 4 && y1-y0 >= 2 {
 		for x := x0 + 1; x < x1; x++ {
 			cvSet(cv, x, y0, "═", frame, cvBG(cv, x, y0, col), 0)
@@ -345,6 +335,30 @@ func codexCoverW(cf *codexFile, w, h int, t float64, chosen bool, what int, word
 		}
 		for _, p := range [][2]int{{x0, y0}, {x1, y0}, {x0, y1}, {x1, y1}} {
 			cvSet(cv, p[0], p[1], "◆", frame, cvBG(cv, p[0], p[1], col), 0)
+		}
+		if x1-x0 >= 12 {
+			mid := (x0 + x1) / 2
+			cvSet(cv, mid, y0, "❖", frame, cvBG(cv, mid, y0, col), 0)
+		}
+		// A thin inner frame, on a cover big enough for it.
+		if x1-x0 >= 26 && y1-y0 >= 12 {
+			thin := mixHex(frame, col, 0.45)
+			for x := x0 + 3; x < x1-2; x++ {
+				cvSet(cv, x, y0+1, "─", thin, cvBG(cv, x, y0+1, col), 0)
+				cvSet(cv, x, y1-1, "─", thin, cvBG(cv, x, y1-1, col), 0)
+			}
+			for y := y0 + 2; y < y1-1; y++ {
+				cvSet(cv, x0+2, y, "│", thin, cvBG(cv, x0+2, y, col), 0)
+				cvSet(cv, x1-2, y, "│", thin, cvBG(cv, x1-2, y, col), 0)
+			}
+			for _, p := range []struct {
+				x, y int
+				g    string
+			}{{x0 + 2, y0 + 1, "╭"}, {x1 - 2, y0 + 1, "╮"}, {x0 + 2, y1 - 1, "╰"}, {x1 - 2, y1 - 1, "╯"}} {
+				cvSet(cv, p.x, p.y, p.g, thin, cvBG(cv, p.x, p.y, col), 0)
+			}
+			y0, y1 = y0+1, y1-1 // the words stay inside it
+			x0, x1 = x0+2, x1-2
 		}
 	}
 	iw := x1 - x0 - 3 // room inside the frame
@@ -366,13 +380,17 @@ func codexCoverW(cf *codexFile, w, h int, t float64, chosen bool, what int, word
 		titleWords, titleCur = words, cur
 	}
 	tsize, tmax := 1, 0
-	if h >= 13 {
+	tfont := (cf.TitleFont%16 + 16) % 16
+	if what == codexWriteTitle {
+		tfont = codexWriteFont(tfont)
+	}
+	if h >= 13 && tfont == 0 { // big letters: only plain (another font shows in normal letters)
 		tsize, tmax = 2, 3
 		if h >= 22 {
 			tmax = 6
 		}
 	}
-	tl := codexLay(titleWords, 0, tsize, iw, iw, tmax)
+	tl := codexLay(titleWords, tfont, tsize, iw, iw, tmax)
 	if tl.size == 1 {
 		tl.lines = codexLinesAt(tl.lines, titleCur, 2, iw)
 	}
@@ -405,7 +423,7 @@ func codexCoverW(cf *codexFile, w, h int, t float64, chosen bool, what int, word
 	if len(sym) > 0 {
 		y++
 	}
-	y += codexDrawLines(cv, ix, y, iw, tl.lines, tl.size, 0, 0, gold, uv.AttrBold, titleCur, gold)
+	y += codexDrawLines(cv, ix, y, iw, tl.lines, tl.size, tfont, 0, gold, uv.AttrBold, titleCur, gold)
 	if subRows > 0 {
 		y++
 		subCol := mixHex(gold, col, 0.35)
@@ -519,22 +537,39 @@ func (m *Model) codexPage(cv *boardCanvas, p *codexPage, px, py, pw, ph int, now
 	for y := py; y < py+ph; y++ {
 		cvSet(cv, px, y, "▏", mixHex(paper, ink, 0.18), paper, 0)
 	}
-	// An ember rule along the top and bottom edges, with gilt corners.
+	// An ember rule along the top and bottom edges, with gilt corners, or
+	// the page's border (Alt+B; B on the cover for every page).
 	rule := mixHex(paper, cEmber, 0.3)
-	for x := px + 1; x < px+pw-1; x++ {
-		cvSet(cv, x, py, "─", rule, paper, 0)
-		cvSet(cv, x, py+ph-1, "─", rule, paper, 0)
-	}
 	// A thin edge down the outer side too, so the page's shape reads on the desk.
 	for y := py + 1; y < py+ph-1; y++ {
 		cvSet(cv, px+pw-1, y, "▕", rule, paper, 0)
 	}
-	for _, q := range [][2]int{{px, py}, {px + pw - 1, py}, {px, py + ph - 1}, {px + pw - 1, py + ph - 1}} {
-		cvSet(cv, q[0], q[1], "◆", mixHex(paper, cAccent, 0.6), paper, 0)
+	if f, ok := c.cf.pageBorder(p); ok {
+		codexDrawPageBorder(cv, f, px+1, py, px+pw-2, py+ph-1, paper)
+	} else {
+		for x := px + 1; x < px+pw-1; x++ {
+			cvSet(cv, x, py, "─", rule, paper, 0)
+			cvSet(cv, x, py+ph-1, "─", rule, paper, 0)
+		}
+		for _, q := range [][2]int{{px, py}, {px + pw - 1, py}, {px, py + ph - 1}, {px + pw - 1, py + ph - 1}} {
+			cvSet(cv, q[0], q[1], "◆", mixHex(paper, cAccent, 0.6), paper, 0)
+		}
 	}
-	num := " " + itoa(c.page+1) + " "
-	cvMiddle(cv, px, py+ph-1, pw, num, mixHex(paper, ink, 0.6), paper, 0)
 	ix, iy, iw, ih := codexInner(px, py, pw, ph)
+	// The header and footer (H, U): a row each, inside the border.
+	if c.hasHeader(p) && ih > 4 {
+		m.codexHF(cv, codexWriteHeader, ix, py+1, iw, paper, ink)
+		iy, ih = iy+1, ih-1
+	}
+	foot := c.hasFooter(p) && ih > 4
+	if foot {
+		m.codexHF(cv, codexWriteFooter, ix, py+ph-2, iw, paper, ink)
+		ih--
+	}
+	if !foot || !strings.Contains(c.cf.Footer, "{page}") { // the footer shows the number: once is enough
+		num := " " + itoa(c.page+1) + " "
+		cvMiddle(cv, px, py+ph-1, pw, num, mixHex(paper, ink, 0.6), paper, 0)
+	}
 	c.inner = [4]int{ix, iy, iw, ih}
 	slots := codexSlotRects(p.Layout, iw, ih)
 	card := (p.Layout%16+16)%16 == 15 // "a card in the middle"
@@ -691,6 +726,19 @@ func (m *Model) codexSlot(cv *boardCanvas, els []*codexEl, x, y, w, h int, paper
 			m.codexDrawBorder(cv, f, box, col, paper, looks[i])
 			c.rects[e.ID] = box
 		}
+		if r, ok := c.rects[e.ID]; ok && !looks[i].hidden {
+			if _, bordered := codexBorderOf(e); bordered && pt > 0 { // inside the border
+				r = [4]int{r[0] + 1, r[1] + 1, r[2] - 2, r[3] - 2}
+				if e.Kind == ceText || e.Kind == ceSymbol {
+					r[0]++
+					r[2] -= 2
+				}
+			}
+			if e.Kind == ceImage || e.Kind == ceDrawing { // a picture: its whole place
+				r = [4]int{x + pl, yy + pt, w - pl - pr, eh - pt - pb}
+			}
+			codexFillApply(cv, e, r, paper, looks[i].ghost)
+		}
 		yy += heights[i] + gap
 	}
 	// Editing: say so when not everything fits.
@@ -741,8 +789,12 @@ func (c *codexState) elHeight(e *codexEl, l codexLook, w, maxH int, now time.Tim
 	if c.writingIn(e) {
 		return max(codexLay(c.words, codexWriteFont(l.font), l.size, w, min(w, codexReadW), maxH).rows(), 1)
 	}
-	rows, _, _ := codexTextRows(l, w, maxH)
-	return max(len(rows), 1)
+	head := 0
+	if e.Head > 0 && strings.TrimSpace(l.text) != "" {
+		head = 1 // the line under a heading
+	}
+	rows, _, _ := codexTextRows(l, w, maxH-head)
+	return max(len(rows), 1) + head
 }
 
 // codexTextRows are a text's rows as they show at width w (and at most maxH
@@ -1040,14 +1092,26 @@ func (m *Model) codexEl(cv *boardCanvas, e *codexEl, l codexLook, x, y, w, h int
 				minX, maxX = min(minX, ox), max(maxX, ox+rw)
 			}
 			cx := ox
+			attrs := uint8(0)
+			if e.Head > 0 {
+				attrs = uv.AttrBold
+			}
 			for _, ch := range r {
 				g := string(ch)
-				put(cx, ry, g, fg, "", 0, w, h)
+				put(cx, ry, g, fg, "", attrs, w, h)
 				cx += max(codexWidth(g), 1)
 			}
 		}
+		n := min(len(rows), h)
+		if e.Head > 0 && maxX > minX && len(rows) < h { // a heading: a line under it
+			rule := codexHeadRule(e.Head)
+			for rx := minX; rx < maxX; rx++ {
+				put(rx, len(rows), rule, mixHex(fg, paper, 0.35), "", 0, w, h)
+			}
+			n++
+		}
 		if maxX > minX { // its box: where its words are
-			c.rects[e.ID] = [4]int{x + minX, y, maxX - minX, min(len(rows), h)}
+			c.rects[e.ID] = [4]int{x + minX, y, maxX - minX, n}
 		}
 	case ceButton:
 		label := codexFont(l.text, l.font)
