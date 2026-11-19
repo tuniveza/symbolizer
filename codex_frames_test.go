@@ -100,7 +100,7 @@ func TestCodexButtonLooks(t *testing.T) {
 	}
 }
 
-// A picture fills its box by default; − shows it whole, + fills again.
+// A picture fills its box by default; Z shows it whole, Z again fills.
 func TestCodexPictureFills(t *testing.T) {
 	m := codexTest(t)
 	c := framesCodex(t, m)
@@ -111,9 +111,9 @@ func TestCodexPictureFills(t *testing.T) {
 	if full[0] != ix+slot[0] || full[2] != slot[2] || full[3] != slot[3] || full[1] != iy+slot[1] {
 		t.Fatalf("the picture should fill its slot %v: %v", slot, full)
 	}
-	press(m, "-")
+	press(m, "z")
 	if !c.el(3).Whole {
-		t.Fatal("− should show the picture whole")
+		t.Fatal("Z should show the picture whole")
 	}
 	canvasRows(m)
 	if w := c.rects[3]; w[2]*w[3] >= full[2]*full[3] {
@@ -123,9 +123,9 @@ func TestCodexPictureFills(t *testing.T) {
 	if c.el(3).Slot != 1 || c.el(3).Align != 1 {
 		t.Fatalf("Alt+Left on a whole picture: slot %d align %d", c.el(3).Slot, c.el(3).Align)
 	}
-	press(m, "=")
+	press(m, "z")
 	if c.el(3).Whole {
-		t.Fatal("+ should make it fill its box again")
+		t.Fatal("Z again should make it fill its box")
 	}
 }
 

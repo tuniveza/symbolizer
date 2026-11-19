@@ -118,7 +118,7 @@ func TestCodexFills(t *testing.T) {
 	}
 }
 
-// Page borders: Alt+B gives this page one; B on the cover every page.
+// Page borders: Alt+B gives this page one; Alt+B on the cover every page.
 func TestCodexPageBorders(t *testing.T) {
 	m, c := openLook(t)
 	press(m, "alt+b")
@@ -126,11 +126,11 @@ func TestCodexPageBorders(t *testing.T) {
 		t.Fatal("Alt+B: this page's thin border")
 	}
 	m.codexShowPage(-1)
-	press(m, "b")
-	press(m, "b")
-	press(m, "b")
+	press(m, "alt+b")
+	press(m, "alt+b")
+	press(m, "alt+b")
 	if c.cf.PageBorder != 3 {
-		t.Fatal("B on the cover: every page's border")
+		t.Fatal("Alt+B on the cover: every page's border")
 	}
 	m.codexShowPage(1)
 	if s := screenOf(m); !strings.Contains(s, "╔") {

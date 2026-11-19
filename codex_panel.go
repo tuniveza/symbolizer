@@ -243,6 +243,7 @@ func (m *Model) codexInspector(cv *boardCanvas, w int, now time.Time) {
 		sym := codexSymbols[(c.cf.Symbol%len(codexSymbols)+len(codexSymbols))%len(codexSymbols)]
 		f.line("S", "symbol", codexSymbolFrame(c.cf.Symbol, now.Sub(c.pageAt).Seconds())+"  "+sym.Name, cAccent)
 		f.swatch("W", "paper", c.paper(nil), codexOr(c.cf.Paper, "theme"))
+		f.line("B", "frame", codexCoverBorderName(c.cf.CoverBorder), cAccent)
 		f.newCol()
 		f.head("Pages")
 		f.line("PgDn", "pages", plural(len(c.cf.Pages), "page"), cText)
@@ -251,7 +252,7 @@ func (m *Model) codexInspector(cv *boardCanvas, w int, now time.Time) {
 		if c.cf.PageBorder > 0 {
 			pb = codexPageBorders[c.cf.PageBorder-1].name
 		}
-		f.line("B", "border", pb+" (all)", cAccent)
+		f.line("Alt+B", "border", pb+" (all)", cAccent)
 		f.line("V", "opening", itoa(c.cf.coverTurn()+1)+"/16 "+codexTurns16[c.cf.coverTurn()], cAccent)
 		f.line("H", "header", codexOr(c.cf.Header, "—"), cText)
 		f.line("U", "footer", codexOr(c.cf.Footer, "—"), cText)
@@ -306,7 +307,7 @@ func (m *Model) codexInspector(cv *boardCanvas, w int, now time.Time) {
 		f.line("F", "font", codexFont("Aa Bb 12", e.Font)+"  "+codexFonts[e.Font%16], cText)
 	case ceImage:
 		f.line("↵", "picture", codexOr(e.Image, "choose a file"), cText)
-		f.line("+ −", "size", map[bool]string{false: "fills its box", true: "whole picture"}[e.Whole], cAccent)
+		f.line("Z", "shows", map[bool]string{false: "fills its box", true: "whole picture"}[e.Whole], cAccent)
 	case ceDrawing:
 		f.line("↵", "draw", plural(len(e.Ink), "dot"), cText)
 	case ceSymbol:
@@ -319,6 +320,9 @@ func (m *Model) codexInspector(cv *boardCanvas, w int, now time.Time) {
 	if e.Kind == ceText || e.Kind == ceSymbol {
 		k := max(e.Size, 1)
 		f.line("+ −", "size", strings.Repeat("▮", k)+strings.Repeat("▯", codexSizes-k)+" "+itoa(k)+"/"+itoa(codexSizes), cAccent)
+	}
+	if e.Kind == ceImage || e.Kind == ceDrawing || e.Kind == ceButton || e.W > 0 {
+		f.line("+ − ◢", "size", strings.TrimSuffix(codexSizeSays(e), "."), cAccent)
 	}
 	def := codexInkOn(c.paper(p))
 	switch e.Kind {

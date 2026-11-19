@@ -661,6 +661,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if m.inCodex() && m.codex != nil && m.codex.drawing {
 			return m.codexDrag(msg.Mouse()) // drawing with the mouse (codex_keys.go)
 		}
+		if m.inCodex() && m.codex != nil && m.codex.sizing != nil {
+			return m.codexSizeDrag(msg.Mouse()) // a corner dragged: resizing (codex_size.go)
+		}
 		if m.inDraw() && m.draw != nil && m.draw.drawing {
 			return m.drawMotion(msg.Mouse()) // a stroke (draw_keys.go)
 		}
@@ -675,6 +678,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		if m.dragMargin != "" {
 			return m.marginRelease()
+		}
+		if m.inCodex() && m.codex != nil && m.codex.sizing != nil {
+			return m.codexSizeEnd()
 		}
 		if m.inDraw() && m.draw != nil && m.draw.drawing {
 			return m.drawRelease(msg.Mouse()) // the stroke ends and is kept (draw_keys.go)

@@ -202,6 +202,7 @@ func (m *Model) codexCanvas() *boardCanvas {
 	desk := codexDesk()
 	cvFill(cv, 0, 0, w, h, desk)
 	c.rects = map[int][4]int{}
+	c.place = map[int][4]int{}
 	c.box = map[string][4]int{}
 	now := time.Now()
 	if c.cf == nil {
@@ -324,7 +325,11 @@ func codexCoverW(cf *codexFile, w, h int, t float64, chosen bool, what int, word
 	if w < 20 {
 		x0, x1 = 2, w-3
 	}
-	if x1-x0 >= 4 && y1-y0 >= 2 {
+	if cb := cf.CoverBorder; cb > 0 && x1-x0 >= 4 && y1-y0 >= 2 { // a chosen frame (B on the cover)
+		if cb < codexCoverNone {
+			codexDrawEdge(cv, codexPageBorders[cb-1], x0, y0, x1, y1, frame, mixHex(gold, col, 0.05), col)
+		}
+	} else if x1-x0 >= 4 && y1-y0 >= 2 {
 		for x := x0 + 1; x < x1; x++ {
 			cvSet(cv, x, y0, "═", frame, cvBG(cv, x, y0, col), 0)
 			cvSet(cv, x, y1, "═", frame, cvBG(cv, x, y1, col), 0)
@@ -538,7 +543,7 @@ func (m *Model) codexPage(cv *boardCanvas, p *codexPage, px, py, pw, ph int, now
 		cvSet(cv, px, y, "▏", mixHex(paper, ink, 0.18), paper, 0)
 	}
 	// An ember rule along the top and bottom edges, with gilt corners, or
-	// the page's border (Alt+B; B on the cover for every page).
+	// the page's border (Alt+B; Alt+B on the cover for every page).
 	rule := mixHex(paper, cEmber, 0.3)
 	// A thin edge down the outer side too, so the page's shape reads on the desk.
 	for y := py + 1; y < py+ph-1; y++ {
@@ -628,6 +633,9 @@ func (m *Model) codexPage(cv *boardCanvas, p *codexPage, px, py, pw, ph int, now
 				cvSet(cv, p.x, p.y, p.g, col, cvBG(cv, p.x, p.y, paper), uv.AttrBold)
 			}
 		}
+		if c.edit && !c.table {
+			m.codexDrawHandle(cv, r, col, paper) // the corner the mouse drags to resize it (codex_size.go)
+		}
 	}
 	m.codexMarks(cv, p, paper, now) // pressable things, a button's target (codex_panel.go)
 }
@@ -640,14 +648,17 @@ func (m *Model) codexSlot(cv *boardCanvas, els []*codexEl, x, y, w, h int, paper
 	}
 	looks := make([]codexLook, len(els))
 	heights := make([]int, len(els))
+	xs, ws := make([]int, len(els)), make([]int, len(els)) // each thing's own width (W) in the slot
 	fixed, flex := 0, 0
 	for i, e := range els {
 		looks[i] = c.look(e, now)
 		if c.writingIn(e) {
 			looks[i].hidden = false
 		}
-		pl, pt, pr, pb := codexBorderFits(e, w, h)
-		heights[i] = c.elHeight(e, looks[i], w-pl-pr, h-pt-pb, now)
+		xs[i], ws[i] = codexSized(e, x, w)
+		pl, pt, pr, pb := codexBorderFits(e, ws[i], h)
+		c.place[e.ID] = [4]int{x + pl, y + pt, w - pl - pr, h - pt - pb}
+		heights[i] = c.elHeight(e, looks[i], ws[i]-pl-pr, h-pt-pb, now)
 		if heights[i] < 0 {
 			flex++
 		} else {
@@ -703,11 +714,12 @@ func (m *Model) codexSlot(cv *boardCanvas, els []*codexEl, x, y, w, h int, paper
 		if eh < want[i] && want[i] > 0 {
 			cut = true
 		}
-		pl, pt, pr, pb := codexBorderFits(e, w, eh)
+		ex, ew := xs[i], ws[i]
+		pl, pt, pr, pb := codexBorderFits(e, ew, eh)
 		if eh-pt-pb < 1 {
 			pl, pt, pr, pb = 0, 0, 0, 0
 		}
-		m.codexEl(cv, e, looks[i], x+pl, yy+pt, w-pl-pr, eh-pt-pb, paper, ink, now)
+		m.codexEl(cv, e, looks[i], ex+pl, yy+pt, ew-pl-pr, eh-pt-pb, paper, ink, now)
 		if f, ok := codexBorderOf(e); ok && pt > 0 && !looks[i].hidden {
 			// The border goes round where the thing was drawn, and is its box.
 			r := c.rects[e.ID]
@@ -735,7 +747,7 @@ func (m *Model) codexSlot(cv *boardCanvas, els []*codexEl, x, y, w, h int, paper
 				}
 			}
 			if e.Kind == ceImage || e.Kind == ceDrawing { // a picture: its whole place
-				r = [4]int{x + pl, yy + pt, w - pl - pr, eh - pt - pb}
+				r = [4]int{ex + pl, yy + pt, ew - pl - pr, eh - pt - pb}
 			}
 			codexFillApply(cv, e, r, paper, looks[i].ghost)
 		}
@@ -780,10 +792,13 @@ func codexWriteFont(font int) int {
 func (c *codexState) elHeight(e *codexEl, l codexLook, w, maxH int, now time.Time) int {
 	switch e.Kind {
 	case ceButton:
-		return 3
+		return max(e.H, 3)
 	case ceSymbol:
 		return len(codexSymbolBig(l.symbol, 0, l.size))
 	case ceImage, ceDrawing:
+		if e.H > 0 { // its own height: a share of its place
+			return max(maxH*e.H/100, 1)
+		}
 		return -1
 	}
 	if c.writingIn(e) {
@@ -1119,6 +1134,9 @@ func (m *Model) codexEl(cv *boardCanvas, e *codexEl, l codexLook, x, y, w, h int
 			label = string(c.words)
 		}
 		bw := min(max(codexWidth(label)+4, 8), w)
+		if e.W > 0 { // its own width: the room it was given
+			bw = w
+		}
 		bx := codexAlign(e.Align, w, bw)
 		col := l.color
 		if col == "" {
@@ -1128,7 +1146,8 @@ func (m *Model) codexEl(cv *boardCanvas, e *codexEl, l codexLook, x, y, w, h int
 		fillBG := codexButtonFill(st, col)
 		txt := codexButtonInk(st, col, paper)
 		focus := !c.edit && c.focus == e.ID
-		nrows, labelRow := 3, 1
+		nrows := min(max(e.H, 3), max(h, 3))
+		labelRow := nrows / 2
 		if h < 3 { // no room for its frame: one row, the label between its sides
 			nrows, labelRow = 1, 0
 		}

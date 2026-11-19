@@ -295,8 +295,7 @@ func TestCodexKeysRefuse(t *testing.T) {
 		key  string
 		says string
 	}{{1, "c", "Colour is for"}, {2, "c", "Colour is for"}, {1, "j", "can't line up"}, {2, "j", "can't line up"},
-		{3, "=", "Size is for texts and symbols."}, {3, "-", "Size is for texts and symbols."}, {1, "=", "fills its box"}, {2, "-", "Size is for"},
-		{5, "y", "Y changes"}} {
+		{3, "z", "Z is for a picture"}, {5, "y", "Y changes"}} {
 		c.sel = k.id
 		was := *c.el(k.id)
 		steps := len(c.undo)

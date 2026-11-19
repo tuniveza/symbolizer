@@ -136,6 +136,8 @@ type codexEl struct {
 	Head   int        `json:"head,omitempty"`   // a text: 0 body text, 1–3 a heading (codex_look.go)
 	Fill   string     `json:"fill,omitempty"`   // the fill's colour ("" the theme's)
 	FillBy int        `json:"fillBy,omitempty"` // the fill's look: 0 none, else codexFills (codex_look.go)
+	W      int        `json:"w,omitempty"`      // its width: 0 as it comes, else this % of its place (codex_size.go)
+	H      int        `json:"h,omitempty"`      // its height: 0 as it comes; a picture or drawing: % of its place; a button: rows
 }
 
 type codexPage struct {
@@ -159,12 +161,13 @@ type codexFile struct {
 	NextID   int          `json:"nextID"`
 	Room     int          `json:"room,omitempty"` // made in Codex mode: its own room on Design (-1: one is still to be made)
 
-	CoverTurn  int    `json:"coverTurn,omitempty"`  // how the cover opens: 0 the page turn, else codexTurns16[CoverTurn-1]
-	PageBorder int    `json:"pageBorder,omitempty"` // every page's border: 0 none, else codexPageBorders[PageBorder-1]
-	Header     string `json:"header,omitempty"`     // words at the top of every page ({page} {pages} {title})
-	Footer     string `json:"footer,omitempty"`     // words at the bottom of every page
-	TitleFont  int    `json:"titleFont,omitempty"`  // the cover title's font (0: big letters when they fit)
-	HFFont     int    `json:"hfFont,omitempty"`     // the header's and footer's font
+	CoverTurn   int    `json:"coverTurn,omitempty"`   // how the cover opens: 0 the page turn, else codexTurns16[CoverTurn-1]
+	PageBorder  int    `json:"pageBorder,omitempty"`  // every page's border: 0 none, else codexPageBorders[PageBorder-1]
+	Header      string `json:"header,omitempty"`      // words at the top of every page ({page} {pages} {title})
+	Footer      string `json:"footer,omitempty"`      // words at the bottom of every page
+	TitleFont   int    `json:"titleFont,omitempty"`   // the cover title's font (0: big letters when they fit)
+	HFFont      int    `json:"hfFont,omitempty"`      // the header's and footer's font
+	CoverBorder int    `json:"coverBorder,omitempty"` // the cover's frame: 0 gilt, 1…16 codexPageBorders, 17 none (codex_size.go)
 }
 
 // codexPalette: the colours C steps through (text, buttons, covers, symbols).
@@ -312,6 +315,8 @@ func (cf *codexFile) tidy() {
 			e.Align = ((e.Align % 3) + 3) % 3
 			e.Size = max(0, min(e.Size, codexSizes))
 			e.Head = max(0, min(e.Head, 3))
+			e.W = max(0, min(e.W, 100))
+			e.H = max(0, min(e.H, 100))
 			e.FillBy = ((e.FillBy % len(codexFills)) + len(codexFills)) % len(codexFills)
 			if n := len(codexSymbols); n > 0 {
 				e.Symbol = ((e.Symbol % n) + n) % n
@@ -326,6 +331,7 @@ func (cf *codexFile) tidy() {
 	}
 	cf.CoverTurn = max(0, min(cf.CoverTurn, 16))
 	cf.PageBorder = max(0, min(cf.PageBorder, len(codexPageBorders)))
+	cf.CoverBorder = max(0, min(cf.CoverBorder, codexCoverNone))
 	cf.TitleFont = ((cf.TitleFont % 16) + 16) % 16
 	cf.HFFont = ((cf.HFFont % 16) + 16) % 16
 	if n := len(codexSymbols); n > 0 {
@@ -489,11 +495,13 @@ type codexState struct {
 	shadeKey string // what the no-shader note says (codex_shade.go)
 	shadeTop int    // 0 not known, 1 sy's pane is not the top of its window, 2 it is
 
-	tick  bool              // a frame tick is coming
-	rects map[int][4]int    // where each thing was drawn last, on the screen: x, y, w, h
-	inner [4]int            // the page's writing area on the screen
-	slots map[int][][4]int  // the page's slots on the screen, by page
-	box   map[string][4]int // other click spots: "cover", "prev", "next"
+	tick   bool              // a frame tick is coming
+	rects  map[int][4]int    // where each thing was drawn last, on the screen: x, y, w, h
+	inner  [4]int            // the page's writing area on the screen
+	slots  map[int][][4]int  // the page's slots on the screen, by page
+	box    map[string][4]int // other click spots: "cover", "prev", "next"
+	place  map[int][4]int    // each thing's place (its slot, inside its border): what its size is a share of
+	sizing *codexSizing      // the mouse is dragging a thing's corner (codex_size.go)
 
 	pageRect [4]int     // the page (or cover) on the screen, as last drawn
 	pick     *codexPick // the font list (F): open while choosing (codex_look.go)

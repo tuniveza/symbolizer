@@ -78,9 +78,18 @@ func codexDrawPageBorder(cv *boardCanvas, f codexPageEdge, x0, y0, x1, y1 int, p
 	}
 	col := codexAtLeast(mixHex(paper, cAccent, 0.75), paper, 2.5)
 	gold := codexAtLeast(codexGold(), paper, 3)
+	codexDrawEdge(cv, f, x0, y0, x1, y1, col, gold, paper)
+}
+
+// codexDrawEdge draws border f round x0…x1, y0…y1: its sides in col, its
+// corners in gold, on whatever is there (bg where nothing is).
+func codexDrawEdge(cv *boardCanvas, f codexPageEdge, x0, y0, x1, y1 int, col, gold, bg string) {
+	if x1-x0 < 2 || y1-y0 < 2 {
+		return
+	}
 	put := func(x, y int, g, fg string) {
 		if g != " " {
-			cvSet(cv, x, y, g, fg, cvBG(cv, x, y, paper), 0)
+			cvSet(cv, x, y, g, fg, cvBG(cv, x, y, bg), 0)
 		}
 	}
 	for x := x0 + 1; x < x1; x++ {

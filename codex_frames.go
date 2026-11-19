@@ -174,11 +174,11 @@ func codexButtonCell(st codexButtonStyle, rows, ry, rx, bw int, col, paper strin
 		g = st.tr
 	case ry == 0:
 		g = st.t
-	case ry == 2 && rx == 0:
+	case ry == rows-1 && rx == 0:
 		g = st.bl
-	case ry == 2 && rx == last:
+	case ry == rows-1 && rx == last:
 		g = st.br
-	case ry == 2:
+	case ry == rows-1:
 		g = st.b
 	case rx == 0:
 		g = st.l
@@ -205,7 +205,7 @@ func codexButtonCell(st codexButtonStyle, rows, ry, rx, bw int, col, paper strin
 		fg = codexAtLeast(codexGold(), paper, 2.5)
 	case 3: // light on the top and left, shade on the bottom and right
 		fg = mixHex(col, "#ffffff", 0.35)
-		if ry == 2 || (rx == last && ry != 0) {
+		if ry == rows-1 || (rx == last && ry != 0) {
 			fg = mixHex(col, "#000000", 0.45)
 		}
 	}
@@ -319,9 +319,9 @@ func codexAlignOfPos(pos int) int { return []int{1, 0, 2}[min(max(pos, 0), 2)] }
 func codexSlides(e *codexEl) bool {
 	switch e.Kind {
 	case ceDrawing:
-		return false
+		return e.W > 0 && e.W < 100
 	case ceImage:
-		return e.Whole
+		return e.Whole || e.W > 0 && e.W < 100
 	}
 	return true
 }

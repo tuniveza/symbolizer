@@ -79,7 +79,7 @@ Hold a key and the arrows change what they do. The status bar always says which.
 | **Manager** | All your projects on one screen. Type to search, **F6** run, **F7** build. |
 | **Brick** | Programs written in plain English. [See below](#-brick). |
 | **Design** | A board made of text: rooms with walls, a floor and windows. [See below](#-design). |
-| **Codex** | Books you can play: pages of text, pictures, drawings, symbols and buttons. **E** edits. **Alt + arrows** move a thing. **B** gives any thing a border (16 kinds). **Y** changes a button's look (16 kinds). Pictures fill their space; **−** shows one whole. |
+| **Codex** | Books you can play: pages of text, pictures, drawings, symbols and buttons. **E** edits. **Alt + arrows** move a thing. **B** gives any thing a border (16 kinds). **Y** changes a button's look (16 kinds). **+ / −** make any thing bigger or smaller, or drag its corner **◢** with the mouse. Pictures fill their space; **Z** shows one whole. On the cover, **B** picks its frame (gilt, 16 borders, or none) and **Alt+B** every page's border. **Q** goes back to Design when the codex was opened there. |
 
 <div align="center">
 <img src="docs/media/diary.gif" alt="Diary pages turned one by one, the all-pages view, then the modes box" width="880">

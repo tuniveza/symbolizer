@@ -14,7 +14,7 @@ package main
 //	→ PgDn Space  next page (the cover opens)      ← PgUp   the page before
 //	Home · End    the cover · the last page        Tab      the next button or active thing
 //	Enter         press it (activate it)           click    press what is clicked
-//	E             edit mode                        Esc      close (back to the board, if from there)
+//	E             edit mode                        Esc Q    close (back to the board, if from there)
 //
 // Editing (the slots show as dotted lines):
 //
@@ -30,7 +30,7 @@ package main
 //	W · O         paper colour · pages wide or upright
 //	Alt+P         a new page after this one          X X   delete the thing (none chosen: the page)
 //	Space         try activating it                  Ctrl+Z · Ctrl+Y   undo · redo
-//	E             back to reading          Esc   close it (back to the board, if from there)
+//	E             back to reading          Esc Q close it (back to the board, if from there)
 
 import (
 	"encoding/json"
@@ -84,6 +84,9 @@ func (m *Model) codexKeyIn(k tea.Key) tea.Cmd {
 	}
 	if name != "x" && name != "X" && name != "shift+x" {
 		c.xAt = time.Time{}
+	}
+	if c.fromDesign && (name == "q" || name == "Q" || name == "shift+q") {
+		return m.codexClose() // opened from the Design board: Q goes back there, like Esc (the user asked, 19 Nov 2026)
 	}
 	if c.edit {
 		return m.codexEditKey(name)
@@ -419,7 +422,7 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 		}
 		p.Border = order[codexCycle(at, len(order), name == "alt+b")]
 		m.codexSave()
-		m.say("Page border: " + c.cf.pageBorderName(p) + ". Alt+B next · Alt+Shift+B back · B on the cover: every page.")
+		m.say("Page border: " + c.cf.pageBorderName(p) + ". Alt+B next · Alt+Shift+B back · Alt+B on the cover: every page.")
 		return nil
 	case "alt+h":
 		m.codexStep()
@@ -582,36 +585,20 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 		c.pageAt = time.Now() // it starts from the beginning
 		m.codexSave()
 		m.say("Animation: " + codexAnims[e.Anim] + ".")
-	case "+", "=", "plus", "shift+=", "kp+", "-", "minus", "kp-":
-		if e.Kind == ceImage {
-			if whole := name == "-" || name == "minus" || name == "kp-"; whole != e.Whole {
-				m.codexStep()
-				e.Whole = whole
-				m.codexSave()
-			}
-			m.say(map[bool]string{false: "The picture fills its box (cut at the edges). − shows it whole.", true: "The picture shows whole. + makes it fill its box."}[e.Whole])
+	case "z", "Z", "shift+z":
+		if e.Kind != ceImage {
+			m.say("Z is for a picture: it fills its box, or shows whole.")
 			return nil
 		}
-	}
-	switch name {
+		m.codexStep()
+		e.Whole = !e.Whole
+		m.codexSave()
+		m.say(map[bool]string{false: "The picture fills its box (cut at the edges). Z shows it whole.", true: "The picture shows whole. Z makes it fill its box."}[e.Whole])
+		return nil
 	case "+", "=", "plus", "shift+=", "kp+":
-		if e.Kind != ceText && e.Kind != ceSymbol {
-			m.say("Size is for texts and symbols.")
-			return nil
-		}
-		m.codexStep()
-		e.Size = min(max(e.Size, 1)+1, codexSizes)
-		m.codexSave()
-		m.say("Size " + itoa(e.Size) + " of " + itoa(codexSizes) + ".")
+		m.codexSizeKey(e, true) // codex_size.go
 	case "-", "minus", "kp-":
-		if e.Kind != ceText && e.Kind != ceSymbol {
-			m.say("Size is for texts and symbols.")
-			return nil
-		}
-		m.codexStep()
-		e.Size = max(max(e.Size, 1)-1, 1)
-		m.codexSave()
-		m.say("Size " + itoa(e.Size) + " of " + itoa(codexSizes) + ".")
+		m.codexSizeKey(e, false)
 	case "s", "S", "shift+s":
 		if e.Kind != ceSymbol {
 			m.say("S changes a symbol. Alt+N, then S adds one.")
@@ -623,7 +610,7 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 		m.say("Symbol: " + codexSymbols[e.Symbol].Name + ".")
 	case "j", "J", "shift+j":
 		if !codexSlides(e) {
-			m.say(map[bool]string{true: "A picture that fills its box can't line up. − shows it whole first.", false: "A drawing fills its slot, so it can't line up."}[e.Kind == ceImage])
+			m.say(map[bool]string{true: "A picture that fills its whole place can't line up. Z shows it whole, or − makes it smaller.", false: "A drawing that fills its slot can't line up. − makes it smaller first."}[e.Kind == ceImage])
 			return nil
 		}
 		m.codexStep()
@@ -679,7 +666,12 @@ func (m *Model) codexCoverKey(name string) tea.Cmd {
 		m.codexPickFont(pickTitle)
 	case "b", "B", "shift+b":
 		m.codexStep()
-		c.cf.PageBorder = codexCycle(c.cf.PageBorder, len(codexPageBorders)+1, name == "b")
+		c.cf.CoverBorder = codexCycle(c.cf.CoverBorder, codexCoverNone+1, name == "b")
+		m.codexSave()
+		m.say("Cover frame " + itoa(c.cf.CoverBorder) + " of " + itoa(codexCoverNone) + ": " + codexCoverBorderName(c.cf.CoverBorder) + ". B next · Shift+B back · Alt+B every page's border.")
+	case "alt+b", "alt+B", "alt+shift+b":
+		m.codexStep()
+		c.cf.PageBorder = codexCycle(c.cf.PageBorder, len(codexPageBorders)+1, name == "alt+b")
 		m.codexSave()
 		what := "none"
 		if c.cf.PageBorder > 0 {
@@ -687,7 +679,7 @@ func (m *Model) codexCoverKey(name string) tea.Cmd {
 		}
 		m.say("Every page's border: " + what + ". (Alt+B on a page gives just that page its own.)")
 	default:
-		m.say("The cover: Enter title · Tab subtitle · F title font · C colour · S symbol · W paper · B page border · V opening · H U header footer.")
+		m.say("The cover: Enter title · Tab subtitle · F title font · C colour · S symbol · W paper · B cover frame · Alt+B page border · V opening · H U header footer.")
 	}
 	return nil
 }
@@ -1012,13 +1004,13 @@ func codexElHint(e *codexEl) string {
 	case ceText:
 		return "Enter write · F font · 1 2 3 heading · C colour · D M fill · A animation · + − size"
 	case ceButton:
-		return "Enter label · K action · G aim · F font · C colour · D M fill"
+		return "Enter label · K action · G aim · + − size · F font · C colour · D M fill"
 	case ceImage:
-		return "Enter picture · D M fill · A animation"
+		return "Enter picture · + − size · Z whole / fill · D M fill · A animation"
 	case ceSymbol:
 		return "S symbol · + − size · C colour · D M fill · A animation"
 	case ceDrawing:
-		return "Enter draw · D M fill · A animation"
+		return "Enter draw · + − size · D M fill · A animation"
 	}
 	return ""
 }
@@ -1729,6 +1721,9 @@ func (m *Model) codexClick(ms tea.Mouse) tea.Cmd {
 			return m.codexTickCmd()
 		}
 	}
+	if c.edit && m.codexSizeStart(x, y) { // the chosen thing's corner: a drag resizes it (codex_size.go)
+		return m.codexTickCmd()
+	}
 	if p := c.pageOf(); p != nil {
 		for i := len(p.Els) - 1; i >= 0; i-- {
 			e := p.Els[i]
@@ -1885,9 +1880,9 @@ func (m *Model) codexStatus() string {
 	case c.placing:
 		hint = "Add: T text · H heading · B button · I picture · S symbol · D drawing"
 	case c.edit && c.page < 0:
-		hint = "Cover · Enter title · Tab subtitle · F font · C colour · S symbol · W paper · B page border · V opening · H U header footer · E read"
+		hint = "Cover · Enter title · Tab subtitle · F font · C colour · S symbol · W paper · B frame · Alt+B page border · V opening · H U header footer · E read"
 	case c.edit:
-		hint = "Alt+N add · Enter write · F font · 1 2 3 heading · C colour · D M fill · A anim · B border · Alt+B page border · V turn · H U header footer · L layout · E read"
+		hint = "Alt+N add · Enter write · + − size (or drag ◢) · F font · 1 2 3 heading · C colour · D M fill · A anim · B border · Alt+B page border · V turn · H U header footer · L layout · E read"
 	case c.page < 0:
 		hint = "→ or Enter: open · E edit · Esc close"
 	default:
