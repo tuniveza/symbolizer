@@ -235,9 +235,36 @@ func (m *Model) codexInspector(cv *boardCanvas, w int, now time.Time) {
 		}
 	}
 	if c.page < 0 { // the cover
+		cp := c.coverPart
+		f.head("Chosen ↑↓")
+		f.line("↑↓", "part", strings.TrimPrefix(c.cf.codexCoverPartName(cp), "the "), cAccent)
+		if cp == cpWhole {
+			size := "page"
+			if c.cf.CoverW > 0 || c.cf.CoverH > 0 {
+				size = itoa(codexOrInt(c.cf.CoverW, 100)) + "% × " + itoa(codexOrInt(c.cf.CoverH, 100)) + "%"
+			}
+			f.line("+ −", "size", size, cText)
+			f.line("Alt+↑↓", "words at", []string{"middle", "top", "bottom"}[c.cf.CoverV], cText)
+			f.line("Alt+←→", "line up", "all parts", cText)
+		} else {
+			pt := c.cf.partOf(cp)
+			size := "as it comes"
+			if pt.Size > 0 {
+				size = itoa(pt.Size) + " of " + itoa(codexSizes)
+			}
+			if cp == cpCount {
+				size = map[bool]string{true: "top", false: "bottom"}[pt.Top] + " of frame"
+			}
+			f.line(map[bool]string{true: "Alt+↑↓", false: "+ −"}[cp == cpCount], map[bool]string{true: "place", false: "size"}[cp == cpCount], size, cText)
+			f.swatch("C", "colour", codexOr(pt.Color, codexGold()), codexOr(pt.Color, "gilt"))
+			f.line("Alt+←→", "line up", []string{"middle", "left", "right"}[pt.Align], cText)
+			f.line("X", "shown", map[bool]string{true: "hidden", false: "yes"}[pt.Hide], cText)
+		}
+		f.line("R", "reset", "as it came", cText)
+		f.newCol()
 		f.head("The cover")
 		f.line("↵", "title", codexName(c.cf.Title), cText)
-		f.line("F", "title font", map[bool]string{true: "big letters", false: codexFont("Aa Bb", c.cf.TitleFont) + "  " + codexFonts[c.cf.TitleFont%16]}[c.cf.TitleFont == 0], cText)
+		f.line("F", "title font", codexFont("Aa Bb", c.cf.TitleFont)+"  "+codexFonts[(c.cf.TitleFont%16+16)%16], cText)
 		f.line("Tab", "subtitle", codexOr(c.cf.Subtitle, "—"), cText)
 		f.swatch("C", "colour", codexOr(c.cf.Color, codexThemeCover()), codexOr(c.cf.Color, "theme"))
 		sym := codexSymbols[(c.cf.Symbol%len(codexSymbols)+len(codexSymbols))%len(codexSymbols)]
@@ -346,10 +373,8 @@ func (m *Model) codexInspector(cv *boardCanvas, w int, now time.Time) {
 	if codexSlides(e) {
 		f.line("J", "line up", []string{"◫ middle", "◧ left", "◨ right"}[e.Align%3], cText)
 	}
-	where := "slot " + itoa(codexSlotOf(e, p.Layout)+1) + "/" + itoa(len(codexLayouts[p.Layout].slots))
-	if codexSlides(e) {
-		where += " " + []string{"left", "middle", "right"}[codexAlignPos(e.Align)]
-	}
+	where := "slot " + itoa(codexSlotOf(e, p.Layout)+1) + "/" + itoa(len(codexLayouts[p.Layout].slots)) +
+		" " + codexPlaceArrow(e) + " " + strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(codexPlaceName(e), "in the "), "on the "), "at the ")
 	f.line("Alt+←→↑↓", "move", where, cText)
 	f.line("B", "border", codexBorderName(e.Border), cText)
 	if e.Kind == ceButton {

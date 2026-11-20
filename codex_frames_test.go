@@ -151,8 +151,15 @@ func TestCodexMoveUpDown(t *testing.T) {
 		t.Fatal("Alt+Up should move it up in its slot")
 	}
 	press(m, "alt+up")
+	if e := c.el(2); e.Slot != 1 || codexVPos(e.VAlign) != 0 {
+		t.Fatalf("Alt+Up at the top of the middle things should go to the slot's top: slot %d, valign %d", e.Slot, e.VAlign)
+	}
+	press(m, "alt+up")
 	if e := c.el(2); e.Slot != 0 {
 		t.Fatalf("Alt+Up at the top of a slot should go to the slot above: %d", e.Slot)
+	}
+	if e := c.el(2); codexVPos(e.VAlign) != 2 {
+		t.Fatal("going up it comes in at the slot's bottom")
 	}
 	if s := elsIn(c.pageOf(), 0); s[len(s)-1].ID != 2 {
 		t.Fatal("going up it lands at the bottom of the slot above")
@@ -164,5 +171,112 @@ func TestCodexMoveUpDown(t *testing.T) {
 	press(m, "ctrl+z")
 	if c.el(2).Slot != 0 {
 		t.Fatal("Ctrl+Z should undo a move")
+	}
+}
+
+// Alt + the arrows walk a thing through all 9 places of its slot (top left
+// … bottom right), and each is where it is drawn (the user asked, 19 Nov 2026).
+func TestCodexNinePlaces(t *testing.T) {
+	m := codexTest(t)
+	m.Update(tea.WindowSizeMsg{Width: 180, Height: 50})
+	id, cf, _ := createCodex("Places")
+	cf.Pages[0].Layout = 0 // one area
+	cf.Pages[0].Els = []*codexEl{{ID: 1, Kind: ceButton, Slot: 0, Text: "Press", W: 30}}
+	cf.NextID = 2
+	saveCodex(id, cf)
+	m.codexOpen(id, true)
+	press(m, "pgdown")
+	c := m.cx()
+	c.sel = 1
+	canvasRows(m)
+	place := c.place[1]
+	at := func() [4]int { canvasRows(m); return c.rects[1] }
+	mid := at()
+	press(m, "alt+up")
+	top := at()
+	if top[1] != place[1] || codexPlaceName(c.el(1)) != "at the top" {
+		t.Fatalf("Alt+Up: at the top of its place (%v), got %v, says %q", place, top, codexPlaceName(c.el(1)))
+	}
+	press(m, "alt+left")
+	tl := at()
+	if tl[0] != place[0] || tl[1] != place[1] || codexPlaceName(c.el(1)) != "top left" {
+		t.Fatalf("top left: %v in %v, says %q", tl, place, codexPlaceName(c.el(1)))
+	}
+	press(m, "alt+down")
+	press(m, "alt+down")
+	bl := at()
+	if bl[1]+bl[3] != place[1]+place[3] || codexPlaceArrow(c.el(1)) != "↙" {
+		t.Fatalf("bottom left: %v should end at the bottom of %v (%s)", bl, place, codexPlaceArrow(c.el(1)))
+	}
+	press(m, "alt+right")
+	press(m, "alt+right")
+	br := at()
+	if br[0]+br[2] != place[0]+place[2] || br[1] != bl[1] || codexPlaceName(c.el(1)) != "bottom right" {
+		t.Fatalf("bottom right: %v in %v, says %q", br, place, codexPlaceName(c.el(1)))
+	}
+	if !(top[1] < mid[1] && mid[1] < bl[1]) {
+		t.Fatalf("top %v, middle %v, bottom %v should go down the page", top, mid, bl)
+	}
+	press(m, "alt+down")
+	if !strings.Contains(m.msg, "as far down") {
+		t.Fatalf("at the bottom of the only slot Alt+Down should say so: %q", m.msg)
+	}
+}
+
+// Things at the top, middle and bottom of one slot stack from its top, sit
+// in its middle and stack up from its bottom; all kinds can.
+func TestCodexStackPlaces(t *testing.T) {
+	m := codexTest(t)
+	m.Update(tea.WindowSizeMsg{Width: 180, Height: 50})
+	id, cf, _ := createCodex("Stacks")
+	cf.Pages[0].Layout = 0
+	cf.Pages[0].Els = []*codexEl{
+		{ID: 1, Kind: ceText, Slot: 0, Text: "bottom words", VAlign: 2},
+		{ID: 2, Kind: ceSymbol, Slot: 0, Symbol: 1},
+		{ID: 3, Kind: ceButton, Slot: 0, Text: "Top", VAlign: 1},
+		{ID: 4, Kind: ceDrawing, Slot: 0, H: 20, VAlign: 1, W: 40},
+	}
+	cf.NextID = 5
+	saveCodex(id, cf)
+	m.codexOpen(id, true)
+	press(m, "pgdown")
+	c := m.cx()
+	canvasRows(m)
+	pl := c.place[3]
+	top, draw, sym, bot := c.rects[3], c.rects[4], c.rects[2], c.rects[1]
+	if top[1] != pl[1] {
+		t.Fatalf("the first top thing starts at the slot's top: %v in %v", top, pl)
+	}
+	if !(top[1] < draw[1] && draw[1] < sym[1] && sym[1] < bot[1]) {
+		t.Fatalf("top button %v, top drawing %v, middle symbol %v, bottom text %v: wrong order", top, draw, sym, bot)
+	}
+	if bot[1]+bot[3] != pl[1]+pl[3] {
+		t.Fatalf("the bottom text ends at the slot's bottom: %v in %v", bot, pl)
+	}
+}
+
+// A text lined up left or right sits at the slot's own edge, not in a
+// reading column in the middle (so "top left" is the real corner).
+func TestCodexTextAtEdges(t *testing.T) {
+	m := codexTest(t)
+	m.Update(tea.WindowSizeMsg{Width: 180, Height: 50})
+	id, cf, _ := createCodex("Edges")
+	cf.Pages[0].Layout = 0
+	cf.Pages[0].Els = []*codexEl{{ID: 1, Kind: ceText, Slot: 0, Text: "corner words", Align: 1, VAlign: 1}}
+	cf.NextID = 2
+	saveCodex(id, cf)
+	m.codexOpen(id, true)
+	press(m, "pgdown")
+	c := m.cx()
+	canvasRows(m)
+	pl, r := c.place[1], c.rects[1]
+	if r[0] != pl[0] || r[1] != pl[1] {
+		t.Fatalf("top left text: at %v, the slot starts at %v", r, pl)
+	}
+	c.el(1).Align, c.el(1).VAlign = 2, 2
+	canvasRows(m)
+	r = c.rects[1]
+	if r[0]+r[2] != pl[0]+pl[2] || r[1]+r[3] != pl[1]+pl[3] {
+		t.Fatalf("bottom right text: at %v, the slot is %v", r, pl)
 	}
 }

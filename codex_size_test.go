@@ -116,7 +116,7 @@ func TestCodexCoverFrames(t *testing.T) {
 	if c.cf.CoverBorder != codexCoverNone {
 		t.Fatalf("Shift+B back past gilt: %d, want none", c.cf.CoverBorder)
 	}
-	if s := screenOf(m); strings.Contains(s, "◆") {
+	if s := strings.Join(canvasRows(m), "\n"); strings.Contains(s, "◆") { // the codex only: sy's top bar has a ◆ that comes and goes
 		t.Fatal("no frame: no gilt corners")
 	}
 }

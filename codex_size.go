@@ -146,6 +146,7 @@ type codexSizing struct {
 	w, h     bool   // it changes the width / the height
 	size     int    // its letter size then
 	bw, bh   int    // a picture's or drawing's box then
+	cover    int    // the cover: its part + 1 (codex_cover.go); 0 a thing
 }
 
 // codexHandle is where the chosen thing's corner handle is drawn.
@@ -192,6 +193,9 @@ func (m *Model) codexSizeStart(x, y int) bool {
 func (m *Model) codexSizeDrag(ms tea.Mouse) tea.Cmd {
 	c := m.cx()
 	s := c.sizing
+	if s.cover > 0 {
+		return m.codexCoverDrag(ms) // codex_cover.go
+	}
 	e := c.el(s.id)
 	if e == nil {
 		c.sizing = nil
@@ -285,9 +289,15 @@ func (m *Model) codexSizeDrag(ms tea.Mouse) tea.Cmd {
 // codexSizeEnd: the mouse let go of the corner: the size is kept.
 func (m *Model) codexSizeEnd() tea.Cmd {
 	c := m.cx()
+	cover := c.sizing != nil && c.sizing.cover > 0
 	c.sizing = nil
+	if cover {
+		c.cf.tidyCover()
+	}
 	m.codexSave()
-	if e := c.el(c.sel); e != nil {
+	if cover {
+		m.say(m.codexCoverSays() + " Ctrl+Z undoes it.")
+	} else if e := c.el(c.sel); e != nil {
 		m.say(codexSizeSays(e) + " Ctrl+Z undoes it.")
 	}
 	return m.codexTickCmd()

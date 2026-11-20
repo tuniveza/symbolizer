@@ -214,13 +214,18 @@ func (m *Model) codexCanvas() *boardCanvas {
 	pw, ph := codexPageSize(w, h-room, c.cf.Tall)
 	px, py := (w-pw)/2, top+(h-top-ph)/2
 	c.pageRect = [4]int{px, py, pw, ph}
-	// The page shadow.
-	cvFill(cv, px+1, py+1, pw, ph, mixHex(desk, "#000000", 0.4))
-	if c.page < 0 {
-		cover := codexCover(c.cf, pw, ph, now.Sub(c.pageAt).Seconds(), false)
-		cvPaste(cv, cover, px, py)
-		c.box["cover"] = [4]int{px, py, pw, ph}
+	if c.page < 0 { // the cover: its own size (codex_cover.go)
+		cr := c.cf.coverRect(px, py, pw, ph)
+		cvFill(cv, cr[0]+1, cr[1]+1, cr[2], cr[3], mixHex(desk, "#000000", 0.4))
+		cover, info := codexCoverLaid(c.cf, cr[2], cr[3], now.Sub(c.pageAt).Seconds(), false, 0, nil, 0)
+		cvPaste(cv, cover, cr[0], cr[1])
+		c.box["cover"] = cr
+		c.coverInfo = info
+		if c.edit && c.writing == 0 {
+			m.codexCoverMarks(cv, desk)
+		}
 	} else {
+		cvFill(cv, px+1, py+1, pw, ph, mixHex(desk, "#000000", 0.4)) // the page shadow
 		m.codexPage(cv, c.cf.Pages[c.page], px, py, pw, ph, now)
 	}
 	// Arrows either side: click to turn.
@@ -275,6 +280,15 @@ func codexCover(cf *codexFile, w, h int, t float64, chosen bool) *boardCanvas {
 // (what: codexWriteTitle or codexWriteSubtitle): it shows words, with the
 // cursor at cur.
 func codexCoverW(cf *codexFile, w, h int, t float64, chosen bool, what int, words []rune, cur int) *boardCanvas {
+	cv, _ := codexCoverLaid(cf, w, h, t, chosen, what, words, cur)
+	return cv
+}
+
+// codexCoverLaid is codexCoverW that also says where each part of the
+// cover went (codex_cover.go), for choosing and resizing them.
+func codexCoverLaid(cf *codexFile, w, h int, t float64, chosen bool, what int, words []rune, cur int) (*boardCanvas, *codexCoverInfo) {
+	info := &codexCoverInfo{}
+	info.rects[cpWhole] = [4]int{0, 0, w, h}
 	cv := newBoardCanvas(max(w, 1), max(h, 1))
 	col := cf.Color
 	if col == "" {
@@ -291,7 +305,7 @@ func codexCoverW(cf *codexFile, w, h int, t float64, chosen bool, what int, word
 	if w < 12 || h < 5 { // too small: a block of its colour with its title
 		cvFill(cv, 0, 0, w, h, col)
 		cvText(cv, 0, 0, codexClip("▥"+title, w), gold, col, uv.AttrBold)
-		return cv
+		return cv, info
 	}
 	// The front of the book (the user asked, 19 Nov 2026: a front, not a
 	// side): leather with a faint grain, the board's bevel catching the light
@@ -366,78 +380,8 @@ func codexCoverW(cf *codexFile, w, h int, t float64, chosen bool, what int, word
 			x0, x1 = x0+2, x1-2
 		}
 	}
-	iw := x1 - x0 - 3 // room inside the frame
-	ix := x0 + 2
-	// The symbol, the title and the subtitle, in the middle.
-	size := 1
-	switch {
-	case h >= 26:
-		size = 3
-	case h >= 15:
-		size = 2
-	}
-	sym := codexSymbolBig(cf.Symbol, t, size)
-	// The title: in big letters when they fit (one line, or two on a tall
-	// cover), else up to two lines of normal letters.
-	titleWords := []rune(title)
-	titleCur := -1
-	if what == codexWriteTitle {
-		titleWords, titleCur = words, cur
-	}
-	tsize, tmax := 1, 0
-	tfont := (cf.TitleFont%16 + 16) % 16
-	if what == codexWriteTitle {
-		tfont = codexWriteFont(tfont)
-	}
-	if h >= 13 && tfont == 0 { // big letters: only plain (another font shows in normal letters)
-		tsize, tmax = 2, 3
-		if h >= 22 {
-			tmax = 6
-		}
-	}
-	tl := codexLay(titleWords, tfont, tsize, iw, iw, tmax)
-	if tl.size == 1 {
-		tl.lines = codexLinesAt(tl.lines, titleCur, 2, iw)
-	}
-	subWords := []rune(strings.TrimSpace(cf.Subtitle))
-	subCur := -1
-	if what == codexWriteSubtitle {
-		subWords, subCur = words, cur
-	}
-	sl := codexLay(subWords, 0, 1, iw, iw, 0)
-	sl.lines = codexLinesAt(sl.lines, subCur, 2, iw)
-	subRows := len(sl.lines)
-	if len(subWords) == 0 && subCur < 0 {
-		subRows = 0
-	}
-	titleRows := tl.rows()
-	block := len(sym) + 1 + titleRows
-	if subRows > 0 {
-		block += 1 + subRows
-	}
-	if block > y1-y0-1 { // no room for the symbol
-		sym = nil
-		block = titleRows + map[bool]int{true: 1 + subRows, false: 0}[subRows > 0]
-	}
-	y := y0 + 1 + max((y1-y0-1-block)/2, 0)
-	symCol := mixHex(codexSymColor(cf.Symbol), gold, 0.4)
-	for _, r := range sym {
-		cvMiddleOn(cv, ix, y, iw, r, symCol, uv.AttrBold)
-		y++
-	}
-	if len(sym) > 0 {
-		y++
-	}
-	y += codexDrawLines(cv, ix, y, iw, tl.lines, tl.size, tfont, 0, gold, uv.AttrBold, titleCur, gold)
-	if subRows > 0 {
-		y++
-		subCol := mixHex(gold, col, 0.35)
-		y += codexDrawLines(cv, ix, y, iw, sl.lines, 1, 0, 0, subCol, uv.AttrItalic, subCur, gold)
-	}
-	if n := len(cf.Pages); h >= 9 {
-		cvMiddleOn(cv, ix, y1, iw, " "+plural(n, "page")+" ", mixHex(gold, col, 0.3), 0)
-	}
-	return cv
+	codexCoverWords(cf, cv, info, x0, y0, x1, y1, col, gold, t, what, words, cur) // codex_cover.go
+	return cv, info
 }
 
 // cvMiddleOn writes s in the middle of a row, on whatever is there.
@@ -703,9 +647,10 @@ func (m *Model) codexSlot(cv *boardCanvas, els []*codexEl, x, y, w, h int, paper
 		heights[ti]--
 		total--
 	}
-	yy := y + max((h-total)/2, 0)
+	ys := codexStackYs(els, heights, gap, y, h)
 	missing, cut := 0, false
 	for i, e := range els {
+		yy := ys[i]
 		eh := min(heights[i], y+h-yy)
 		if eh <= 0 {
 			missing++
@@ -751,7 +696,6 @@ func (m *Model) codexSlot(cv *boardCanvas, els []*codexEl, x, y, w, h int, paper
 			}
 			codexFillApply(cv, e, r, paper, looks[i].ghost)
 		}
-		yy += heights[i] + gap
 	}
 	// Editing: say so when not everything fits.
 	if c.edit && c.writing == 0 && (missing > 0 || cut) {
@@ -769,6 +713,55 @@ func (m *Model) codexSlot(cv *boardCanvas, els []*codexEl, x, y, w, h int, paper
 		fg := codexAtLeast(cAccent, paper, 3)
 		cvText(cv, x+w-codexWidth(s), y+h-1, s, fg, mixHex(paper, cAccent, 0.18), uv.AttrBold)
 	}
+}
+
+// codexStackYs is where each thing of a slot (y, h rows) starts: the ones
+// set to the top stack down from its top, the bottom ones up from its
+// bottom, and the rest sit in the middle, between them (the user asked,
+// 19 Nov 2026). With all in the middle it is one block, centred, as before.
+func codexStackYs(els []*codexEl, heights []int, gap, y, h int) []int {
+	ys := make([]int, len(els))
+	var groups [3][]int // top, middle, bottom: the things' numbers, in order
+	for i, e := range els {
+		v := 1
+		if codexRises(e) {
+			v = codexVPos(e.VAlign)
+		}
+		groups[v] = append(groups[v], i)
+	}
+	tall := func(g []int) int {
+		t := 0
+		for k, i := range g {
+			if k > 0 {
+				t += gap
+			}
+			t += heights[i]
+		}
+		return t
+	}
+	stack := func(g []int, at int) {
+		for _, i := range g {
+			ys[i] = at
+			at += heights[i] + gap
+		}
+	}
+	top, mid, bot := tall(groups[0]), tall(groups[1]), tall(groups[2])
+	stack(groups[0], y)
+	lo, hi := y, y+h // the room left between the top and the bottom things
+	if len(groups[0]) > 0 {
+		lo += top + gap
+	}
+	if len(groups[2]) > 0 {
+		hi -= bot + gap
+		stack(groups[2], max(y+h-bot, lo))
+	}
+	my := y + (h-mid)/2 // the middle of the whole slot, if there is room there
+	my = max(min(my, hi-mid), lo)
+	stack(groups[1], my)
+	if len(groups[0]) == 0 && len(groups[2]) == 0 {
+		stack(groups[1], y+max((h-mid)/2, 0))
+	}
+	return ys
 }
 
 // writingIn is whether the words of thing e are being written (its own, or
@@ -823,7 +816,7 @@ func codexTextRows(l codexLook, w, maxH int) ([]string, int, int) {
 	}
 	var rows []string
 	for _, ln := range lay.lines {
-		rows = append(rows, codexBig(string(trimSpaces(ln.s)), lay.size)...)
+		rows = append(rows, codexBigF(string(trimSpaces(ln.s)), lay.size, l.font)...)
 	}
 	return rows, lay.size, lay.w
 }
@@ -868,15 +861,10 @@ func codexMeasure(rs []rune, font, size int) int {
 	if size <= 1 {
 		return codexWidth(codexFont(string(rs), font))
 	}
-	k := size - 1
-	n := 0
-	for i, r := range rs {
-		if i > 0 {
-			n += k // the gap between letters
-		}
-		n += len([]rune(fxPixGlyph(r)[0])) * k
+	if len(rs) == 0 {
+		return 0
 	}
-	return n
+	return fxBigWidth(rs, font, size) + fxLean(font, size) // each font has its own big letters (codex_bigfont.go)
 }
 
 // codexLay lays words out at the biggest size, from size down to 1, at
@@ -987,7 +975,7 @@ func codexDrawLines(cv *boardCanvas, x, y, w int, lines []writeLine, size, font,
 		if size <= 1 {
 			rows = []string{codexFont(string(tr), font)}
 		} else {
-			rows = codexBig(string(tr), size)
+			rows = codexBigF(string(tr), size, font)
 		}
 		ox := x + codexAlign(align, w, codexMeasure(tr, font, size))
 		for ry, r := range rows {
@@ -1004,7 +992,7 @@ func codexDrawLines(cv *boardCanvas, x, y, w int, lines []writeLine, size, font,
 			continue
 		}
 		at := min(max(cur-ln.start, 0), len(ln.s))
-		cx := ox + codexMeasure(ln.s[:at], font, size)
+		cx := ox + max(codexMeasure(ln.s[:at], font, size)-fxLean(font, size), 0) // the cursor sits on the bottom row, which does not lean
 		if size > 1 && at == 0 {
 			cx-- // before the first letter
 		}
@@ -1093,9 +1081,10 @@ func (m *Model) codexEl(cv *boardCanvas, e *codexEl, l codexLook, x, y, w, h int
 			cvMiddle(cv, x, y, w, "text · Enter: write", mixHex(paper, ink, 0.55), paper, uv.AttrItalic)
 			return
 		}
-		// Normal text keeps to a block at most codexReadW wide, in the middle
-		// of a wide slot; its rows are placed in the block as it is aligned.
-		bx := (w - bw) / 2
+		// Normal text keeps to a block at most codexReadW wide; the block sits
+		// at the slot's left, middle or right as the text is lined up (so
+		// "top left" is the slot's real corner), its rows lined up inside it.
+		bx := codexAlign(e.Align, w, bw)
 		minX, maxX := w, 0
 		for ry, r := range rows {
 			if ry >= h {
@@ -1131,7 +1120,7 @@ func (m *Model) codexEl(cv *boardCanvas, e *codexEl, l codexLook, x, y, w, h int
 	case ceButton:
 		label := codexFont(l.text, l.font)
 		if c.writingIn(e) {
-			label = string(c.words)
+			label = codexFont(string(c.words), codexWriteFont(l.font)) // in its font while written too
 		}
 		bw := min(max(codexWidth(label)+4, 8), w)
 		if e.W > 0 { // its own width: the room it was given
@@ -1438,7 +1427,7 @@ func (m *Model) codexWriting(cv *boardCanvas, l codexLook, align, x, y, w, h int
 		first := max(codexCurLine(lines, c.cur)-n+1, 0)
 		lines = lines[first:min(first+n, len(lines))]
 	}
-	bx := x + (w-lay.w)/2
+	bx := x + codexAlign(align, w, lay.w) // where the text's block sits (as in codexEl)
 	hl := mixHex(paper, cAccent, 0.15)
 	cvFill(cv, bx, y, lay.w, min(max(len(lines)*per, 1), h), hl)
 	codexDrawLines(cv, bx, y, lay.w, lines, lay.size, font, align, fg, 0, c.cur, cAccent)

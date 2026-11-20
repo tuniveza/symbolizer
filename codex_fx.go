@@ -275,62 +275,7 @@ func codexBig(s string, size int) []string {
 	if size <= 1 {
 		return []string{s}
 	}
-	if size > codexSizes {
-		size = codexSizes
-	}
-	k := size - 1
-	var rows []string
-	for _, line := range strings.Split(s, "\n") {
-		// px[y] is one pixel row of the whole line, already scaled.
-		px := make([][]bool, (fxPixRows+1)*k)
-		first := true
-		for _, r := range line {
-			g := fxPixGlyph(r)
-			if !first {
-				for y := range px {
-					for i := 0; i < k; i++ {
-						px[y] = append(px[y], false)
-					}
-				}
-			}
-			first = false
-			for gy := 0; gy < fxPixRows; gy++ {
-				for _, c := range g[gy] {
-					on := c == '#'
-					for sy := 0; sy < k; sy++ {
-						for sx := 0; sx < k; sx++ {
-							px[gy*k+sy] = append(px[gy*k+sy], on)
-						}
-					}
-				}
-			}
-			// The empty row under the letter.
-			for y := fxPixRows * k; y < len(px); y++ {
-				for i := 0; i < len([]rune(g[0]))*k; i++ {
-					px[y] = append(px[y], false)
-				}
-			}
-		}
-		w := len(px[0])
-		for y := 0; y+1 < len(px); y += 2 {
-			var b strings.Builder
-			for x := 0; x < w; x++ {
-				top, bot := px[y][x], px[y+1][x]
-				switch {
-				case top && bot:
-					b.WriteRune('█')
-				case top:
-					b.WriteRune('▀')
-				case bot:
-					b.WriteRune('▄')
-				default:
-					b.WriteByte(' ')
-				}
-			}
-			rows = append(rows, b.String())
-		}
-	}
-	return fxPadRows(rows)
+	return codexBigF(s, size, fxFontPlain) // the fonts' own big letters: codex_bigfont.go
 }
 
 // fxPadRows pads every row with spaces to the width of the widest one.

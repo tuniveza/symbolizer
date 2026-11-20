@@ -123,8 +123,9 @@ type codexEl struct {
 	Size   int        `json:"size,omitempty"` // 0 or 1 normal … codexSizes
 	Color  string     `json:"color,omitempty"`
 	Anim   int        `json:"anim,omitempty"`
-	Align  int        `json:"align,omitempty"` // 0 middle, 1 left, 2 right
-	Image  string     `json:"image,omitempty"` // a file in the codex's images folder
+	Align  int        `json:"align,omitempty"`  // 0 middle, 1 left, 2 right
+	VAlign int        `json:"valign,omitempty"` // up and down in its slot: 0 middle, 1 top, 2 bottom (the user asked, 19 Nov 2026)
+	Image  string     `json:"image,omitempty"`  // a file in the codex's images folder
 	Symbol int        `json:"symbol,omitempty"`
 	Ink    []codexInk `json:"ink,omitempty"`
 	Action string     `json:"action,omitempty"` // a button: codexActions
@@ -168,6 +169,13 @@ type codexFile struct {
 	TitleFont   int    `json:"titleFont,omitempty"`   // the cover title's font (0: big letters when they fit)
 	HFFont      int    `json:"hfFont,omitempty"`      // the header's and footer's font
 	CoverBorder int    `json:"coverBorder,omitempty"` // the cover's frame: 0 gilt, 1…16 codexPageBorders, 17 none (codex_size.go)
+
+	// The cover's own size and its parts (codex_cover.go, the user asked 19 Nov 2026).
+	CoverW     int              `json:"coverW,omitempty"`     // its width in Codex mode: % of the page (0: all of it)
+	CoverH     int              `json:"coverH,omitempty"`     // its height: % of the page (0: all of it)
+	CoverV     int              `json:"coverV,omitempty"`     // where the words sit: 0 the middle, 1 the top, 2 the bottom
+	CoverOrder []int            `json:"coverOrder,omitempty"` // the order of symbol, title and subtitle (cpSymbol…)
+	CoverParts []codexCoverPart `json:"coverParts,omitempty"` // the symbol, title, subtitle and page count
 }
 
 // codexPalette: the colours C steps through (text, buttons, covers, symbols).
@@ -313,6 +321,7 @@ func (cf *codexFile) tidy() {
 			e.Font = ((e.Font % 16) + 16) % 16
 			e.Anim = ((e.Anim % 16) + 16) % 16
 			e.Align = ((e.Align % 3) + 3) % 3
+			e.VAlign = ((e.VAlign % 3) + 3) % 3
 			e.Size = max(0, min(e.Size, codexSizes))
 			e.Head = max(0, min(e.Head, 3))
 			e.W = max(0, min(e.W, 100))
@@ -333,6 +342,7 @@ func (cf *codexFile) tidy() {
 	cf.PageBorder = max(0, min(cf.PageBorder, len(codexPageBorders)))
 	cf.CoverBorder = max(0, min(cf.CoverBorder, codexCoverNone))
 	cf.TitleFont = ((cf.TitleFont % 16) + 16) % 16
+	cf.tidyCover() // codex_cover.go
 	cf.HFFont = ((cf.HFFont % 16) + 16) % 16
 	if n := len(codexSymbols); n > 0 {
 		cf.Symbol = ((cf.Symbol % n) + n) % n
@@ -502,6 +512,9 @@ type codexState struct {
 	box    map[string][4]int // other click spots: "cover", "prev", "next"
 	place  map[int][4]int    // each thing's place (its slot, inside its border): what its size is a share of
 	sizing *codexSizing      // the mouse is dragging a thing's corner (codex_size.go)
+
+	coverPart int             // the cover's chosen part in edit mode: cpWhole … cpCount (codex_cover.go)
+	coverInfo *codexCoverInfo // where the cover's parts were drawn last
 
 	pageRect [4]int     // the page (or cover) on the screen, as last drawn
 	pick     *codexPick // the font list (F): open while choosing (codex_look.go)

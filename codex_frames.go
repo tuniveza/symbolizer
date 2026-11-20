@@ -326,6 +326,57 @@ func codexSlides(e *codexEl) bool {
 	return true
 }
 
+// codexVPos is where a thing sits up and down its slot: 0 top, 1 middle, 2 bottom.
+func codexVPos(v int) int { return []int{1, 0, 2}[(v%3+3)%3] }
+
+// codexVOfPos is the VAlign for a place up and down the slot (codexVPos).
+func codexVOfPos(pos int) int { return []int{1, 0, 2}[min(max(pos, 0), 2)] }
+
+// codexRises is whether thing e can sit at the top, middle or bottom of its
+// slot (a picture or drawing as tall as its place already fills it).
+func codexRises(e *codexEl) bool {
+	switch e.Kind {
+	case ceImage, ceDrawing:
+		return e.H > 0 && e.H < 100
+	}
+	return true
+}
+
+// codexPlaceName says where thing e sits in its slot: "top left", "in the
+// middle", "at the bottom" … (only the ways it can move).
+func codexPlaceName(e *codexEl) string {
+	v, h := codexVPos(e.VAlign), codexAlignPos(e.Align)
+	if !codexRises(e) {
+		v = 1
+	}
+	if !codexSlides(e) {
+		h = 1
+	}
+	if v == 1 && h == 1 {
+		return "in the middle"
+	}
+	vs := []string{"top", "middle", "bottom"}[v]
+	switch {
+	case h == 1 && v != 1:
+		return "at the " + vs
+	case v == 1:
+		return "on the " + []string{"left", "", "right"}[h]
+	}
+	return vs + " " + []string{"left", "", "right"}[h]
+}
+
+// codexPlaceArrow is a one-cell picture of where thing e sits: ↖ ↑ ↗ ← · → ↙ ↓ ↘.
+func codexPlaceArrow(e *codexEl) string {
+	v, h := codexVPos(e.VAlign), codexAlignPos(e.Align)
+	if !codexRises(e) {
+		v = 1
+	}
+	if !codexSlides(e) {
+		h = 1
+	}
+	return [3][3]string{{"↖", "↑", "↗"}, {"←", "·", "→"}, {"↙", "↓", "↘"}}[v][h]
+}
+
 // codexSlotToward is the nearest slot of layout li from slot s, that way
 // ("left", "right", "up", "down"); -1: none.
 func codexSlotToward(li, s int, dir string) int {
@@ -372,8 +423,9 @@ func codexSlotToward(li, s int, dir string) int {
 }
 
 // codexMove moves thing e one step that way: across its slot (left, middle,
-// right) or up and down among the things in it, and from its edge into the
-// next slot that way. It says where it went.
+// right), up and down past the things at its height and then to the slot's
+// top, middle or bottom (9 places in all), and from its edge into the next
+// slot that way. It says where it went.
 func (m *Model) codexMove(e *codexEl, dir string) {
 	c := m.cx()
 	p := c.pageOf()
@@ -383,11 +435,7 @@ func (m *Model) codexMove(e *codexEl, dir string) {
 	n := len(codexLayouts[(p.Layout%16+16)%16].slots)
 	s := codexSlotOf(e, p.Layout)
 	where := func() string {
-		w := "slot " + itoa(codexSlotOf(e, p.Layout)+1) + " of " + itoa(n)
-		if codexSlides(e) {
-			w += ", " + []string{"on the left", "in the middle", "on the right"}[codexAlignPos(e.Align)]
-		}
-		return w
+		return "slot " + itoa(codexSlotOf(e, p.Layout)+1) + " of " + itoa(n) + ", " + codexPlaceName(e)
 	}
 	switch dir {
 	case "left", "right":
@@ -415,18 +463,42 @@ func (m *Model) codexMove(e *codexEl, dir string) {
 		m.codexSave()
 		m.say(codexElName(e) + ": " + where() + ".")
 	case "up", "down":
-		same := elsIn(p, s)
+		// First past the things above (below) it at the same height, then
+		// to the slot's middle, top or bottom, then into the next slot.
+		up := dir == "up"
+		var same []*codexEl // the things in its slot at its height
+		for _, x := range elsIn(p, s) {
+			if codexRises(x) && codexVPos(x.VAlign) == codexVPos(e.VAlign) || !codexRises(x) && !codexRises(e) {
+				same = append(same, x)
+			}
+		}
 		at := -1
 		for i, x := range same {
 			if x == e {
 				at = i
 			}
 		}
-		if (dir == "up" && at > 0) || (dir == "down" && at >= 0 && at < len(same)-1) {
+		if (up && at > 0) || (!up && at >= 0 && at < len(same)-1) {
+			other := same[min(at+1, len(same)-1)]
+			if up {
+				other = same[at-1]
+			}
 			m.codexStep()
-			m.codexReorder(e, dir == "up")
+			codexSwapEls(p, e, other)
 			m.codexSave()
-			m.say(codexElName(e) + " moved " + dir + " in its slot.")
+			m.say(codexElName(e) + " moved " + dir + " in its slot (" + where() + ").")
+			return
+		}
+		vpos, step := codexVPos(e.VAlign), 1
+		if up {
+			step = -1
+		}
+		if codexRises(e) && vpos+step >= 0 && vpos+step <= 2 {
+			m.codexStep()
+			e.VAlign = codexVOfPos(vpos + step)
+			codexEdgeOfGroup(p, e, up)
+			m.codexSave()
+			m.say(codexElName(e) + ": " + where() + ".")
 			return
 		}
 		to := codexSlotToward(p.Layout, s, dir)
@@ -443,6 +515,9 @@ func (m *Model) codexMove(e *codexEl, dir string) {
 			}
 		}
 		e.Slot = to
+		if codexRises(e) { // it comes in at the near side
+			e.VAlign = codexVOfPos(map[string]int{"up": 2, "down": 0}[dir])
+		}
 		ins := len(rest)
 		if dir == "down" {
 			for i, x := range rest {
@@ -462,6 +537,49 @@ func (m *Model) codexMove(e *codexEl, dir string) {
 		m.codexSave()
 		m.say(codexElName(e) + ": " + where() + ".")
 	}
+}
+
+// codexSwapEls swaps things a and b in the page's list (their order in a slot).
+func codexSwapEls(p *codexPage, a, b *codexEl) {
+	i, j := -1, -1
+	for k, x := range p.Els {
+		if x == a {
+			i = k
+		}
+		if x == b {
+			j = k
+		}
+	}
+	if i >= 0 && j >= 0 {
+		p.Els[i], p.Els[j] = p.Els[j], p.Els[i]
+	}
+}
+
+// codexEdgeOfGroup puts thing e last among the things at its height in its
+// slot (it came up into them: it sits under them) or first (it came down).
+func codexEdgeOfGroup(p *codexPage, e *codexEl, last bool) {
+	s := codexSlotOf(e, p.Layout)
+	var rest []*codexEl
+	for _, x := range p.Els {
+		if x != e {
+			rest = append(rest, x)
+		}
+	}
+	ins := -1
+	for i, x := range rest {
+		if codexSlotOf(x, p.Layout) != s || !codexRises(x) || codexVPos(x.VAlign) != codexVPos(e.VAlign) {
+			continue
+		}
+		if last {
+			ins = i + 1
+		} else if ins < 0 {
+			ins = i
+		}
+	}
+	if ins < 0 { // none there yet: keep its place
+		return
+	}
+	p.Els = append(rest[:ins], append([]*codexEl{e}, rest[ins:]...)...)
 }
 
 // codexBorderFits is the room thing e's border takes in a box w×h: none when

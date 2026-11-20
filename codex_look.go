@@ -276,6 +276,8 @@ const (
 	pickThing = 1 + iota // the chosen text or button
 	pickTitle            // the cover's title
 	pickHF               // the header and footer
+	pickSub              // the cover's subtitle (codex_cover.go)
+	pickCount            // the cover's page count
 )
 
 // codexPick is the open font list: what it sets, the font lit, the font before.
@@ -297,6 +299,10 @@ func (m *Model) codexPickFont(what int) {
 		was = c.cf.TitleFont
 	case pickHF:
 		was = c.cf.HFFont
+	case pickSub:
+		was = c.cf.partOf(cpSubtitle).Font
+	case pickCount:
+		was = c.cf.partOf(cpCount).Font
 	}
 	m.codexStep()
 	c.pick = &codexPick{what: what, sel: was, was: was}
@@ -318,6 +324,12 @@ func (c *codexState) pickSet(f int) {
 		c.cf.TitleFont = f
 	case pickHF:
 		c.cf.HFFont = f
+	case pickSub:
+		c.cf.part(cpSubtitle).Font = f
+		c.cf.tidyCover()
+	case pickCount:
+		c.cf.part(cpCount).Font = f
+		c.cf.tidyCover()
 	}
 }
 
@@ -371,6 +383,10 @@ func (c *codexState) codexPickSample() string {
 		s = c.cf.Title
 	case pickHF:
 		s = c.cf.hfWords(codexOr(c.cf.Header, c.cf.Footer), max(c.page, 0))
+	case pickSub:
+		s = c.cf.Subtitle
+	case pickCount:
+		s = plural(len(c.cf.Pages), "page")
 	}
 	s = strings.TrimSpace(strings.SplitN(s, "\n", 2)[0])
 	if s == "" {
@@ -415,7 +431,7 @@ func (m *Model) codexPickDraw(cv *boardCanvas) {
 		cvSet(cv, xx, y, "━", cAccent, bg, 0)
 		cvSet(cv, xx, y+h-1, "━", cAccent, bg, 0)
 	}
-	title := map[int]string{pickThing: " Font ", pickTitle: " Title font ", pickHF: " Header & footer font "}[pk.what]
+	title := map[int]string{pickThing: " Font ", pickTitle: " Title font ", pickHF: " Header & footer font ", pickSub: " Subtitle font ", pickCount: " Page count font "}[pk.what]
 	cvMiddle(cv, x, y, w, title, cAccent, bg, uv.AttrBold)
 	first := min(max(pk.sel-rows/2, 0), 16-rows)
 	for i := 0; i < rows; i++ {
@@ -432,9 +448,6 @@ func (m *Model) codexPickDraw(cv *boardCanvas) {
 			mark = "▸ "
 		}
 		name := itoa(f+1) + " " + codexFonts[f]
-		if f == 0 && pk.what == pickTitle {
-			name = "1 big letters"
-		}
 		nx := cvText(cv, x+1, ry, mark+name, map[bool]string{true: cAccent, false: mixHex(bg, cText, 0.6)}[lit], rbg, map[bool]uint8{true: uv.AttrBold, false: 0}[lit])
 		sx := max(nx+1, x+19)
 		cvText(cv, sx, ry, codexClip(codexFont(sample, f), x+w-2-sx), cText, rbg, 0)

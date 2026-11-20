@@ -643,6 +643,9 @@ func (m *Model) codexEditKey(name string) tea.Cmd {
 // codexCoverKey: editing the cover.
 func (m *Model) codexCoverKey(name string) tea.Cmd {
 	c := m.cx()
+	if m.codexCoverEditKey(name) { // the parts and the cover's size (codex_cover.go)
+		return nil
+	}
 	switch name {
 	case "enter":
 		m.codexStartWrite(codexWriteTitle)
@@ -679,7 +682,7 @@ func (m *Model) codexCoverKey(name string) tea.Cmd {
 		}
 		m.say("Every page's border: " + what + ". (Alt+B on a page gives just that page its own.)")
 	default:
-		m.say("The cover: Enter title · Tab subtitle · F title font · C colour · S symbol · W paper · B cover frame · Alt+B page border · V opening · H U header footer.")
+		m.say("The cover: ↑↓ choose a part · + − size · Alt+arrows move · X hide · Enter title · Tab subtitle · F font · C colour · S symbol · W paper · B frame · V opening.")
 	}
 	return nil
 }
@@ -1721,6 +1724,9 @@ func (m *Model) codexClick(ms tea.Mouse) tea.Cmd {
 			return m.codexTickCmd()
 		}
 	}
+	if c.edit && c.page < 0 && m.codexCoverPress(x, y) { // the cover's parts and corner (codex_cover.go)
+		return m.codexTickCmd()
+	}
 	if c.edit && m.codexSizeStart(x, y) { // the chosen thing's corner: a drag resizes it (codex_size.go)
 		return m.codexTickCmd()
 	}
@@ -1880,7 +1886,7 @@ func (m *Model) codexStatus() string {
 	case c.placing:
 		hint = "Add: T text · H heading · B button · I picture · S symbol · D drawing"
 	case c.edit && c.page < 0:
-		hint = "Cover · Enter title · Tab subtitle · F font · C colour · S symbol · W paper · B frame · Alt+B page border · V opening · H U header footer · E read"
+		hint = "Cover · ↑↓ part · + − size (or drag ◢) · Alt+arrows move · X hide · R as it was · Enter title · Tab subtitle · F font · C colour · S symbol · W paper · B frame · V opening · E read"
 	case c.edit:
 		hint = "Alt+N add · Enter write · + − size (or drag ◢) · F font · 1 2 3 heading · C colour · D M fill · A anim · B border · Alt+B page border · V turn · H U header footer · L layout · E read"
 	case c.page < 0:
